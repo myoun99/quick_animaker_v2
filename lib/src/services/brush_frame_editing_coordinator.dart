@@ -6,6 +6,7 @@ import '../models/brush_dab.dart';
 import '../models/brush_dab_sequence.dart';
 import '../models/brush_stroke_commit_outcome.dart';
 import '../models/canvas_size.dart';
+import '../models/cut_id.dart';
 import '../models/canvas_surface_state.dart';
 import '../models/dirty_region.dart';
 import '../models/brush_edit_session_state.dart';
@@ -62,13 +63,44 @@ class BrushFrameEditingCoordinator {
   /// Session surfaces and display caches are derived at the old size, so
   /// they are dropped and reseeded from the resized baked truth (R19: a
   /// resize is a raster crop/extend — pixels untouched).
-  void resizeCanvas(CanvasSize canvasSize) {
+  ///
+  /// R27: the baked resize is STRICTLY scoped to [cutId]'s cels. Canvas
+  /// sizes are per-cut, and this also runs on cut SWITCHES between
+  /// different-sized cuts — the old store-global resize clipped every
+  /// OTHER cut's cels to the newly active size (the 8K fill data-loss
+  /// report). On a switch, the target cut's cels already sit at its
+  /// size, so the scoped resize degenerates to pure adoption.
+  void resizeCanvas(CanvasSize canvasSize, {required CutId cutId}) {
     if (canvasSize == sessionStore.canvasSize) {
       return;
     }
     sessionStore.resizeCanvas(canvasSize);
     frameStore.clearDisplayCaches();
-    frameStore.resizeBakedSurfaces(canvasSize);
+    frameStore.resizeBakedSurfaces(canvasSize, cutId: cutId);
+    _seedSession(_activeFrameKey);
+  }
+
+  /// Whole-store resize for SINGLE-CANVAS dedicated stores only (the
+  /// timesheet ink planes). The main canvas coordinator must use the
+  /// cut-scoped [resizeCanvas].
+  void resizeCanvasAllCuts(CanvasSize canvasSize) {
+    if (canvasSize == sessionStore.canvasSize) {
+      return;
+    }
+    sessionStore.resizeCanvas(canvasSize);
+    frameStore.clearDisplayCaches();
+    frameStore.resizeAllBakedSurfacesSingleCanvas(canvasSize);
+    _seedSession(_activeFrameKey);
+  }
+
+  /// Adopts [canvasSize] WITHOUT touching any baked cel — the cut-switch
+  /// path when the new cut has no editable cels to scope a resize to.
+  void adoptCanvasSize(CanvasSize canvasSize) {
+    if (canvasSize == sessionStore.canvasSize) {
+      return;
+    }
+    sessionStore.resizeCanvas(canvasSize);
+    frameStore.clearDisplayCaches();
     _seedSession(_activeFrameKey);
   }
 

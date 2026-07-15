@@ -26,6 +26,8 @@ import '../src/models/canvas_resize_anchor.dart';
 import '../src/models/canvas_size.dart';
 import '../src/native/qa_native_engine.dart';
 import '../src/ui/brush/brush_tool_state.dart';
+import '../src/ui/canvas/bitmap_tile_image_cache.dart';
+import '../src/ui/canvas/brush_edit_canvas_view.dart';
 import '../src/ui/canvas/interactive_brush_edit_canvas_view.dart';
 import '../src/ui/editor_workspace.dart';
 import '../src/ui/home_page.dart';
@@ -303,6 +305,8 @@ class _BrushLabDriverState extends State<_BrushLabDriver> {
           .copyWith(enabled: phase.onion);
       if (phase.fillTaps) {
         await _runFillTaps(session, brushTool);
+        // R27 repro: fill -> cut round trip -> decode coverage samples.
+        await _runFillCutRoundTrip(session, brushTool);
         continue;
       }
       if (brushTool != null) {
@@ -493,6 +497,213 @@ class _BrushLabDriverState extends State<_BrushLabDriver> {
       );
       await _settleFrames(2);
     }
+  }
+
+  /// R27 repro (user bug): 8K fill -> switch to another cut -> return.
+  /// The store rematerializes the cel (all-new tile objects), so the
+  /// editable painter must re-decode the whole canvas via budgeted
+  /// chunks. Coverage samples every 500ms show whether convergence
+  /// completes or stalls (the reported top-left-only display).
+  Future<void> _runFillCutRoundTrip(
+    dynamic session,
+    ValueNotifier<BrushToolState>? brushTool,
+  ) async {
+    session.selectFrameIndex(7);
+    await _settleFrames(2);
+    if (session.activeBrushEditorSelection == null) {
+      session.createDrawingAtCurrentFrame();
+      await _settleFrames(4);
+    }
+    if (brushTool != null) {
+      brushTool.value = BrushToolState.defaults.copyWith(tool: CanvasTool.fill);
+      await _settleFrames(2);
+    }
+    final canvas = _canvasView();
+    if (canvas == null) {
+      _log('fill-roundtrip ABORT: canvas lost');
+      return;
+    }
+    final position = _rectOf(canvas).center;
+    final pointer = _pointerId++;
+    _event(
+      PointerDownEvent(
+        pointer: pointer,
+        kind: PointerDeviceKind.stylus,
+        position: position,
+        pressure: 0.8,
+      ),
+    );
+    _event(
+      PointerUpEvent(
+        pointer: pointer,
+        kind: PointerDeviceKind.stylus,
+        position: position,
+      ),
+    );
+    // Let commit + settling + decode fully converge on the fill.
+    for (var i = 0; i < 8; i += 1) {
+      await _settleFrames(15);
+    }
+    _log('fill-roundtrip: filled, coverage ${_undecodedCount()}');
+
+    final originalCutId = session.activeCut.id;
+    session.duplicateActiveCut();
+    await _settleFrames(20);
+    _log(
+      'fill-roundtrip: after duplicate active=${session.activeCut.id} '
+      '(original=$originalCutId)',
+    );
+    session.selectCut(originalCutId);
+    await _settleFrames(6);
+    session.selectFrameIndex(7);
+    await _settleFrames(6);
+    for (var sample = 0; sample < 8; sample += 1) {
+      await _settleFrames(30); // ~500ms per sample at 60fps.
+      _log('fill-roundtrip sample#$sample undecoded=${_undecodedCount()}');
+    }
+
+    // Variant C — the USER'S EXACT RECIPE (R27): cut1 stays at ITS
+    // size, a DUPLICATED cut2 resizes to 8000², gets a fresh frame +
+    // fill, then cut1 -> cut2 round trip. Cut switches between
+    // DIFFERENT-SIZED cuts run the host's global store resize - the
+    // suspected bug engine.
+    try {
+      final cut1 = session.activeCut.id;
+      final smallSize = session.activeCut.canvasSize;
+      session.duplicateActiveCut(); // cut2 (active), same size as cut1.
+      await _settleFrames(10);
+      final cut2 = session.activeCut.id;
+      session.resizeActiveCutCanvas(
+        const CanvasSize(width: 8000, height: 8000),
+        anchor: CanvasResizeAnchor.topLeft,
+      );
+      await _settleFrames(10);
+      session.selectFrameIndex(3);
+      await _settleFrames(2);
+      if (session.activeBrushEditorSelection == null) {
+        session.createDrawingAtCurrentFrame();
+        await _settleFrames(4);
+      }
+      final canvasC = _canvasView();
+      if (canvasC == null) {
+        _log('fill-roundtrip C ABORT: canvas lost');
+        return;
+      }
+      final positionC = _rectOf(canvasC).center;
+      final pointerC = _pointerId++;
+      _event(
+        PointerDownEvent(
+          pointer: pointerC,
+          kind: PointerDeviceKind.stylus,
+          position: positionC,
+          pressure: 0.8,
+        ),
+      );
+      _event(
+        PointerUpEvent(
+          pointer: pointerC,
+          kind: PointerDeviceKind.stylus,
+          position: positionC,
+        ),
+      );
+      for (var i = 0; i < 8; i += 1) {
+        await _settleFrames(15);
+      }
+      _log(
+        'fill-roundtrip C: filled on $cut2 (small=$smallSize) '
+        'coverage ${_undecodedCount()} ${_contentSummary()}',
+      );
+      session.selectCut(cut1);
+      await _settleFrames(12);
+      session.selectCut(cut2);
+      await _settleFrames(6);
+      session.selectFrameIndex(3);
+      await _settleFrames(6);
+      for (var sample = 0; sample < 8; sample += 1) {
+        await _settleFrames(30);
+        _log(
+          'fill-roundtrip C sample#$sample undecoded=${_undecodedCount()} '
+          '${_contentSummary()}',
+        );
+      }
+    } catch (error) {
+      _log('fill-roundtrip C ABORT: $error');
+    }
+
+    // Variant B (R27): SAVED project + zero hot budget — the cel
+    // free-drops to its FILE ref on the way out and rematerializes
+    // from the .qap on return (the R22-C tier the user's session
+    // likely exercised via autosave).
+    try {
+      final savePath =
+          '${Directory.systemTemp.path}/r27_repro_'
+          '${DateTime.now().microsecondsSinceEpoch}.qap';
+      await session.saveProjectToFile(savePath);
+      session.brushFrameStore.hotCelByteBudget = 0;
+      _log('fill-roundtrip B: saved + hot budget 0');
+      session.duplicateActiveCut(); // Jumps to the copy = walk away.
+      await _settleFrames(10);
+      await session.brushFrameStore.drainTiering();
+      session.selectCut(originalCutId);
+      await _settleFrames(6);
+      session.selectFrameIndex(7);
+      await _settleFrames(6);
+      for (var sample = 0; sample < 8; sample += 1) {
+        await _settleFrames(30);
+        _log('fill-roundtrip B sample#$sample undecoded=${_undecodedCount()}');
+      }
+    } catch (error) {
+      _log('fill-roundtrip B ABORT: $error');
+    }
+
+    if (brushTool != null) {
+      brushTool.value = BrushToolState.defaults.copyWith(
+        tool: CanvasTool.brush,
+      );
+      await _settleFrames(2);
+    }
+  }
+
+  /// The editable surface's geometry + how many tiles sit fully BEYOND
+  /// a default-sized rect (2340x1654) — distinguishes "data truncated
+  /// to the small canvas" from "display stalled" (R27 Variant C).
+  String _contentSummary() {
+    final element = _findByType<BrushEditCanvasView>();
+    if (element == null) {
+      return 'no-view';
+    }
+    final view = element.widget as BrushEditCanvasView;
+    final surface = view.sessionState.canvasState.currentSurface;
+    var beyond = 0;
+    for (final tile in surface.tiles.values) {
+      if (tile.coord.x * surface.tileSize >= 2340 ||
+          tile.coord.y * surface.tileSize >= 1654) {
+        beyond += 1;
+      }
+    }
+    return 'canvas=${surface.canvasSize.width}x'
+        '${surface.canvasSize.height} tiles=${surface.tiles.length} '
+        'beyondSmallRect=$beyond';
+  }
+
+  /// Tiles of the editable view's CURRENT surface without a decoded
+  /// image — nonzero steady state = the display bug.
+  String _undecodedCount() {
+    final element = _findByType<BrushEditCanvasView>();
+    if (element == null) {
+      return 'no-view';
+    }
+    final view = element.widget as BrushEditCanvasView;
+    final tiles = view.sessionState.canvasState.currentSurface.tiles.values;
+    var undecoded = 0;
+    var total = 0;
+    for (final tile in tiles) {
+      total += 1;
+      if (BitmapTileImageCache.instance.imageFor(tile) == null) {
+        undecoded += 1;
+      }
+    }
+    return '$undecoded/$total';
   }
 
   Future<void> _stroke(
