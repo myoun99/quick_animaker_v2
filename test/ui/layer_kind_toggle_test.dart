@@ -69,7 +69,13 @@ Layer _layer(ProjectRepository repository) {
 Future<bool> _isCommandEnabled(WidgetTester tester, ValueKey<String> key) =>
     readCommandEnabled(tester, key);
 
-Project _projectWithLayer({LayerKind kind = LayerKind.animation}) {
+Project _projectWithLayer({
+  LayerKind kind = LayerKind.animation,
+  // Default hidden: the preservation tests pin that a kind toggle keeps
+  // the eye state. The canvas-retarget pins pass true — a hidden layer
+  // yields NO brush selection now (R4 #1).
+  bool isVisible = false,
+}) {
   return Project(
     id: const ProjectId('phase-73-project'),
     name: 'Phase 73 Project',
@@ -90,7 +96,7 @@ Project _projectWithLayer({LayerKind kind = LayerKind.animation}) {
                 id: _layerId,
                 name: 'Target Layer',
                 kind: kind,
-                isVisible: false,
+                isVisible: isVisible,
                 opacity: 0.5,
                 frames: [
                   Frame(
@@ -200,7 +206,11 @@ void main() {
     tester,
   ) async {
     late ProjectRepository repository;
-    await _pumpHome(tester, onRepositoryCreated: (repo) => repository = repo);
+    await _pumpHome(
+      tester,
+      project: _projectWithLayer(isVisible: true),
+      onRepositoryCreated: (repo) => repository = repo,
+    );
 
     await _tapKey(tester, _toggleKey);
     expect(_layer(repository).kind, LayerKind.storyboard);
@@ -219,7 +229,7 @@ void main() {
     late ProjectRepository repository;
     await _pumpHome(
       tester,
-      project: _projectWithLayer(kind: LayerKind.storyboard),
+      project: _projectWithLayer(kind: LayerKind.storyboard, isVisible: true),
       onRepositoryCreated: (repo) => repository = repo,
     );
 

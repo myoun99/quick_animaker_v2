@@ -102,6 +102,10 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
         session,
         // Onion-skin toggles/pegs re-plan the underlay ghosts (P2).
         session.onionSkinSettings,
+        // Opacity drags preview through the editing stack per move (R4 #4)
+        // — the canvas is the ONLY session-notify consumer that follows
+        // live; everything else waits for the release commit.
+        session.opacityDragPreview,
         // brushToolState is deliberately NOT here (R18 UI-2): nothing in
         // the area's derivations reads it — only the brush host consumes
         // it, through its own boundary builder below. Merging it here
@@ -292,9 +296,6 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
                 surfaceResolver: session.brushSurfaceForLayerFrame,
                 point: point,
                 fxBypassedLayerIds: session.fxBypassedLayerIds,
-                soloVisibleLayerId: session.soloVisibleLayerIdFor(
-                  session.activeCut.id,
-                ),
                 paperColor: session.projectBackground.argb,
               ),
               onEyedropperPick: (color) => widget.onBrushToolStateChanged?.call(
@@ -313,9 +314,6 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
                 point: point,
                 color: color,
                 fxBypassedLayerIds: session.fxBypassedLayerIds,
-                soloVisibleLayerId: session.soloVisibleLayerIdFor(
-                  session.activeCut.id,
-                ),
                 options: widget.fillOptions?.value ?? const FloodFillOptions(),
                 paperColor: session.projectBackground.argb,
               ),

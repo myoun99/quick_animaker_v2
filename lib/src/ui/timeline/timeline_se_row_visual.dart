@@ -331,6 +331,7 @@ class _AudioClipStrip extends StatelessWidget {
         position & const Size(1, 1),
         Offset.zero & (overlay as RenderBox).size,
       ),
+      popUpAnimationStyle: instantMenuAnimation,
       items: const [
         PopupMenuItem<String>(
           key: ValueKey<String>('audio-clip-menu-remove'),

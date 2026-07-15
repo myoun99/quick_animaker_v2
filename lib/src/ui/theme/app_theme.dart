@@ -38,6 +38,14 @@ abstract final class AppColors {
   static const Color danger = Color(0xFFC95C5C);
 }
 
+/// Every popup menu opens INSTANTLY (R4 #2): Material's default grow +
+/// staggered item fade read as entries appearing one by one — pass this to
+/// each `showMenu`/`PopupMenuButton` as `popUpAnimationStyle`.
+const AnimationStyle instantMenuAnimation = AnimationStyle(
+  duration: Duration.zero,
+  reverseDuration: Duration.zero,
+);
+
 ColorScheme _buildColorScheme() {
   return const ColorScheme(
     brightness: Brightness.dark,

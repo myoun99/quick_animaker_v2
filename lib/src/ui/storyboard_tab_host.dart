@@ -426,8 +426,8 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
               // rows — the SAME session hooks the timeline host wires.
               onToggleLayerVisibility: _session.toggleLayerVisibility,
               onToggleLayerMuted: _session.toggleLayerMuted,
-              onLayerOpacityChanged: (layerId, opacity) =>
-                  _session.setLayerOpacity(layerId: layerId, opacity: opacity),
+              onLayerOpacityChanged: _session.previewLayerOpacity,
+              onLayerOpacityChangeEnd: _session.commitLayerOpacity,
               onLayerMarkSelected: _session.setLayerMark,
               layerFxEnabledOf: _session.isLayerFxEnabled,
               onToggleLayerFx: _session.toggleLayerFx,

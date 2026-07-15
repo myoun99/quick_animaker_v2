@@ -79,6 +79,7 @@ class XSheetTimelineGrid extends StatefulWidget {
     required this.onAddLayer,
     required this.onToggleLayerVisibility,
     required this.onLayerOpacityChanged,
+    this.onLayerOpacityChangeEnd,
     required this.onToggleLayerTimesheet,
     required this.onLayerMarkSelected,
     this.layerFxEnabledOf,
@@ -171,6 +172,10 @@ class XSheetTimelineGrid extends StatefulWidget {
   final VoidCallback onAddLayer;
   final ValueChanged<LayerId> onToggleLayerVisibility;
   final void Function(LayerId layerId, double opacity) onLayerOpacityChanged;
+
+  /// Commit-on-release hook (R4 #4); null keeps per-move writes.
+  final void Function(LayerId layerId, double opacity)? onLayerOpacityChangeEnd;
+
   final ValueChanged<LayerId> onToggleLayerTimesheet;
   final void Function(LayerId layerId, LayerMark mark) onLayerMarkSelected;
 
@@ -812,6 +817,8 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
                                                     .onToggleLayerVisibility,
                                                 onLayerOpacityChanged: widget
                                                     .onLayerOpacityChanged,
+                                                onLayerOpacityChangeEnd: widget
+                                                    .onLayerOpacityChangeEnd,
                                                 onToggleLayerTimesheet: widget
                                                     .onToggleLayerTimesheet,
                                                 fxEnabled:
@@ -1395,6 +1402,7 @@ class _LayerHeader extends StatelessWidget {
     required this.onSelectLayer,
     required this.onToggleLayerVisibility,
     required this.onLayerOpacityChanged,
+    this.onLayerOpacityChangeEnd,
     required this.onToggleLayerTimesheet,
     required this.onLayerMarkSelected,
     required this.metrics,
@@ -1414,6 +1422,10 @@ class _LayerHeader extends StatelessWidget {
   final ValueChanged<LayerId> onSelectLayer;
   final ValueChanged<LayerId> onToggleLayerVisibility;
   final void Function(LayerId layerId, double opacity) onLayerOpacityChanged;
+
+  /// Commit-on-release hook (R4 #4); null keeps per-move writes.
+  final void Function(LayerId layerId, double opacity)? onLayerOpacityChangeEnd;
+
   final ValueChanged<LayerId> onToggleLayerTimesheet;
   final void Function(LayerId layerId, LayerMark mark) onLayerMarkSelected;
 
@@ -1625,10 +1637,18 @@ class _LayerHeader extends StatelessWidget {
                             max: 1,
                             value: layer.opacity.clamp(0.0, 1.0).toDouble(),
                             valueText: '${(layer.opacity * 100).round()}%',
+                            valueTextBuilder: (value) =>
+                                '${(value * 100).round()}%',
                             displayFactor: 100,
                             height: 18,
                             onChanged: (opacity) =>
                                 onLayerOpacityChanged(layer.id, opacity),
+                            onChangeEnd: onLayerOpacityChangeEnd == null
+                                ? null
+                                : (opacity) => onLayerOpacityChangeEnd!(
+                                    layer.id,
+                                    opacity,
+                                  ),
                           ),
                         )
                       else

@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../../models/layer_id.dart';
+import '../../models/layer_kind.dart';
 import '../../models/layer_mark.dart';
 import '../theme/app_theme.dart';
 import '../widgets/field_slider.dart';
@@ -72,13 +74,14 @@ class LayerLegendCallbacks {
     required this.onUnmuteAllSe,
     required this.onBypassAllFx,
     required this.onEnableAllFx,
-    required this.onResetAllOpacity,
     required this.onToggleMarkFilter,
+    required this.onToggleKindFilter,
     required this.onToggleSheetOnlyFilter,
     required this.onToggleFxOnlyFilter,
     required this.onToggleFillReferenceOnlyFilter,
     required this.onSetInactiveDim,
-    required this.onSetAllOpacity,
+    required this.onPreviewLayersOpacity,
+    required this.onCommitLayersOpacity,
   });
 
   final VoidCallback onShowAllLayers;
@@ -95,17 +98,24 @@ class LayerLegendCallbacks {
   final VoidCallback onUnmuteAllSe;
   final VoidCallback onBypassAllFx;
   final VoidCallback onEnableAllFx;
-  final VoidCallback onResetAllOpacity;
 
-  /// R2 row-filter facet toggles.
+  /// R2/R4 row-filter facet toggles (mark colors + layer kinds).
   final ValueChanged<LayerMark> onToggleMarkFilter;
+  final ValueChanged<LayerKind> onToggleKindFilter;
   final VoidCallback onToggleSheetOnlyFilter;
   final VoidCallback onToggleFxOnlyFilter;
   final VoidCallback onToggleFillReferenceOnlyFilter;
 
-  /// The lighttable dim strength (0..1) and the numeric bulk-opacity set.
+  /// The lighttable dim strength (0..1).
   final ValueChanged<double> onSetInactiveDim;
-  final ValueChanged<double> onSetAllOpacity;
+
+  /// The legend's MASTER opacity bar (R4 #6): per-move preview + one
+  /// commit on release, over the rows the rail currently displays (the
+  /// grid computes the set).
+  final void Function(Set<LayerId> layerIds, double opacity)
+  onPreviewLayersOpacity;
+  final void Function(Set<LayerId> layerIds, double opacity)
+  onCommitLayersOpacity;
 }
 
 /// The rail header cell, reborn as the LEGEND (R-toolbar round): the wide
@@ -117,7 +127,6 @@ class TimelineLayerControlsHeader extends StatelessWidget {
   const TimelineLayerControlsHeader({
     super.key,
     required this.metrics,
-    required this.onAddLayer,
     this.legend,
     this.hiddenSections = const {},
     this.onToggleSection,
@@ -125,14 +134,16 @@ class TimelineLayerControlsHeader extends StatelessWidget {
     this.onExpandAllLanes,
     this.rowFilter = TimelineRowFilter.none,
     this.marksInUse = const {},
+    this.kindsInUse = const {},
     this.inactiveDimStrength = 0.0,
     this.visibilitySoloEnabled = false,
     this.anyLanesExpanded = false,
     this.allSeMuted = false,
+    this.displayedLayerIds,
+    this.displayedOpacity = 1.0,
   });
 
   final TimelineGridMetrics metrics;
-  final VoidCallback onAddLayer;
 
   /// Null renders a display-only legend (no flyouts) — passive hosts.
   final LayerLegendCallbacks? legend;
@@ -144,8 +155,19 @@ class TimelineLayerControlsHeader extends StatelessWidget {
   final TimelineRowFilter rowFilter;
 
   /// Marks currently assigned across the active cut's layers — the
-  /// "show only color X" list is built from these (empty color set skipped).
+  /// "solo color X" list is built from these (empty color set skipped).
   final Set<LayerMark> marksInUse;
+
+  /// Kinds present across the active cut's layers — the "solo kind" list
+  /// (R4 #8) is built from these.
+  final Set<LayerKind> kindsInUse;
+
+  /// The rows the rail currently DISPLAYS (filter-passing, non-camera) —
+  /// the master opacity bar's target set (R4 #6). Null disables the bar.
+  final Set<LayerId> Function()? displayedLayerIds;
+
+  /// The master bar's resting value: the displayed rows' average opacity.
+  final double displayedOpacity;
 
   /// The lighttable dim strength (for the eye flyout's slider readout).
   final double inactiveDimStrength;
@@ -184,32 +206,6 @@ class TimelineLayerControlsHeader extends StatelessWidget {
         enabled: onToggleSection != null,
         checked: !hiddenSections.contains(TimelineSection.camera),
         onSelected: () => onToggleSection?.call(TimelineSection.camera),
-      ),
-    ];
-  }
-
-  List<PanelFlyoutEntry> _layerEntries() {
-    return [
-      PanelFlyoutItem(
-        keyValue: 'legend-layer-add',
-        label: 'Add layer',
-        icon: Icons.add,
-        onSelected: onAddLayer,
-      ),
-      const PanelFlyoutDivider(),
-      PanelFlyoutItem(
-        keyValue: 'legend-lanes-expand',
-        label: 'Expand all lanes',
-        icon: Icons.unfold_more,
-        enabled: onExpandAllLanes != null,
-        onSelected: onExpandAllLanes,
-      ),
-      PanelFlyoutItem(
-        keyValue: 'legend-lanes-collapse',
-        label: 'Collapse all lanes',
-        icon: Icons.unfold_less,
-        enabled: onCollapseAllLanes != null,
-        onSelected: onCollapseAllLanes,
       ),
     ];
   }
@@ -387,25 +383,47 @@ class TimelineLayerControlsHeader extends StatelessWidget {
                     ),
                   ),
                   const SizedBox(width: layerControlChipGap),
+                  // Kind-solo flyout over the row kind icons (R4 #8):
+                  // solo one layer TYPE like the mark colors.
+                  cell(
+                    keyValue: 'legend-kind',
+                    width: 18,
+                    tooltip: 'Layer kind column',
+                    entriesBuilder: legend == null || kindsInUse.isEmpty
+                        ? null
+                        : () => [
+                            const PanelFlyoutHeader('Solo kind'),
+                            for (final kind in LayerKind.values)
+                              if (kindsInUse.contains(kind))
+                                PanelFlyoutItem(
+                                  keyValue: 'legend-filter-kind-${kind.name}',
+                                  label: layerKindDisplayName(kind),
+                                  icon: layerKindIcon(kind),
+                                  checked: rowFilter.kinds.contains(kind),
+                                  onSelected: () =>
+                                      legend.onToggleKindFilter(kind),
+                                ),
+                          ],
+                    child: legendIcon(
+                      Icons.interests_outlined,
+                      engaged: rowFilter.kinds.isNotEmpty,
+                    ),
+                  ),
+                  const SizedBox(width: layerControlChipGap),
+                  // Plain heading (R4 #3): the old LAYER ▾ flyout's jobs
+                  // moved to the command bar (add) and the lane-column
+                  // toggle (fold all).
                   Expanded(
-                    child: Builder(
-                      builder: (anchorContext) => InkWell(
+                    child: Align(
+                      alignment: Alignment.centerLeft,
+                      child: Text(
+                        'LAYER',
                         key: const ValueKey<String>('legend-layer'),
-                        onTap: () => showPanelFlyout(
-                          anchorContext,
-                          entries: _layerEntries(),
-                        ),
-                        child: Align(
-                          alignment: Alignment.centerLeft,
-                          child: Text(
-                            'LAYER ▾',
-                            style: TextStyle(
-                              fontSize: 9,
-                              letterSpacing: 0.8,
-                              fontWeight: FontWeight.w600,
-                              color: colorScheme.onSurfaceVariant,
-                            ),
-                          ),
+                        style: TextStyle(
+                          fontSize: 9,
+                          letterSpacing: 0.8,
+                          fontWeight: FontWeight.w600,
+                          color: colorScheme.onSurfaceVariant,
                         ),
                       ),
                     ),
@@ -547,41 +565,54 @@ class TimelineLayerControlsHeader extends StatelessWidget {
                       ),
                     ),
                   ),
-                  cell(
-                    keyValue: 'legend-opacity',
-                    width: layerOpacitySlotWidth,
-                    tooltip: 'Opacity column',
-                    entriesBuilder: legend == null
-                        ? null
-                        : () => [
-                            PanelFlyoutItem(
-                              keyValue: 'legend-opacity-reset',
-                              label: 'Reset all to 100%',
-                              icon: Icons.opacity,
-                              onSelected: legend.onResetAllOpacity,
-                            ),
-                            PanelFlyoutItem(
-                              keyValue: 'legend-opacity-set-all',
-                              label: 'Set all to…',
-                              icon: Icons.tune,
-                              onSelected: () => _showValueDialog(
-                                context,
-                                title: 'Set all layers opacity',
-                                initial: 1.0,
-                                onCommit: legend.onSetAllOpacity,
-                              ),
-                            ),
-                          ],
-                    child: Text(
-                      'OPAC',
-                      style: TextStyle(
-                        fontSize: 8.5,
-                        letterSpacing: 0.6,
-                        fontWeight: FontWeight.w600,
-                        color: colorScheme.onSurfaceVariant,
+                  // MASTER opacity bar (R4 #6): drags every DISPLAYED row's
+                  // opacity (filter-passing — solo a color/kind first to
+                  // scope it). Gray at rest showing the rows' average;
+                  // accent + live % while adjusting; preview per move, ONE
+                  // write on release.
+                  if (legend != null && displayedLayerIds != null)
+                    SizedBox(
+                      width: layerOpacitySlotWidth,
+                      child: Tooltip(
+                        message: 'All displayed layers opacity',
+                        child: FieldSlider(
+                          key: const ValueKey<String>('legend-opacity'),
+                          min: 0,
+                          max: 1,
+                          value: displayedOpacity.clamp(0.0, 1.0).toDouble(),
+                          valueText: 'OPAC',
+                          valueTextBuilder: (value) =>
+                              '${(value * 100).round()}%',
+                          displayFactor: 100,
+                          height: 18,
+                          restingAccent: colorScheme.onSurfaceVariant
+                              .withValues(alpha: 0.45),
+                          onChanged: (value) => legend.onPreviewLayersOpacity(
+                            displayedLayerIds!(),
+                            value,
+                          ),
+                          onChangeEnd: (value) => legend.onCommitLayersOpacity(
+                            displayedLayerIds!(),
+                            value,
+                          ),
+                        ),
+                      ),
+                    )
+                  else
+                    cell(
+                      keyValue: 'legend-opacity',
+                      width: layerOpacitySlotWidth,
+                      tooltip: 'Opacity column',
+                      child: Text(
+                        'OPAC',
+                        style: TextStyle(
+                          fontSize: 8.5,
+                          letterSpacing: 0.6,
+                          fontWeight: FontWeight.w600,
+                          color: colorScheme.onSurfaceVariant,
+                        ),
                       ),
                     ),
-                  ),
                 ],
               ),
             ),

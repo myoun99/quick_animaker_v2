@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../theme/app_theme.dart' show instantMenuAnimation;
 import 'editor_action_registry.dart';
 import 'editor_shortcut_bindings.dart';
 import 'shortcut_activator_codec.dart';
@@ -245,6 +246,7 @@ class _ShortcutSettingsDialogState extends State<ShortcutSettingsDialog> {
           PopupMenuButton<Object>(
             key: ValueKey<String>('shortcut-touch-${definition.id}'),
             tooltip: 'Touch shortcut',
+            popUpAnimationStyle: instantMenuAnimation,
             // A popup item cannot carry a null VALUE (indistinguishable
             // from dismissal), so 'None' rides a sentinel string.
             onSelected: (value) => widget.bindings.setTouchGesture(

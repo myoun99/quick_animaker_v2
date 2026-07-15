@@ -674,13 +674,25 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
     _session.toggleLayerVisibility(layerId);
   }
 
-  void _setLayerOpacity(LayerId layerId, double opacity) {
+  // Opacity drags preview per move and commit ONE write on release
+  // (R4 #4): the camera row's slider is the camera-view dim notifier —
+  // already cheap and live, so it applies on both hooks.
+  void _previewLayerOpacity(LayerId layerId, double opacity) {
     final dim = widget.cameraDimOpacity;
     if (dim != null && _kindOf(layerId) == LayerKind.camera) {
       dim.value = opacity;
       return;
     }
-    _session.setLayerOpacity(layerId: layerId, opacity: opacity);
+    _session.previewLayerOpacity(layerId, opacity);
+  }
+
+  void _commitLayerOpacity(LayerId layerId, double opacity) {
+    final dim = widget.cameraDimOpacity;
+    if (dim != null && _kindOf(layerId) == LayerKind.camera) {
+      dim.value = opacity;
+      return;
+    }
+    _session.commitLayerOpacity(layerId, opacity);
   }
 
   @override
@@ -768,7 +780,8 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
         // Kind-dispatched (unified layer controls): the camera row drives
         // the camera-view notifiers, every other row the layer flags.
         onToggleLayerVisibility: _toggleLayerVisibility,
-        onLayerOpacityChanged: _setLayerOpacity,
+        onLayerOpacityChanged: _previewLayerOpacity,
+        onLayerOpacityChangeEnd: _commitLayerOpacity,
         onToggleLayerTimesheet: _session.toggleLayerTimesheet,
         onToggleLayerFillReference: _session.toggleLayerFillReference,
         onLayerMarkSelected: _session.setLayerMark,
@@ -836,9 +849,10 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
           onUnmuteAllSe: () => _session.setAllSeLayersMuted(false),
           onBypassAllFx: () => _session.setAllLayersFxBypassed(true),
           onEnableAllFx: () => _session.setAllLayersFxBypassed(false),
-          onResetAllOpacity: _session.resetAllLayersOpacity,
           onToggleMarkFilter: (mark) =>
               widget.onSetRowFilter?.call(widget.rowFilter.toggledMark(mark)),
+          onToggleKindFilter: (kind) =>
+              widget.onSetRowFilter?.call(widget.rowFilter.toggledKind(kind)),
           onToggleSheetOnlyFilter: () => widget.onSetRowFilter?.call(
             widget.rowFilter.copyWith(
               onTimesheetOnly: !widget.rowFilter.onTimesheetOnly,
@@ -853,7 +867,9 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
             ),
           ),
           onSetInactiveDim: _session.setInactiveDimStrength,
-          onSetAllOpacity: _session.setAllLayersOpacity,
+          // The legend master bar (R4 #6): preview per move, one commit.
+          onPreviewLayersOpacity: _session.previewLayersOpacity,
+          onCommitLayersOpacity: _session.commitLayersOpacity,
         ),
         sectionRail: widget.onToggleSection == null
             ? null

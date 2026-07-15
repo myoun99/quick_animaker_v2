@@ -9,8 +9,9 @@ class TimelineGridMetrics {
     this.minimumVisibleFrameCells = defaultMinimumVisibleFrameCells,
     // 288 → 312 when the layer rows gained the fx switch (R3 ⑪); the row
     // controls need the width, cramming them under 288 overflowed.
-    // 312 → 340 for a wider layer-name column (UI-R3 feedback #8).
-    this.layerControlsWidth = 340,
+    // 312 → 340 → 372: wider layer-name column (UI-R3 #8, UI-R4 #9; the
+    // R4 hop also absorbs the legend's new kind cell).
+    this.layerControlsWidth = 372,
     // 48×52 → 24×28 (R-toolbar slim round, CSP/TVPaint density): the frame
     // shell reads twice as many cells and rows in the same viewport.
     this.frameCellWidth = 24,

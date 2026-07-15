@@ -78,9 +78,9 @@ void main() {
   testWidgets(
     'sticky frame ruler lays out full content width without overflow',
     (tester) async {
-      // 360 → 420: the rail widened to 340 (R3 #8) and 360 left the frame
-      // viewport degenerate; the ruler still lays out in a NARROW viewport.
-      await tester.binding.setSurfaceSize(const Size(420, 260));
+      // The rail widened to 372 (R3 #8 → R4 #9); keep the frame viewport
+      // NARROW but non-degenerate so the ruler layout is still exercised.
+      await tester.binding.setSurfaceSize(const Size(452, 260));
       addTearDown(() => tester.binding.setSurfaceSize(null));
 
       await tester.pumpWidget(_grid(playbackFrameCount: 96));
@@ -283,7 +283,7 @@ void main() {
     expect(leftSpacerRect.left, moreOrLessEquals(railRect.left));
     expect(leftSpacerRect.right, lessThanOrEqualTo(bottomRailRect.left));
     expect(leftSpacerRect.width, moreOrLessEquals(railRect.width));
-    expect(leftSpacerRect.width, moreOrLessEquals(340));
+    expect(leftSpacerRect.width, moreOrLessEquals(372));
     expect(verticalSlotRect.left, moreOrLessEquals(railRect.right));
     expect(verticalSlotRect.right, moreOrLessEquals(frameGridAreaRect.left));
     expect(verticalSlotRect.width, moreOrLessEquals(14));
@@ -647,18 +647,19 @@ void main() {
     expect(find.text('Layer 2'), findsOneWidget);
   });
 
-  testWidgets('the legend LAYER flyout calls the add-layer callback', (
-    tester,
-  ) async {
-    var called = false;
-
-    await tester.pumpWidget(_grid(onAddLayer: () => called = true));
-    await tester.tap(find.byKey(const ValueKey<String>('legend-layer')));
-    await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const ValueKey<String>('legend-layer-add')));
+  testWidgets('the legend LAYER heading is plain now (R4 #3): tapping it '
+      'opens nothing', (tester) async {
+    await tester.pumpWidget(_grid());
+    await tester.tap(
+      find.byKey(const ValueKey<String>('legend-layer')),
+      warnIfMissed: false,
+    );
     await tester.pumpAndSettle();
 
-    expect(called, isTrue);
+    expect(
+      find.byKey(const ValueKey<String>('legend-layer-add')),
+      findsNothing,
+    );
   });
 
   testWidgets('visibility button calls callback', (tester) async {
@@ -1069,6 +1070,11 @@ void main() {
   ) async {
     final selectedFrameIndices = <int>[];
 
+    // 372 rail (R4 #9) + classic 48px cells: the default 800px surface no
+    // longer reaches frame 9's ruler slot.
+    await tester.binding.setSurfaceSize(const Size(1080, 600));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
     await tester.pumpWidget(
       _grid(onSelectFrame: selectedFrameIndices.add, playbackFrameCount: 20),
     );
@@ -1090,6 +1096,10 @@ void main() {
     tester,
   ) async {
     var currentFrameIndex = 0;
+
+    // Wide surface: see 'clicking different ruler positions…' above.
+    await tester.binding.setSurfaceSize(const Size(1080, 600));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
 
     await tester.pumpWidget(
       StatefulBuilder(
@@ -2163,6 +2173,11 @@ void main() {
   testWidgets(
     'selecting frame 10 drawingStart does not highlight previous drawing block',
     (tester) async {
+      // Wide surface: frames 10..11 must render inside the virtualization
+      // window next to the 372 rail (R4 #9).
+      await tester.binding.setSurfaceSize(const Size(1080, 600));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+
       await tester.pumpWidget(
         _grid(
           currentFrameIndex: 10,

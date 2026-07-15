@@ -4,6 +4,7 @@ import '../../models/brush_preset.dart';
 import '../../models/brush_preset_id.dart';
 import '../panels/editor_panel_frame.dart';
 import '../panels/panel_scrollbar.dart';
+import '../theme/app_theme.dart' show instantMenuAnimation;
 import 'brush_preset_reorder.dart';
 import 'brush_stroke_preview.dart';
 import 'brush_tip_preview.dart';
@@ -278,6 +279,7 @@ class _BrushPresetPanelState extends State<BrushPresetPanel> {
           PopupMenuButton<_BrushPresetMenuAction>(
             key: const ValueKey<String>('brush-preset-menu-button'),
             tooltip: 'Brush options',
+            popUpAnimationStyle: instantMenuAnimation,
             icon: const Icon(Icons.more_vert, size: 16),
             padding: EdgeInsets.zero,
             style: const ButtonStyle(

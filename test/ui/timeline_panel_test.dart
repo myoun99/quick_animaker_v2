@@ -222,18 +222,19 @@ void main() {
     expect(selectedOrientation, TimelineOrientation.vertical);
   });
 
-  testWidgets('add layer callback is forwarded via the rail legend', (
-    tester,
-  ) async {
-    var called = false;
-
-    await tester.pumpWidget(_panel(onAddLayer: () => called = true));
-    await tester.tap(find.byKey(const ValueKey<String>('legend-layer')));
-    await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const ValueKey<String>('legend-layer-add')));
+  testWidgets('the rail legend LAYER heading is plain (R4 #3): no add '
+      'flyout', (tester) async {
+    await tester.pumpWidget(_panel());
+    await tester.tap(
+      find.byKey(const ValueKey<String>('legend-layer')),
+      warnIfMissed: false,
+    );
     await tester.pumpAndSettle();
 
-    expect(called, isTrue);
+    expect(
+      find.byKey(const ValueKey<String>('legend-layer-add')),
+      findsNothing,
+    );
   });
 
   testWidgets('visibility callback is forwarded', (tester) async {

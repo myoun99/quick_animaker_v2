@@ -78,6 +78,8 @@ Future<void> showPanelFlyout(
   final selected = await showMenu<PanelFlyoutItem>(
     context: anchorContext,
     position: position,
+    // Instant open/close (R4 #2): the whole list appears in one frame.
+    popUpAnimationStyle: instantMenuAnimation,
     items: [
       for (final entry in entries)
         switch (entry) {

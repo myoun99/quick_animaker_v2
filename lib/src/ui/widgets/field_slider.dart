@@ -43,6 +43,8 @@ class FieldSlider extends StatefulWidget {
     required this.onChanged,
     required this.valueText,
     this.onChangeEnd,
+    this.valueTextBuilder,
+    this.restingAccent,
     this.label,
     this.scale = FieldSliderScale.linear,
     this.divisions,
@@ -67,10 +69,22 @@ class FieldSlider extends StatefulWidget {
   /// Live per-move callback; `null` disables the control (dimmed, inert).
   final ValueChanged<double>? onChanged;
 
-  /// Fires once when a drag ends or a typed value commits. Optional — the
-  /// current call sites are live per-move; this is the hook for future
-  /// commit-on-release consumers.
+  /// Fires once when a drag ends, a wheel step lands or a typed value
+  /// commits — the hook for commit-on-release consumers (opacity/zoom drag
+  /// smoothness, R4 #4/#5): route the cheap live preview through
+  /// [onChanged] and the real write through this.
   final ValueChanged<double>? onChangeEnd;
+
+  /// Formats the live display text during a drag. Commit-on-release
+  /// consumers don't rebuild this widget per move, so [valueText] would
+  /// freeze while the bar echoes the gesture — this builder keeps the text
+  /// following. Null falls back to [valueText] throughout.
+  final String Function(double value)? valueTextBuilder;
+
+  /// Fill/edge color while NOT interacting; the drag always paints the
+  /// accent (the legend's master-opacity bar reads gray at rest, accent
+  /// while adjusting — R4 #6). Null = accent always.
+  final Color? restingAccent;
 
   /// Inside-left label; `null` renders the micro variant (value only).
   final String? label;
@@ -193,7 +207,12 @@ class _FieldSliderState extends State<FieldSlider> {
     if (_trackWidth <= 0) {
       return;
     }
-    _gestureT = (details.localPosition.dx / _trackWidth).clamp(0.0, 1.0);
+    // setState: the bar ECHOES the gesture locally (R4 #4/#5) — commit-on-
+    // release consumers don't rebuild the parent per move, so the display
+    // must follow from gesture state, not widget.value.
+    setState(() {
+      _gestureT = (details.localPosition.dx / _trackWidth).clamp(0.0, 1.0);
+    });
     _emit(_valueFor(_gestureT!));
   }
 
@@ -202,20 +221,22 @@ class _FieldSliderState extends State<FieldSlider> {
       return;
     }
     final current = _gestureT ?? _tFor(widget.value);
-    if (_shiftHeld) {
-      _gestureT = (current + details.delta.dx / _trackWidth / 10).clamp(
-        0.0,
-        1.0,
-      );
-    } else {
-      _gestureT = (details.localPosition.dx / _trackWidth).clamp(0.0, 1.0);
-    }
+    setState(() {
+      if (_shiftHeld) {
+        _gestureT = (current + details.delta.dx / _trackWidth / 10).clamp(
+          0.0,
+          1.0,
+        );
+      } else {
+        _gestureT = (details.localPosition.dx / _trackWidth).clamp(0.0, 1.0);
+      }
+    });
     _emit(_valueFor(_gestureT!));
   }
 
   void _handleEnd(DragEndDetails details) {
     final t = _gestureT;
-    _gestureT = null;
+    setState(() => _gestureT = null);
     _preDownValue = null;
     if (t != null) {
       widget.onChangeEnd?.call(_valueFor(t));
@@ -223,13 +244,16 @@ class _FieldSliderState extends State<FieldSlider> {
   }
 
   // The arena gave this pointer to someone else (a vertical scrollable):
-  // roll back the tentative jump from pointer-down.
+  // roll back the tentative jump from pointer-down. onChangeEnd closes the
+  // edit too — commit-on-release consumers must not be left with a live
+  // preview channel.
   void _handleCancel() {
-    _gestureT = null;
+    setState(() => _gestureT = null);
     final restore = _preDownValue;
     _preDownValue = null;
     if (restore != null) {
       _emit(restore);
+      widget.onChangeEnd?.call(restore);
     }
   }
 
@@ -246,7 +270,11 @@ class _FieldSliderState extends State<FieldSlider> {
     }
     final direction = event.scrollDelta.dy < 0 ? 1.0 : -1.0;
     final t = (_tFor(widget.value) + direction * step).clamp(0.0, 1.0);
-    _emit(_valueFor(t));
+    final value = _valueFor(t);
+    _emit(value);
+    // A wheel step is a complete edit (no release to wait for): commit-on-
+    // release consumers get their commit right away.
+    widget.onChangeEnd?.call(value);
   }
 
   void _startEdit(double seedValue) {
@@ -328,7 +356,14 @@ class _FieldSliderState extends State<FieldSlider> {
       color: _valueInk,
       fontFeatures: const [FontFeature.tabularFigures()],
     );
-    final t = _tFor(widget.value);
+    // An active gesture echoes locally (snapped like the emitted value);
+    // otherwise display derives from widget.value (fully controlled).
+    final gestureT = _gestureT;
+    final dragging = gestureT != null;
+    final t = dragging ? _tFor(_valueFor(gestureT)) : _tFor(widget.value);
+    final valueText = dragging && widget.valueTextBuilder != null
+        ? widget.valueTextBuilder!(_valueFor(gestureT))
+        : widget.valueText;
 
     final Widget inner;
     if (_editing) {
@@ -336,7 +371,7 @@ class _FieldSliderState extends State<FieldSlider> {
     } else if (widget.label == null) {
       inner = Center(
         child: Text(
-          widget.valueText,
+          valueText,
           maxLines: 1,
           overflow: TextOverflow.clip,
           style: valueStyle,
@@ -353,7 +388,7 @@ class _FieldSliderState extends State<FieldSlider> {
               style: labelStyle,
             ),
           ),
-          Text(widget.valueText, maxLines: 1, style: valueStyle),
+          Text(valueText, maxLines: 1, style: valueStyle),
         ],
       );
     }
@@ -374,7 +409,12 @@ class _FieldSliderState extends State<FieldSlider> {
             child: CustomPaint(
               painter: _editing
                   ? null
-                  : _FieldSliderTrackPainter(t: t, accent: AppColors.accent),
+                  : _FieldSliderTrackPainter(
+                      t: t,
+                      accent: dragging
+                          ? AppColors.accent
+                          : (widget.restingAccent ?? AppColors.accent),
+                    ),
               child: SizedBox(
                 height: widget.height,
                 child: Padding(

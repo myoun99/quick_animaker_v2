@@ -1,17 +1,20 @@
 import '../../models/layer.dart';
+import '../../models/layer_kind.dart';
 import '../../models/layer_mark.dart';
 
 /// The timeline rail's row FILTER (R-toolbar round 2): a VIEW state that
 /// hides layer rows failing its predicate — like [hiddenSections] but
 /// per-layer. Project state is never touched; export/save ignore it.
 ///
-/// All active facets combine with AND (user rule): a mark-color set plus
-/// the sheet/fx/fill-reference flags must ALL pass. An empty filter passes
-/// everything. The active layer is exempt (the host keeps the layer you're
-/// working on visible so a filter can't hide your own strokes).
+/// All active facets combine with AND (user rule): a mark-color set, a
+/// layer-kind set and the sheet/fx/fill-reference flags must ALL pass. An
+/// empty filter passes everything. The active layer is exempt (the host
+/// keeps the layer you're working on visible so a filter can't hide your
+/// own strokes).
 class TimelineRowFilter {
   const TimelineRowFilter({
     this.markColors = const {},
+    this.kinds = const {},
     this.onTimesheetOnly = false,
     this.fxOnly = false,
     this.fillReferenceOnly = false,
@@ -21,6 +24,10 @@ class TimelineRowFilter {
 
   /// When non-empty, a layer passes only if its mark is in this set.
   final Set<LayerMark> markColors;
+
+  /// When non-empty, a layer passes only if its kind is in this set (the
+  /// legend's kind-icon solo, R4 #8).
+  final Set<LayerKind> kinds;
 
   /// When true, only timesheet-on layers pass.
   final bool onTimesheetOnly;
@@ -33,12 +40,19 @@ class TimelineRowFilter {
   final bool fillReferenceOnly;
 
   bool get isActive =>
-      markColors.isNotEmpty || onTimesheetOnly || fxOnly || fillReferenceOnly;
+      markColors.isNotEmpty ||
+      kinds.isNotEmpty ||
+      onTimesheetOnly ||
+      fxOnly ||
+      fillReferenceOnly;
 
   /// Whether [layer] passes every active facet (AND). [fxEnabled] resolves
   /// the layer's session-level fx state for the [fxOnly] facet.
   bool allows(Layer layer, {required bool fxEnabled}) {
     if (markColors.isNotEmpty && !markColors.contains(layer.mark)) {
+      return false;
+    }
+    if (kinds.isNotEmpty && !kinds.contains(layer.kind)) {
       return false;
     }
     if (onTimesheetOnly && !layer.onTimesheet) {
@@ -55,12 +69,14 @@ class TimelineRowFilter {
 
   TimelineRowFilter copyWith({
     Set<LayerMark>? markColors,
+    Set<LayerKind>? kinds,
     bool? onTimesheetOnly,
     bool? fxOnly,
     bool? fillReferenceOnly,
   }) {
     return TimelineRowFilter(
       markColors: markColors ?? this.markColors,
+      kinds: kinds ?? this.kinds,
       onTimesheetOnly: onTimesheetOnly ?? this.onTimesheetOnly,
       fxOnly: fxOnly ?? this.fxOnly,
       fillReferenceOnly: fillReferenceOnly ?? this.fillReferenceOnly,
@@ -76,10 +92,20 @@ class TimelineRowFilter {
     return copyWith(markColors: next);
   }
 
+  /// Toggles [kind] in the kind set.
+  TimelineRowFilter toggledKind(LayerKind kind) {
+    final next = Set<LayerKind>.of(kinds);
+    if (!next.remove(kind)) {
+      next.add(kind);
+    }
+    return copyWith(kinds: next);
+  }
+
   @override
   bool operator ==(Object other) {
     return other is TimelineRowFilter &&
         _setEquals(other.markColors, markColors) &&
+        _setEquals(other.kinds, kinds) &&
         other.onTimesheetOnly == onTimesheetOnly &&
         other.fxOnly == fxOnly &&
         other.fillReferenceOnly == fillReferenceOnly;
@@ -88,13 +114,14 @@ class TimelineRowFilter {
   @override
   int get hashCode => Object.hash(
     Object.hashAllUnordered(markColors),
+    Object.hashAllUnordered(kinds),
     onTimesheetOnly,
     fxOnly,
     fillReferenceOnly,
   );
 }
 
-bool _setEquals(Set<LayerMark> a, Set<LayerMark> b) {
+bool _setEquals<T>(Set<T> a, Set<T> b) {
   if (a.length != b.length) {
     return false;
   }

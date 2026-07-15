@@ -85,9 +85,22 @@ class TimelineViewCluster extends StatelessWidget {
             // Zoom reads as percent of the default frame width.
             valueText:
                 '${(pixelsPerFrame / TimelinePanel.defaultPixelsPerFrame * 100).round()}%',
+            valueTextBuilder: (value) =>
+                '${(value / TimelinePanel.defaultPixelsPerFrame * 100).round()}%',
             displayFactor: 100 / TimelinePanel.defaultPixelsPerFrame,
             height: 18,
-            onChanged: onPixelsPerFrameChanged,
+            // Quantized to WHOLE pixels per frame (R4 #5): the raw drag
+            // emitted sub-pixel widths, rebuilding the entire grid many
+            // times per visually identical step — the drag felt heavy.
+            // The bar itself echoes the gesture smoothly either way.
+            onChanged: onPixelsPerFrameChanged == null
+                ? null
+                : (value) {
+                    final stepped = value.roundToDouble();
+                    if (stepped != pixelsPerFrame) {
+                      onPixelsPerFrameChanged!(stepped);
+                    }
+                  },
           ),
         ),
         Icon(Icons.zoom_in, size: 16, color: colorScheme.onSurfaceVariant),

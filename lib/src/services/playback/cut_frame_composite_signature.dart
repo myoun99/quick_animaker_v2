@@ -115,7 +115,6 @@ CutFrameCompositeSignature computeCutFrameCompositeSignature({
   required PlaybackQuality quality,
   required BrushFrameRevisionResolver revisionOf,
   Set<LayerId> fxBypassedLayerIds = const {},
-  LayerId? soloVisibleLayerId,
 }) {
   return CutFrameCompositeSignature(
     canvasSize: cut.canvasSize,
@@ -125,7 +124,6 @@ CutFrameCompositeSignature computeCutFrameCompositeSignature({
         cut: cut,
         frameIndex: frameIndex,
         fxBypassedLayerIds: fxBypassedLayerIds,
-        soloVisibleLayerId: soloVisibleLayerId,
       ))
         CompositeLayerSignature(
           layerId: entry.layer.id,

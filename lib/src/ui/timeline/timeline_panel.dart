@@ -49,6 +49,7 @@ class TimelinePanel extends StatefulWidget {
     required this.onAddLayer,
     required this.onToggleLayerVisibility,
     required this.onLayerOpacityChanged,
+    this.onLayerOpacityChangeEnd,
     required this.onToggleLayerTimesheet,
     this.onToggleLayerFillReference,
     required this.onLayerMarkSelected,
@@ -154,6 +155,9 @@ class TimelinePanel extends StatefulWidget {
   final VoidCallback onAddLayer;
   final ValueChanged<LayerId> onToggleLayerVisibility;
   final void Function(LayerId layerId, double opacity) onLayerOpacityChanged;
+
+  /// Commit-on-release hook (R4 #4); null keeps per-move writes.
+  final void Function(LayerId layerId, double opacity)? onLayerOpacityChangeEnd;
   final ValueChanged<LayerId> onToggleLayerTimesheet;
 
   /// Drawing rows' fill-reference toggle (R20-C2); null hides it.
@@ -340,6 +344,7 @@ class _TimelinePanelState extends State<TimelinePanel> {
                         widget.onToggleLayerFillReference,
                     onToggleLayerVisibility: widget.onToggleLayerVisibility,
                     onLayerOpacityChanged: widget.onLayerOpacityChanged,
+                    onLayerOpacityChangeEnd: widget.onLayerOpacityChangeEnd,
                     onToggleLayerTimesheet: widget.onToggleLayerTimesheet,
                     onLayerMarkSelected: widget.onLayerMarkSelected,
                     layerFxEnabledOf: widget.layerFxEnabledOf,
@@ -391,6 +396,7 @@ class _TimelinePanelState extends State<TimelinePanel> {
                         widget.onToggleLayerFillReference,
                     onToggleLayerVisibility: widget.onToggleLayerVisibility,
                     onLayerOpacityChanged: widget.onLayerOpacityChanged,
+                    onLayerOpacityChangeEnd: widget.onLayerOpacityChangeEnd,
                     onToggleLayerTimesheet: widget.onToggleLayerTimesheet,
                     onLayerMarkSelected: widget.onLayerMarkSelected,
                     layerFxEnabledOf: widget.layerFxEnabledOf,

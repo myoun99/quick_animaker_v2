@@ -17,6 +17,7 @@ class TimelineLayerControlsRow extends StatelessWidget {
     required this.onSelectLayer,
     required this.onToggleLayerVisibility,
     required this.onLayerOpacityChanged,
+    this.onLayerOpacityChangeEnd,
     required this.onToggleLayerTimesheet,
     required this.onLayerMarkSelected,
     this.onToggleLayerFillReference,
@@ -34,6 +35,12 @@ class TimelineLayerControlsRow extends StatelessWidget {
   final ValueChanged<LayerId> onSelectLayer;
   final ValueChanged<LayerId> onToggleLayerVisibility;
   final void Function(LayerId layerId, double opacity) onLayerOpacityChanged;
+
+  /// Commit-on-release hook (R4 #4): per-move values ride
+  /// [onLayerOpacityChanged] as a cheap preview; the release lands here as
+  /// the real write. Null keeps the legacy per-move-write behavior.
+  final void Function(LayerId layerId, double opacity)? onLayerOpacityChangeEnd;
+
   final ValueChanged<LayerId> onToggleLayerTimesheet;
   final void Function(LayerId layerId, LayerMark mark) onLayerMarkSelected;
 
@@ -150,7 +157,7 @@ class TimelineLayerControlsRow extends StatelessWidget {
                           container: true,
                           child: ExcludeSemantics(
                             child: Icon(
-                              _iconForLayerKind(layer.kind),
+                              layerKindIcon(layer.kind),
                               key: ValueKey<String>(
                                 'timeline-layer-kind-icon-${layer.id}',
                               ),
@@ -274,10 +281,15 @@ class TimelineLayerControlsRow extends StatelessWidget {
                     max: 1,
                     value: layer.opacity.clamp(0.0, 1.0).toDouble(),
                     valueText: '${(layer.opacity * 100).round()}%',
+                    valueTextBuilder: (value) => '${(value * 100).round()}%',
                     displayFactor: 100,
                     height: 18,
                     onChanged: (opacity) =>
                         onLayerOpacityChanged(layer.id, opacity),
+                    onChangeEnd: onLayerOpacityChangeEnd == null
+                        ? null
+                        : (opacity) =>
+                              onLayerOpacityChangeEnd!(layer.id, opacity),
                   ),
                 )
               else
@@ -293,17 +305,6 @@ class TimelineLayerControlsRow extends StatelessWidget {
     // gutter bracket carries the section identity.
     return row;
   }
-}
-
-IconData _iconForLayerKind(LayerKind kind) {
-  return switch (kind) {
-    LayerKind.animation => Icons.brush_outlined,
-    LayerKind.storyboard => Icons.auto_stories_outlined,
-    LayerKind.art => Icons.landscape_outlined,
-    LayerKind.se => Icons.music_note_outlined,
-    LayerKind.instruction => Icons.theaters_outlined,
-    LayerKind.camera => Icons.videocam_outlined,
-  };
 }
 
 String _semanticLabelForLayerKind(LayerKind kind) {
