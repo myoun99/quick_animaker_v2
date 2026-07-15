@@ -2,7 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:quick_animaker_v2/src/controllers/default_project_helpers.dart';
 import 'package:quick_animaker_v2/src/ui/editor_session_manager.dart';
+import 'package:quick_animaker_v2/src/models/layer_kind.dart';
 import 'package:quick_animaker_v2/src/ui/timeline/timeline_action_toolbar.dart';
+import 'package:quick_animaker_v2/src/ui/timeline/timeline_layer_controls_header.dart';
+import 'package:quick_animaker_v2/src/ui/timeline/timeline_layer_controls_row.dart';
 import 'package:quick_animaker_v2/src/ui/timeline/timeline_orientation.dart';
 import 'package:quick_animaker_v2/src/ui/timeline/timeline_panel.dart';
 import 'package:quick_animaker_v2/src/ui/timeline_tab_host.dart';
@@ -105,6 +108,14 @@ void main() {
       24,
     );
     final toolbarBefore = tester.widget(find.byType(TimelineActionToolbar));
+    final legendBefore = tester.widget(
+      find.byType(TimelineLayerControlsHeader),
+    );
+    final drawingRowBefore = tester
+        .widgetList<TimelineLayerControlsRow>(
+          find.byType(TimelineLayerControlsRow),
+        )
+        .firstWhere((row) => row.layer.kind == LayerKind.animation);
 
     // A zoom step lands WITHOUT any host/workspace rebuild…
     zoom.value = 48;
@@ -124,6 +135,27 @@ void main() {
       ),
       isTrue,
       reason: 'zoom steps must not reconstruct the toolbar',
+    );
+    // The rail's Material-heavy pieces are memo-gated too (UI-R7 #1):
+    // the legend header and the repository-identity control rows come
+    // back as the IDENTICAL instances across a zoom step.
+    expect(
+      identical(
+        tester.widget(find.byType(TimelineLayerControlsHeader)),
+        legendBefore,
+      ),
+      isTrue,
+      reason: 'zoom steps must not reconstruct the legend header',
+    );
+    final drawingRowAfter = tester
+        .widgetList<TimelineLayerControlsRow>(
+          find.byType(TimelineLayerControlsRow),
+        )
+        .firstWhere((row) => row.layer.kind == LayerKind.animation);
+    expect(
+      identical(drawingRowAfter, drawingRowBefore),
+      isTrue,
+      reason: 'zoom steps must not reconstruct the drawing rail row',
     );
 
     // Drain the prerender scheduler's debounced warming.

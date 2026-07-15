@@ -4,6 +4,8 @@ import '../../models/layer_id.dart';
 import '../../models/layer_kind.dart';
 import '../../models/layer_mark.dart';
 import '../theme/app_theme.dart';
+import '../widgets/panel_flyout.dart';
+import 'upright_vertical_text.dart';
 
 /// Layer-label chip controls shared by both timeline orientations
 /// (horizontal rows and XSheet column headers): the timesheet-output toggle
@@ -20,29 +22,88 @@ import '../theme/app_theme.dart';
 /// retired); the legend header's sections cell sits over the same slot.
 const double layerSectionLabelSlotWidth = 36;
 
-/// The rows' leading SECTION band (UI-R6 #5): a tinted vertical zone with
-/// a right hairline spanning the row's full height — stacked rows read it
-/// as one continuous column, the old gutter folded INSIDE the rows.
-/// [child] carries the section label on a section's first row; every other
-/// row renders the empty band.
+/// The rows' reserved leading SECTION slot (UI-R7 #2): a transparent
+/// spacer — the section ZONE (tint, hairlines, upright label, tap) is
+/// painted by [SectionBandZone] overlaying the whole section run, so
+/// S1·S2-style neighbours read as ONE vertical sub-zone exactly like the
+/// old gutter bracket, just inside the rows.
 class LayerSectionBandCell extends StatelessWidget {
-  const LayerSectionBandCell({super.key, this.child});
+  const LayerSectionBandCell({super.key});
 
-  final Widget? child;
+  @override
+  Widget build(BuildContext context) {
+    return const SizedBox(
+      width: layerSectionLabelSlotWidth,
+      height: double.infinity,
+    );
+  }
+}
+
+/// One section's vertical zone over the rows' reserved band slots — the
+/// pre-R5 gutter bracket verbatim (UI-R7 #2, user: '저번이랑 똑같이'),
+/// now INSIDE the rows: tinted fill, bottom hairline landing on the run's
+/// last row boundary, right hairline as the band/rail divider, the paper
+/// sheet's upright glyph label centered across the run. [flyoutEntries]
+/// makes the zone tappable (the timeline's section flyout); null keeps it
+/// display-only (the storyboard).
+class SectionBandZone extends StatelessWidget {
+  const SectionBandZone({
+    super.key,
+    required this.label,
+    this.extent,
+    this.flyoutEntries,
+  });
+
+  final String label;
+
+  /// Fixed layer-axis extent; null expands to the parent (the storyboard's
+  /// per-group Positioned.fill mounting).
+  final double? extent;
+
+  final List<PanelFlyoutEntry> Function()? flyoutEntries;
 
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
-    return Container(
-      width: layerSectionLabelSlotWidth,
-      height: double.infinity,
-      padding: const EdgeInsets.only(left: 4),
-      decoration: BoxDecoration(
-        color: colorScheme.surfaceContainerLow,
-        border: Border(right: BorderSide(color: colorScheme.outlineVariant)),
-      ),
-      alignment: Alignment.centerLeft,
-      child: child,
+    return Builder(
+      builder: (anchorContext) {
+        final content = Container(
+          width: layerSectionLabelSlotWidth,
+          height: extent,
+          decoration: BoxDecoration(
+            color: colorScheme.surfaceContainerLow,
+            // One shared table (R3 #5/#6): the bottom hairline sits on the
+            // run's last row boundary, the right hairline is the band/rail
+            // divider — no enclosing box.
+            border: Border(
+              bottom: BorderSide(color: colorScheme.outlineVariant),
+              right: BorderSide(color: colorScheme.outlineVariant),
+            ),
+          ),
+          child: Center(
+            child: ClipRect(
+              child: UprightVerticalText(
+                text: label,
+                style: TextStyle(
+                  fontSize: 9,
+                  letterSpacing: 1.2,
+                  fontWeight: FontWeight.bold,
+                  height: 1.15,
+                  color: colorScheme.onSurfaceVariant,
+                ),
+              ),
+            ),
+          ),
+        );
+        final entries = flyoutEntries;
+        if (entries == null) {
+          return content;
+        }
+        return InkWell(
+          onTap: () => showPanelFlyout(anchorContext, entries: entries()),
+          child: content,
+        );
+      },
     );
   }
 }

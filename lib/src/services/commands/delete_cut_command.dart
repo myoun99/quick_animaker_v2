@@ -16,7 +16,8 @@ class DeleteCutCommand implements Command {
     required this.cutId,
     this.replacementCutId,
     this.replacementLayerId,
-    this.replacementName = 'Cut 1',
+    // Bare-number cut names (UI-R7 #3).
+    this.replacementName = '1',
     this.replacementCanvasSize = defaultCutCanvasSize,
   });
 

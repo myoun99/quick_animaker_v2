@@ -82,6 +82,7 @@ class TimelinePanel extends StatefulWidget {
     this.opacityDragPreview,
     this.masterOpacityValue = 1.0,
     this.dragPreview,
+    this.seSpillInLayerIds = const {},
   });
 
   final List<Layer> layers;
@@ -90,6 +91,10 @@ class TimelinePanel extends StatefulWidget {
   /// The session's edit-drag preview channel (comma/trim drags), consumed
   /// by both grids' row gates and cursor overlays.
   final ValueListenable<TimelineDragPreview?>? dragPreview;
+
+  /// Track-SE rows whose display clone starts with a spill-in block
+  /// (UI-R7 #6: `~` at the cut start, start grip stands down).
+  final Set<LayerId> seSpillInLayerIds;
 
   /// The frame cursor (editing playhead / playback position). Only the
   /// cursor-driven widgets subscribe — a tick never rebuilds the panel or
@@ -371,6 +376,7 @@ class _TimelinePanelState extends State<TimelinePanel> {
                     visibilitySoloEnabled: widget.visibilitySoloEnabled,
                     opacityDragPreview: widget.opacityDragPreview,
                     masterOpacityValue: widget.masterOpacityValue,
+                    seSpillInLayerIds: widget.seSpillInLayerIds,
                   )
                 : XSheetTimelineGrid(
                     layers: xsheetLayerDisplayOrder(widget.layers),

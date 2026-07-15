@@ -419,6 +419,18 @@ class EditorSessionManager extends ChangeNotifier {
     ];
   }
 
+  /// The track SE rows whose display clone starts with a spill-in block —
+  /// a sound carrying over from an earlier cut (UI-R7 #6: the timeline
+  /// draws the `~` continuation at the cut start and drops the start
+  /// grip; the block's real start lives in that earlier cut).
+  Set<LayerId> get trackSeSpillInLayerIds {
+    final window = trackSeWindow;
+    return {
+      for (final layer in activeTrack.seLayers)
+        if (window.spillInBlock(layer) != null) layer.id,
+    };
+  }
+
   void _refreshAfterCutCommand({
     LayerId? preferredActiveLayerId,
     int? preferredFrameIndex,
@@ -507,6 +519,7 @@ class EditorSessionManager extends ChangeNotifier {
     editingFrameCursor.dispose();
     frameScrubActive.dispose();
     frameSeekCommitted.dispose();
+    _gapGlobalFrameNotifier.dispose();
     brushInputActive.dispose();
     selectionInteractionActive.dispose();
     dragPreview.dispose();
@@ -2915,10 +2928,14 @@ class EditorSessionManager extends ChangeNotifier {
   /// their spans live on Layer.instructions and shift without ripple.
   /// Track-SE rows convert to the global axis here; a spill-in block's
   /// start edge is rejected (its real start lives in an earlier cut).
+  /// Track-global hosts (the storyboard SE strips) pass
+  /// [blockStartIsGlobal] with TRUE global starts — any cut's block drags
+  /// there (UI-R7 #5), no window conversion, no spill synthesis.
   bool beginExposureEdgeDrag({
     required LayerId layerId,
     required int blockStartIndex,
     required TimelineBlockEdge edge,
+    bool blockStartIsGlobal = false,
   }) {
     // Attach rows own no timing — no comma grips (the BASE's grips move
     // both, W5).
@@ -2931,11 +2948,14 @@ class EditorSessionManager extends ChangeNotifier {
         return false;
       }
       final window = trackSeWindow;
-      if (edge == TimelineBlockEdge.start &&
+      if (!blockStartIsGlobal &&
+          edge == TimelineBlockEdge.start &&
           window.isSpillInStart(global, blockStartIndex)) {
         return false;
       }
-      final globalStart = window.globalBlockStartFor(global, blockStartIndex);
+      final globalStart = blockStartIsGlobal
+          ? blockStartIndex
+          : window.globalBlockStartFor(global, blockStartIndex);
       if (!(global.timeline[globalStart]?.isDrawing ?? false)) {
         return false;
       }
@@ -3012,12 +3032,15 @@ class EditorSessionManager extends ChangeNotifier {
     // the fake test clock.
     _edgeDragAfter = after == before ? null : after;
     // Track-SE drags: the preview channel carries the DISPLAY form (the
-    // row gates render cut-local clones); the commit uses _edgeDragAfter.
+    // row gates render cut-local clones) PLUS the global form for the
+    // storyboard's track-global strips (UI-R7 #7); the commit uses
+    // _edgeDragAfter.
     final window = _edgeDragWindow;
     dragPreview.value = after == before
         ? null
         : ExposureEdgeDragPreview(
             previewLayer: window == null ? after : window.displayLayer(after),
+            globalPreviewLayer: window == null ? null : after,
           );
   }
 
@@ -3891,8 +3914,18 @@ class EditorSessionManager extends ChangeNotifier {
   /// Set while the editing playhead is PARKED IN A GAP (R16-⑥, user
   /// semantics: a gap has NO cut — the canvas shows a paperless void).
   /// Stores the exact global frame, which the leading gap before the
-  /// first cut cannot express as any cut-local index.
-  int? _gapGlobalFrame;
+  /// first cut cannot express as any cut-local index. Notifier-backed
+  /// (UI-R7 #9): gap scrubs park PER MOVE now, and the storyboard
+  /// playhead must follow even where the cut-local cursor cannot change
+  /// (the leading gap pins local 0).
+  final ValueNotifier<int?> _gapGlobalFrameNotifier = ValueNotifier<int?>(null);
+
+  int? get _gapGlobalFrame => _gapGlobalFrameNotifier.value;
+  set _gapGlobalFrame(int? value) => _gapGlobalFrameNotifier.value = value;
+
+  /// Fires when the gap parking is set, moved or cleared — the storyboard
+  /// playhead subscribes (per-move gap scrubs, UI-R7 #9).
+  ValueListenable<int?> get gapParkingListenable => _gapGlobalFrameNotifier;
 
   /// Whether the editing playhead sits in a gap (no cut there).
   bool get editingPlayheadInGap =>
@@ -3946,7 +3979,11 @@ class EditorSessionManager extends ChangeNotifier {
 
   /// Global scrub: rides the cursor path inside the active cut's
   /// territory, falls back to the full seek when the drag crosses into
-  /// another cut's.
+  /// another cut's. GAP moves ride the cursor path too and park PER MOVE
+  /// (UI-R7 #9): the playhead follows the exact gap frame, the canvas
+  /// shows the no-cut void DURING the drag, and no committed seek fires
+  /// per move (the old full-seek-per-move made gap scrubs crawl and the
+  /// release commit wiped the leading-gap parking entirely).
   void scrubGlobalFrame(int globalFrame) {
     if (editingInteractionBusy) {
       return;
@@ -3956,11 +3993,26 @@ class EditorSessionManager extends ChangeNotifier {
       return;
     }
     final owner = axis.ownerOf(globalFrame);
-    if (owner == null || owner.cutId != activeCutId) {
+    if (owner == null) {
+      // The leading gap before the FIRST cut: no owner cut — hold the
+      // local cursor at 0 and let the parking carry the exact position.
+      scrubFrameIndex(0);
+      _gapGlobalFrame = globalFrame;
+      return;
+    }
+    if (owner.cutId != activeCutId) {
       selectGlobalFrame(globalFrame);
       return;
     }
-    scrubFrameIndex(math.max(0, globalFrame - owner.startFrame));
+    final local = math.max(0, globalFrame - owner.startFrame);
+    if (axis.isGap(globalFrame)) {
+      scrubFrameIndex(local);
+      _gapGlobalFrame = globalFrame;
+      return;
+    }
+    // Scrubbing back onto the cut un-parks.
+    _gapGlobalFrame = null;
+    scrubFrameIndex(local);
   }
 
   // --- Onion skin (P2: Callipeg peg model) -----------------------------------
@@ -4194,11 +4246,18 @@ class EditorSessionManager extends ChangeNotifier {
 
   /// The scrub gesture's release: ends the preview and commits the
   /// scrubbed playhead as ONE ordinary seek (warm + committed-seek signal).
+  /// A gap-parked scrub keeps its parking through the commit (UI-R7 #9) —
+  /// the cut-local seek would otherwise clamp the playhead back onto the
+  /// cut.
   void commitFrameScrub() {
     if (frameScrubActive.value) {
       frameScrubActive.value = false;
     }
+    final parked = _gapGlobalFrame;
     selectFrameIndex(_timelineController.currentFrameIndex);
+    if (parked != null) {
+      _gapGlobalFrame = parked;
+    }
   }
 
   bool hasMarkForLayer(Layer layer, int frameIndex) {

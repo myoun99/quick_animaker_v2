@@ -169,26 +169,36 @@ void main() {
       );
     });
 
-    testWidgets('horizontal: inline section tags sit on each section FIRST '
-        'row; the bracket gutter is retired (UI-R5)', (tester) async {
+    testWidgets('horizontal: one section ZONE per run inside the rows '
+        '(UI-R7 #2 — the old gutter bracket, in the leading slot)', (
+      tester,
+    ) async {
       await tester.pumpWidget(panel(TimelineOrientation.horizontal));
 
-      // Display order: cam (camera section) then b, a (drawing section).
-      expect(
-        find.byKey(const ValueKey<String>('timeline-section-tag-cam')),
-        findsOneWidget,
-      );
-      expect(
-        find.byKey(const ValueKey<String>('timeline-section-tag-b')),
-        findsOneWidget,
-      );
-      expect(
-        find.byKey(const ValueKey<String>('timeline-section-tag-a')),
-        findsNothing,
-      );
-      // The old gutter bracket is gone.
+      // Display order: cam (camera section) then b, a (one drawing run).
       expect(
         find.byKey(const ValueKey<String>('section-bracket-camera')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const ValueKey<String>('section-bracket-drawing')),
+        findsOneWidget,
+      );
+      // ONE zone spans the b+a run: its height covers both rows.
+      final drawingZone = tester.getRect(
+        find.byKey(const ValueKey<String>('section-bracket-drawing')),
+      );
+      final rowB = tester.getRect(
+        find.byKey(const ValueKey<String>('timeline-layer-row-b')),
+      );
+      final rowA = tester.getRect(
+        find.byKey(const ValueKey<String>('timeline-layer-row-a')),
+      );
+      expect(drawingZone.top, lessThanOrEqualTo(rowB.top + 1));
+      expect(drawingZone.bottom, greaterThanOrEqualTo(rowA.bottom - 1));
+      // The per-row inline tags are retired.
+      expect(
+        find.byKey(const ValueKey<String>('timeline-section-tag-b')),
         findsNothing,
       );
     });

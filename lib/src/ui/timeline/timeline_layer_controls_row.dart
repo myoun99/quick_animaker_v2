@@ -6,7 +6,6 @@ import '../../models/layer_kind.dart';
 import '../../models/layer_id.dart';
 import '../../models/layer_mark.dart';
 import '../widgets/field_slider.dart';
-import '../widgets/panel_flyout.dart';
 import 'layer_label_controls.dart';
 import 'timeline_grid_metrics.dart';
 
@@ -29,8 +28,6 @@ class TimelineLayerControlsRow extends StatelessWidget {
     this.onToggleLanes,
     this.fxEnabled = true,
     this.onToggleLayerFx,
-    this.sectionLabel,
-    this.sectionFlyoutEntries,
     this.opacityDragPreview,
   });
 
@@ -69,13 +66,6 @@ class TimelineLayerControlsRow extends StatelessWidget {
   final bool fxEnabled;
   final ValueChanged<LayerId>? onToggleLayerFx;
 
-  /// The INLINE section tag (UI-R5): the section's FIRST row carries its
-  /// label (ACTION/SE/CAM) in the leading slot; every other row reserves
-  /// the slot empty so the control columns stay aligned. Tapping the tag
-  /// opens the section flyout ([sectionFlyoutEntries]).
-  final String? sectionLabel;
-  final List<PanelFlyoutEntry> Function()? sectionFlyoutEntries;
-
   /// The session's live opacity-drag preview (UI-R6 #2): while the master
   /// bar (or another surface) drags THIS layer's opacity, the row's slider
   /// follows live instead of waiting for the release commit.
@@ -113,40 +103,10 @@ class TimelineLayerControlsRow extends StatelessWidget {
           explicitChildNodes: true,
           child: Row(
             children: [
-              // The inline section BAND (UI-R5/R6 #5): a tinted vertical
-              // zone on every row; the section's first row carries its
-              // label inside it.
-              LayerSectionBandCell(
-                child: sectionLabel == null
-                    ? null
-                    : Builder(
-                        builder: (anchorContext) => InkWell(
-                          key: ValueKey<String>(
-                            'timeline-section-tag-${layer.id}',
-                          ),
-                          onTap: sectionFlyoutEntries == null
-                              ? null
-                              : () => showPanelFlyout(
-                                  anchorContext,
-                                  entries: sectionFlyoutEntries!(),
-                                ),
-                          child: Align(
-                            alignment: Alignment.centerLeft,
-                            child: Text(
-                              sectionLabel!,
-                              maxLines: 1,
-                              overflow: TextOverflow.clip,
-                              style: TextStyle(
-                                fontSize: 8,
-                                letterSpacing: 0.6,
-                                fontWeight: FontWeight.w700,
-                                color: colorScheme.onSurfaceVariant,
-                              ),
-                            ),
-                          ),
-                        ),
-                      ),
-              ),
+              // The reserved section slot (UI-R7 #2): the section ZONE —
+              // tint, upright label, flyout tap — overlays the whole run
+              // from the grid (SectionBandZone), old-gutter style.
+              const LayerSectionBandCell(),
               const SizedBox(width: 8),
               if (hasLanes && onToggleLanes != null)
                 InkWell(

@@ -855,6 +855,10 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
           // channel live; at rest the bar shows the last committed value.
           opacityDragPreview: _session.opacityDragPreview,
           masterOpacityValue: _session.lastMasterOpacity,
+          // Sounds carrying over from the previous cut (UI-R7 #6): the
+          // cut start draws `~` and the spill block's start grip stands
+          // down.
+          seSpillInLayerIds: _session.trackSeSpillInLayerIds,
           // The rail legend's bulk sweeps + the section brackets' flyout —
           // all session-backed (R-toolbar round); the R2 filter/dim/opacity
           // facets ride the same struct.

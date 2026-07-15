@@ -34,12 +34,20 @@ class CanvasScrubPreview extends StatefulWidget {
     this.fadeColor = const Color(0xFF000000),
     this.viewport,
     this.paperBackground = ProjectBackground.defaultBackground,
+    this.gapParking,
   });
 
   final ValueListenable<int> frameCursor;
   final CutFrameCompositeCache compositeCache;
   final Cut cut;
   final PlaybackQuality Function() qualityOf;
+
+  /// The session's gap parking (UI-R7 #9): non-null while the scrub sits
+  /// in a gap — no cut there, so the preview shows the paperless void
+  /// instead of clamping to the owner cut's last frame. Subscribed like
+  /// the cursor: the leading gap pins the cut-local cursor at 0, so the
+  /// parking is the only move signal there. Null = never parked.
+  final ValueListenable<int?>? gapParking;
 
   /// The canvas-space cut pose per cursor frame (fx-gated by the caller —
   /// the same sample the editing canvas wraps with, R9-B). Null = identity.
@@ -74,6 +82,7 @@ class _CanvasScrubPreviewState extends State<CanvasScrubPreview> {
   void initState() {
     super.initState();
     widget.frameCursor.addListener(_onCursorMoved);
+    widget.gapParking?.addListener(_onCursorMoved);
   }
 
   @override
@@ -83,11 +92,16 @@ class _CanvasScrubPreviewState extends State<CanvasScrubPreview> {
       oldWidget.frameCursor.removeListener(_onCursorMoved);
       widget.frameCursor.addListener(_onCursorMoved);
     }
+    if (!identical(oldWidget.gapParking, widget.gapParking)) {
+      oldWidget.gapParking?.removeListener(_onCursorMoved);
+      widget.gapParking?.addListener(_onCursorMoved);
+    }
   }
 
   @override
   void dispose() {
     widget.frameCursor.removeListener(_onCursorMoved);
+    widget.gapParking?.removeListener(_onCursorMoved);
     _heldFrame?.dispose();
     super.dispose();
   }
@@ -101,6 +115,13 @@ class _CanvasScrubPreviewState extends State<CanvasScrubPreview> {
   @override
   Widget build(BuildContext context) {
     final cut = widget.cut;
+    // A gap parking shows the no-cut VOID (R16-⑥ semantics, live during
+    // the drag — UI-R7 #9): no paper, no held frame.
+    if (widget.gapParking?.value != null) {
+      return const SizedBox.expand(
+        key: ValueKey<String>('canvas-scrub-preview-gap-void'),
+      );
+    }
     // Over-end cursors (the endless runway) display the cut's last frame.
     final maxFrame = cut.duration > 0 ? cut.duration - 1 : 0;
     final frameIndex = widget.frameCursor.value.clamp(0, maxFrame);

@@ -78,7 +78,7 @@ class CutCommandCoordinator {
 
   void createCut({
     required TrackId trackId,
-    String name = 'New Cut',
+    String? name,
     CanvasSize? canvasSize,
   }) {
     final project = repository.requireProject();
@@ -91,10 +91,26 @@ class CutCommandCoordinator {
         trackId: trackId,
         cutId: plan.cutId,
         layerId: plan.layerId,
-        name: name,
+        name: name ?? nextNumericCutName(project),
         canvasSize: canvasSize ?? defaultCutCanvasSize,
       ),
     );
+  }
+
+  /// The next bare-number cut name ('1', '2', … — the sheet convention,
+  /// UI-R7 #3): one past the highest numeric name anywhere in the project,
+  /// so numbering keeps climbing even after deletes/renames.
+  static String nextNumericCutName(Project project) {
+    var highest = 0;
+    for (final track in project.tracks) {
+      for (final cut in track.cuts) {
+        final parsed = int.tryParse(cut.name.trim());
+        if (parsed != null && parsed > highest) {
+          highest = parsed;
+        }
+      }
+    }
+    return '${highest + 1}';
   }
 
   void resizeCutCanvas({
@@ -600,7 +616,9 @@ class CutCommandCoordinator {
     required List<AudioClip> audioClips,
     String description = 'Edit audio clips',
   }) {
-    final layer = _requireLayer(cutId: cutId, layerId: layerId);
+    // Anywhere lookup — the SE rows are TRACK fixtures (S1·S2), not in the
+    // cut's layer list (UI-R7 #4: media drops onto them dead-ended here).
+    final layer = requireLayerAnywhere(repository.requireProject(), layerId);
     if (layer.kind != LayerKind.se) {
       throw StateError('Audio clips belong on SE layers only.');
     }

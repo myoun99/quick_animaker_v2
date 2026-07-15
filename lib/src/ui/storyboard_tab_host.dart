@@ -54,11 +54,9 @@ class StoryboardTabHost extends StatefulWidget {
 class _StoryboardTabHostState extends State<StoryboardTabHost> {
   EditorSessionManager get _session => widget.session;
 
-  /// Rail view state (waveform eyes, twirled-down lanes, Transform group
-  /// collapse). Session-scoped like the timeline's lane expansion; lost on
-  /// tab switch for now (the host rebuilds) — hoist to the workspace if
-  /// that stings.
-  final Set<String> _hiddenWaveformSeRows = {};
+  /// Rail view state (twirled-down lanes, Transform group collapse).
+  /// Session-scoped like the timeline's lane expansion; lost on tab switch
+  /// for now (the host rebuilds) — hoist to the workspace if that stings.
   final Set<String> _expandedSeAudioRows = {};
   final Set<String> _expandedTransformTracks = {};
   final Set<String> _expandedTransformGroups = {};
@@ -106,6 +104,9 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
     _session.addListener(_refreshPlayheadGlobalFrame);
     _session.editingFrameCursor.addListener(_refreshPlayheadGlobalFrame);
     _session.frameSeekCommitted.addListener(_refreshPlayheadGlobalFrame);
+    // Gap scrubs park per move (UI-R7 #9); the leading gap pins the
+    // cut-local cursor at 0, so the parking is the only move signal there.
+    _session.gapParkingListenable.addListener(_refreshPlayheadGlobalFrame);
     _session.playback.globalFrameIndexListenable.addListener(
       _refreshPlayheadGlobalFrame,
     );
@@ -116,6 +117,7 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
     _session.removeListener(_refreshPlayheadGlobalFrame);
     _session.editingFrameCursor.removeListener(_refreshPlayheadGlobalFrame);
     _session.frameSeekCommitted.removeListener(_refreshPlayheadGlobalFrame);
+    _session.gapParkingListenable.removeListener(_refreshPlayheadGlobalFrame);
     _session.playback.globalFrameIndexListenable.removeListener(
       _refreshPlayheadGlobalFrame,
     );
@@ -387,14 +389,8 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
               ),
               thumbnailFor: widget.thumbnailFor,
               audioPeaksFor: _session.audioPeaksStore.peaksFor,
-              // Rail parity with the timeline rows: waveform eyes,
-              // twirl-down audio lanes and the V track's cut-fade
-              // (Opacity) lane.
-              hiddenWaveformSeRows: _hiddenWaveformSeRows,
-              onToggleSeRowWaveform: (track, slot) => _toggleSetEntry(
-                _hiddenWaveformSeRows,
-                StoryboardPanel.seRowKey(track, slot),
-              ),
+              // Rail parity with the timeline rows: twirl-down audio
+              // lanes and the V track's cut-fade (Opacity) lane.
               expandedSeAudioRows: _expandedSeAudioRows,
               onToggleSeRowLane: (track, slot) => _toggleSetEntry(
                 _expandedSeAudioRows,
@@ -479,12 +475,15 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
               },
               // The ACTIVE cut's SE blocks reuse the timeline's comma
               // edge grips (live preview + ONE undo per drag).
+              // The strip passes GLOBAL block starts (UI-R7 #5: every
+              // cut's blocks drag here, not just the active cut's).
               seCommaDrag: TimelineCommaDragCallbacks(
                 onBegin: (layerId, blockStartIndex, edge) =>
                     _session.beginExposureEdgeDrag(
                       layerId: layerId,
                       blockStartIndex: blockStartIndex,
                       edge: edge,
+                      blockStartIsGlobal: true,
                     ),
                 onUpdate: _session.updateExposureEdgeDrag,
                 onEnd: _session.endExposureEdgeDrag,

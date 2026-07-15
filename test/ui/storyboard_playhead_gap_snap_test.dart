@@ -105,6 +105,60 @@ void main() {
     expect(notifies, 0);
   });
 
+  test('gap scrubs PARK per move (UI-R7 #9): the playhead follows the exact '
+      'gap frame, the void shows DURING the drag, the release keeps the '
+      'parking, and scrubbing back onto the cut un-parks', () {
+    final (s, first, _, aEnd) = gappedSession();
+    s.selectCut(first);
+    var notifies = 0;
+    s.addListener(() => notifies += 1);
+
+    scrubStoryboardGlobalFrame(s, aEnd + 1);
+    expect(s.gapParkedGlobalFrame, aEnd + 1);
+    expect(storyboardPlayheadFrame(s), aEnd + 1);
+    expect(s.editingPlayheadInGap, isTrue);
+
+    scrubStoryboardGlobalFrame(s, aEnd + 3);
+    expect(s.gapParkedGlobalFrame, aEnd + 3);
+    expect(notifies, 0, reason: 'cursor path — no full seek per gap move');
+
+    commitStoryboardScrub(s);
+    expect(
+      s.gapParkedGlobalFrame,
+      aEnd + 3,
+      reason: 'the release keeps the parking (the commit used to wipe it)',
+    );
+    expect(storyboardPlayheadFrame(s), aEnd + 3);
+
+    scrubStoryboardGlobalFrame(s, 2);
+    expect(s.gapParkedGlobalFrame, isNull, reason: 'back on the cut');
+    commitStoryboardScrub(s);
+  });
+
+  test('the LEADING gap scrubs on the cursor path too (UI-R7 #9: it used '
+      'to full-seek per move and the ruler could not land there)', () {
+    final s = EditorSessionManager(initialProject: createDefaultProject());
+    final cutId = s.repository.requireProject().tracks.first.cuts.first.id;
+    s.repository.updateCutLeadingGap(cutId: cutId, leadingGapFrames: 3);
+    var notifies = 0;
+    s.addListener(() => notifies += 1);
+
+    scrubStoryboardGlobalFrame(s, 1);
+    expect(s.gapParkedGlobalFrame, 1);
+    expect(storyboardPlayheadFrame(s), 1);
+    scrubStoryboardGlobalFrame(s, 2);
+    expect(s.gapParkedGlobalFrame, 2);
+    expect(notifies, 0, reason: 'cursor path — no full seek per move');
+
+    commitStoryboardScrub(s);
+    expect(
+      storyboardPlayheadFrame(s),
+      2,
+      reason: 'the release stays parked in the leading gap',
+    );
+    expect(s.editingPlayheadInGap, isTrue);
+  });
+
   test('the mid-track playhead clamps to the END of the trailing gap, not '
       'the cut end — and the tab-switch clamp agrees', () {
     final (s, first, _, aEnd) = gappedSession();

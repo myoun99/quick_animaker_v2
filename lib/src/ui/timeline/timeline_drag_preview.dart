@@ -23,18 +23,29 @@ sealed class TimelineDragPreview {
 /// drag-start snapshot with the cumulative delta applied (idempotent — the
 /// session recomputes it per step).
 class ExposureEdgeDragPreview extends TimelineDragPreview {
-  const ExposureEdgeDragPreview({required this.previewLayer});
+  const ExposureEdgeDragPreview({
+    required this.previewLayer,
+    this.globalPreviewLayer,
+  });
 
   final Layer previewLayer;
+
+  /// Track-SE drags only (UI-R7 #7): the GLOBAL-axis form of the dragged
+  /// layer. [previewLayer] carries the active-cut display clone for the
+  /// timeline row gates; the storyboard's track-global SE strips render
+  /// THIS one. Null for cut-owned layers (both forms are the same).
+  final Layer? globalPreviewLayer;
 
   LayerId get layerId => previewLayer.id;
 
   @override
   bool operator ==(Object other) =>
-      other is ExposureEdgeDragPreview && other.previewLayer == previewLayer;
+      other is ExposureEdgeDragPreview &&
+      other.previewLayer == previewLayer &&
+      other.globalPreviewLayer == globalPreviewLayer;
 
   @override
-  int get hashCode => previewLayer.hashCode;
+  int get hashCode => Object.hash(previewLayer, globalPreviewLayer);
 }
 
 /// A whole-block move drag in flight (R10-④b): the affected layers with
@@ -98,6 +109,19 @@ Layer? timelineDragPreviewLayerFor(
   }
   if (preview is BlockMoveDragPreview) {
     return preview.previewLayers[layerId];
+  }
+  return null;
+}
+
+/// The GLOBAL-axis preview layer for [layerId] (track-global hosts — the
+/// storyboard SE strips), or null when [preview] does not target it or
+/// carries no global form.
+Layer? timelineDragPreviewGlobalLayerFor(
+  TimelineDragPreview? preview,
+  LayerId layerId,
+) {
+  if (preview is ExposureEdgeDragPreview && preview.layerId == layerId) {
+    return preview.globalPreviewLayer;
   }
   return null;
 }
@@ -176,6 +200,7 @@ class TimelineDragPreviewRowGate extends StatefulWidget {
     required this.dragPreview,
     required this.layer,
     required this.rowBuilder,
+    this.useGlobalForm = false,
   });
 
   /// The session's preview channel; null renders the base row untouched
@@ -184,6 +209,11 @@ class TimelineDragPreviewRowGate extends StatefulWidget {
 
   /// The row's repository layer (the base when no drag targets it).
   final Layer layer;
+
+  /// Track-global hosts (the storyboard SE strips) pass true: the gate
+  /// resolves the GLOBAL-axis preview form instead of the active-cut
+  /// display clone (UI-R7 #7).
+  final bool useGlobalForm;
 
   final Widget Function(BuildContext context, Layer layer) rowBuilder;
 
@@ -221,8 +251,12 @@ class _TimelineDragPreviewRowGateState
     super.dispose();
   }
 
-  Layer? _resolvePreviewLayer() =>
-      timelineDragPreviewLayerFor(widget.dragPreview?.value, widget.layer.id);
+  Layer? _resolvePreviewLayer() => widget.useGlobalForm
+      ? timelineDragPreviewGlobalLayerFor(
+          widget.dragPreview?.value,
+          widget.layer.id,
+        )
+      : timelineDragPreviewLayerFor(widget.dragPreview?.value, widget.layer.id);
 
   void _handlePreviewChanged() {
     final next = _resolvePreviewLayer();
