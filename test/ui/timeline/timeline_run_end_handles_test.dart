@@ -209,8 +209,10 @@ void main() {
     expect(ends, 1);
   });
 
-  testWidgets('the edge tag is hover-only while None and opens the N/H/R '
-      'flyout; picking Hold reports the selection', (tester) async {
+  testWidgets('the edge tag is ALWAYS visible (UI-R10 #1) and opens the '
+      'N/H/R flyout on pointer-down; picking Hold reports the selection', (
+    tester,
+  ) async {
     final modeSelections =
         <(LayerId, int, TimelineRunEdgeSide, TimelineRunEdgeMode?)>[];
     await tester.pumpWidget(
@@ -221,28 +223,32 @@ void main() {
     );
 
     const tagKey = ValueKey<String>('timeline-run-edge-tag-layer-a-f1-end');
-    expect(find.byKey(tagKey), findsNothing, reason: 'None hides the tag');
+    expect(
+      find.byKey(tagKey),
+      findsOneWidget,
+      reason: 'the tag shows without hover, N state included',
+    );
+    // Start tags mirror on the second run.
+    expect(
+      find.byKey(
+        const ValueKey<String>('timeline-run-edge-tag-layer-a-f2-start'),
+      ),
+      findsOneWidget,
+    );
 
-    // Hovering the edge cluster reveals it.
-    final gesture = await tester.createGesture(
+    // The flyout opens on POINTER DOWN (UI-R10 #2) — before any tap-up.
+    final gesture = await tester.startGesture(
+      tester.getCenter(find.byKey(tagKey)),
       kind: PointerDeviceKind.mouse,
     );
-    await gesture.addPointer(location: Offset.zero);
-    addTearDown(gesture.removePointer);
-    await gesture.moveTo(
-      tester.getCenter(
-        find.byKey(const ValueKey<String>('timeline-run-add-end-layer-a-f1')),
-      ),
-    );
     await tester.pump();
-    expect(find.byKey(tagKey), findsOneWidget);
-
-    await tester.tap(find.byKey(tagKey));
-    await tester.pumpAndSettle();
     expect(
       find.byKey(const ValueKey<String>('run-edge-mode-none')),
       findsOneWidget,
+      reason: 'menu is up while the pointer is still down',
     );
+    await gesture.up();
+    await tester.pumpAndSettle();
     await tester.tap(find.byKey(const ValueKey<String>('run-edge-mode-hold')));
     await tester.pumpAndSettle();
 
@@ -254,8 +260,8 @@ void main() {
     ));
   });
 
-  testWidgets('a repeat edge shows its tag always, after the ghost tail, '
-      'with the current mode checked in the flyout', (tester) async {
+  testWidgets('a repeat edge keeps its cluster ON the authored run edge '
+      '(UI-R10 #3), ghosts notwithstanding', (tester) async {
     final modeSelections =
         <(LayerId, int, TimelineRunEdgeSide, TimelineRunEdgeMode?)>[];
     await tester.pumpWidget(
@@ -266,19 +272,19 @@ void main() {
     );
 
     const tagKey = ValueKey<String>('timeline-run-edge-tag-layer-r-rf-end');
-    expect(find.byKey(tagKey), findsOneWidget, reason: 'set mode = visible');
+    expect(find.byKey(tagKey), findsOneWidget);
 
-    // The cluster sits after the ghost tail (ends at cut frame 6), and the
-    // [+] chip still offers authored adds there.
+    // The [+] chip stays too: ghost coverage never blocks authored adds.
     final addKey = find.byKey(
       const ValueKey<String>('timeline-run-add-end-layer-r-rf'),
     );
     expect(addKey, findsOneWidget);
-    final metrics = TimelineGridMetrics.defaults;
+    // Both sit at the run end (frame 2), NOT after the ghost tail (6).
+    final edgeLeft = timelineCellGlobalRect(tester, 'layer-r', 2).left;
     expect(
-      tester.getTopLeft(find.byKey(tagKey)).dx,
-      greaterThan(6 * 48 - metrics.frameCellWidth),
-      reason: 'tag lives past the ghost tail, not at the run end (2)',
+      (tester.getTopLeft(addKey).dx - edgeLeft).abs(),
+      lessThan(4),
+      reason: 'cluster hugs the authored edge at frame 2',
     );
 
     await tester.tap(find.byKey(tagKey));
@@ -293,6 +299,100 @@ void main() {
       TimelineRunEdgeSide.end,
       null,
     ));
+  });
+
+  testWidgets('ghosts render TEXT-ONLY (UI-R10 #11): repeat ghosts print '
+      'cel names on plain cells, hold ghosts string ㅡ dashes', (
+    tester,
+  ) async {
+    final holdLayer = rederiveRunBehaviors(
+      Layer(
+        id: const LayerId('layer-h'),
+        name: 'H',
+        frames: [
+          Frame(id: const FrameId('hf'), duration: 1, strokes: const []),
+        ],
+        timeline: {
+          0: const TimelineExposure.drawing(FrameId('hf'), length: 2),
+        },
+        runBehaviors: const [
+          TimelineRunBehavior(
+            anchorFrameId: FrameId('hf'),
+            side: TimelineRunEdgeSide.end,
+            mode: TimelineRunEdgeMode.hold,
+          ),
+        ],
+      ),
+      cutFrameCount: 6,
+    );
+    await tester.pumpWidget(
+      harness(
+        layers: [repeatedLayer(), holdLayer],
+        runEdit: recordingCallbacks(),
+      ),
+    );
+
+    // Repeat ghosts: name glyph at ghost block starts, nothing between,
+    // and NO block chrome (no radius — the cell paints as empty paper).
+    expect(timelineCellModel(tester, 'layer-r', 2).glyph, '○');
+    expect(timelineCellModel(tester, 'layer-r', 3).glyph, '');
+    expect(timelineCellModel(tester, 'layer-r', 4).glyph, '○');
+    expect(
+      timelineCellDecoration(tester, 'layer-r', 2).borderRadius,
+      isNull,
+      reason: 'ghost cells carry no block visual',
+    );
+
+    // Hold ghosts: ㅡ dashes through the whole span.
+    for (var frame = 2; frame < 6; frame += 1) {
+      expect(
+        timelineCellModel(tester, 'layer-h', frame).glyph,
+        'ㅡ',
+        reason: 'frame $frame',
+      );
+      expect(timelineCellModel(tester, 'layer-h', frame).ghost, isTrue);
+    }
+    expect(
+      timelineCellDecoration(tester, 'layer-h', 2).borderRadius,
+      isNull,
+    );
+  });
+
+  testWidgets('a selection-scoped repeat pattern draws its span outline '
+      '(UI-R10 #5)', (tester) async {
+    final patterned = rederiveRunBehaviors(
+      Layer(
+        id: const LayerId('layer-p'),
+        name: 'P',
+        frames: [
+          Frame(id: const FrameId('p1'), duration: 1, strokes: const []),
+          Frame(id: const FrameId('p2'), duration: 1, strokes: const []),
+        ],
+        timeline: {
+          0: const TimelineExposure.drawing(FrameId('p1'), length: 1),
+          1: const TimelineExposure.drawing(FrameId('p2'), length: 1),
+        },
+        runBehaviors: const [
+          TimelineRunBehavior(
+            anchorFrameId: FrameId('p2'),
+            side: TimelineRunEdgeSide.end,
+            mode: TimelineRunEdgeMode.repeat,
+            patternAnchorFrameId: FrameId('p2'),
+          ),
+        ],
+      ),
+      cutFrameCount: 6,
+    );
+    await tester.pumpWidget(
+      harness(layers: [patterned], runEdit: recordingCallbacks()),
+    );
+
+    final outline = find.byKey(
+      const ValueKey<String>('timeline-run-pattern-layer-p-p2-end'),
+    );
+    expect(outline, findsOneWidget);
+    // The span wraps the pattern block [1,2) only (48px harness cells).
+    expect(tester.getSize(outline).width, 48);
   });
 
   testWidgets('ghost cells dim and ghost blocks carry no edge grips', (

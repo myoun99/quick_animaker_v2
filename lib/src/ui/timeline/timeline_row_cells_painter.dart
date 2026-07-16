@@ -125,6 +125,14 @@ class TimelineRowCellsPainter extends CustomPainter {
     return frame < 0 ? 0 : frame;
   }
 
+  /// The cell state with ghost coverage READ AS EMPTY — ghosts render
+  /// text-only (UI-R10 #11), so block-segment math and cell chrome treat
+  /// them as uncovered cells.
+  TimelineCellExposureState _chromeStateAt(int frameIndex) =>
+      timelineIndexIsGhost(layer, frameIndex)
+      ? TimelineCellExposureState.uncovered
+      : _stateAt(frameIndex);
+
   /// The resolved per-cell model — THE probe surface for tests (glyphs,
   /// dim/ghost flags, exposure states live here, not in widget trees).
   TimelineRowCellModel cellModelAt(int frameIndex) {
@@ -136,28 +144,45 @@ class TimelineRowCellsPainter extends CustomPainter {
       current: exposureState,
       previous: previous,
     );
-    final glyph = frameCellExtent < 14
-        ? ''
-        : _marker(
-            exposureState: exposureState,
-            emptyRunStart: emptyRunStart,
-            outsidePlaybackRange: outsidePlaybackRange,
-            frameName: frameNameForLayer?.call(layer, frameIndex),
-          );
+    final frameName = frameNameForLayer?.call(layer, frameIndex);
+    String glyph;
+    if (frameCellExtent < 14) {
+      glyph = '';
+    } else if (ghost) {
+      // Ghosts are TEXT-ONLY (UI-R10 #11): a hold ghost strings ㅡ dashes
+      // through its span; a repeat ghost prints just the cel names.
+      final mode = runBehaviorOwningGhostAt(layer, frameIndex)?.mode;
+      glyph = mode == TimelineRunEdgeMode.hold
+          ? 'ㅡ'
+          : switch (exposureState) {
+              TimelineCellExposureState.drawingStart =>
+                frameName == null || frameName.isEmpty ? '○' : frameName,
+              TimelineCellExposureState.markHeld ||
+              TimelineCellExposureState.markUncovered => '●',
+              _ => '',
+            };
+    } else {
+      glyph = _marker(
+        exposureState: exposureState,
+        emptyRunStart: emptyRunStart,
+        outsidePlaybackRange: outsidePlaybackRange,
+        frameName: frameName,
+      );
+    }
     return TimelineRowCellModel(
       frameIndex: frameIndex,
       exposureState: exposureState,
       segment: calculateTimelineExposureBlockVisualSegment(
-        previous: previous,
-        current: exposureState,
-        next: _stateAt(frameIndex + 1),
+        previous: frameIndex == 0 ? null : _chromeStateAt(frameIndex - 1),
+        current: _chromeStateAt(frameIndex),
+        next: _chromeStateAt(frameIndex + 1),
       ),
       ghost: ghost,
       dimmed: outsidePlaybackRange || ghost,
       glyph: glyph,
       semanticsLabel: _semanticsLabel(
         exposureState: exposureState,
-        frameName: frameNameForLayer?.call(layer, frameIndex),
+        frameName: frameName,
       ),
     );
   }
@@ -204,23 +229,30 @@ class TimelineRowCellsPainter extends CustomPainter {
     int frameIndex,
   ) {
     final model = cellModelAt(frameIndex);
+    // Ghosts carry NO block chrome (UI-R10 #11): the cell paints as plain
+    // empty paper and only the dimmed glyph marks the derived exposure.
     final styleColors = timelineCellStyleColors(
       colorScheme: colorScheme,
-      exposureState: model.exposureState,
+      exposureState: model.ghost
+          ? TimelineCellExposureState.uncovered
+          : model.exposureState,
       active: active,
       selected: false,
     );
+    final washDim = model.ghost
+        ? frameIndex >= playbackFrameCount
+        : model.dimmed;
     return (
       background: timelineFrameBandTint(
         frameIndex,
-        model.dimmed
+        washDim
             ? Color.alphaBlend(
                 colorScheme.surfaceContainerHighest.withValues(alpha: 0.54),
                 styleColors.background,
               )
             : styleColors.background,
       ),
-      border: model.dimmed
+      border: washDim
           ? Color.alphaBlend(
               colorScheme.outlineVariant.withValues(alpha: 0.55),
               styleColors.border,
@@ -282,7 +314,12 @@ class TimelineRowCellsPainter extends CustomPainter {
       }
       final isEmptyX =
           model.exposureState == TimelineCellExposureState.uncovered;
-      final ink = timelineCellUsesDrawingInk(model.exposureState)
+      final holdDash = model.ghost && model.glyph == 'ㅡ';
+      final ink = holdDash
+          // Hold ghost dashes read as one continuous dim string — no
+          // start-cell emphasis (UI-R10 #11).
+          ? colorScheme.onSurfaceVariant.withValues(alpha: 0.55)
+          : timelineCellUsesDrawingInk(model.exposureState)
           ? (model.dimmed
                 ? timelineDrawingInkColor.withValues(alpha: 0.55)
                 : timelineDrawingInkColor)
@@ -294,7 +331,9 @@ class TimelineRowCellsPainter extends CustomPainter {
       final glyphStyle = baseTextStyle.copyWith(
         color: ink,
         fontWeight:
-            !isEmptyX && model.exposureState != TimelineCellExposureState.held
+            !holdDash &&
+                !isEmptyX &&
+                model.exposureState != TimelineCellExposureState.held
             ? FontWeight.bold
             : baseTextStyle.fontWeight,
       );

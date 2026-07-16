@@ -210,19 +210,26 @@ class TimelineCursorLayer extends StatelessWidget {
             leadingFrameSpacerWidth: leadingFrameSpacerWidth,
           );
 
+          // On a drawing block the BLOCK outline is the selection visual —
+          // the single-cell ring would double it up (UI-R10 #8), so the
+          // ring keeps its semantics node (probes/tests anchor on it) but
+          // paints nothing there; empty cells keep the visible ring.
+          final onBlock = displayRange.resolvedRange.isBlock;
           final ring = Semantics(
             key: selectedSemanticsKey,
             label: 'selected cell',
             container: true,
-            child: DecoratedBox(
-              decoration: BoxDecoration(
-                border: Border.all(
-                  color: timelineSelectedFrameBorderColor,
-                  width: 3,
-                ),
-                borderRadius: const BorderRadius.all(Radius.circular(4)),
-              ),
-            ),
+            child: onBlock
+                ? const SizedBox.expand()
+                : DecoratedBox(
+                    decoration: BoxDecoration(
+                      border: Border.all(
+                        color: timelineSelectedFrameBorderColor,
+                        width: 3,
+                      ),
+                      borderRadius: const BorderRadius.all(Radius.circular(4)),
+                    ),
+                  ),
           );
 
           final rowStack = Stack(

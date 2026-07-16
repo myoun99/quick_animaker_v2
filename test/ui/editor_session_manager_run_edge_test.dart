@@ -101,6 +101,44 @@ void main() {
     expect(layer.timeline[5]!.frameId, blocks[1]!.frameId);
   });
 
+  test('the end behavior anchors to the run LAST block: splitting the run '
+      'keeps the repeat with the edge fragment (UI-R10 #4)', () {
+    final (s, layerId) = sessionWithBlock(); // block 1 at 0
+    s.selectFrameIndex(1);
+    s.createDrawingAtCurrentFrame(); // block 2 at 1
+    s.selectFrameIndex(2);
+    s.createDrawingAtCurrentFrame(); // block 3 at 2 — run {0,1,2}
+    final lastBlockFrameId = layerOf(s, layerId).timeline[2]!.frameId;
+
+    s.setRunEdgeBehavior(
+      layerId: layerId,
+      blockStartIndex: 0,
+      side: TimelineRunEdgeSide.end,
+      mode: TimelineRunEdgeMode.repeat,
+    );
+    expect(
+      layerOf(s, layerId).runBehaviors.single.anchorFrameId,
+      lastBlockFrameId,
+      reason: 'the end edge anchors to the LAST block, not the run start',
+    );
+
+    // Move blocks {1,2} away (range move): the repeat follows THEM.
+    s.updateFrameRangeSelectionDrag(
+      layerId: layerId,
+      anchorIndex: 1,
+      headIndex: 2,
+    );
+    expect(s.beginFrameRangeMoveDrag(), isTrue);
+    s.updateFrameRangeMoveDrag(frameDelta: 4);
+    s.endFrameRangeMoveDrag();
+
+    final layer = layerOf(s, layerId);
+    // Fragment {5,6}: ghosts refill after ITS end (7..), and the lone
+    // block at 0 grows nothing.
+    expect(layer.timeline[7]!.ghost, isTrue);
+    expect(layer.timeline.containsKey(1), isFalse);
+  });
+
   test('re-setting the same edge replaces the previous behavior', () {
     final (s, layerId) = sessionWithBlock();
     s.setRunEdgeBehavior(
