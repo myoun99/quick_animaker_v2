@@ -93,15 +93,14 @@ class TimelineFrameCell extends StatelessWidget {
     );
     // Ghost repeat instances dim like out-of-range cells (UI-R8).
     final dimmed = outsidePlaybackRange || ghost;
-    final backgroundColor = timelineFrameBandTint(
-      frameIndex,
-      dimmed
-          ? Color.alphaBlend(
-              colorScheme.surfaceContainerHighest.withValues(alpha: 0.54),
-              styleColors.background,
-            )
-          : styleColors.background,
-    );
+    // No band tint anymore (UI-R10 #26): the 6f/24f line system carries
+    // the rhythm on the painted drawing rows.
+    final backgroundColor = dimmed
+        ? Color.alphaBlend(
+            colorScheme.surfaceContainerHighest.withValues(alpha: 0.54),
+            styleColors.background,
+          )
+        : styleColors.background;
     final borderColor = dimmed
         ? Color.alphaBlend(
             colorScheme.outlineVariant.withValues(alpha: 0.55),

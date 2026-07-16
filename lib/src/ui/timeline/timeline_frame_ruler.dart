@@ -16,6 +16,8 @@ class TimelineFrameRuler extends StatelessWidget {
     required this.trailingFrameSpacerWidth,
     required this.metrics,
     required this.onSelectFrame,
+    this.framesPerSecond = 24,
+    this.showSeconds = false,
     this.isFrameCached,
   });
 
@@ -27,6 +29,8 @@ class TimelineFrameRuler extends StatelessWidget {
   final double trailingFrameSpacerWidth;
   final TimelineGridMetrics metrics;
   final ValueChanged<int> onSelectFrame;
+  final int framesPerSecond;
+  final bool showSeconds;
   final bool Function(int frameIndex)? isFrameCached;
 
   @override
@@ -42,6 +46,8 @@ class TimelineFrameRuler extends StatelessWidget {
           trailingFrameSpacerWidth: trailingFrameSpacerWidth,
           metrics: metrics,
           onSelectFrame: onSelectFrame,
+          framesPerSecond: framesPerSecond,
+          showSeconds: showSeconds,
           isFrameCached: isFrameCached,
         ),
         TimelineRulerCutEndBoundary(

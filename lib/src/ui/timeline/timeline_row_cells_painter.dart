@@ -82,11 +82,15 @@ class TimelineRowCellsPainter extends CustomPainter {
     required this.colorScheme,
     required this.baseTextStyle,
     this.axis = Axis.horizontal,
+    this.framesPerSecond = 24,
   });
 
   final Layer layer;
   final bool active;
   final int playbackFrameCount;
+
+  /// The 24f strong line's period (UI-R10 #26).
+  final int framesPerSecond;
   final int frameStartIndex;
   final int frameEndIndexExclusive;
   final double leadingFrameSpacerWidth;
@@ -242,22 +246,25 @@ class TimelineRowCellsPainter extends CustomPainter {
     final washDim = model.ghost
         ? frameIndex >= playbackFrameCount
         : model.dimmed;
+    // The base cell grid draws LIGHTER than the blocks (UI-R10 #26 — the
+    // 6f/24f line system carries the rhythm instead of the old band
+    // tint); block cells keep their full border.
+    final baseBorder = model.segment.isBlock
+        ? styleColors.border
+        : styleColors.border.withValues(alpha: 0.45);
     return (
-      background: timelineFrameBandTint(
-        frameIndex,
-        washDim
-            ? Color.alphaBlend(
-                colorScheme.surfaceContainerHighest.withValues(alpha: 0.54),
-                styleColors.background,
-              )
-            : styleColors.background,
-      ),
+      background: washDim
+          ? Color.alphaBlend(
+              colorScheme.surfaceContainerHighest.withValues(alpha: 0.54),
+              styleColors.background,
+            )
+          : styleColors.background,
       border: washDim
           ? Color.alphaBlend(
               colorScheme.outlineVariant.withValues(alpha: 0.55),
-              styleColors.border,
+              baseBorder,
             )
-          : styleColors.border,
+          : baseBorder,
       radius: _cellRadius(model.segment),
     );
   }
@@ -343,6 +350,41 @@ class TimelineRowCellsPainter extends CustomPainter {
         rect.center - Offset(glyph.width / 2, glyph.height / 2),
       );
     }
+
+    // The 6f/24f line system (UI-R10 #26, KGB-sheet convention): a medium
+    // line every 6 frames, a strong one on second boundaries — drawn over
+    // the lightened cell grid, per row so they read continuous down the
+    // grid.
+    final sixPaint = Paint()
+      ..color = colorScheme.outlineVariant
+      ..strokeWidth = 1;
+    final secondPaint = Paint()
+      ..color = colorScheme.outline
+      ..strokeWidth = 1.2;
+    final firstBoundary = ((frameStartIndex + 5) ~/ 6) * 6;
+    for (
+      var frameIndex = firstBoundary;
+      frameIndex <= frameEndIndexExclusive;
+      frameIndex += 6
+    ) {
+      final rect = cellRectFor(frameIndex);
+      final paint = frameIndex % framesPerSecond == 0
+          ? secondPaint
+          : sixPaint;
+      if (axis == Axis.horizontal) {
+        canvas.drawLine(
+          Offset(rect.left, 0),
+          Offset(rect.left, crossAxisExtent),
+          paint,
+        );
+      } else {
+        canvas.drawLine(
+          Offset(0, rect.top),
+          Offset(crossAxisExtent, rect.top),
+          paint,
+        );
+      }
+    }
   }
 
   BorderRadius? _cellRadius(TimelineExposureBlockVisualSegment segment) {
@@ -377,6 +419,7 @@ class TimelineRowCellsPainter extends CustomPainter {
       oldDelegate.frameCellExtent != frameCellExtent ||
       oldDelegate.crossAxisExtent != crossAxisExtent ||
       oldDelegate.axis != axis ||
+      oldDelegate.framesPerSecond != framesPerSecond ||
       !identical(oldDelegate.colorScheme, colorScheme) ||
       !identical(oldDelegate.exposureStateForLayer, exposureStateForLayer) ||
       !identical(oldDelegate.frameNameForLayer, frameNameForLayer);
@@ -438,6 +481,7 @@ Widget timelineRowCellsPaintArea({
   required double frameCellExtent,
   required double crossAxisExtent,
   required Axis axis,
+  int framesPerSecond = 24,
   required TimelineCellExposureState Function(Layer layer, int frameIndex)
   exposureStateForLayer,
   String? Function(Layer layer, int frameIndex)? frameNameForLayer,
@@ -459,6 +503,7 @@ Widget timelineRowCellsPaintArea({
     colorScheme: Theme.of(context).colorScheme,
     baseTextStyle: DefaultTextStyle.of(context).style,
     axis: axis,
+    framesPerSecond: framesPerSecond,
   );
   final totalMainExtent =
       leadingFrameSpacerWidth +

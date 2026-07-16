@@ -64,6 +64,7 @@ class LayerTimelineGrid extends StatefulWidget {
     this.instructionDefById,
     this.audioPeaksFor,
     this.projectFps = 24,
+    this.showSeconds = false,
     this.onRemoveAudioClip,
     this.onDropMediaAsset,
     this.onSetAudioClipOffset,
@@ -149,6 +150,10 @@ class LayerTimelineGrid extends StatefulWidget {
   /// Waveform peaks for SE rows' audio clips + the removal hook.
   final AudioPeaks? Function(String filePath)? audioPeaksFor;
   final int projectFps;
+
+  /// The ruler's bottom-line mode (UI-R10 #27): seconds display repeats
+  /// 1..fps per second instead of absolute frame numbers.
+  final bool showSeconds;
   final void Function(LayerId layerId, int clipIndex)? onRemoveAudioClip;
 
   /// Links a media-browser asset to an SE block (drag-drop).
@@ -1118,6 +1123,10 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                                                   metrics: _metrics,
                                                   onSelectFrame:
                                                       _selectClampedFrameFromRuler,
+                                                  framesPerSecond:
+                                                      widget.projectFps,
+                                                  showSeconds:
+                                                      widget.showSeconds,
                                                   isFrameCached:
                                                       widget.isFrameCached,
                                                 ),
