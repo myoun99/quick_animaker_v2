@@ -14,9 +14,10 @@ import 'package:quick_animaker_v2/src/ui/timeline/timeline_drag_preview.dart';
 import 'package:quick_animaker_v2/src/ui/timeline/timeline_cell_exposure_state.dart';
 import 'package:quick_animaker_v2/src/ui/timeline/timeline_exposure_comma_drag_handle.dart';
 import 'package:quick_animaker_v2/src/ui/timeline/timeline_exposure_comma_drag_policy.dart';
-import 'package:quick_animaker_v2/src/ui/timeline/timeline_frame_cell.dart';
 import 'package:quick_animaker_v2/src/ui/timeline/timeline_grid_metrics.dart';
 import 'package:quick_animaker_v2/src/ui/timeline/timeline_run_end_handles.dart';
+
+import 'timeline_cell_probe.dart';
 
 /// UI-R8: the run-edge [+]/[↻] handles and the repeat GHOST display.
 void main() {
@@ -286,18 +287,14 @@ void main() {
       ),
     );
 
-    TimelineFrameCell cellAt(int index) => tester.widget<TimelineFrameCell>(
-      find.ancestor(
-        of: find.byKey(ValueKey<String>('timeline-cell-layer-r-$index')),
-        matching: find.byType(TimelineFrameCell),
-      ),
-    );
-    expect(cellAt(0).ghost, isFalse);
-    expect(cellAt(1).ghost, isFalse);
-    expect(cellAt(2).ghost, isTrue);
-    expect(cellAt(3).ghost, isTrue);
-    expect(cellAt(4).ghost, isTrue);
-    expect(cellAt(6).ghost, isFalse);
+    bool ghostAt(int index) =>
+        timelineCellModel(tester, 'layer-r', index).ghost;
+    expect(ghostAt(0), isFalse);
+    expect(ghostAt(1), isFalse);
+    expect(ghostAt(2), isTrue);
+    expect(ghostAt(3), isTrue);
+    expect(ghostAt(4), isTrue);
+    expect(ghostAt(6), isFalse);
 
     // Grips: only the SOURCE block's two — the ghost blocks carry none.
     expect(find.byType(TimelineBlockEdgeGrip), findsNWidgets(2));

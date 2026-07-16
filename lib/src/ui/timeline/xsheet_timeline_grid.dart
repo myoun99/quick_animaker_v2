@@ -21,6 +21,7 @@ import 'timeline_frame_range_gesture.dart';
 import 'timeline_run_end_handles.dart';
 import 'timeline_frame_cell.dart';
 import 'timeline_frame_cells_row.dart' show timelineRowBlockEdgeGrips;
+import 'timeline_row_cells_painter.dart';
 import 'timeline_frame_coordinate_policy.dart';
 import 'timeline_frame_cursor_layer.dart';
 import 'timeline_frame_range_policy.dart';
@@ -1324,60 +1325,85 @@ class _XSheetFrameCellsColumn extends StatelessWidget {
       child: Stack(
         key: ValueKey<String>('xsheet-frame-column-area-${layer.id}'),
         children: [
-          Column(
-            children: [
-              SizedBox(
-                key: ValueKey<String>(
-                  'xsheet-frame-column-leading-spacer-${layer.id}',
-                ),
-                height: leadingFrameSpacerHeight,
-                width: metrics.layerRowHeight,
-              ),
-              for (
-                var frameIndex = frameStartIndex;
-                frameIndex < frameEndIndexExclusive;
-                frameIndex += 1
-              )
-                TimelineFrameCell(
-                  layer: layer,
-                  frameIndex: frameIndex,
-                  active: active,
-                  outsidePlaybackRange: frameIndex >= playbackFrameCount,
-                  ghost: timelineIndexIsGhost(layer, frameIndex),
-                  exposureState: stateAt(frameIndex),
-                  exposureBlockSegment:
-                      calculateTimelineExposureBlockVisualSegment(
-                        previous: frameIndex == 0
-                            ? null
-                            : stateAt(frameIndex - 1),
-                        current: stateAt(frameIndex),
-                        next: stateAt(frameIndex + 1),
-                      ),
-                  emptyRunStart: timelineEmptyRunStartsAt(
-                    current: stateAt(frameIndex),
-                    previous: frameIndex == 0 ? null : stateAt(frameIndex - 1),
+          // Dense drawing columns paint as ONE CustomPaint (UI-R9 #12b,
+          // transposed); sparse kinds keep the widget cells.
+          if (timelineRowUsesCellsPainter(layer.kind))
+            timelineRowCellsPaintArea(
+              context: context,
+              keyPrefix: 'xsheet',
+              layer: layer,
+              active: active,
+              playbackFrameCount: playbackFrameCount,
+              frameStartIndex: frameStartIndex,
+              frameEndIndexExclusive: frameEndIndexExclusive,
+              leadingFrameSpacerWidth: leadingFrameSpacerHeight,
+              trailingFrameSpacerWidth: trailingFrameSpacerHeight,
+              frameCellExtent: metrics.frameCellWidth,
+              crossAxisExtent: metrics.layerRowHeight,
+              axis: Axis.vertical,
+              exposureStateForLayer: exposureStateForLayer,
+              frameNameForLayer: frameNameForLayer,
+              onSelectLayer: onSelectLayer,
+              onSelectFrame: onSelectFrame,
+              onActivateCell: onActivateCell,
+            )
+          else
+            Column(
+              children: [
+                SizedBox(
+                  key: ValueKey<String>(
+                    'xsheet-frame-column-leading-spacer-${layer.id}',
                   ),
-                  frameName: frameNameForLayer?.call(layer, frameIndex),
-                  onSelectLayer: onSelectLayer,
-                  onSelectFrame: onSelectFrame,
-                  onActivateCell:
-                      layerKindOpensCellEditorOnDoubleTap(layer.kind)
-                      ? onActivateCell
-                      : null,
-                  axis: Axis.vertical,
+                  height: leadingFrameSpacerHeight,
                   width: metrics.layerRowHeight,
-                  height: metrics.frameCellWidth,
-                  cellKeyPrefix: 'xsheet-cell',
                 ),
-              SizedBox(
-                key: ValueKey<String>(
-                  'xsheet-frame-column-trailing-spacer-${layer.id}',
+                for (
+                  var frameIndex = frameStartIndex;
+                  frameIndex < frameEndIndexExclusive;
+                  frameIndex += 1
+                )
+                  TimelineFrameCell(
+                    layer: layer,
+                    frameIndex: frameIndex,
+                    active: active,
+                    outsidePlaybackRange: frameIndex >= playbackFrameCount,
+                    ghost: timelineIndexIsGhost(layer, frameIndex),
+                    exposureState: stateAt(frameIndex),
+                    exposureBlockSegment:
+                        calculateTimelineExposureBlockVisualSegment(
+                          previous: frameIndex == 0
+                              ? null
+                              : stateAt(frameIndex - 1),
+                          current: stateAt(frameIndex),
+                          next: stateAt(frameIndex + 1),
+                        ),
+                    emptyRunStart: timelineEmptyRunStartsAt(
+                      current: stateAt(frameIndex),
+                      previous: frameIndex == 0
+                          ? null
+                          : stateAt(frameIndex - 1),
+                    ),
+                    frameName: frameNameForLayer?.call(layer, frameIndex),
+                    onSelectLayer: onSelectLayer,
+                    onSelectFrame: onSelectFrame,
+                    onActivateCell:
+                        layerKindOpensCellEditorOnDoubleTap(layer.kind)
+                        ? onActivateCell
+                        : null,
+                    axis: Axis.vertical,
+                    width: metrics.layerRowHeight,
+                    height: metrics.frameCellWidth,
+                    cellKeyPrefix: 'xsheet-cell',
+                  ),
+                SizedBox(
+                  key: ValueKey<String>(
+                    'xsheet-frame-column-trailing-spacer-${layer.id}',
+                  ),
+                  height: trailingFrameSpacerHeight,
+                  width: metrics.layerRowHeight,
                 ),
-                height: trailingFrameSpacerHeight,
-                width: metrics.layerRowHeight,
-              ),
-            ],
-          ),
+              ],
+            ),
           // NO extra section-divider overlay (R3 feedback #6): section
           // boundaries share the same single hairline as every column
           // boundary; the header band carries the section identity.

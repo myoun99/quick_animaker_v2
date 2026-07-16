@@ -21,6 +21,8 @@ import 'package:quick_animaker_v2/src/ui/timeline/timeline_cell_style.dart';
 import 'package:quick_animaker_v2/src/ui/timeline/timeline_se_row_visual.dart'
     show seNameBoxExtent;
 
+import 'timeline_cell_probe.dart';
+
 const _cutId = CutId('se-cut');
 const _seLayerId = LayerId('se-voice');
 const _celLayerId = LayerId('se-cel');
@@ -191,12 +193,10 @@ void main() {
         findsNothing,
       );
       await _ensureRowVisible(tester, _celLayerId);
-      final celRowArea = find.byKey(
-        const ValueKey<String>('timeline-frame-row-area-se-cel'),
-      );
+      // The cel row is PAINTED (UI-R9 #12b): the X reads off the painter.
       expect(
-        find.descendant(of: celRowArea, matching: find.text('X')),
-        findsOneWidget,
+        timelineCellModel(tester, 'se-cel', 0).glyph,
+        'X',
       );
     },
   );

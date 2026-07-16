@@ -6,6 +6,8 @@ import 'package:quick_animaker_v2/src/ui/timeline/layer_timeline_grid.dart';
 import 'package:quick_animaker_v2/src/ui/timeline/timeline_cell_exposure_state.dart';
 import 'package:quick_animaker_v2/src/ui/timeline/xsheet_timeline_grid.dart';
 
+import 'timeline_cell_probe.dart';
+
 /// THE playback-performance invariant: moving the frame cursor (a playback
 /// tick, an editing seek) repaints the cursor layer and rulers only — the
 /// grids' cell widgets are never rebuilt. Pinned via widget identity: a
@@ -46,16 +48,14 @@ void main() {
       ),
     );
 
-    final cellFinder = find.byKey(
-      const ValueKey<String>('timeline-cell-layer-1-3'),
+    final rowFinder = find.byKey(
+      const ValueKey<String>('timeline-row-cells-layer-1'),
     );
-    final cellBefore = tester.widget(cellFinder);
+    final rowBefore = tester.widget(rowFinder);
     final ring = find.byKey(const ValueKey<String>('timeline-selected-cell'));
     expect(
       tester.getTopLeft(ring),
-      tester.getTopLeft(
-        find.byKey(const ValueKey<String>('timeline-cell-layer-1-2')),
-      ),
+      timelineCellGlobalRect(tester, 'layer-1', 2).topLeft,
     );
 
     // Tick the cursor a few frames, pumping like playback would.
@@ -65,15 +65,13 @@ void main() {
     }
 
     expect(
-      identical(tester.widget(cellFinder), cellBefore),
+      identical(tester.widget(rowFinder), rowBefore),
       isTrue,
       reason: 'cursor ticks must never rebuild cells',
     );
     expect(
       tester.getTopLeft(ring),
-      tester.getTopLeft(
-        find.byKey(const ValueKey<String>('timeline-cell-layer-1-5')),
-      ),
+      timelineCellGlobalRect(tester, 'layer-1', 5).topLeft,
     );
   });
 
@@ -102,10 +100,10 @@ void main() {
       ),
     );
 
-    final cellFinder = find.byKey(
-      const ValueKey<String>('xsheet-cell-layer-1-3'),
+    final columnFinder = find.byKey(
+      const ValueKey<String>('xsheet-row-cells-layer-1'),
     );
-    final cellBefore = tester.widget(cellFinder);
+    final columnBefore = tester.widget(columnFinder);
 
     for (final frame in [2, 3, 4]) {
       cursor.value = frame;
@@ -113,7 +111,7 @@ void main() {
     }
 
     expect(
-      identical(tester.widget(cellFinder), cellBefore),
+      identical(tester.widget(columnFinder), columnBefore),
       isTrue,
       reason: 'cursor ticks must never rebuild cells',
     );

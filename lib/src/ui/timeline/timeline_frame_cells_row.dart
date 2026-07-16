@@ -16,6 +16,7 @@ import '../../models/timeline_repeat.dart';
 import 'timeline_frame_cell.dart';
 import 'timeline_frame_coordinate_policy.dart';
 import 'timeline_frame_range_gesture.dart';
+import 'timeline_row_cells_painter.dart';
 import 'timeline_run_end_handles.dart';
 import 'timeline_grid_metrics.dart';
 import 'timeline_instruction_row_visual.dart';
@@ -124,57 +125,83 @@ class TimelineFrameCellsRow extends StatelessWidget {
     return Stack(
       key: ValueKey<String>('timeline-frame-row-area-${layer.id}'),
       children: [
-        Row(
-          children: [
-            SizedBox(
-              key: ValueKey<String>(
-                'timeline-frame-row-leading-spacer-${layer.id}',
-              ),
-              width: leadingFrameSpacerWidth,
-              height: metrics.layerRowHeight,
-            ),
-            for (
-              var frameIndex = frameStartIndex;
-              frameIndex < frameEndIndexExclusive;
-              frameIndex += 1
-            )
-              TimelineFrameCell(
-                layer: layer,
-                frameIndex: frameIndex,
-                width: metrics.frameCellWidth,
-                height: metrics.layerRowHeight,
-                active: active,
-                outsidePlaybackRange: frameIndex >= playbackFrameCount,
-                ghost: timelineIndexIsGhost(layer, frameIndex),
-                exposureState: stateAt(frameIndex),
-                exposureBlockSegment:
-                    calculateTimelineExposureBlockVisualSegment(
-                      previous: frameIndex == 0
-                          ? null
-                          : stateAt(frameIndex - 1),
-                      current: stateAt(frameIndex),
-                      next: stateAt(frameIndex + 1),
-                    ),
-                emptyRunStart: timelineEmptyRunStartsAt(
-                  current: stateAt(frameIndex),
-                  previous: frameIndex == 0 ? null : stateAt(frameIndex - 1),
+        // The dense drawing rows paint their cells as ONE CustomPaint
+        // (UI-R9 #12b hybrid painterization); the sparse kinds (SE /
+        // instruction / camera) keep the per-cell widget renderer their
+        // overlays are built around.
+        if (timelineRowUsesCellsPainter(layer.kind))
+          timelineRowCellsPaintArea(
+            context: context,
+            keyPrefix: 'timeline',
+            layer: layer,
+            active: active,
+            playbackFrameCount: playbackFrameCount,
+            frameStartIndex: frameStartIndex,
+            frameEndIndexExclusive: frameEndIndexExclusive,
+            leadingFrameSpacerWidth: leadingFrameSpacerWidth,
+            trailingFrameSpacerWidth: trailingFrameSpacerWidth,
+            frameCellExtent: metrics.frameCellWidth,
+            crossAxisExtent: metrics.layerRowHeight,
+            axis: Axis.horizontal,
+            exposureStateForLayer: exposureStateForLayer,
+            frameNameForLayer: frameNameForLayer,
+            onSelectLayer: onSelectLayer,
+            onSelectFrame: onSelectFrame,
+            onActivateCell: onActivateCell,
+          )
+        else
+          Row(
+            children: [
+              SizedBox(
+                key: ValueKey<String>(
+                  'timeline-frame-row-leading-spacer-${layer.id}',
                 ),
-                frameName: frameNameForLayer?.call(layer, frameIndex),
-                onSelectLayer: onSelectLayer,
-                onSelectFrame: onSelectFrame,
-                onActivateCell: layerKindOpensCellEditorOnDoubleTap(layer.kind)
-                    ? onActivateCell
-                    : null,
+                width: leadingFrameSpacerWidth,
+                height: metrics.layerRowHeight,
               ),
-            SizedBox(
-              key: ValueKey<String>(
-                'timeline-frame-row-trailing-spacer-${layer.id}',
+              for (
+                var frameIndex = frameStartIndex;
+                frameIndex < frameEndIndexExclusive;
+                frameIndex += 1
+              )
+                TimelineFrameCell(
+                  layer: layer,
+                  frameIndex: frameIndex,
+                  width: metrics.frameCellWidth,
+                  height: metrics.layerRowHeight,
+                  active: active,
+                  outsidePlaybackRange: frameIndex >= playbackFrameCount,
+                  ghost: timelineIndexIsGhost(layer, frameIndex),
+                  exposureState: stateAt(frameIndex),
+                  exposureBlockSegment:
+                      calculateTimelineExposureBlockVisualSegment(
+                        previous: frameIndex == 0
+                            ? null
+                            : stateAt(frameIndex - 1),
+                        current: stateAt(frameIndex),
+                        next: stateAt(frameIndex + 1),
+                      ),
+                  emptyRunStart: timelineEmptyRunStartsAt(
+                    current: stateAt(frameIndex),
+                    previous: frameIndex == 0 ? null : stateAt(frameIndex - 1),
+                  ),
+                  frameName: frameNameForLayer?.call(layer, frameIndex),
+                  onSelectLayer: onSelectLayer,
+                  onSelectFrame: onSelectFrame,
+                  onActivateCell:
+                      layerKindOpensCellEditorOnDoubleTap(layer.kind)
+                      ? onActivateCell
+                      : null,
+                ),
+              SizedBox(
+                key: ValueKey<String>(
+                  'timeline-frame-row-trailing-spacer-${layer.id}',
+                ),
+                width: trailingFrameSpacerWidth,
+                height: metrics.layerRowHeight,
               ),
-              width: trailingFrameSpacerWidth,
-              height: metrics.layerRowHeight,
-            ),
-          ],
-        ),
+            ],
+          ),
         // NO extra section-divider overlay (R3 feedback #6): section
         // boundaries share the same single hairline as every row boundary;
         // the rail's gutter bracket carries the section identity.

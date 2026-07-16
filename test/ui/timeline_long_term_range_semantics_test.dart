@@ -1,4 +1,4 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:quick_animaker_v2/src/models/canvas_size.dart';
 import 'package:quick_animaker_v2/src/models/cut.dart';
@@ -17,6 +17,8 @@ import 'package:quick_animaker_v2/src/ui/timeline/timeline_grid_metrics.dart';
 import 'package:quick_animaker_v2/src/ui/timeline/timeline_orientation.dart';
 import 'package:quick_animaker_v2/src/ui/timeline/timeline_panel.dart';
 
+import 'timeline/timeline_cell_probe.dart';
+
 void main() {
   group('Timeline long-term range semantics regression', () {
     testWidgets(
@@ -27,10 +29,7 @@ void main() {
         await tester.pumpWidget(_panel(fixture));
 
         expect(fixture.cut.duration, 3);
-        expect(
-          find.byKey(const ValueKey<String>('timeline-cell-layer-a-10')),
-          findsOneWidget,
-        );
+        expect(timelineCellInWindow(tester, 'layer-a', 10), isTrue);
         expect(
           find.byKey(const ValueKey<String>('timeline-frame-header-10')),
           findsOneWidget,
@@ -45,14 +44,8 @@ void main() {
 
         await tester.pumpWidget(_panel(fixture));
 
-        final authoredCell = find.byKey(
-          const ValueKey<String>('timeline-cell-layer-a-10'),
-        );
-        expect(authoredCell, findsOneWidget);
-        expect(
-          find.descendant(of: authoredCell, matching: find.text('Late 10')),
-          findsOneWidget,
-        );
+        expect(timelineCellInWindow(tester, 'layer-a', 10), isTrue);
+        expect(timelineCellModel(tester, 'layer-a', 10).glyph, 'Late 10');
       },
     );
 
@@ -71,11 +64,8 @@ void main() {
           find.byKey(const ValueKey<String>('timeline-cut-end-boundary-ruler')),
           findsOneWidget,
         );
-        expect(
-          find.byKey(const ValueKey<String>('timeline-cell-layer-a-10')),
-          findsOneWidget,
-        );
-        expect(find.text('Late 10'), findsOneWidget);
+        expect(timelineCellInWindow(tester, 'layer-a', 10), isTrue);
+        expect(timelineCellModel(tester, 'layer-a', 10).glyph, 'Late 10');
       },
     );
 
@@ -94,10 +84,7 @@ void main() {
         await tester.pumpWidget(_panel(fixture, currentFrameIndex: 10));
 
         expect(fixture.authoredExtentFrameCount, 1);
-        expect(
-          find.byKey(const ValueKey<String>('timeline-cell-layer-a-10')),
-          findsOneWidget,
-        );
+        expect(timelineCellInWindow(tester, 'layer-a', 10), isTrue);
         expect(
           find.byKey(const ValueKey<String>('timeline-playhead')),
           findsOneWidget,
@@ -127,14 +114,8 @@ void main() {
           ),
         );
         expect(outline, findsOneWidget);
-        expect(
-          find.byKey(const ValueKey<String>('timeline-cell-layer-a-10')),
-          findsOneWidget,
-        );
-        expect(
-          find.byKey(const ValueKey<String>('timeline-cell-layer-a-12')),
-          findsOneWidget,
-        );
+        expect(timelineCellInWindow(tester, 'layer-a', 10), isTrue);
+        expect(timelineCellInWindow(tester, 'layer-a', 12), isTrue);
 
         final positioned = tester.widget<Positioned>(outline);
         expect(

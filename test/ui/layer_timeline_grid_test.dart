@@ -7,6 +7,8 @@ import 'package:quick_animaker_v2/src/models/layer_kind.dart';
 import 'package:quick_animaker_v2/src/models/layer_id.dart';
 import 'package:quick_animaker_v2/src/ui/timeline/layer_timeline_grid.dart';
 import 'package:quick_animaker_v2/src/ui/timeline/timeline_horizontal_scrollbar_rail.dart';
+
+import 'timeline/timeline_cell_probe.dart';
 import 'package:quick_animaker_v2/src/ui/timeline/timeline_cell_exposure_state.dart';
 import 'package:quick_animaker_v2/src/ui/timeline/timeline_cell_style.dart';
 import 'package:quick_animaker_v2/src/ui/timeline/timeline_grid_metrics.dart';
@@ -30,7 +32,9 @@ Future<void> _scrollFrameGridUntilKeyVisible(
   WidgetTester tester,
   ValueKey<String> key,
 ) async {
-  final finder = find.byKey(key);
+  // Cell keys are painter-probed now (UI-R9 #12b): visibility = the
+  // painter window contains the frame AND its global rect fits the root.
+  final cell = parseTimelineCellKey(key.value);
   final viewport = find.byKey(
     const ValueKey<String>('timeline-frame-scroll-viewport'),
   );
@@ -38,8 +42,12 @@ Future<void> _scrollFrameGridUntilKeyVisible(
   final testRootRect = Offset.zero & testRootSize;
 
   for (var attempt = 0; attempt < 20; attempt += 1) {
-    if (finder.evaluate().isNotEmpty) {
-      final targetRect = tester.getRect(finder);
+    if (timelineCellInWindow(tester, cell.layerId, cell.frameIndex)) {
+      final targetRect = timelineCellGlobalRect(
+        tester,
+        cell.layerId,
+        cell.frameIndex,
+      );
       if (testRootRect.contains(targetRect.topLeft) &&
           testRootRect.contains(targetRect.bottomRight)) {
         return;
@@ -400,8 +408,10 @@ void main() {
           )
           .position;
 
-      Widget cell(int index) => tester.widget(
-        find.byKey(ValueKey<String>('timeline-cell-layer-1-$index')),
+      // Painted rows (UI-R9 #12b): row identity = the row's CustomPaint
+      // widget instance (cells are paint, not widgets).
+      Widget rowPaint() => tester.widget(
+        find.byKey(const ValueKey<String>('timeline-row-cells-layer-1')),
       );
 
       // Warm-up: the very first scroll event establishes the endless
@@ -409,11 +419,11 @@ void main() {
       framePosition().jumpTo(2);
       await tester.pump();
 
-      final beforeSubCell = cell(4);
+      final beforeSubCell = rowPaint();
       framePosition().jumpTo(10); // Sub-cell: 48px cells, same bucket.
       await tester.pump();
       expect(
-        identical(cell(4), beforeSubCell),
+        identical(rowPaint(), beforeSubCell),
         isTrue,
         reason: 'sub-cell pixels rebuild nothing',
       );
@@ -421,7 +431,7 @@ void main() {
       framePosition().jumpTo(4 * 48.0); // Crosses cell boundaries.
       await tester.pump();
       expect(
-        identical(cell(4), beforeSubCell),
+        identical(rowPaint(), beforeSubCell),
         isFalse,
         reason: 'a bucket crossing re-windows the rows',
       );
@@ -609,34 +619,22 @@ void main() {
       ),
       findsOneWidget,
     );
+    // Painted rows (UI-R9 #12b): the row is ONE CustomPaint whose window
+    // carries the virtualization facts the old spacer/cell keys pinned.
     expect(
-      find.byKey(
-        const ValueKey<String>('timeline-frame-row-leading-spacer-layer-1'),
-      ),
-      findsOneWidget,
-    );
-    expect(
-      find.byKey(
-        const ValueKey<String>('timeline-frame-row-trailing-spacer-layer-1'),
-      ),
+      find.byKey(const ValueKey<String>('timeline-row-cells-layer-1')),
       findsOneWidget,
     );
     expect(
       find.byKey(const ValueKey<String>('timeline-frame-header-0')),
       findsOneWidget,
     );
-    expect(
-      find.byKey(const ValueKey<String>('timeline-cell-layer-1-0')),
-      findsOneWidget,
-    );
+    expect(timelineCellInWindow(tester, 'layer-1', 0), isTrue);
     expect(
       find.byKey(const ValueKey<String>('timeline-frame-header-99999')),
       findsNothing,
     );
-    expect(
-      find.byKey(const ValueKey<String>('timeline-cell-layer-1-99999')),
-      findsNothing,
-    );
+    expect(timelineCellInWindow(tester, 'layer-1', 99999), isFalse);
 
     final builtHeaderCount = find
         .byWidgetPredicate(
@@ -649,16 +647,9 @@ void main() {
         )
         .evaluate()
         .length;
-    final builtLayerOneCellCount = find
-        .byWidgetPredicate(
-          (widget) =>
-              widget.key is ValueKey<String> &&
-              ((widget.key as ValueKey<String>).value).startsWith(
-                'timeline-cell-layer-1-',
-              ),
-        )
-        .evaluate()
-        .length;
+    final painter = timelineRowCellsPainterFor(tester, 'layer-1');
+    final builtLayerOneCellCount =
+        painter.frameEndIndexExclusive - painter.frameStartIndex;
 
     expect(builtHeaderCount, lessThan(100));
     expect(builtLayerOneCellCount, lessThan(100));
@@ -673,10 +664,7 @@ void main() {
       find.byKey(const ValueKey<String>('timeline-frame-header-100')),
       findsNothing,
     );
-    expect(
-      find.byKey(const ValueKey<String>('timeline-cell-layer-1-100')),
-      findsNothing,
-    );
+    expect(timelineCellInWindow(tester, 'layer-1', 100), isFalse);
 
     await tester.drag(
       find.byKey(const ValueKey<String>('timeline-frame-scroll-viewport')),
@@ -692,10 +680,7 @@ void main() {
       find.byKey(const ValueKey<String>('timeline-frame-header-100')),
       findsOneWidget,
     );
-    expect(
-      find.byKey(const ValueKey<String>('timeline-cell-layer-1-100')),
-      findsOneWidget,
-    );
+    expect(timelineCellInWindow(tester, 'layer-1', 100), isTrue);
     expect(
       find.byKey(const ValueKey<String>('timeline-frame-header-0')),
       findsNothing,
@@ -716,10 +701,7 @@ void main() {
       find.byKey(const ValueKey<String>('timeline-frame-header-3')),
       findsOneWidget,
     );
-    expect(
-      find.byKey(const ValueKey<String>('timeline-cell-layer-1-3')),
-      findsOneWidget,
-    );
+    expect(timelineCellInWindow(tester, 'layer-1', 3), isTrue);
   });
 
   testWidgets(
@@ -833,14 +815,8 @@ void main() {
       find.byKey(const ValueKey<String>('timeline-frame-header-0')),
       findsOneWidget,
     );
-    expect(
-      find.byKey(const ValueKey<String>('timeline-cell-layer-1-0')),
-      findsOneWidget,
-    );
-    expect(
-      find.byKey(const ValueKey<String>('timeline-cell-layer-2-0')),
-      findsOneWidget,
-    );
+    expect(timelineCellInWindow(tester, 'layer-1', 0), isTrue);
+    expect(timelineCellInWindow(tester, 'layer-2', 0), isTrue);
   });
 
   testWidgets('tapping frame ruler header selects zero-based frame index', (
@@ -952,23 +928,16 @@ void main() {
     final header = find.byKey(
       const ValueKey<String>('timeline-frame-header-10'),
     );
-    final cell = find.byKey(const ValueKey<String>('timeline-cell-layer-1-10'));
-    final leadingSpacer = find.byKey(
-      const ValueKey<String>('timeline-frame-row-leading-spacer-layer-1'),
-    );
 
     expect(header, findsOneWidget);
-    expect(cell, findsOneWidget);
+    expect(timelineCellInWindow(tester, 'layer-1', 10), isTrue);
+    final cellRect = timelineCellGlobalRect(tester, 'layer-1', 10);
     expect(
-      tester.getTopLeft(cell).dx,
+      cellRect.left,
       moreOrLessEquals(tester.getTopLeft(header).dx, epsilon: 1),
     );
     expect(
-      tester.getTopLeft(leadingSpacer).dx,
-      lessThanOrEqualTo(tester.getTopLeft(frameGridArea).dx + 1),
-    );
-    expect(
-      tester.getTopLeft(cell).dx,
+      cellRect.left,
       lessThan(tester.getTopRight(frameGridArea).dx),
     );
   });
@@ -1036,23 +1005,23 @@ void main() {
           'timeline-selected-exposure-range-outline-layer-1',
         ),
       );
-      final firstCell = find.byKey(
-        const ValueKey<String>('timeline-cell-layer-1-10'),
-      );
-      final lastCell = find.byKey(
-        const ValueKey<String>('timeline-cell-layer-1-12'),
-      );
 
       expect(outline, findsOneWidget);
-      expect(firstCell, findsOneWidget);
-      expect(lastCell, findsOneWidget);
+      expect(timelineCellInWindow(tester, 'layer-1', 10), isTrue);
+      expect(timelineCellInWindow(tester, 'layer-1', 12), isTrue);
       expect(
         tester.getTopLeft(outline).dx,
-        moreOrLessEquals(tester.getTopLeft(firstCell).dx, epsilon: 1),
+        moreOrLessEquals(
+          timelineCellGlobalRect(tester, 'layer-1', 10).left,
+          epsilon: 1,
+        ),
       );
       expect(
         tester.getTopRight(outline).dx,
-        moreOrLessEquals(tester.getTopRight(lastCell).dx, epsilon: 1),
+        moreOrLessEquals(
+          timelineCellGlobalRect(tester, 'layer-1', 12).right,
+          epsilon: 1,
+        ),
       );
     },
   );
@@ -1099,12 +1068,8 @@ void main() {
       const cellKey = ValueKey<String>('timeline-cell-layer-1-45');
       await _scrollFrameGridUntilKeyVisible(tester, cellKey);
 
-      final cell = find.byKey(cellKey);
-      expect(cell, findsOneWidget);
-      expect(
-        find.descendant(of: cell, matching: find.text('A45')),
-        findsOneWidget,
-      );
+      expect(timelineCellInWindow(tester, 'layer-1', 45), isTrue);
+      expect(timelineCellModel(tester, 'layer-1', 45).glyph, 'A45');
     },
   );
 
@@ -1127,10 +1092,7 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      expect(
-        find.byKey(const ValueKey<String>('timeline-cell-layer-1-45')),
-        findsNothing,
-      );
+      expect(timelineCellInWindow(tester, 'layer-1', 45), isFalse);
       expect(find.text('A45'), findsNothing);
 
       await tester.pumpWidget(
@@ -1145,12 +1107,8 @@ void main() {
       const cellKey = ValueKey<String>('timeline-cell-layer-1-45');
       await _scrollFrameGridUntilKeyVisible(tester, cellKey);
 
-      final cell = find.byKey(cellKey);
-      expect(cell, findsOneWidget);
-      expect(
-        find.descendant(of: cell, matching: find.text('A45')),
-        findsOneWidget,
-      );
+      expect(timelineCellInWindow(tester, 'layer-1', 45), isTrue);
+      expect(timelineCellModel(tester, 'layer-1', 45).glyph, 'A45');
     },
   );
 
@@ -1169,12 +1127,12 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      final outsidePlaybackCell = find.byKey(
-        const ValueKey<String>('timeline-cell-layer-1-24'),
+      expect(timelineCellInWindow(tester, 'layer-1', 24), isTrue);
+      expect(
+        timelineCellGlobalRect(tester, 'layer-1', 24),
+        _isInsideTestRoot,
       );
-      expect(outsidePlaybackCell, findsOneWidget);
-      expect(tester.getRect(outsidePlaybackCell), _isInsideTestRoot);
-      await tester.tap(outsidePlaybackCell);
+      await tapTimelineCell(tester, 'layer-1', 24);
 
       await tester.drag(
         find.byKey(const ValueKey<String>('timeline-frame-scroll-viewport')),
@@ -1348,9 +1306,7 @@ void main() {
       ),
     );
 
-    await tester.tap(
-      find.byKey(const ValueKey<String>('timeline-cell-layer-1-3')),
-    );
+    await tapTimelineCell(tester, 'layer-1', 3);
 
     expect(selectedLayerId, const LayerId('layer-1'));
     expect(selectedFrameIndex, 3);
@@ -1394,7 +1350,8 @@ void main() {
       ),
     );
 
-    expect(find.text('○'), findsOneWidget);
+    expect(timelineCellModel(tester, 'layer-2', 2).glyph, '○');
+    expect(timelineCellModel(tester, 'layer-2', 3).glyph, isNot('○'));
   });
 
   testWidgets('shows held exposure marker', (tester) async {
@@ -1407,7 +1364,10 @@ void main() {
       ),
     );
 
-    expect(find.bySemanticsLabel('held exposure'), findsOneWidget);
+    expect(
+      timelineCellModel(tester, 'layer-2', 2).semanticsLabel,
+      'held exposure',
+    );
   });
 
   testWidgets('only the first cell of an empty run shows the timesheet X', (
@@ -1415,20 +1375,8 @@ void main() {
   ) async {
     await tester.pumpWidget(_grid());
 
-    final runStart = find.byKey(
-      const ValueKey<String>('timeline-cell-layer-2-0'),
-    );
-    final runBody = find.byKey(
-      const ValueKey<String>('timeline-cell-layer-2-2'),
-    );
-    expect(
-      find.descendant(of: runStart, matching: find.text('X')),
-      findsOneWidget,
-    );
-    expect(
-      find.descendant(of: runBody, matching: find.text('X')),
-      findsNothing,
-    );
+    expect(timelineCellModel(tester, 'layer-2', 0).glyph, 'X');
+    expect(timelineCellModel(tester, 'layer-2', 2).glyph, '');
   });
 
   testWidgets('shows inbetween mark inside a hold', (tester) async {
@@ -1441,10 +1389,11 @@ void main() {
       ),
     );
 
-    final cell = find.byKey(const ValueKey<String>('timeline-cell-layer-2-2'));
-    expect(find.descendant(of: cell, matching: find.text('●')), findsOneWidget);
-    expect(find.descendant(of: cell, matching: find.text('○')), findsNothing);
-    expect(find.bySemanticsLabel('inbetween mark'), findsOneWidget);
+    expect(timelineCellModel(tester, 'layer-2', 2).glyph, '●');
+    expect(
+      timelineCellModel(tester, 'layer-2', 2).semanticsLabel,
+      'inbetween mark',
+    );
   });
 
   testWidgets('shows inbetween mark on an empty cell', (tester) async {
@@ -1457,15 +1406,18 @@ void main() {
       ),
     );
 
-    expect(find.text('●'), findsOneWidget);
-    expect(find.bySemanticsLabel('inbetween mark'), findsOneWidget);
+    expect(timelineCellModel(tester, 'layer-2', 2).glyph, '●');
+    expect(
+      timelineCellModel(tester, 'layer-2', 2).semanticsLabel,
+      'inbetween mark',
+    );
   });
 
   testWidgets('empty cells show no drawing markers', (tester) async {
     await tester.pumpWidget(_grid());
 
-    expect(find.text('○'), findsNothing);
-    expect(find.bySemanticsLabel('held exposure'), findsNothing);
+    expect(timelineCellModel(tester, 'layer-1', 2).glyph, isNot('○'));
+    expect(timelineCellModel(tester, 'layer-1', 2).semanticsLabel, isNull);
   });
 
   testWidgets('playhead appears for visible current frame', (tester) async {
@@ -1581,9 +1533,7 @@ void main() {
       ),
     );
 
-    await tester.tap(
-      find.byKey(const ValueKey<String>('timeline-cell-layer-1-3')),
-    );
+    await tapTimelineCell(tester, 'layer-1', 3);
 
     expect(selectedLayerId, const LayerId('layer-1'));
     expect(selectedFrameIndex, 3);
@@ -1633,12 +1583,7 @@ void main() {
       ),
     );
 
-    final cell = find.byKey(const ValueKey<String>('timeline-cell-layer-2-2'));
-    expect(
-      find.descendant(of: cell, matching: find.text('A1')),
-      findsOneWidget,
-    );
-    expect(find.descendant(of: cell, matching: find.text('○')), findsNothing);
+    expect(timelineCellModel(tester, 'layer-2', 2).glyph, 'A1');
 
     await tester.pumpWidget(
       _grid(
@@ -1653,8 +1598,7 @@ void main() {
       ),
     );
 
-    expect(find.descendant(of: cell, matching: find.text('●')), findsOneWidget);
-    expect(find.descendant(of: cell, matching: find.text('A1')), findsNothing);
+    expect(timelineCellModel(tester, 'layer-2', 2).glyph, '●');
   });
 
   testWidgets('marks only the active current cell as selected', (tester) async {
@@ -1667,22 +1611,14 @@ void main() {
     expect(ring, findsOneWidget);
     expect(
       tester.getTopLeft(ring),
-      tester.getTopLeft(
-        find.byKey(const ValueKey<String>('timeline-cell-layer-1-2')),
-      ),
+      timelineCellGlobalRect(tester, 'layer-1', 2).topLeft,
     );
     expect(
       find.byKey(const ValueKey<String>('timeline-selected-layer')),
       findsOneWidget,
     );
-    expect(
-      find.byKey(const ValueKey<String>('timeline-cell-layer-1-2')),
-      findsOneWidget,
-    );
-    expect(
-      find.byKey(const ValueKey<String>('timeline-cell-layer-2-2')),
-      findsOneWidget,
-    );
+    expect(timelineCellInWindow(tester, 'layer-1', 2), isTrue);
+    expect(timelineCellInWindow(tester, 'layer-2', 2), isTrue);
   });
 
   testWidgets('selected cell preserves symbol display priority', (
@@ -1696,8 +1632,7 @@ void main() {
             : TimelineCellExposureState.uncovered,
       ),
     );
-    var cell = find.byKey(const ValueKey<String>('timeline-cell-layer-1-0'));
-    expect(find.descendant(of: cell, matching: find.text('○')), findsOneWidget);
+    expect(timelineCellModel(tester, 'layer-1', 0).glyph, '○');
 
     await tester.pumpWidget(
       _grid(
@@ -1707,8 +1642,7 @@ void main() {
             : TimelineCellExposureState.uncovered,
       ),
     );
-    cell = find.byKey(const ValueKey<String>('timeline-cell-layer-1-0'));
-    expect(find.descendant(of: cell, matching: find.text('X')), findsOneWidget);
+    expect(timelineCellModel(tester, 'layer-1', 0).glyph, 'X');
 
     await tester.pumpWidget(
       _grid(
@@ -1722,12 +1656,7 @@ void main() {
             : null,
       ),
     );
-    cell = find.byKey(const ValueKey<String>('timeline-cell-layer-1-0'));
-    expect(
-      find.descendant(of: cell, matching: find.text('A1')),
-      findsOneWidget,
-    );
-    expect(find.descendant(of: cell, matching: find.text('○')), findsNothing);
+    expect(timelineCellModel(tester, 'layer-1', 0).glyph, 'A1');
 
     await tester.pumpWidget(
       _grid(
@@ -1741,10 +1670,7 @@ void main() {
             : null,
       ),
     );
-    cell = find.byKey(const ValueKey<String>('timeline-cell-layer-1-0'));
-    expect(find.descendant(of: cell, matching: find.text('●')), findsOneWidget);
-    expect(find.descendant(of: cell, matching: find.text('A1')), findsNothing);
-    expect(find.descendant(of: cell, matching: find.text('○')), findsNothing);
+    expect(timelineCellModel(tester, 'layer-1', 0).glyph, '●');
   });
 
   testWidgets('drawing exposure cells keep divider-safe block radius rules', (
@@ -1776,13 +1702,6 @@ void main() {
     expect(startDecoration.border, isA<Border>());
     expect(middleDecoration.border, isA<Border>());
     expect(endDecoration.border, isA<Border>());
-    expect(
-      find.descendant(
-        of: find.byKey(const ValueKey<String>('timeline-cell-layer-1-1')),
-        matching: find.byType(CustomPaint),
-      ),
-      findsNothing,
-    );
   });
 
   testWidgets('block cells keep divider-safe radius rules', (tester) async {
@@ -2094,10 +2013,7 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      expect(
-        find.byKey(const ValueKey<String>('timeline-cell-layer-1-6')),
-        findsNothing,
-      );
+      expect(timelineCellInWindow(tester, 'layer-1', 6), isFalse);
       _expectSelectedExposureRangeOutline(tester, 'layer-1', const [
         17,
         18,
@@ -2133,10 +2049,7 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      expect(
-        find.byKey(const ValueKey<String>('timeline-cell-layer-1-16')),
-        findsNothing,
-      );
+      expect(timelineCellInWindow(tester, 'layer-1', 16), isFalse);
       _expectSelectedExposureRangeOutline(tester, 'layer-1', const [
         22,
         23,
@@ -2162,10 +2075,7 @@ void main() {
 
       await tester.pump();
 
-      expect(
-        find.byKey(const ValueKey<String>('timeline-cell-layer-1-16')),
-        findsNothing,
-      );
+      expect(timelineCellInWindow(tester, 'layer-1', 16), isFalse);
       _expectSelectedExposureRangeOutline(tester, 'layer-1', const [
         22,
         23,
@@ -2288,13 +2198,10 @@ void main() {
     final headerZero = find.byKey(
       const ValueKey<String>('timeline-frame-header-0'),
     );
-    final cellZero = find.byKey(
-      const ValueKey<String>('timeline-cell-layer-1-0'),
-    );
 
     expect(tester.getSize(content).width, closeTo(expectedContentWidth, 1.0));
     expect(
-      tester.getTopLeft(cellZero).dx,
+      timelineCellGlobalRect(tester, 'layer-1', 0).left,
       closeTo(tester.getTopLeft(headerZero).dx, 1.0),
     );
     _expectSelectedExposureRangeOutline(tester, 'layer-1', const [2, 3, 4]);
@@ -2440,9 +2347,10 @@ void main() {
 }
 
 BoxDecoration _cellDecoration(WidgetTester tester, String key) {
-  final inkWell = tester.widget<InkWell>(find.byKey(ValueKey<String>(key)));
-  final container = inkWell.child! as Container;
-  return container.decoration! as BoxDecoration;
+  // Drawing-row cells are PAINTED now (UI-R9 #12b): the decoration reads
+  // resolve through the painter probe instead of a widget tree.
+  final cell = parseTimelineCellKey(key);
+  return timelineCellDecoration(tester, cell.layerId, cell.frameIndex);
 }
 
 void _expectSelectedExposureRangeCells(
@@ -2496,10 +2404,10 @@ void _expectSelectedExposureRangeOutline(
   final expectedWidth = frameIndices.length * _testMetrics.frameCellWidth;
   expect(positioned.width, expectedWidth);
 
-  final firstCellRect = tester.getRect(
-    find.byKey(
-      ValueKey<String>('timeline-cell-$layerId-${frameIndices.first}'),
-    ),
+  final firstCellRect = timelineCellGlobalRect(
+    tester,
+    layerId,
+    frameIndices.first,
   );
   final outlineRect = tester.getRect(outlineFinder);
   expect(outlineRect.left, closeTo(firstCellRect.left, 1.0));

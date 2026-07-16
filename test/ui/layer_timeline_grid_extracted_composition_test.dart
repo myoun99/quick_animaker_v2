@@ -79,8 +79,8 @@ void main() {
 
       _expectKeyOnce('timeline-frame-row-area-layer-1');
       _expectKeyOnce('timeline-frame-row-area-layer-2');
-      _expectKeyOnce('timeline-cell-layer-1-0');
-      _expectKeyOnce('timeline-cell-layer-2-0');
+      _expectKeyOnce('timeline-row-cells-layer-1');
+      _expectKeyOnce('timeline-row-cells-layer-2');
 
       for (final key in _structuralKeys) {
         _expectKeyOnce(key);

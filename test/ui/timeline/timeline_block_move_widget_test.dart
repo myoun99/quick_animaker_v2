@@ -8,6 +8,8 @@ import 'package:quick_animaker_v2/src/models/layer_id.dart';
 import 'package:quick_animaker_v2/src/models/timeline_coverage.dart';
 import 'package:quick_animaker_v2/src/models/timeline_exposure.dart';
 import 'package:quick_animaker_v2/src/models/timeline_frame_range.dart';
+
+import 'timeline_cell_probe.dart';
 import 'package:quick_animaker_v2/src/ui/timeline/layer_timeline_grid.dart';
 import 'package:quick_animaker_v2/src/ui/timeline/timeline_cell_exposure_state.dart';
 import 'package:quick_animaker_v2/src/ui/timeline/timeline_frame_range_gesture.dart';
@@ -265,10 +267,7 @@ void main() {
       ),
     );
 
-    await tester.tap(
-      find.byKey(const ValueKey<String>('timeline-cell-layer-a-1')),
-      warnIfMissed: false,
-    );
+    await tapTimelineCell(tester, 'layer-a', 1);
     expect(selectedFrames, [1]);
     expect(cleared, 1);
   });
