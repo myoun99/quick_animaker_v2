@@ -39,20 +39,41 @@ void main() {
     expect(() => s.requireActiveCut, throwsStateError);
   });
 
-  test('a gap scrub RELEASE commits the no-cut state (per-move scrubs keep '
-      'the cut for cheap parking)', () {
+  test('a gap scrub deselects the cut IMMEDIATELY (UI-R10 #13): the empty '
+      'states show during the drag, the release is a no-op backstop', () {
     final (s, first, _, aEnd) = gappedSession();
     addTearDown(s.dispose);
     s.selectCut(first);
 
     scrubStoryboardGlobalFrame(s, aEnd + 2);
-    expect(s.activeCutId, first, reason: 'mid-drag: parking only');
+    expect(s.activeCutId, isNull, reason: 'mid-drag already no-cut');
     expect(s.gapParkedGlobalFrame, aEnd + 2);
 
     commitStoryboardScrub(s);
-    expect(s.activeCutId, isNull, reason: 'the release deselects');
+    expect(s.activeCutId, isNull);
     expect(s.gapParkedGlobalFrame, aEnd + 2, reason: 'parking survives');
     expect(storyboardPlayheadFrame(s), aEnd + 2);
+  });
+
+  test('selecting a cut FROM the gap lands on ITS first frame '
+      '(UI-R10 #14) — no stale gap-global cursor', () {
+    final (s, first, second, aEnd) = gappedSession();
+    addTearDown(s.dispose);
+    s.selectCut(first);
+    s.selectFrameIndex(3);
+    s.selectGlobalFrame(aEnd + 1); // Park in the gap.
+    expect(s.activeCutId, isNull);
+
+    s.selectCut(second);
+
+    expect(s.activeCutId, second);
+    expect(s.editingFrameCursor.value, 0, reason: 'index 1 (local 0)');
+    expect(s.gapParkedGlobalFrame, isNull, reason: 'parking cleared');
+    expect(
+      storyboardPlayheadFrame(s),
+      aEnd + 4,
+      reason: 'the playhead sits on the cut start, not in the gap',
+    );
   });
 
   test('cut-scoped commands stand down in the gap state instead of '

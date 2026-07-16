@@ -1585,11 +1585,11 @@ Layer? _trackSeAt(Track track, int slot) =>
     slot >= 0 && slot < track.seLayers.length ? track.seLayers[slot] : null;
 
 /// The [slot]th SE layer for the rail's timeline-parity controls; null
-/// while the active cut lives on another track (the controls then hide 窶・
-/// same stand-down as before, though the layer identity no longer depends
-/// on the cut).
+/// only while the active cut lives on ANOTHER track. A GAP (no active
+/// cut) keeps the controls up (UI-R10 #12): the SE rows are TRACK-owned —
+/// standing in a gap merely means no cut is selected.
 Layer? _activeSlotLayerOf(Track track, CutId? activeCutId, int slot) {
-  if (activeCutId == null ||
+  if (activeCutId != null &&
       !track.cuts.any((cut) => cut.id == activeCutId)) {
     return null;
   }
