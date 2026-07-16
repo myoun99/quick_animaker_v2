@@ -143,6 +143,7 @@ class TimelineFrameCellsRow extends StatelessWidget {
             frameCellExtent: metrics.frameCellWidth,
             crossAxisExtent: metrics.layerRowHeight,
             axis: Axis.horizontal,
+            framesPerSecond: projectFps,
             exposureStateForLayer: exposureStateForLayer,
             frameNameForLayer: frameNameForLayer,
             onSelectLayer: onSelectLayer,

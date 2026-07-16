@@ -72,6 +72,7 @@ class XSheetTimelineGrid extends StatefulWidget {
     this.instructionDefById,
     this.audioPeaksFor,
     this.projectFps = 24,
+    this.showSeconds = false,
     this.onRemoveAudioClip,
     this.onDropMediaAsset,
     this.onSetAudioClipOffset,
@@ -147,6 +148,10 @@ class XSheetTimelineGrid extends StatefulWidget {
   /// Waveform peaks for SE columns' audio clips + the removal hook.
   final AudioPeaks? Function(String filePath)? audioPeaksFor;
   final int projectFps;
+
+  /// The frame rail's number mode (UI-R10 #27): seconds display repeats
+  /// 1..fps per second instead of absolute frame numbers.
+  final bool showSeconds;
   final void Function(LayerId layerId, int clipIndex)? onRemoveAudioClip;
 
   /// Links a media-browser asset to an SE block (drag-drop).
@@ -778,6 +783,10 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
                                                   metrics: _metrics,
                                                   onSelectFrame:
                                                       _selectClampedFrameFromRail,
+                                                  framesPerSecond:
+                                                      widget.projectFps,
+                                                  showSeconds:
+                                                      widget.showSeconds,
                                                   isFrameCached:
                                                       widget.isFrameCached,
                                                 ),
@@ -1111,6 +1120,8 @@ class _XSheetFrameNumberRail extends StatelessWidget {
     required this.trailingFrameSpacerHeight,
     required this.metrics,
     required this.onSelectFrame,
+    this.framesPerSecond = 24,
+    this.showSeconds = false,
     this.isFrameCached,
   });
 
@@ -1122,6 +1133,8 @@ class _XSheetFrameNumberRail extends StatelessWidget {
   final double trailingFrameSpacerHeight;
   final TimelineGridMetrics metrics;
   final ValueChanged<int> onSelectFrame;
+  final int framesPerSecond;
+  final bool showSeconds;
 
   /// Whether a frame's playback composite is warmed; drawn as the green
   /// strip along the cell edge that faces the frame cells.
@@ -1151,6 +1164,8 @@ class _XSheetFrameNumberRail extends StatelessWidget {
                 (isFrameCached?.call(frameIndex) ?? false),
             metrics: metrics,
             onSelectFrame: onSelectFrame,
+            framesPerSecond: framesPerSecond,
+            showSeconds: showSeconds,
           ),
         SizedBox(
           key: const ValueKey<String>('xsheet-frame-rail-trailing-spacer'),
@@ -1170,6 +1185,8 @@ class _FrameNumberCell extends StatelessWidget {
     required this.cached,
     required this.metrics,
     required this.onSelectFrame,
+    this.framesPerSecond = 24,
+    this.showSeconds = false,
   });
 
   final int frameIndex;
@@ -1178,6 +1195,8 @@ class _FrameNumberCell extends StatelessWidget {
   final bool cached;
   final TimelineGridMetrics metrics;
   final ValueChanged<int> onSelectFrame;
+  final int framesPerSecond;
+  final bool showSeconds;
 
   @override
   Widget build(BuildContext context) {
@@ -1211,9 +1230,30 @@ class _FrameNumberCell extends StatelessWidget {
         // transposed twin of the horizontal header's bottom-edge strip.
         child: Stack(
           children: [
+            // Seconds column on the left (UI-R10 #27): the 1-based second
+            // prints bold on its boundary row; the frame number reads
+            // absolute in frame mode, the 1..fps cycle in seconds mode.
+            if (frameIndex % framesPerSecond == 0)
+              Positioned(
+                left: 3,
+                top: 0,
+                bottom: 0,
+                child: Center(
+                  child: Text(
+                    '${frameIndex ~/ framesPerSecond + 1}',
+                    style: TextStyle(
+                      fontSize: 9,
+                      fontWeight: FontWeight.w700,
+                      color: colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                ),
+              ),
             Center(
               child: Text(
-                '${frameIndex + 1}',
+                showSeconds
+                    ? '${frameIndex % framesPerSecond + 1}'
+                    : '${frameIndex + 1}',
                 style: TextStyle(
                   color: outsidePlaybackRange
                       ? colorScheme.onSurfaceVariant.withValues(alpha: 0.55)
@@ -1341,6 +1381,7 @@ class _XSheetFrameCellsColumn extends StatelessWidget {
               frameCellExtent: metrics.frameCellWidth,
               crossAxisExtent: metrics.layerRowHeight,
               axis: Axis.vertical,
+              framesPerSecond: projectFps,
               exposureStateForLayer: exposureStateForLayer,
               frameNameForLayer: frameNameForLayer,
               onSelectLayer: onSelectLayer,
