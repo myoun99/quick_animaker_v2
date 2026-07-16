@@ -4,9 +4,11 @@ import 'package:quick_animaker_v2/src/ui/timeline/timeline_frame_range_policy.da
 
 void main() {
   group('TimelineFrameRange', () {
-    test('defines default cut and safety frame counts', () {
+    test('defines default cut and safety frame counts (the safety tail is '
+        'RETIRED to zero — UI-R10 #23, the endless axis owns the past-cut '
+        'frames)', () {
       expect(defaultCutDurationFrames, 24);
-      expect(defaultTimelineSafetyFrameCount, 24);
+      expect(defaultTimelineSafetyFrameCount, 0);
     });
 
     test('computes visible range from playback plus safety frames', () {

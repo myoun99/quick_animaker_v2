@@ -460,14 +460,16 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
       localX: localY,
       horizontalScrollOffset: _lastEffectiveFrameScrollOffset,
       frameCellWidth: _metrics.frameCellWidth,
-      visibleFrameCount: _visibleFrameCount,
+      visibleFrameCount: _renderedFrameCount,
     );
   }
 
   void _selectClampedFrameFromRail(int frameIndex) {
+    // The endless runway IS the selectable tail now (UI-R10 #23 retired
+    // the fixed safety frames): clamp against the BUILT extent.
     final clampedFrameIndex = clampFrameIndex(
       frameIndex: frameIndex,
-      visibleFrameCount: _visibleFrameCount,
+      visibleFrameCount: _renderedFrameCount,
     );
     if (clampedFrameIndex == null ||
         clampedFrameIndex == _lastRailScrubbedFrameIndex) {
@@ -493,12 +495,42 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
     }
 
     final localY = renderObject.globalToLocal(globalPosition).dy;
+    _autoPanRailEdge(renderObject, localY);
     final frameIndex = _frameIndexForRailLocalY(localY);
     if (frameIndex == null) {
       return;
     }
 
     _selectClampedFrameFromRail(frameIndex);
+  }
+
+  /// Edge auto-pan (UI-R10 #24): a rail scrub past the viewport edge
+  /// scrolls the frame axis under it — with the endless growth feeding
+  /// rows ahead, the rail drag alone reaches ANY frame (the scrollbar
+  /// clamps at the built extent by design).
+  void _autoPanRailEdge(RenderBox viewport, double localY) {
+    if (!_frameScrollController.hasClients || !viewport.hasSize) {
+      return;
+    }
+    const edge = 24.0;
+    final height = viewport.size.height;
+    double delta = 0;
+    if (localY > height - edge) {
+      delta = localY - (height - edge);
+    } else if (localY < edge) {
+      delta = localY - edge;
+    }
+    if (delta == 0) {
+      return;
+    }
+    final position = _frameScrollController.position;
+    final target = (position.pixels + delta).clamp(
+      0.0,
+      position.maxScrollExtent,
+    );
+    if (target != position.pixels) {
+      _frameScrollController.jumpTo(target);
+    }
   }
 
   void _resetRailScrubTracking() {

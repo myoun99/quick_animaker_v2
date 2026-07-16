@@ -1121,11 +1121,16 @@ void main() {
         _grid(onSelectFrame: selectedFrameIndices.add, playbackFrameCount: 24),
       );
 
-      await tester.drag(
-        find.byKey(const ValueKey<String>('timeline-frame-scroll-viewport')),
-        const Offset(-900, 0),
-      );
-      await tester.pumpAndSettle();
+      // The endless axis grows per scroll (no safety tail anymore,
+      // UI-R10 #23) — step the drags so growth keeps feeding frames and
+      // the target cells land INSIDE the test root.
+      for (final step in const [-500.0, -400.0]) {
+        await tester.drag(
+          find.byKey(const ValueKey<String>('timeline-frame-scroll-viewport')),
+          Offset(step, 0),
+        );
+        await tester.pumpAndSettle();
+      }
 
       expect(timelineCellInWindow(tester, 'layer-1', 24), isTrue);
       expect(
@@ -1134,11 +1139,13 @@ void main() {
       );
       await tapTimelineCell(tester, 'layer-1', 24);
 
-      await tester.drag(
-        find.byKey(const ValueKey<String>('timeline-frame-scroll-viewport')),
-        const Offset(-900, 0),
-      );
-      await tester.pumpAndSettle();
+      for (final step in const [-400.0, -400.0]) {
+        await tester.drag(
+          find.byKey(const ValueKey<String>('timeline-frame-scroll-viewport')),
+          Offset(step, 0),
+        );
+        await tester.pumpAndSettle();
+      }
 
       final outsidePlaybackHeader = find.byKey(
         const ValueKey<String>('timeline-frame-header-40'),
@@ -1914,12 +1921,20 @@ void main() {
   testWidgets(
     'selected outline can continue beyond playback duration to visible range',
     (tester) async {
+      // The retired safety tail (UI-R10 #23) means past-the-cut cells come
+      // from the endless axis; the fixture pins them via the minimum
+      // visible cells instead.
+      const metrics = TimelineGridMetrics(
+        frameCellWidth: 48,
+        layerRowHeight: 52,
+        minimumVisibleFrameCells: 48,
+      );
       final frameRange = TimelineFrameRange.fromPlaybackDuration(
         playbackFrameCount: 24,
-        minimumVisibleFrameCells: _testMetrics.minimumVisibleFrameCells,
+        minimumVisibleFrameCells: metrics.minimumVisibleFrameCells,
       );
       final frameContentWidth =
-          frameRange.visibleFrameCount * _testMetrics.frameCellWidth;
+          frameRange.visibleFrameCount * metrics.frameCellWidth;
       final testWidth = frameContentWidth + 600;
 
       await tester.binding.setSurfaceSize(Size(testWidth, 320));
@@ -1928,6 +1943,7 @@ void main() {
       await tester.pumpWidget(
         _grid(
           width: testWidth,
+          metrics: metrics,
           currentFrameIndex: 26,
           playbackFrameCount: 24,
           exposureStateForLayer: (layer, frameIndex) {
@@ -1952,12 +1968,17 @@ void main() {
   testWidgets(
     'selected held outline uses displayed range rather than selected frame fallback',
     (tester) async {
+      const metrics = TimelineGridMetrics(
+        frameCellWidth: 48,
+        layerRowHeight: 52,
+        minimumVisibleFrameCells: 48,
+      );
       final frameRange = TimelineFrameRange.fromPlaybackDuration(
         playbackFrameCount: 24,
-        minimumVisibleFrameCells: _testMetrics.minimumVisibleFrameCells,
+        minimumVisibleFrameCells: metrics.minimumVisibleFrameCells,
       );
       final frameContentWidth =
-          frameRange.visibleFrameCount * _testMetrics.frameCellWidth;
+          frameRange.visibleFrameCount * metrics.frameCellWidth;
       final testWidth = frameContentWidth + 600;
 
       await tester.binding.setSurfaceSize(Size(testWidth, 320));
@@ -1966,6 +1987,7 @@ void main() {
       await tester.pumpWidget(
         _grid(
           width: testWidth,
+          metrics: metrics,
           currentFrameIndex: 26,
           playbackFrameCount: 24,
           exposureStateForLayer: (layer, frameIndex) {
@@ -2432,6 +2454,7 @@ Widget _grid({
   int currentFrameIndex = 0,
   int playbackFrameCount = 12,
   double width = 900,
+  TimelineGridMetrics metrics = _testMetrics,
   List<Layer>? layers,
   TimelineCellExposureState Function(Layer layer, int frameIndex)?
   exposureStateForLayer,
@@ -2454,7 +2477,7 @@ Widget _grid({
           // Classic geometry: this file's pixel oracles (taps, scroll
           // offsets, virtualization windows) assume 48×52 cells; the slim
           // default is pinned in timeline_grid_metrics_test.
-          metrics: _testMetrics,
+          metrics: metrics,
           playbackFrameCount: playbackFrameCount,
           exposureStateForLayer:
               exposureStateForLayer ??
