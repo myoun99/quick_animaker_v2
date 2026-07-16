@@ -11,6 +11,7 @@ import 'brush/brush_tool_state.dart';
 import 'dialogs/timesheet_info_dialog.dart';
 import 'editor_session_manager.dart';
 import 'timesheet/timesheet_document_painter.dart';
+import 'timesheet/timesheet_drag_preview_painter.dart';
 import 'timesheet/timesheet_header_edit_layer.dart';
 import 'timesheet/timesheet_ink_controller.dart';
 import 'timesheet/timesheet_ink_layer.dart';
@@ -398,6 +399,29 @@ class _TimesheetTabHostState extends State<TimesheetTabHost> {
                                     session.frameSeekCommitted,
                                     session.playback.globalFrameIndexListenable,
                                   ]),
+                                ),
+                                child: const SizedBox.expand(),
+                              ),
+                            ),
+                          ),
+                        ),
+                        // The LIVE drag overlay (UI-R9 #7): timeline drags
+                        // re-print the affected ACTION columns from the
+                        // preview layers per step — repaint-only through
+                        // the drag channel; the sheet document above stays
+                        // stale until the release commits.
+                        Positioned.fill(
+                          child: IgnorePointer(
+                            child: RepaintBoundary(
+                              child: CustomPaint(
+                                key: const ValueKey<String>(
+                                  'timesheet-drag-preview-overlay',
+                                ),
+                                painter: TimesheetDragPreviewPainter(
+                                  document: document,
+                                  layout: layout,
+                                  viewport: viewport,
+                                  dragPreview: session.dragPreview,
                                 ),
                                 child: const SizedBox.expand(),
                               ),

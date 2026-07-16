@@ -2,6 +2,7 @@ import 'camera_instruction.dart';
 import 'cut.dart';
 import 'frame_id.dart';
 import 'layer.dart';
+import 'layer_id.dart';
 import 'layer_kind.dart';
 import 'timesheet_info.dart';
 import 'track_se_window.dart';
@@ -116,6 +117,7 @@ class TimesheetColumn {
     required this.label,
     required this.cells,
     this.layerName,
+    this.layerId,
   });
 
   final TimesheetColumnKind kind;
@@ -127,6 +129,11 @@ class TimesheetColumn {
 
   /// The backing layer's name (action/SE slots only); null for empty slots.
   final String? layerName;
+
+  /// The backing layer's id (action/SE slots only) — the timeline drag
+  /// preview overlay matches its per-layer previews to columns by this
+  /// (UI-R9 #7).
+  final LayerId? layerId;
 
   final List<TimesheetCell> cells;
 }
@@ -263,8 +270,11 @@ class TimesheetDocument {
           layerName: slot < animationLayers.length
               ? animationLayers[slot].name
               : null,
+          layerId: slot < animationLayers.length
+              ? animationLayers[slot].id
+              : null,
           cells: slot < animationLayers.length
-              ? _layerCells(
+              ? timesheetLayerCells(
                   layer: animationLayers[slot],
                   rowCount: rowCount,
                   playbackFrameCount: playbackFrameCount,
@@ -278,8 +288,9 @@ class TimesheetDocument {
           // storyboard rows show (W3 ordering unification).
           label: slot < seLayers.length ? seLayers[slot].name : 'S${slot + 1}',
           layerName: slot < seLayers.length ? seLayers[slot].name : null,
+          layerId: slot < seLayers.length ? seLayers[slot].id : null,
           cells: slot < seLayers.length
-              ? _layerCells(
+              ? timesheetLayerCells(
                   layer: seLayers[slot],
                   rowCount: rowCount,
                   playbackFrameCount: playbackFrameCount,
@@ -407,7 +418,9 @@ class TimesheetDocument {
   /// drawing starts carry the cel number, covered rows hold, block-owned
   /// inbetween dots (breakdownOffsets) show ● on their held rows, and the
   /// FIRST row of each uncovered run inside the playback range gets the X
-  /// (same rule as the timeline grids).
+  /// (same rule as the timeline grids). Public as [timesheetLayerCells]
+  /// so the drag preview overlay derives one column from a preview layer
+  /// without rebuilding the document (UI-R9 #7).
   static List<TimesheetCell> _layerCells({
     required Layer layer,
     required int rowCount,
@@ -576,4 +589,24 @@ String timesheetMemoInstructionLine(
   final label =
       '${event.displayLabel(def)}${memo == null || memo.isEmpty ? '' : ' $memo'}';
   return label.isEmpty ? endpoints : '$endpoints $label';
+}
+
+/// One layer's sheet-column cells, derived straight from the (possibly
+/// PREVIEW) layer — the drag overlay's per-column source (UI-R9 #7). The
+/// same derivation [TimesheetDocument.fromCut] uses for its action/SE
+/// columns.
+List<TimesheetCell> timesheetLayerCells({
+  required Layer layer,
+  required int rowCount,
+  required int playbackFrameCount,
+  bool markEmptyRuns = true,
+  bool includeSeNames = false,
+}) {
+  return TimesheetDocument._layerCells(
+    layer: layer,
+    rowCount: rowCount,
+    playbackFrameCount: playbackFrameCount,
+    markEmptyRuns: markEmptyRuns,
+    includeSeNames: includeSeNames,
+  );
 }
