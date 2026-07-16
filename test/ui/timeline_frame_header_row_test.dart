@@ -107,7 +107,10 @@ void main() {
     expect(find.text('6'), findsOneWidget);
   });
 
-  testWidgets('tapping a frame header selects that frame', (tester) async {
+  testWidgets('header cells are PASSIVE (UI-R10 #25): no per-cell tap '
+      'handler — selection rides the grid ruler scrub listener', (
+    tester,
+  ) async {
     int? selectedFrameIndex;
 
     await pumpHeaderRow(
@@ -121,9 +124,10 @@ void main() {
 
     await tester.tap(
       find.byKey(const ValueKey<String>('timeline-frame-header-4')),
+      warnIfMissed: false,
     );
 
-    expect(selectedFrameIndex, 4);
+    expect(selectedFrameIndex, isNull);
   });
 
   testWidgets('current frame header keeps stable key behavior', (tester) async {

@@ -74,7 +74,6 @@ class TimelineFrameHeaderRow extends StatelessWidget {
             framesPerSecond: framesPerSecond,
             showSeconds: showSeconds,
             metrics: metrics,
-            onSelectFrame: onSelectFrame,
           ),
         SizedBox(
           key: const ValueKey<String>('timeline-frame-header-trailing-spacer'),
@@ -180,7 +179,6 @@ class _FrameHeader extends StatelessWidget {
     required this.framesPerSecond,
     required this.showSeconds,
     required this.metrics,
-    required this.onSelectFrame,
   });
 
   final int frameIndex;
@@ -191,7 +189,6 @@ class _FrameHeader extends StatelessWidget {
   final int framesPerSecond;
   final bool showSeconds;
   final TimelineGridMetrics metrics;
-  final ValueChanged<int> onSelectFrame;
 
   @override
   Widget build(BuildContext context) {
@@ -204,63 +201,64 @@ class _FrameHeader extends StatelessWidget {
         ? colorScheme.outlineVariant.withValues(alpha: 0.55)
         : colorScheme.outlineVariant;
 
-    return InkWell(
+    // NO per-cell InkWell (UI-R10 #25): the ruler's viewport-level scrub
+    // Listener already selects on raw pointer-down — the per-frame ink
+    // machinery was pure zoom-rebuild cost (hundreds of InkResponse
+    // states per step at narrow cells).
+    return Container(
       key: ValueKey<String>('timeline-frame-header-$frameIndex'),
-      onTap: () => onSelectFrame(frameIndex),
-      child: Container(
-        width: metrics.frameCellWidth,
-        height: metrics.layerRowHeight,
-        decoration: BoxDecoration(
-          color: selected
-              ? Color.alphaBlend(
-                  timelineSelectedFrameBorderColor.withValues(alpha: 0.12),
-                  colorScheme.surface,
-                )
-              : outsidePlaybackRange
-              ? colorScheme.surfaceContainerHighest.withValues(alpha: 0.72)
-              : colorScheme.surface,
-          border: narrow
-              ? Border(
-                  bottom: BorderSide(color: borderColor),
-                  left: labeled
-                      ? BorderSide(color: borderColor)
-                      : BorderSide.none,
-                )
-              : Border.all(color: borderColor),
-        ),
-        child: Stack(
-          alignment: Alignment.bottomCenter,
-          children: [
-            if (showLabel)
-              Positioned(
-                bottom: 1,
-                child: Text(
-                  _frameNumberLabel(
-                    frameIndex,
-                    framesPerSecond: framesPerSecond,
-                    showSeconds: showSeconds,
-                  ),
-                  style: TextStyle(
-                    fontSize: 11,
-                    color: outsidePlaybackRange
-                        ? colorScheme.onSurfaceVariant.withValues(alpha: 0.55)
-                        : colorScheme.onSurface,
-                  ),
+      width: metrics.frameCellWidth,
+      height: metrics.layerRowHeight,
+      decoration: BoxDecoration(
+        color: selected
+            ? Color.alphaBlend(
+                timelineSelectedFrameBorderColor.withValues(alpha: 0.12),
+                colorScheme.surface,
+              )
+            : outsidePlaybackRange
+            ? colorScheme.surfaceContainerHighest.withValues(alpha: 0.72)
+            : colorScheme.surface,
+        border: narrow
+            ? Border(
+                bottom: BorderSide(color: borderColor),
+                left: labeled
+                    ? BorderSide(color: borderColor)
+                    : BorderSide.none,
+              )
+            : Border.all(color: borderColor),
+      ),
+      child: Stack(
+        alignment: Alignment.bottomCenter,
+        children: [
+          if (showLabel)
+            Positioned(
+              bottom: 1,
+              child: Text(
+                _frameNumberLabel(
+                  frameIndex,
+                  framesPerSecond: framesPerSecond,
+                  showSeconds: showSeconds,
+                ),
+                style: TextStyle(
+                  fontSize: 11,
+                  color: outsidePlaybackRange
+                      ? colorScheme.onSurfaceVariant.withValues(alpha: 0.55)
+                      : colorScheme.onSurface,
                 ),
               ),
-            if (cached)
-              Positioned(
-                left: 0,
-                right: 0,
-                bottom: 0,
-                child: Container(
-                  key: ValueKey<String>('timeline-frame-cached-$frameIndex'),
-                  height: 3,
-                  color: const Color(0xFF54B435),
-                ),
+            ),
+          if (cached)
+            Positioned(
+              left: 0,
+              right: 0,
+              bottom: 0,
+              child: Container(
+                key: ValueKey<String>('timeline-frame-cached-$frameIndex'),
+                height: 3,
+                color: const Color(0xFF54B435),
               ),
-          ],
-        ),
+            ),
+        ],
       ),
     );
   }
