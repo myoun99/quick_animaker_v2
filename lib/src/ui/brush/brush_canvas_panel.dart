@@ -3,7 +3,8 @@ import 'dart:math' as math;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/gestures.dart' show kPrimaryButton;
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart' show HardwareKeyboard, KeyEvent;
+import 'package:flutter/services.dart'
+    show HardwareKeyboard, KeyDownEvent, KeyEvent, LogicalKeyboardKey;
 
 import '../../services/brush_stroke_commit_data.dart';
 import '../../models/bitmap_surface.dart';
@@ -30,6 +31,7 @@ import 'canvas_selection_commands.dart';
 import 'selection_shape_history_command.dart';
 import 'canvas_view_commands.dart';
 import 'canvas_viewport_pan_metrics.dart';
+import '../widgets/app_scrollbar.dart';
 
 /// A playback-follow reframe request for [BrushCanvasPanel.autoFrame]:
 /// whenever [token] changes between widget updates the panel reframes the
@@ -418,6 +420,7 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel> {
       onViewportChangeEnd: _syncViewportParent,
       onZoomIn: _zoomInFromBar,
       onZoomOut: _zoomOutFromBar,
+      onZoomSet: _setZoomFromLabel,
       onFit: _fitToView,
       onReset: _resetView,
       onRotateCcw: widget.allowViewRotation ? _rotateCcwFromBar : null,
@@ -824,16 +827,23 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel> {
   }
 
   void _zoomAroundCenter(double factor) {
+    _zoomToAroundCenter(_viewport.zoom * factor);
+  }
+
+  /// Absolute-zoom twin of [_zoomAroundCenter] (the zoom label's inline
+  /// percent entry commits through here).
+  void _setZoomFromLabel(double zoom) {
+    _zoomToAroundCenter(zoom);
+  }
+
+  void _zoomToAroundCenter(double nextZoom) {
     final viewportSize = _resolvedEditorViewportSize();
     final anchor = ViewportPoint(
       x: viewportSize.width / 2,
       y: viewportSize.height / 2,
     );
     setState(() {
-      _viewport = _viewport.zoomedAround(
-        nextZoom: _viewport.zoom * factor,
-        anchor: anchor,
-      );
+      _viewport = _viewport.zoomedAround(nextZoom: nextZoom, anchor: anchor);
     });
     widget.onViewportChanged?.call(_viewport);
   }
@@ -1096,7 +1106,7 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel> {
 
 class _CanvasEditorPanelShell extends StatelessWidget {
   static const double statusStripHeight = 20;
-  static const double rightStripWidth = 18;
+  static const double rightStripWidth = 14;
 
   const _CanvasEditorPanelShell({
     required this.title,
@@ -1236,7 +1246,17 @@ class _CanvasEditorPanelShell extends StatelessWidget {
 }
 
 class _CanvasViewportBottomBar extends StatelessWidget {
-  static const double height = _CanvasViewportToolbar.height + 14;
+  static const double height = 28;
+
+  /// At/above this width the bar shows every view control (fit, 1:1,
+  /// rotate, flip). Below it the secondary rotate/flip controls drop out so
+  /// the essentials stay reachable (rotation is still on R/Shift+R/H).
+  static const double _wideLayoutMinWidth = 360;
+
+  /// Below this width even the essentials + zoom cluster can't share a row
+  /// with a usable Expanded scrollbar, so the bar becomes horizontally
+  /// scrollable instead of overflowing (slim edge docks land here).
+  static const double _scrollFallbackWidth = 200;
 
   const _CanvasViewportBottomBar({
     required this.viewport,
@@ -1246,6 +1266,7 @@ class _CanvasViewportBottomBar extends StatelessWidget {
     required this.onViewportChangeEnd,
     required this.onZoomIn,
     required this.onZoomOut,
+    required this.onZoomSet,
     required this.onFit,
     required this.onReset,
     required this.onRotateCcw,
@@ -1260,6 +1281,7 @@ class _CanvasViewportBottomBar extends StatelessWidget {
   final VoidCallback onViewportChangeEnd;
   final VoidCallback onZoomIn;
   final VoidCallback onZoomOut;
+  final ValueChanged<double> onZoomSet;
   final VoidCallback onFit;
   final VoidCallback onReset;
 
@@ -1270,138 +1292,260 @@ class _CanvasViewportBottomBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return SizedBox(
-      height: height,
-      child: Column(
-        children: [
-          _CanvasViewportToolbar(
-            viewport: viewport,
-            onZoomIn: onZoomIn,
-            onZoomOut: onZoomOut,
-            onFit: onFit,
-            onReset: onReset,
-            onRotateCcw: onRotateCcw,
-            onRotateCw: onRotateCw,
-            onFlipHorizontal: onFlipHorizontal,
-          ),
-          CanvasViewportHorizontalScrollbar(
-            viewport: viewport,
-            editorViewportSize: editorViewportSize,
-            canvasSize: canvasSize,
-            onViewportChanged: onViewportChanged,
-            onViewportChangeEnd: onViewportChangeEnd,
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _CanvasViewportToolbar extends StatelessWidget {
-  static const double height = 40;
-
-  const _CanvasViewportToolbar({
-    required this.viewport,
-    required this.onZoomIn,
-    required this.onZoomOut,
-    required this.onFit,
-    required this.onReset,
-    required this.onRotateCcw,
-    required this.onRotateCw,
-    required this.onFlipHorizontal,
-  });
-
-  final CanvasViewport viewport;
-  final VoidCallback onZoomIn;
-  final VoidCallback onZoomOut;
-  final VoidCallback onFit;
-  final VoidCallback onReset;
-  final VoidCallback? onRotateCcw;
-  final VoidCallback? onRotateCw;
-  final VoidCallback? onFlipHorizontal;
-
-  @override
-  Widget build(BuildContext context) {
-    final zoomPercent = (viewport.zoom * 100).round();
+    final colorScheme = Theme.of(context).colorScheme;
     // Normalized for display: multi-turn accumulation shows as its
     // visible angle.
     final rotationDegrees = (((viewport.rotationDegrees + 180) % 360) - 180)
         .round();
+
+    Widget divider() => Container(
+      width: 1,
+      height: 14,
+      margin: const EdgeInsets.symmetric(horizontal: 6),
+      color: colorScheme.outlineVariant,
+    );
+
+    final essentialViewControls = <Widget>[
+      _barIconButton(
+        keyValue: 'canvas-viewport-fit',
+        tooltip: 'Fit to View',
+        icon: const Icon(Icons.fit_screen),
+        onPressed: onFit,
+      ),
+      _barIconButton(
+        keyValue: 'canvas-viewport-reset',
+        tooltip: 'Reset View (100%)',
+        icon: const Text(
+          '1:1',
+          style: TextStyle(
+            fontSize: 10,
+            fontWeight: FontWeight.w600,
+            height: 1,
+          ),
+        ),
+        onPressed: onReset,
+      ),
+    ];
+
+    final viewControls = <Widget>[
+      ...essentialViewControls,
+      if (onRotateCcw != null)
+        _barIconButton(
+          keyValue: 'canvas-viewport-rotate-ccw',
+          tooltip: 'Rotate View Left',
+          icon: const Icon(Icons.rotate_left),
+          onPressed: onRotateCcw,
+        ),
+      if (onRotateCw != null)
+        _barIconButton(
+          keyValue: 'canvas-viewport-rotate-cw',
+          tooltip: 'Rotate View Right',
+          icon: const Icon(Icons.rotate_right),
+          onPressed: onRotateCw,
+        ),
+      if (onFlipHorizontal != null)
+        _barIconButton(
+          keyValue: 'canvas-viewport-flip',
+          tooltip: 'Flip View Horizontal',
+          icon: const Icon(Icons.flip),
+          onPressed: onFlipHorizontal,
+          isSelected: viewport.flipHorizontal,
+        ),
+      if (rotationDegrees != 0)
+        Padding(
+          padding: const EdgeInsets.only(left: 4),
+          child: Text(
+            '$rotationDegrees°',
+            key: const ValueKey<String>('canvas-viewport-rotation-label'),
+            style: const TextStyle(fontSize: 11),
+          ),
+        ),
+    ];
+
+    final zoomCluster = <Widget>[
+      _barIconButton(
+        keyValue: 'canvas-viewport-zoom-out',
+        tooltip: 'Zoom Out',
+        icon: const Icon(Icons.zoom_out),
+        onPressed: onZoomOut,
+      ),
+      _ZoomPercentLabel(zoom: viewport.zoom, onZoomSet: onZoomSet),
+      _barIconButton(
+        keyValue: 'canvas-viewport-zoom-in',
+        tooltip: 'Zoom In',
+        icon: const Icon(Icons.zoom_in),
+        onPressed: onZoomIn,
+      ),
+    ];
+
+    Widget scrollbar() => CanvasViewportHorizontalScrollbar(
+      viewport: viewport,
+      editorViewportSize: editorViewportSize,
+      canvasSize: canvasSize,
+      onViewportChanged: onViewportChanged,
+      onViewportChangeEnd: onViewportChangeEnd,
+    );
+
     return SizedBox(
       height: height,
-      child: SingleChildScrollView(
-        scrollDirection: Axis.horizontal,
-        child: Row(
-          key: const ValueKey<String>('canvas-viewport-toolbar'),
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(
-              '$zoomPercent%',
-              key: const ValueKey<String>('canvas-viewport-zoom-label'),
-            ),
-            const SizedBox(width: 8),
-            OutlinedButton(
-              key: const ValueKey<String>('canvas-viewport-zoom-out'),
-              onPressed: onZoomOut,
-              child: const Text('Zoom out'),
-            ),
-            const SizedBox(width: 8),
-            OutlinedButton(
-              key: const ValueKey<String>('canvas-viewport-zoom-in'),
-              onPressed: onZoomIn,
-              child: const Text('Zoom in'),
-            ),
-            const SizedBox(width: 8),
-            OutlinedButton(
-              key: const ValueKey<String>('canvas-viewport-fit'),
-              onPressed: onFit,
-              child: const Text('Fit'),
-            ),
-            const SizedBox(width: 8),
-            OutlinedButton(
-              key: const ValueKey<String>('canvas-viewport-reset'),
-              onPressed: onReset,
-              child: const Text('Reset'),
-            ),
-            if (onRotateCcw != null) ...[
-              const SizedBox(width: 8),
-              IconButton(
-                key: const ValueKey<String>('canvas-viewport-rotate-ccw'),
-                tooltip: 'Rotate View Left',
-                onPressed: onRotateCcw,
-                iconSize: 18,
-                visualDensity: VisualDensity.compact,
-                icon: const Icon(Icons.rotate_left),
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          if (constraints.maxWidth < _scrollFallbackWidth) {
+            // Too tight for an Expanded scrollbar between the controls —
+            // scroll the whole bar so nothing overflows (slim edge docks).
+            return SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const SizedBox(width: 4),
+                  ...essentialViewControls,
+                  divider(),
+                  SizedBox(width: 80, child: scrollbar()),
+                  divider(),
+                  ...zoomCluster,
+                  const SizedBox(width: 4),
+                ],
               ),
+            );
+          }
+          final wide = constraints.maxWidth >= _wideLayoutMinWidth;
+          return Row(
+            children: [
+              const SizedBox(width: 4),
+              // Narrow panels keep only the essentials; rotate/flip return
+              // once there is room (still reachable via shortcuts).
+              ...(wide ? viewControls : essentialViewControls),
+              divider(),
+              Expanded(child: scrollbar()),
+              divider(),
+              ...zoomCluster,
+              const SizedBox(width: 4),
             ],
-            if (onRotateCw != null)
-              IconButton(
-                key: const ValueKey<String>('canvas-viewport-rotate-cw'),
-                tooltip: 'Rotate View Right',
-                onPressed: onRotateCw,
-                iconSize: 18,
-                visualDensity: VisualDensity.compact,
-                icon: const Icon(Icons.rotate_right),
-              ),
-            if (onFlipHorizontal != null)
-              IconButton(
-                key: const ValueKey<String>('canvas-viewport-flip'),
-                tooltip: 'Flip View Horizontal',
-                onPressed: onFlipHorizontal,
-                iconSize: 18,
-                visualDensity: VisualDensity.compact,
-                isSelected: viewport.flipHorizontal,
-                icon: const Icon(Icons.flip),
-              ),
-            if (rotationDegrees != 0)
-              Padding(
-                padding: const EdgeInsets.only(left: 4),
-                child: Text(
-                  '$rotationDegrees°',
-                  key: const ValueKey<String>('canvas-viewport-rotation-label'),
-                ),
-              ),
-          ],
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _barIconButton({
+    required String keyValue,
+    required String tooltip,
+    required Widget icon,
+    required VoidCallback? onPressed,
+    bool isSelected = false,
+  }) {
+    return IconButton(
+      key: ValueKey<String>(keyValue),
+      tooltip: tooltip,
+      onPressed: onPressed,
+      isSelected: isSelected,
+      style: IconButton.styleFrom(
+        minimumSize: const Size(26, 24),
+        maximumSize: const Size(30, 24),
+        padding: EdgeInsets.zero,
+        iconSize: 18,
+        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+      ),
+      icon: icon,
+    );
+  }
+}
+
+/// The zoom readout: double-tap swaps to an inline numeric percent entry
+/// (Enter/tap-out commits, Escape cancels) — the FieldSlider editor
+/// vocabulary, without the drag machinery a plain label doesn't need.
+class _ZoomPercentLabel extends StatefulWidget {
+  const _ZoomPercentLabel({required this.zoom, required this.onZoomSet});
+
+  final double zoom;
+  final ValueChanged<double> onZoomSet;
+
+  @override
+  State<_ZoomPercentLabel> createState() => _ZoomPercentLabelState();
+}
+
+class _ZoomPercentLabelState extends State<_ZoomPercentLabel> {
+  final TextEditingController _editController = TextEditingController();
+  bool _editing = false;
+
+  @override
+  void dispose() {
+    _editController.dispose();
+    super.dispose();
+  }
+
+  void _beginEdit() {
+    _editController.text = (widget.zoom * 100).round().toString();
+    _editController.selection = TextSelection(
+      baseOffset: 0,
+      extentOffset: _editController.text.length,
+    );
+    setState(() => _editing = true);
+  }
+
+  void _commitEdit() {
+    if (!_editing) {
+      return;
+    }
+    final parsed = double.tryParse(
+      _editController.text.replaceAll('%', '').trim(),
+    );
+    setState(() => _editing = false);
+    if (parsed == null) {
+      return;
+    }
+    // Percent bounds mirror CanvasViewport.minZoom/maxZoom (0.1..16).
+    widget.onZoomSet(parsed.clamp(10.0, 1600.0) / 100);
+  }
+
+  void _cancelEdit() {
+    setState(() => _editing = false);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_editing) {
+      return SizedBox(
+        width: 56,
+        child: Focus(
+          onKeyEvent: (node, event) {
+            if (event is KeyDownEvent &&
+                event.logicalKey == LogicalKeyboardKey.escape) {
+              _cancelEdit();
+              return KeyEventResult.handled;
+            }
+            return KeyEventResult.ignored;
+          },
+          child: TextField(
+            key: const ValueKey<String>('canvas-viewport-zoom-input'),
+            controller: _editController,
+            autofocus: true,
+            textAlign: TextAlign.center,
+            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            style: const TextStyle(fontSize: 12),
+            decoration: const InputDecoration(
+              isDense: true,
+              isCollapsed: true,
+              border: InputBorder.none,
+            ),
+            onSubmitted: (_) => _commitEdit(),
+            onTapOutside: (_) => _commitEdit(),
+          ),
+        ),
+      );
+    }
+    final zoomPercent = (widget.zoom * 100).round();
+    return GestureDetector(
+      key: const ValueKey<String>('canvas-viewport-zoom-entry'),
+      behavior: HitTestBehavior.opaque,
+      onDoubleTap: _beginEdit,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 6),
+        child: Text(
+          '$zoomPercent%',
+          key: const ValueKey<String>('canvas-viewport-zoom-label'),
+          style: const TextStyle(fontSize: 11),
         ),
       ),
     );
@@ -1475,7 +1619,7 @@ class CanvasViewportVerticalScrollbar extends StatelessWidget {
   );
 }
 
-class _CanvasViewportPanbar extends StatefulWidget {
+class _CanvasViewportPanbar extends StatelessWidget {
   const _CanvasViewportPanbar({
     required this.axis,
     required this.viewport,
@@ -1492,159 +1636,42 @@ class _CanvasViewportPanbar extends StatefulWidget {
   final VoidCallback? onViewportChangeEnd;
 
   @override
-  State<_CanvasViewportPanbar> createState() => _CanvasViewportPanbarState();
-}
-
-class _CanvasViewportPanbarState extends State<_CanvasViewportPanbar> {
-  double? _dragStartThumbStart;
-  double? _dragStartPointerAxisPosition;
-
-  @override
   Widget build(BuildContext context) {
-    final isHorizontal = widget.axis == Axis.horizontal;
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final trackExtent = isHorizontal
-            ? constraints.maxWidth
-            : constraints.maxHeight;
-        return GestureDetector(
-          key: ValueKey<String>(
-            isHorizontal
-                ? 'canvas-viewport-horizontal-scrollbar'
-                : 'canvas-viewport-vertical-scrollbar',
-          ),
-          behavior: HitTestBehavior.opaque,
-          onHorizontalDragStart: isHorizontal
-              ? (details) => _dragStart(details.localPosition.dx, trackExtent)
-              : null,
-          onVerticalDragStart: isHorizontal
-              ? null
-              : (details) => _dragStart(details.localPosition.dy, trackExtent),
-          onHorizontalDragUpdate: isHorizontal
-              ? (details) => _dragUpdate(details.localPosition.dx, trackExtent)
-              : null,
-          onVerticalDragUpdate: isHorizontal
-              ? null
-              : (details) => _dragUpdate(details.localPosition.dy, trackExtent),
-          onHorizontalDragEnd: isHorizontal ? (_) => _dragEnd() : null,
-          onVerticalDragEnd: isHorizontal ? null : (_) => _dragEnd(),
-          onHorizontalDragCancel: isHorizontal ? _dragEnd : null,
-          onVerticalDragCancel: isHorizontal ? null : _dragEnd,
-          child: SizedBox(
-            height: isHorizontal ? 14 : double.infinity,
-            width: isHorizontal ? double.infinity : 14,
-            child: CustomPaint(
-              painter: _CanvasViewportPanbarPainter(
-                axis: widget.axis,
-                viewport: widget.viewport,
-                editorViewportSize: widget.editorViewportSize,
-                canvasSize: widget.canvasSize,
-                color: Theme.of(context).colorScheme.primary,
-              ),
-            ),
-          ),
-        );
-      },
-    );
-  }
-
-  void _dragStart(double pointerAxisPosition, double trackExtent) {
-    final metrics = CanvasViewportPanMetrics(
-      axis: widget.axis,
-      viewport: widget.viewport,
-      editorViewportSize: widget.editorViewportSize,
-      canvasSize: widget.canvasSize,
-      trackExtent: trackExtent,
-    );
-
-    _dragStartThumbStart = metrics.thumbStart;
-    _dragStartPointerAxisPosition = pointerAxisPosition;
-  }
-
-  void _dragUpdate(double pointerAxisPosition, double trackExtent) {
-    final dragStartThumbStart = _dragStartThumbStart;
-    final dragStartPointerAxisPosition = _dragStartPointerAxisPosition;
-    if (dragStartThumbStart == null || dragStartPointerAxisPosition == null) {
-      return;
-    }
-
-    final metrics = CanvasViewportPanMetrics(
-      axis: widget.axis,
-      viewport: widget.viewport,
-      editorViewportSize: widget.editorViewportSize,
-      canvasSize: widget.canvasSize,
-      trackExtent: trackExtent,
-    );
-
-    if (!metrics.canScroll) {
-      return;
-    }
-
-    final pointerDelta = pointerAxisPosition - dragStartPointerAxisPosition;
-    final nextThumbStart = (dragStartThumbStart + pointerDelta)
-        .clamp(0.0, metrics.thumbTravel)
-        .toDouble();
-
-    // panToThumb only moves THIS panbar's axis and already lands inside
-    // the scrollable range. Never clamp the other axis here: the canvas
-    // pans freely (a zoomed-in paper may sit at a positive pan), and a
-    // both-axes clamp used to snap the paper left-aligned the moment the
-    // vertical bar was touched.
-    widget.onViewportChanged(metrics.panToThumb(nextThumbStart));
-  }
-
-  void _dragEnd() {
-    _dragStartThumbStart = null;
-    _dragStartPointerAxisPosition = null;
-    widget.onViewportChangeEnd?.call();
-  }
-}
-
-class _CanvasViewportPanbarPainter extends CustomPainter {
-  const _CanvasViewportPanbarPainter({
-    required this.axis,
-    required this.viewport,
-    required this.editorViewportSize,
-    required this.canvasSize,
-    required this.color,
-  });
-  final Axis axis;
-  final CanvasViewport viewport;
-  final Size editorViewportSize;
-  final CanvasSize canvasSize;
-  final Color color;
-  @override
-  void paint(Canvas canvas, Size size) {
     final isHorizontal = axis == Axis.horizontal;
-    final trackExtent = isHorizontal ? size.width : size.height;
-    final metrics = CanvasViewportPanMetrics(
-      axis: axis,
-      viewport: viewport,
-      editorViewportSize: editorViewportSize,
-      canvasSize: canvasSize,
-      trackExtent: trackExtent,
-    );
-    final thumbStart = metrics.thumbStart;
-    final trackPaint = Paint()..color = color.withValues(alpha: 0.16);
-    final thumbPaint = Paint()..color = color.withValues(alpha: 0.72);
-    final track = Offset.zero & size;
-    canvas.drawRRect(
-      RRect.fromRectAndRadius(track, const Radius.circular(7)),
-      trackPaint,
-    );
-    final thumb = isHorizontal
-        ? Rect.fromLTWH(thumbStart, 0, metrics.thumbExtent, size.height)
-        : Rect.fromLTWH(0, thumbStart, size.width, metrics.thumbExtent);
-    canvas.drawRRect(
-      RRect.fromRectAndRadius(thumb, const Radius.circular(7)),
-      thumbPaint,
+    return SizedBox(
+      key: ValueKey<String>(
+        isHorizontal
+            ? 'canvas-viewport-horizontal-scrollbar'
+            : 'canvas-viewport-vertical-scrollbar',
+      ),
+      height: isHorizontal ? 14 : double.infinity,
+      width: isHorizontal ? double.infinity : 14,
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final metrics = CanvasViewportPanMetrics(
+            axis: axis,
+            viewport: viewport,
+            editorViewportSize: editorViewportSize,
+            canvasSize: canvasSize,
+            trackExtent: isHorizontal
+                ? constraints.maxWidth
+                : constraints.maxHeight,
+          );
+          return AppScrollbar(
+            axis: axis,
+            offset: metrics.scrollOffset,
+            viewportExtent: metrics.visibleExtent,
+            contentExtent: metrics.scaledContentExtent,
+            minThumbExtent: CanvasViewportPanMetrics.minThumbExtent,
+            // The whole lane pans relatively: the canvas panbar has always
+            // been a grab-anywhere 1:1 surface, not a jump-to-tap track.
+            lanePress: AppScrollbarLanePress.relativeDrag,
+            onOffsetChanged: (next) =>
+                onViewportChanged(metrics.viewportForScroll(next)),
+            onChangeEnd: onViewportChangeEnd,
+          );
+        },
+      ),
     );
   }
-
-  @override
-  bool shouldRepaint(covariant _CanvasViewportPanbarPainter oldDelegate) =>
-      oldDelegate.viewport != viewport ||
-      oldDelegate.editorViewportSize != editorViewportSize ||
-      oldDelegate.canvasSize != canvasSize ||
-      oldDelegate.color != color;
 }

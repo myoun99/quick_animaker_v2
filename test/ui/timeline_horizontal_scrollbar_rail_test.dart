@@ -19,26 +19,32 @@ void main() {
     await tester.pumpWidget(
       MaterialApp(
         home: Material(
-          child: SizedBox(
-            width: viewportWidth,
-            height: height,
-            child: Stack(
-              fit: StackFit.expand,
-              children: [
-                if (attachControllerToScrollable)
-                  SingleChildScrollView(
-                    scrollDirection: Axis.horizontal,
+          // Align breaks the route's tight constraints so the SizedBox
+          // actually sizes the rail (the unified scrollbar derives its
+          // track from real layout, not the passed extents).
+          child: Align(
+            alignment: Alignment.topLeft,
+            child: SizedBox(
+              width: viewportWidth,
+              height: height,
+              child: Stack(
+                fit: StackFit.expand,
+                children: [
+                  if (attachControllerToScrollable)
+                    SingleChildScrollView(
+                      scrollDirection: Axis.horizontal,
+                      controller: controller,
+                      child: SizedBox(width: contentWidth, height: height),
+                    ),
+                  TimelineHorizontalScrollbarRail(
+                    key: scrollbarKey,
                     controller: controller,
-                    child: SizedBox(width: contentWidth, height: height),
+                    viewportWidth: viewportWidth,
+                    contentWidth: contentWidth,
+                    height: height,
                   ),
-                TimelineHorizontalScrollbarRail(
-                  key: scrollbarKey,
-                  controller: controller,
-                  viewportWidth: viewportWidth,
-                  contentWidth: contentWidth,
-                  height: height,
-                ),
-              ],
+                ],
+              ),
             ),
           ),
         ),

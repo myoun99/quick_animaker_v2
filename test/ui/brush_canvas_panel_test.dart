@@ -1,5 +1,6 @@
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:quick_animaker_v2/src/models/canvas_size.dart';
 import 'package:quick_animaker_v2/src/models/canvas_viewport.dart';
@@ -196,6 +197,45 @@ void main() {
     },
   );
 
+  testWidgets('narrow bottom bar keeps fit/reset/zoom reachable and never '
+      'overflows (rotate/flip drop out)', (tester) async {
+    final frameKeys = BrushCanvasFixture.createFrameKeys();
+    final coordinator = BrushCanvasFixture.createCoordinator(
+      frameKeys: frameKeys,
+      canvasSize: const CanvasSize(width: 300, height: 300),
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: SizedBox(
+            width: 280,
+            height: 360,
+            child: BrushCanvasPanel(
+              coordinator: coordinator,
+              availableFrameKeys: frameKeys,
+              cacheInvalidationSink: BrushEditCacheInvalidationSink(),
+              canvasSize: const CanvasSize(width: 300, height: 300),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    // Essentials stay in the tree even in the narrowest panel.
+    expect(find.byKey(const ValueKey<String>('canvas-viewport-fit')), findsOneWidget);
+    expect(find.byKey(const ValueKey<String>('canvas-viewport-reset')), findsOneWidget);
+    expect(find.byKey(const ValueKey<String>('canvas-viewport-zoom-out')), findsOneWidget);
+    expect(find.byKey(const ValueKey<String>('canvas-viewport-zoom-in')), findsOneWidget);
+    expect(find.byKey(const ValueKey<String>('canvas-viewport-zoom-label')), findsOneWidget);
+    // Secondary rotate/flip give up their space instead of overflowing.
+    expect(find.byKey(const ValueKey<String>('canvas-viewport-rotate-ccw')), findsNothing);
+    expect(find.byKey(const ValueKey<String>('canvas-viewport-flip')), findsNothing);
+
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('keeps inner drawing canvas at Cut canvas size', (tester) async {
     final frameKeys = BrushCanvasFixture.createFrameKeys();
     final coordinator = BrushCanvasFixture.createCoordinator(
@@ -312,6 +352,104 @@ void main() {
     );
 
     expect(canvas.viewport, CanvasViewport());
+  });
+
+  group('zoom label inline percent entry', () {
+    Future<void> pumpZoomPanel(WidgetTester tester) async {
+      final frameKeys = BrushCanvasFixture.createFrameKeys();
+      final coordinator = BrushCanvasFixture.createCoordinator(
+        frameKeys: frameKeys,
+        canvasSize: const CanvasSize(width: 100, height: 50),
+      );
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: SizedBox(
+              width: 640,
+              height: 360,
+              child: BrushCanvasPanel(
+                coordinator: coordinator,
+                availableFrameKeys: frameKeys,
+                cacheInvalidationSink: BrushEditCacheInvalidationSink(),
+                canvasSize: const CanvasSize(width: 100, height: 50),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+    }
+
+    CanvasViewport viewportOf(WidgetTester tester) => tester
+        .widget<InteractiveBrushEditCanvasView>(
+          find.byType(InteractiveBrushEditCanvasView),
+        )
+        .viewport;
+
+    Future<void> doubleTapZoomLabel(WidgetTester tester) async {
+      final label = find.byKey(
+        const ValueKey<String>('canvas-viewport-zoom-label'),
+      );
+      await tester.tap(label);
+      await tester.pump(const Duration(milliseconds: 60));
+      await tester.tap(label);
+      await tester.pumpAndSettle();
+    }
+
+    testWidgets('double-tap, type, and submit set the zoom', (tester) async {
+      await pumpZoomPanel(tester);
+
+      await doubleTapZoomLabel(tester);
+      final input = find.byKey(
+        const ValueKey<String>('canvas-viewport-zoom-input'),
+      );
+      expect(input, findsOneWidget);
+
+      await tester.enterText(input, '250');
+      await tester.testTextInput.receiveAction(TextInputAction.done);
+      await tester.pumpAndSettle();
+
+      expect(input, findsNothing);
+      expect(viewportOf(tester).zoom, 2.5);
+      expect(find.text('250%'), findsOneWidget);
+    });
+
+    testWidgets('Escape cancels the entry without committing', (tester) async {
+      await pumpZoomPanel(tester);
+
+      await doubleTapZoomLabel(tester);
+      await tester.enterText(
+        find.byKey(const ValueKey<String>('canvas-viewport-zoom-input')),
+        '300',
+      );
+      await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+      await tester.pumpAndSettle();
+
+      expect(
+        find.byKey(const ValueKey<String>('canvas-viewport-zoom-input')),
+        findsNothing,
+      );
+      expect(viewportOf(tester).zoom, 1.0);
+      expect(find.text('100%'), findsOneWidget);
+    });
+
+    testWidgets('out-of-range entries clamp to the zoom bounds', (
+      tester,
+    ) async {
+      await pumpZoomPanel(tester);
+
+      await doubleTapZoomLabel(tester);
+      await tester.enterText(
+        find.byKey(const ValueKey<String>('canvas-viewport-zoom-input')),
+        '5000',
+      );
+      await tester.testTextInput.receiveAction(TextInputAction.done);
+      await tester.pumpAndSettle();
+
+      expect(viewportOf(tester).zoom, 16.0);
+      expect(find.text('1600%'), findsOneWidget);
+    });
   });
 
   testWidgets('passes custom initial input settings to canvas view', (
