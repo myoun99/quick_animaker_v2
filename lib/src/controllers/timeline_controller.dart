@@ -628,7 +628,10 @@ class TimelineController {
       delta: clampedDelta,
     );
     // Live preview keeps the ghosts following the dragged run (UI-R8).
-    return rederiveRepeatRegions(layer.copyWith(timeline: nextTimeline));
+    return rederiveRunBehaviors(
+      layer.copyWith(timeline: nextTimeline),
+      cutFrameCount: _cutFrameCount(),
+    );
   }
 
   void shiftExposureEdge({
@@ -799,14 +802,14 @@ class TimelineController {
   }
 
   void _applyLayerEdit({required Layer before, required Layer after}) {
-    // THE repeat normalize choke point (UI-R8): every timeline edit lands
-    // here, so the derived ghost entries re-arrange with whatever the edit
-    // did to their source run (live sync). Layers without regions/ghosts
-    // pass through untouched (identity).
+    // THE run-behavior normalize choke point (UI-R8/R9): every timeline
+    // edit lands here, so the derived ghost entries re-arrange with
+    // whatever the edit did to their source run (live sync). Layers
+    // without behaviors/ghosts pass through untouched (identity).
     final command = UpdateLayerTimelineCommand(
       repository: _repository,
       before: before,
-      after: rederiveRepeatRegions(after),
+      after: rederiveRunBehaviors(after, cutFrameCount: _cutFrameCount()),
     );
     final historyManager = _historyManager;
     if (historyManager == null) {
@@ -838,6 +841,10 @@ class TimelineController {
 
     throw StateError('Layer not found: $layerId');
   }
+
+  /// The run-behavior fill boundary: hold/repeat edges fill ghosts to the
+  /// cut end. Zero (no cut) renders no end-side ghosts.
+  int _cutFrameCount() => _findCutOrNull()?.duration ?? 0;
 
   Cut? _findCutOrNull() {
     final project = _repository.currentProject;

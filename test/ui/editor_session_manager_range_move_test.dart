@@ -1,6 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:quick_animaker_v2/src/controllers/default_project_helpers.dart';
 import 'package:quick_animaker_v2/src/models/layer.dart';
+import 'package:quick_animaker_v2/src/models/timeline_repeat.dart';
 import 'package:quick_animaker_v2/src/ui/editor_session_manager.dart';
 import 'package:quick_animaker_v2/src/ui/timeline/timeline_drag_preview.dart';
 
@@ -157,8 +158,14 @@ void main() {
     final s = EditorSessionManager(initialProject: createDefaultProject());
     s.createDrawingAtCurrentFrame();
     final layerId = s.activeLayer!.id;
-    // Author a repeat after the single 1-frame block at 0.
-    s.setRepeatRegionFrames(layerId: layerId, anchorIndex: 0, frameCount: 2);
+    // Author a repeat edge after the single 1-frame block at 0 (UI-R9
+    // #10: ghosts fill to the cut end).
+    s.setRunEdgeBehavior(
+      layerId: layerId,
+      blockStartIndex: 0,
+      side: TimelineRunEdgeSide.end,
+      mode: TimelineRunEdgeMode.repeat,
+    );
     final layer = s.layers.firstWhere((l) => l.id == layerId);
     expect(layer.timeline[1]!.ghost, isTrue);
     expect(layer.timeline[2]!.ghost, isTrue);

@@ -102,7 +102,7 @@ void main() {
             const FrameId('a'),
             length: 2,
             ghost: true,
-            repeatRegionId: 'region',
+            ghostOwnerId: 'a:end',
           ),
         },
       );

@@ -19,7 +19,8 @@ import 'package:quick_animaker_v2/src/ui/timeline/timeline_run_end_handles.dart'
 
 import 'timeline_cell_probe.dart';
 
-/// UI-R8: the run-edge [+]/[↻] handles and the repeat GHOST display.
+/// UI-R9 #10: the run-edge cluster — the accent [+] add chip, the N/H/R
+/// property tag + flyout, and the GHOST display.
 void main() {
   TimelineCellExposureState stateFor(Layer layer, int frameIndex) {
     if (layer.timeline[frameIndex]?.isDrawing ?? false) {
@@ -44,21 +45,22 @@ void main() {
     },
   );
 
-  Layer repeatedLayer() => rederiveRepeatRegions(
+  /// Block [0,2) with an END REPEAT edge filling ghosts to cut frame 6.
+  Layer repeatedLayer() => rederiveRunBehaviors(
     Layer(
       id: const LayerId('layer-r'),
       name: 'R',
       frames: [Frame(id: const FrameId('rf'), duration: 1, strokes: const [])],
       timeline: {0: const TimelineExposure.drawing(FrameId('rf'), length: 2)},
-      repeatRegions: const [
-        TimelineRepeatRegion(
-          id: 'r1',
+      runBehaviors: const [
+        TimelineRunBehavior(
           anchorFrameId: FrameId('rf'),
-          sourceSpanFrames: 2,
-          frameCount: 4,
+          side: TimelineRunEdgeSide.end,
+          mode: TimelineRunEdgeMode.repeat,
         ),
       ],
     ),
+    cutFrameCount: 6,
   );
 
   Widget harness({
@@ -97,9 +99,9 @@ void main() {
 
   TimelineRunEditCallbacks recordingCallbacks({
     List<int>? addCounts,
-    List<int>? repeatCounts,
     void Function(LayerId, int, bool)? onAddBegin,
-    void Function(LayerId, int, String?)? onRepeatBegin,
+    List<(LayerId, int, TimelineRunEdgeSide, TimelineRunEdgeMode?)>?
+        modeSelections,
   }) {
     return TimelineRunEditCallbacks(
       onAddBegin: (layerId, blockStartIndex, {required atEnd}) {
@@ -109,18 +111,13 @@ void main() {
       onAddUpdate: (count) => addCounts?.add(count),
       onAddEnd: () {},
       onAddCancel: () {},
-      onRepeatBegin: (layerId, blockStartIndex, regionId) {
-        onRepeatBegin?.call(layerId, blockStartIndex, regionId);
-        return true;
-      },
-      onRepeatUpdate: (count) => repeatCounts?.add(count),
-      onRepeatEnd: () {},
-      onRepeatCancel: () {},
+      onEdgeModeSelected: (layerId, blockStartIndex, side, mode) =>
+          modeSelections?.add((layerId, blockStartIndex, side, mode)),
     );
   }
 
-  testWidgets('[+] and [↻] mount at a free run end; [+] also before a run '
-      'with space; dragging [+] reports frame counts', (tester) async {
+  testWidgets('[+] mounts at a free run end and before a run with space; '
+      'dragging [+] reports frame counts', (tester) async {
     final addCounts = <int>[];
     final begins = <(LayerId, int, bool)>[];
     await tester.pumpWidget(
@@ -137,10 +134,6 @@ void main() {
     // Keys carry the run ANCHOR frameId, never an index (UI-R9 A1).
     expect(
       find.byKey(const ValueKey<String>('timeline-run-add-end-layer-a-f1')),
-      findsOneWidget,
-    );
-    expect(
-      find.byKey(const ValueKey<String>('timeline-run-repeat-layer-a-f1')),
       findsOneWidget,
     );
     // The second run (frame 6) has free space before it too.
@@ -192,10 +185,7 @@ void main() {
         dragPreview.value = null;
       },
       onAddCancel: () => dragPreview.value = null,
-      onRepeatBegin: (_, _, _) => false,
-      onRepeatUpdate: (_) {},
-      onRepeatEnd: () {},
-      onRepeatCancel: () {},
+      onEdgeModeSelected: (_, _, _, _) {},
     );
     await tester.pumpWidget(
       harness(layers: [layer], runEdit: callbacks, dragPreview: dragPreview),
@@ -219,40 +209,90 @@ void main() {
     expect(ends, 1);
   });
 
-  testWidgets('a run carrying a repeat shows the RESIZE handle at the ghost '
-      'tail instead of [+]/[↻], and its drag offsets the existing count', (
-    tester,
-  ) async {
-    final repeatCounts = <int>[];
-    final begins = <(LayerId, int, String?)>[];
+  testWidgets('the edge tag is hover-only while None and opens the N/H/R '
+      'flyout; picking Hold reports the selection', (tester) async {
+    final modeSelections =
+        <(LayerId, int, TimelineRunEdgeSide, TimelineRunEdgeMode?)>[];
     await tester.pumpWidget(
       harness(
-        layers: [repeatedLayer()],
-        runEdit: recordingCallbacks(
-          repeatCounts: repeatCounts,
-          onRepeatBegin: (layerId, start, regionId) =>
-              begins.add((layerId, start, regionId)),
-        ),
+        layers: [plainLayer()],
+        runEdit: recordingCallbacks(modeSelections: modeSelections),
       ),
     );
 
-    expect(
-      find.byKey(const ValueKey<String>('timeline-run-add-end-layer-r-rf')),
-      findsNothing,
-    );
-    final resize = find.byKey(
-      const ValueKey<String>('timeline-repeat-resize-layer-r-r1'),
-    );
-    expect(resize, findsOneWidget);
+    const tagKey = ValueKey<String>('timeline-run-edge-tag-layer-a-f1-end');
+    expect(find.byKey(tagKey), findsNothing, reason: 'None hides the tag');
 
-    // Shrink by one frame (48px left): 4 existing − 1 = 3.
-    await tester.drag(
-      resize,
-      const Offset(-48, 0),
+    // Hovering the edge cluster reveals it.
+    final gesture = await tester.createGesture(
       kind: PointerDeviceKind.mouse,
     );
-    expect(begins.single, (const LayerId('layer-r'), 0, 'r1'));
-    expect(repeatCounts.last, 3);
+    await gesture.addPointer(location: Offset.zero);
+    addTearDown(gesture.removePointer);
+    await gesture.moveTo(
+      tester.getCenter(
+        find.byKey(const ValueKey<String>('timeline-run-add-end-layer-a-f1')),
+      ),
+    );
+    await tester.pump();
+    expect(find.byKey(tagKey), findsOneWidget);
+
+    await tester.tap(find.byKey(tagKey));
+    await tester.pumpAndSettle();
+    expect(
+      find.byKey(const ValueKey<String>('run-edge-mode-none')),
+      findsOneWidget,
+    );
+    await tester.tap(find.byKey(const ValueKey<String>('run-edge-mode-hold')));
+    await tester.pumpAndSettle();
+
+    expect(modeSelections.single, (
+      const LayerId('layer-a'),
+      0,
+      TimelineRunEdgeSide.end,
+      TimelineRunEdgeMode.hold,
+    ));
+  });
+
+  testWidgets('a repeat edge shows its tag always, after the ghost tail, '
+      'with the current mode checked in the flyout', (tester) async {
+    final modeSelections =
+        <(LayerId, int, TimelineRunEdgeSide, TimelineRunEdgeMode?)>[];
+    await tester.pumpWidget(
+      harness(
+        layers: [repeatedLayer()],
+        runEdit: recordingCallbacks(modeSelections: modeSelections),
+      ),
+    );
+
+    const tagKey = ValueKey<String>('timeline-run-edge-tag-layer-r-rf-end');
+    expect(find.byKey(tagKey), findsOneWidget, reason: 'set mode = visible');
+
+    // The cluster sits after the ghost tail (ends at cut frame 6), and the
+    // [+] chip still offers authored adds there.
+    final addKey = find.byKey(
+      const ValueKey<String>('timeline-run-add-end-layer-r-rf'),
+    );
+    expect(addKey, findsOneWidget);
+    final metrics = TimelineGridMetrics.defaults;
+    expect(
+      tester.getTopLeft(find.byKey(tagKey)).dx,
+      greaterThan(6 * 48 - metrics.frameCellWidth),
+      reason: 'tag lives past the ghost tail, not at the run end (2)',
+    );
+
+    await tester.tap(find.byKey(tagKey));
+    await tester.pumpAndSettle();
+    // Selecting None clears the edge.
+    await tester.tap(find.byKey(const ValueKey<String>('run-edge-mode-none')));
+    await tester.pumpAndSettle();
+
+    expect(modeSelections.single, (
+      const LayerId('layer-r'),
+      0,
+      TimelineRunEdgeSide.end,
+      null,
+    ));
   });
 
   testWidgets('ghost cells dim and ghost blocks carry no edge grips', (
@@ -294,7 +334,7 @@ void main() {
     expect(ghostAt(2), isTrue);
     expect(ghostAt(3), isTrue);
     expect(ghostAt(4), isTrue);
-    expect(ghostAt(6), isFalse);
+    expect(ghostAt(6), isFalse, reason: 'the tail stops at cut frame 6');
 
     // Grips: only the SOURCE block's two — the ghost blocks carry none.
     expect(find.byType(TimelineBlockEdgeGrip), findsNWidgets(2));
