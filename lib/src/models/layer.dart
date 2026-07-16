@@ -11,15 +11,16 @@ import 'layer_kind.dart';
 import 'layer_mark.dart';
 import 'timeline_coverage.dart';
 import 'timeline_exposure.dart';
-import 'timeline_exposure_type.dart';
 import 'timeline_repeat.dart';
 import 'transform_track.dart';
 
 /// A cel layer. Its single [timeline] map records everything authored on
-/// the frame axis: drawing block starts (frame + explicit hold length) and
-/// inbetween marks. Emptiness has no entry — uncovered cells are the
-/// timesheet "X" cells. There is no separate marks map and no blank entry
-/// type (legacy files carrying either are migrated in [Layer.fromJson]).
+/// the frame axis: drawing block starts (frame + explicit hold length),
+/// each carrying its own inbetween-dot offsets
+/// ([TimelineExposure.breakdownOffsets]). Emptiness has no entry —
+/// uncovered cells are the timesheet "X" cells. There is no separate marks
+/// map, no blank entry type, and no standalone mark entry (legacy files
+/// carrying any of those are migrated in [Layer.fromJson]).
 class Layer {
   Layer({
     required this.id,
@@ -377,6 +378,7 @@ class _RawTimelineItem {
     this.length,
     this.ghost = false,
     this.repeatRegionId,
+    this.breakdownOffsets = const [],
   });
 
   final int index;
@@ -387,6 +389,7 @@ class _RawTimelineItem {
   final int? length;
   final bool ghost;
   final String? repeatRegionId;
+  final List<int> breakdownOffsets;
 }
 
 /// Decodes a timeline from JSON, migrating legacy formats in one pass:
@@ -396,8 +399,11 @@ class _RawTimelineItem {
 /// - legacy drawing entries without `length` get their old visual length:
 ///   up to the next entry (drawing or blank), or `Frame.duration` for the
 ///   last block (the old trailing infinite hold becomes finite);
-/// - the legacy separate `marks` map merges in as mark entries, dropping
-///   any mark that collides with a drawing start index (drawing wins).
+/// - legacy standalone `mark` entries and the legacy separate `marks` map
+///   fold into the covering drawing's [TimelineExposure.breakdownOffsets];
+///   marks on a drawing start (offset 0) or on uncovered cells drop
+///   (block-owned dots can't live off a block, and no production data
+///   exists to preserve).
 SplayTreeMap<int, TimelineExposure> _timelineFromJson(
   Object? json, {
   Object? legacyMarksJson,
@@ -435,6 +441,11 @@ SplayTreeMap<int, TimelineExposure> _timelineFromJson(
       length: lengthJson is int && lengthJson >= 1 ? lengthJson : null,
       ghost: exposureJson['ghost'] == true,
       repeatRegionId: exposureJson['repeatRegionId'] as String?,
+      breakdownOffsets: [
+        for (final offset
+            in exposureJson['breakdown'] as List<dynamic>? ?? const [])
+          offset as int,
+      ],
     );
   }
 
@@ -461,12 +472,14 @@ SplayTreeMap<int, TimelineExposure> _timelineFromJson(
   };
 
   final timeline = SplayTreeMap<int, TimelineExposure>();
+  final legacyMarkIndexes = <int>[];
   final rawItems = items.values.toList(growable: false);
   for (var i = 0; i < rawItems.length; i += 1) {
     final item = rawItems[i];
     switch (item.type) {
       case 'mark':
-        timeline[item.index] = const TimelineExposure.mark();
+        // Legacy standalone dot: folded into its covering block below.
+        legacyMarkIndexes.add(item.index);
       case 'blank':
         // Legacy hold terminator: consumed as the previous block's boundary.
         break;
@@ -499,25 +512,32 @@ SplayTreeMap<int, TimelineExposure> _timelineFromJson(
         if (length! < 1) {
           length = 1;
         }
-        timeline[item.index] = TimelineExposure.drawing(
+        var exposure = TimelineExposure.drawing(
           item.frameId!,
           length: length,
           ghost: item.ghost,
           repeatRegionId: item.repeatRegionId,
         );
+        if (item.breakdownOffsets.isNotEmpty) {
+          // copyWith normalizes (sorts, dedupes, clamps to the length).
+          exposure = exposure.copyWith(
+            breakdownOffsets: item.breakdownOffsets,
+          );
+        }
+        timeline[item.index] = exposure;
     }
   }
 
-  _mergeLegacyMarks(timeline, legacyMarksJson);
+  _foldLegacyMarks(timeline, [
+    ...legacyMarkIndexes,
+    ..._legacyMarkIndexes(legacyMarksJson),
+  ]);
   return timeline;
 }
 
-void _mergeLegacyMarks(
-  SplayTreeMap<int, TimelineExposure> timeline,
-  Object? legacyMarksJson,
-) {
+List<int> _legacyMarkIndexes(Object? legacyMarksJson) {
   if (legacyMarksJson == null) {
-    return;
+    return const [];
   }
 
   final indexes = <int>[];
@@ -536,19 +556,35 @@ void _mergeLegacyMarks(
   } else {
     throw const FormatException('Layer marks must be a list or object.');
   }
-
   for (final index in indexes) {
     if (index < 0) {
       throw const FormatException(
         'Timeline mark indexes must be non-negative.',
       );
     }
-    final existing = timeline[index];
-    if (existing != null && existing.type == TimelineExposureType.drawing) {
-      // Legacy marks could overlay a drawing start; the unified model keeps
-      // the drawing.
+  }
+  return indexes;
+}
+
+/// Folds legacy standalone marks into the covering drawing block's
+/// [TimelineExposure.breakdownOffsets]. Marks on a block start (the dot
+/// would sit on the drawing itself) or on uncovered cells drop.
+void _foldLegacyMarks(
+  SplayTreeMap<int, TimelineExposure> timeline,
+  Iterable<int> markIndexes,
+) {
+  for (final index in markIndexes) {
+    final start = timeline.lastKeyBefore(index + 1);
+    if (start == null) {
       continue;
     }
-    timeline[index] = const TimelineExposure.mark();
+    final exposure = timeline[start]!;
+    final offset = index - start;
+    if (offset < 1 || offset >= exposure.length!) {
+      continue;
+    }
+    timeline[start] = exposure.copyWith(
+      breakdownOffsets: [...exposure.breakdownOffsets, offset],
+    );
   }
 }

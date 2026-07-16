@@ -125,12 +125,12 @@ void main() {
     expect(derived.timeline.values.any((entry) => entry.ghost), isFalse);
   });
 
-  test('ghosts CLAMP before the next authored entry (block or mark) — '
-      'derived frames never displace authored ones', () {
+  test('ghosts CLAMP before the next authored block — derived frames never '
+      'displace authored ones', () {
     final layer = _layer(
       timeline: {
         0: _draw('a', 2),
-        5: const TimelineExposure.mark(),
+        5: _draw('c', 1),
         8: _draw('b', 2),
       },
       regions: const [
@@ -144,16 +144,47 @@ void main() {
     );
 
     final derived = rederiveRepeatRegions(layer);
-    // Budget [2,12) clamps at the mark (5): one whole cycle at 2, then the
-    // cycle at 4 truncates to length 1.
+    // Budget [2,12) clamps at the authored block (5): one whole cycle at 2,
+    // then the cycle at 4 truncates to length 1.
     expect(derived.timeline[2]!.ghost, isTrue);
     expect(derived.timeline[2]!.length, 2);
     expect(derived.timeline[4]!.ghost, isTrue);
     expect(derived.timeline[4]!.length, 1);
-    expect(derived.timeline[5], const TimelineExposure.mark());
+    expect(derived.timeline[5]!.ghost, isFalse);
     expect(derived.timeline[8]!.ghost, isFalse);
     // Fully occluded is still a KEPT spec.
     expect(derived.repeatRegions, layer.repeatRegions);
+  });
+
+  test('ghost copies carry the source block dots, clamped to the ghost '
+      'length', () {
+    final layer = _layer(
+      timeline: {
+        0: TimelineExposure.drawing(
+          const FrameId('a'),
+          length: 3,
+          breakdownOffsets: const [1, 2],
+        ),
+        8: _draw('b', 1),
+      },
+      regions: const [
+        TimelineRepeatRegion(
+          id: 'r1',
+          anchorFrameId: FrameId('a'),
+          sourceSpanFrames: 3,
+          frameCount: 5,
+        ),
+      ],
+    );
+
+    final derived = rederiveRepeatRegions(layer);
+    // Budget [3,8): whole cycle at 3 keeps both dots; the cycle at 6
+    // truncates to length 2 and keeps only the offset the clamp spared.
+    expect(derived.timeline[3]!.ghost, isTrue);
+    expect(derived.timeline[3]!.breakdownOffsets, const [1, 2]);
+    expect(derived.timeline[6]!.ghost, isTrue);
+    expect(derived.timeline[6]!.length, 2);
+    expect(derived.timeline[6]!.breakdownOffsets, const [1]);
   });
 
   test('a hold spilling past the span end pushes the ghosts out instead of '

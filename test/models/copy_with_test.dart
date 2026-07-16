@@ -34,19 +34,24 @@ void main() {
     expect(point.copyWith(y: 3), const StrokePoint(x: 1, y: 3));
   });
 
-  test('timeline marks default empty, copyWith replaces the timeline, and '
-      'equality includes mark entries', () {
+  test('layer timeline defaults empty, copyWith replaces the timeline, and '
+      'equality includes breakdown offsets', () {
     final layer = Layer(
       id: const LayerId('layer-1'),
       name: 'Layer',
       frames: const [],
     );
-    final markedLayer = layer.copyWith(
-      timeline: const {3: TimelineExposure.mark()},
-    );
+    final dotted = <int, TimelineExposure>{
+      3: TimelineExposure.drawing(
+        const FrameId('f-3'),
+        length: 2,
+        breakdownOffsets: const [1],
+      ),
+    };
+    final markedLayer = layer.copyWith(timeline: dotted);
 
     expect(layer.timeline, isEmpty);
-    expect(markedLayer.timeline[3], const TimelineExposure.mark());
+    expect(markedLayer.timeline[3]!.breakdownOffsets, const [1]);
     expect(markedLayer, isNot(layer));
     expect(
       markedLayer,
@@ -54,7 +59,20 @@ void main() {
         id: const LayerId('layer-1'),
         name: 'Layer',
         frames: const [],
-        timeline: const {3: TimelineExposure.mark()},
+        timeline: dotted,
+      ),
+    );
+    expect(
+      markedLayer,
+      isNot(
+        Layer(
+          id: const LayerId('layer-1'),
+          name: 'Layer',
+          frames: const [],
+          timeline: {
+            3: TimelineExposure.drawing(const FrameId('f-3'), length: 2),
+          },
+        ),
       ),
     );
   });

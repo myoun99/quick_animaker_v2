@@ -88,8 +88,8 @@ void main() {
     );
   });
 
-  test('legacy marks merge into the timeline; ones on drawing starts are '
-      'dropped', () {
+  test('legacy marks fold into the covering block as breakdown offsets; '
+      'ones on drawing starts or uncovered cells drop', () {
     final layer = Layer.fromJson(
       layerJson(
         frames: [frameJson('f1')],
@@ -112,9 +112,41 @@ void main() {
     );
 
     expect(Map<int, TimelineExposure>.from(layer.timeline), {
-      0: TimelineExposure.drawing(const FrameId('f1'), length: 3),
-      1: const TimelineExposure.mark(),
-      5: const TimelineExposure.mark(),
+      0: TimelineExposure.drawing(
+        const FrameId('f1'),
+        length: 3,
+        breakdownOffsets: const [1],
+      ),
+    });
+  });
+
+  test('legacy standalone mark ENTRIES fold into the covering block; free '
+      'ones drop (and never terminate a legacy hold)', () {
+    Map<String, dynamic> legacyMark(int index) => {
+      'index': index,
+      'exposure': {'type': 'mark'},
+    };
+
+    final layer = Layer.fromJson(
+      layerJson(
+        frames: [frameJson('f1')],
+        timeline: [
+          legacyDrawing(0, 'f1'),
+          legacyMark(2),
+          legacyBlank(3),
+          legacyMark(6),
+        ],
+      ),
+    );
+
+    // The mark at 2 never terminated the legacy hold (the blank at 3 does);
+    // it folds into the block. The mark at 6 sits on empty space and drops.
+    expect(Map<int, TimelineExposure>.from(layer.timeline), {
+      0: TimelineExposure.drawing(
+        const FrameId('f1'),
+        length: 3,
+        breakdownOffsets: const [2],
+      ),
     });
   });
 
@@ -124,9 +156,11 @@ void main() {
       name: 'A',
       frames: [Frame(id: const FrameId('f1'), duration: 1, strokes: const [])],
       timeline: {
-        0: TimelineExposure.drawing(const FrameId('f1'), length: 3),
-        1: const TimelineExposure.mark(),
-        5: const TimelineExposure.mark(),
+        0: TimelineExposure.drawing(
+          const FrameId('f1'),
+          length: 3,
+          breakdownOffsets: const [1, 2],
+        ),
       },
     );
 

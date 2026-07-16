@@ -126,7 +126,6 @@ Project _projectWithLayer({
                 ],
                 timeline: {
                   0: TimelineExposure.drawing(_frameId, length: 1),
-                  1: const TimelineExposure.mark(),
                 },
               ),
             ],

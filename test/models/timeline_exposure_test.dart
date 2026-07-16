@@ -1,7 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:quick_animaker_v2/src/models/frame_id.dart';
 import 'package:quick_animaker_v2/src/models/timeline_exposure.dart';
-import 'package:quick_animaker_v2/src/models/timeline_exposure_type.dart';
 
 void main() {
   group('TimelineExposure', () {
@@ -10,15 +9,6 @@ void main() {
         () => TimelineExposure.drawing(const FrameId('frame-a'), length: 0),
         throwsAssertionError,
       );
-    });
-
-    test('mark exposure has no frameId or length', () {
-      const exposure = TimelineExposure.mark();
-
-      expect(exposure.type, TimelineExposureType.mark);
-      expect(exposure.frameId, isNull);
-      expect(exposure.length, isNull);
-      expect(exposure.isMark, isTrue);
     });
 
     test('round-trips drawing JSON', () {
@@ -30,10 +20,32 @@ void main() {
       expect(TimelineExposure.fromJson(exposure.toJson()), exposure);
     });
 
-    test('round-trips mark JSON', () {
-      const exposure = TimelineExposure.mark();
+    test('round-trips breakdown offsets through JSON', () {
+      final exposure = TimelineExposure.drawing(
+        const FrameId('frame-a'),
+        length: 4,
+        breakdownOffsets: const [1, 3],
+      );
 
+      expect(exposure.toJson()['breakdown'], const [1, 3]);
       expect(TimelineExposure.fromJson(exposure.toJson()), exposure);
+    });
+
+    test('omits the breakdown JSON key when there are no dots', () {
+      final exposure = TimelineExposure.drawing(
+        const FrameId('frame-a'),
+        length: 3,
+      );
+
+      expect(exposure.toJson().containsKey('breakdown'), isFalse);
+    });
+
+    test('standalone mark JSON is rejected at the entry level (legacy is '
+        'migrated in Layer.fromJson)', () {
+      expect(
+        () => TimelineExposure.fromJson({'type': 'mark'}),
+        throwsFormatException,
+      );
     });
 
     test('drawing JSON without a length is rejected (legacy entries are '
@@ -47,7 +59,18 @@ void main() {
       );
     });
 
-    test('copyWith relinks and resizes drawings but never mutates marks', () {
+    test('fromJson normalizes breakdown offsets: sorts, dedupes, clamps', () {
+      final exposure = TimelineExposure.fromJson({
+        'type': 'drawing',
+        'frameId': {'value': 'frame-a'},
+        'length': 4,
+        'breakdown': [3, 1, 3, 0, 4, 9],
+      });
+
+      expect(exposure.breakdownOffsets, const [1, 3]);
+    });
+
+    test('copyWith relinks and resizes drawings', () {
       final drawing = TimelineExposure.drawing(
         const FrameId('frame-a'),
         length: 2,
@@ -61,10 +84,31 @@ void main() {
         drawing.copyWith(length: 5),
         TimelineExposure.drawing(const FrameId('frame-a'), length: 5),
       );
-      expect(
-        const TimelineExposure.mark().copyWith(length: 5),
-        const TimelineExposure.mark(),
+    });
+
+    test('copyWith length shrink drops the offsets it cut off', () {
+      final drawing = TimelineExposure.drawing(
+        const FrameId('frame-a'),
+        length: 6,
+        breakdownOffsets: const [1, 3, 5],
       );
+
+      expect(drawing.copyWith(length: 4).breakdownOffsets, const [1, 3]);
+      expect(drawing.copyWith(length: 1).breakdownOffsets, isEmpty);
+      // Growth keeps everything.
+      expect(drawing.copyWith(length: 9).breakdownOffsets, const [1, 3, 5]);
+    });
+
+    test('hasBreakdownAt reads the offsets', () {
+      final drawing = TimelineExposure.drawing(
+        const FrameId('frame-a'),
+        length: 4,
+        breakdownOffsets: const [2],
+      );
+
+      expect(drawing.hasBreakdownAt(2), isTrue);
+      expect(drawing.hasBreakdownAt(1), isFalse);
+      expect(drawing.hasBreakdownAt(0), isFalse);
     });
 
     test('implements equality and hashCode', () {
@@ -72,11 +116,25 @@ void main() {
       final b = TimelineExposure.drawing(const FrameId('frame-a'), length: 1);
       final c = TimelineExposure.drawing(const FrameId('frame-b'), length: 1);
       final d = TimelineExposure.drawing(const FrameId('frame-a'), length: 2);
+      final e = TimelineExposure.drawing(
+        const FrameId('frame-a'),
+        length: 2,
+        breakdownOffsets: const [1],
+      );
 
       expect(a, b);
       expect(a.hashCode, b.hashCode);
       expect(a, isNot(c));
       expect(a, isNot(d));
+      expect(d, isNot(e));
+      expect(
+        e,
+        TimelineExposure.drawing(
+          const FrameId('frame-a'),
+          length: 2,
+          breakdownOffsets: const [1],
+        ),
+      );
     });
   });
 }

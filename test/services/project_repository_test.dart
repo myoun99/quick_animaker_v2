@@ -822,8 +822,11 @@ void main() {
         name: 'Layer 1',
         frames: [frameWithMetadata],
         timeline: {
-          0: TimelineExposure.drawing(frame.id, length: 6),
-          6: const TimelineExposure.mark(),
+          0: TimelineExposure.drawing(
+            frame.id,
+            length: 6,
+            breakdownOffsets: const [3],
+          ),
         },
         isVisible: false,
         opacity: 0.25,

@@ -121,23 +121,6 @@ DrawingBlockMovePlan? planDrawingBlockMove({
     return null;
   }
 
-  // Mark protection: no landing (moved or pushed) may overwrite a mark
-  // entry sharing its exact start index.
-  bool startsOnMark(SplayTreeMap<int, TimelineExposure> timeline, int start) {
-    final atStart = timeline[start];
-    return atStart != null && atStart.isMark;
-  }
-
-  if (startsOnMark(target.timeline, destStart)) {
-    return null;
-  }
-  for (final push in pushes) {
-    if (push.newStart != push.block.startIndex &&
-        startsOnMark(target.timeline, push.newStart)) {
-      return null;
-    }
-  }
-
   SplayTreeMap<int, TimelineExposure> targetTimelineAfter() {
     final timeline = SplayTreeMap<int, TimelineExposure>.of(target.timeline);
     if (sameLayer) {
@@ -307,24 +290,6 @@ DrawingBlockMovePlan? planDrawingRangeMove({
   final (:destStart, :pushes) = resolved;
   if (sameLayer && destStart == groupStart && pushes.isEmpty) {
     return null;
-  }
-
-  bool startsOnMark(SplayTreeMap<int, TimelineExposure> timeline, int start) {
-    final atStart = timeline[start];
-    return atStart != null && atStart.isMark;
-  }
-
-  for (final block in moved) {
-    final landing = destStart + (block.startIndex - groupStart);
-    if (startsOnMark(targetBase, landing)) {
-      return null;
-    }
-  }
-  for (final push in pushes) {
-    if (push.newStart != push.block.startIndex &&
-        startsOnMark(targetBase, push.newStart)) {
-      return null;
-    }
   }
 
   SplayTreeMap<int, TimelineExposure> targetTimelineAfter() {

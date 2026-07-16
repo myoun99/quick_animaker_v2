@@ -244,7 +244,8 @@ void main() {
       expect(cells[5].kind, TimesheetCellKind.held);
     });
 
-    test('X sits only on the first row of an empty run; marks continue it', () {
+    test('X sits only on the first row of an empty run; block-owned dots '
+        'show ● on their held rows', () {
       final document = _document(
         _cut(
           layers: [
@@ -254,8 +255,11 @@ void main() {
                 Frame(id: const FrameId('f1'), duration: 1, strokes: const []),
               ],
               timeline: {
-                0: const TimelineExposure.drawing(FrameId('f1'), length: 1),
-                3: const TimelineExposure.mark(),
+                0: const TimelineExposure.drawing(
+                  FrameId('f1'),
+                  length: 3,
+                  breakdownOffsets: [1],
+                ),
               },
             ),
           ],
@@ -264,13 +268,15 @@ void main() {
       );
 
       final cells = _firstActionColumn(document).cells;
-      expect(cells[1].kind, TimesheetCellKind.emptyRunStart);
-      expect(cells[2].kind, TimesheetCellKind.empty);
-      expect(cells[3].kind, TimesheetCellKind.mark);
+      expect(cells[0].kind, TimesheetCellKind.drawing);
+      expect(cells[1].kind, TimesheetCellKind.mark);
+      expect(cells[1].spanOffset, 1, reason: 'dot rows keep their span data');
+      expect(cells[2].kind, TimesheetCellKind.held);
+      expect(cells[3].kind, TimesheetCellKind.emptyRunStart);
       expect(
         cells[4].kind,
         TimesheetCellKind.empty,
-        reason: 'a mark continues the run — no second X',
+        reason: 'one X per empty run',
       );
     });
 

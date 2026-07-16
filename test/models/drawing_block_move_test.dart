@@ -201,30 +201,20 @@ void main() {
       expect(left.sourceAfter.timeline.length, 2);
     });
 
-    test('a linked cel may slide (frames stay put), but a mark blocks the '
-        'landing start only', () {
+    test('block-owned dots ride the moved block for free', () {
       final layer = layerWith(
         'a',
         {
-          0: const TimelineExposure.drawing(FrameId('a-f1'), length: 2),
+          0: const TimelineExposure.drawing(
+            FrameId('a-f1'),
+            length: 2,
+            breakdownOffsets: [1],
+          ),
           6: const TimelineExposure.drawing(FrameId('a-f1'), length: 1),
-          4: const TimelineExposure.mark(),
         },
         frameIds: ['a-f1'],
       );
 
-      // Landing ON the mark's index is rejected (map key collision)…
-      expect(
-        planDrawingBlockMove(
-          source: layer,
-          target: layer,
-          blockStartIndex: 0,
-          frameDelta: 4,
-        ),
-        isNull,
-      );
-      // …but covering it with the hold is fine (marks live inside holds),
-      // linked cel notwithstanding — a slide moves no frames.
       final plan = planDrawingBlockMove(
         source: layer,
         target: layer,
@@ -233,7 +223,8 @@ void main() {
       );
       expect(plan, isNotNull);
       expect(plan!.sourceAfter.timeline[3]!.frameId, const FrameId('a-f1'));
-      expect(plan.sourceAfter.timeline[4]!.isMark, isTrue);
+      expect(plan.sourceAfter.timeline[3]!.breakdownOffsets, const [1]);
+      expect(plan.sourceAfter.timeline.containsKey(0), isFalse);
     });
   });
 

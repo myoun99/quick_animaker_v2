@@ -50,17 +50,13 @@ import 'timeline_repeat.dart';
         next[index] = entry;
       }
     });
-    // Downstream: drawings overlap-push (gaps absorb), marks ride +count.
+    // Downstream drawings overlap-push (gaps absorb).
     var frontier = insertStart + count;
     for (final index in base.keys) {
       if (index < insertStart) {
         continue;
       }
       final entry = base[index]!;
-      if (entry.isMark) {
-        next[index + count] = entry;
-        continue;
-      }
       final newStart = math.max(index, frontier);
       frontier = newStart + entry.length!;
       next[newStart] = entry;
@@ -87,10 +83,7 @@ import 'timeline_repeat.dart';
   var gapStart = 0;
   final previousKey = base.lastKeyBefore(run.startIndex);
   if (previousKey != null) {
-    final previous = base[previousKey]!;
-    gapStart = previous.isDrawing
-        ? previousKey + previous.length!
-        : previousKey + 1;
+    gapStart = previousKey + base[previousKey]!.length!;
   }
   final room = run.startIndex - gapStart;
   final clamped = math.min(count, room);

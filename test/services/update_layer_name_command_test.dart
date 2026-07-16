@@ -216,8 +216,11 @@ Layer _layer({
     opacity: opacity,
     frames: [Frame(id: _frameId, duration: 2, strokes: const [], name: 'A1')],
     timeline: {
-      0: TimelineExposure.drawing(_frameId, length: 2),
-      1: const TimelineExposure.mark(),
+      0: TimelineExposure.drawing(
+        _frameId,
+        length: 2,
+        breakdownOffsets: const [1],
+      ),
     },
   );
 }
