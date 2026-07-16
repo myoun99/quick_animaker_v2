@@ -627,14 +627,16 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
       localX: localX,
       horizontalScrollOffset: _lastEffectiveHorizontalScrollOffset,
       frameCellWidth: _metrics.frameCellWidth,
-      visibleFrameCount: _visibleFrameCount,
+      visibleFrameCount: _renderedFrameCount,
     );
   }
 
   void _selectClampedFrameFromRuler(int frameIndex) {
+    // The endless runway IS the selectable tail now (UI-R10 #23 retired
+    // the fixed safety frames): clamp against the BUILT extent.
     final clampedFrameIndex = clampFrameIndex(
       frameIndex: frameIndex,
-      visibleFrameCount: _visibleFrameCount,
+      visibleFrameCount: _renderedFrameCount,
     );
     if (clampedFrameIndex == null ||
         clampedFrameIndex == _lastRulerScrubbedFrameIndex) {
@@ -667,6 +669,7 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
     if (localX == null) {
       return;
     }
+    _autoPanRulerEdge(localX);
 
     final frameIndex = _frameIndexForRulerLocalX(localX);
     if (frameIndex == null) {
@@ -674,6 +677,40 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
     }
 
     _selectClampedFrameFromRuler(frameIndex);
+  }
+
+  /// Edge auto-pan (UI-R10 #24, the pro-standard ruler drag): a scrub
+  /// pointer past the viewport edge scrolls the frame axis under it —
+  /// the endless growth keeps feeding frames ahead, so the ruler drag
+  /// alone reaches ANY distance (the scrollbar clamps at the built
+  /// extent by design).
+  void _autoPanRulerEdge(double localX) {
+    if (!_horizontalScrollController.hasClients) {
+      return;
+    }
+    final viewport = _rulerScrubViewportKey.currentContext?.findRenderObject();
+    if (viewport is! RenderBox || !viewport.hasSize) {
+      return;
+    }
+    const edge = 24.0;
+    final width = viewport.size.width;
+    double delta = 0;
+    if (localX > width - edge) {
+      delta = localX - (width - edge);
+    } else if (localX < edge) {
+      delta = localX - edge;
+    }
+    if (delta == 0) {
+      return;
+    }
+    final position = _horizontalScrollController.position;
+    final target = (position.pixels + delta).clamp(
+      0.0,
+      position.maxScrollExtent,
+    );
+    if (target != position.pixels) {
+      _horizontalScrollController.jumpTo(target);
+    }
   }
 
   void _resetRulerScrubTracking() {
