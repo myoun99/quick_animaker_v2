@@ -316,7 +316,22 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
 
   late final ScrollController _horizontalScrollController;
   late final ScrollController _verticalScrollController;
-  double _horizontalScrollOffset = 0;
+
+  /// The frame-axis scroll offset as a NOTIFIER (UI-R9 #12a): a scroll
+  /// pixel updates this value only — the ruler's translate and the window
+  /// token subscribe, and the grid itself never rebuilds per pixel (the
+  /// body is a real scrollable; pixels are free there).
+  final ValueNotifier<double> _frameAxisOffset = ValueNotifier<double>(0);
+
+  /// The quantized frame-window token: the leading visible CELL index.
+  /// Changes only on cell-boundary crossings — the rows body and the
+  /// ruler content re-window from it (sub-cell movement rebuilds nothing).
+  final ValueNotifier<int> _frameWindowBucket = ValueNotifier<int>(0);
+
+  /// The scroll position whose activity we watch for the lazy endless
+  /// SHRINK (UI-R9 #11: never rescale the extent mid-gesture).
+  ScrollPosition? _watchedHorizontalPosition;
+
   double _verticalScrollOffset = 0;
   double _lastEffectiveHorizontalScrollOffset = 0;
   double? _scheduledHorizontalOffsetCorrection;
@@ -406,12 +421,17 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
 
   @override
   void dispose() {
+    _watchedHorizontalPosition?.isScrollingNotifier.removeListener(
+      _handleHorizontalScrollActivity,
+    );
     _horizontalScrollController
       ..removeListener(_handleHorizontalScroll)
       ..dispose();
     _verticalScrollController
       ..removeListener(_handleVerticalScroll)
       ..dispose();
+    _frameAxisOffset.dispose();
+    _frameWindowBucket.dispose();
     super.dispose();
   }
 
@@ -433,27 +453,74 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
     }
   }
 
+  /// Frame-axis scroll (UI-R9 #12a): NO setState per pixel. The offset
+  /// notifier drives the ruler translate; the window bucket drives the
+  /// re-windowing; only an ENDLESS-extent growth (a real relayout, rare)
+  /// still rebuilds the grid.
   void _handleHorizontalScroll() {
-    final offset = _horizontalScrollController.hasClients
-        ? _horizontalScrollController.offset
-        : 0.0;
-    if (offset == _horizontalScrollOffset) {
+    if (!_horizontalScrollController.hasClients) {
       return;
     }
-    final nextTrailingFrames = _horizontalScrollController.hasClients
-        ? endlessTrailingFrames(
-            baseFrameCount: _visibleFrameCount,
-            currentTrailingFrames: _endlessTrailingFrames,
-            scrollOffset: offset,
-            viewportExtent:
-                _horizontalScrollController.position.viewportDimension,
-            frameCellExtent: _metrics.frameCellWidth,
-          )
-        : _endlessTrailingFrames;
-    setState(() {
-      _horizontalScrollOffset = offset;
-      _endlessTrailingFrames = nextTrailingFrames;
-    });
+    _watchHorizontalScrollActivity();
+    final offset = _horizontalScrollController.offset;
+    if (offset == _frameAxisOffset.value) {
+      return;
+    }
+    _frameAxisOffset.value = offset;
+    final bucket = _metrics.frameCellWidth <= 0
+        ? 0
+        : (offset / _metrics.frameCellWidth).floor();
+    if (bucket != _frameWindowBucket.value) {
+      _frameWindowBucket.value = bucket;
+    }
+    final position = _horizontalScrollController.position;
+    final nextTrailingFrames = endlessTrailingFrames(
+      baseFrameCount: _visibleFrameCount,
+      currentTrailingFrames: _endlessTrailingFrames,
+      scrollOffset: offset,
+      viewportExtent: position.viewportDimension,
+      frameCellExtent: _metrics.frameCellWidth,
+      // Discrete moves (wheel ticks, programmatic jumps) may shrink right
+      // away; gesture pixels never rescale the extent mid-drag (the
+      // settle listener below applies the release).
+      allowShrink: !position.isScrollingNotifier.value,
+    );
+    if (nextTrailingFrames != _endlessTrailingFrames) {
+      setState(() => _endlessTrailingFrames = nextTrailingFrames);
+    }
+  }
+
+  void _watchHorizontalScrollActivity() {
+    final position = _horizontalScrollController.position;
+    if (identical(position, _watchedHorizontalPosition)) {
+      return;
+    }
+    _watchedHorizontalPosition?.isScrollingNotifier.removeListener(
+      _handleHorizontalScrollActivity,
+    );
+    _watchedHorizontalPosition = position;
+    position.isScrollingNotifier.addListener(_handleHorizontalScrollActivity);
+  }
+
+  /// Scroll settled: apply the lazy endless SHRINK (UI-R9 #11) — the
+  /// extent contracts back toward the base + runway so the scrollbar
+  /// thumb recovers, never mid-gesture.
+  void _handleHorizontalScrollActivity() {
+    final position = _watchedHorizontalPosition;
+    if (position == null || position.isScrollingNotifier.value) {
+      return;
+    }
+    final nextTrailingFrames = endlessTrailingFrames(
+      baseFrameCount: _visibleFrameCount,
+      currentTrailingFrames: _endlessTrailingFrames,
+      scrollOffset: position.pixels,
+      viewportExtent: position.viewportDimension,
+      frameCellExtent: _metrics.frameCellWidth,
+      allowShrink: true,
+    );
+    if (nextTrailingFrames != _endlessTrailingFrames && mounted) {
+      setState(() => _endlessTrailingFrames = nextTrailingFrames);
+    }
   }
 
   TimelineFrameRange get _frameRangePolicy =>
@@ -983,7 +1050,7 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                                     final effectiveHorizontalScrollOffset =
                                         _effectiveHorizontalScrollOffset(
                                           requestedOffset:
-                                              _horizontalScrollOffset,
+                                              _frameAxisOffset.value,
                                           viewportWidth: viewportWidth,
                                         );
                                     _lastEffectiveHorizontalScrollOffset =
@@ -991,19 +1058,73 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                                     _synchronizeHorizontalScrollController(
                                       effectiveHorizontalScrollOffset,
                                     );
-                                    final plan =
-                                        calculateLayerTimelineGridVirtualizationPlan(
-                                          horizontalScrollOffset:
-                                              effectiveHorizontalScrollOffset,
-                                          verticalScrollOffset: 0,
-                                          viewportWidth: viewportWidth,
-                                          viewportHeight: viewportHeight,
-                                          visibleFrameCount:
-                                              _renderedFrameCount,
-                                          layerCount: rows.length,
-                                          metrics: _metrics,
+                                    final totalFrameContentWidth =
+                                        _renderedFrameCount *
+                                        _metrics.frameCellWidth;
+
+                                    // The ruler CONTENT re-windows on cell
+                                    // crossings only (the bucket token);
+                                    // sub-cell scroll pixels move the
+                                    // TRANSLATE alone (UI-R9 #12a) — the
+                                    // grid never rebuilds per pixel.
+                                    final rulerContent = ValueListenableBuilder<int>(
+                                      valueListenable: _frameWindowBucket,
+                                      builder: (context, _, _) {
+                                        final plan =
+                                            calculateLayerTimelineGridVirtualizationPlan(
+                                              horizontalScrollOffset:
+                                                  _effectiveHorizontalScrollOffset(
+                                                    requestedOffset:
+                                                        _frameAxisOffset.value,
+                                                    viewportWidth:
+                                                        viewportWidth,
+                                                  ),
+                                              verticalScrollOffset: 0,
+                                              viewportWidth: viewportWidth,
+                                              viewportHeight: viewportHeight,
+                                              visibleFrameCount:
+                                                  _renderedFrameCount,
+                                              layerCount: rows.length,
+                                              metrics: _metrics,
+                                            );
+                                        final frameRange = plan.frameRange;
+                                        return SizedBox(
+                                          width: plan.totalFrameContentWidth,
+                                          height: headerHeight,
+                                          // The ruler subscribes to the
+                                          // cursor + cache progress ITSELF:
+                                          // ticks and warming frames repaint
+                                          // this subtree only.
+                                          child: ListenableBuilder(
+                                            listenable: Listenable.merge([
+                                              widget.frameCursor,
+                                              ?widget.cacheProgress,
+                                            ]),
+                                            builder: (context, _) =>
+                                                TimelineFrameRuler(
+                                                  frameStartIndex:
+                                                      frameRange.startIndex,
+                                                  frameEndIndexExclusive:
+                                                      frameRange
+                                                          .endIndexExclusive,
+                                                  currentFrameIndex:
+                                                      widget.frameCursor.value,
+                                                  playbackFrameCount:
+                                                      widget.playbackFrameCount,
+                                                  leadingFrameSpacerWidth: plan
+                                                      .leadingFrameSpacerWidth,
+                                                  trailingFrameSpacerWidth: plan
+                                                      .trailingFrameSpacerWidth,
+                                                  metrics: _metrics,
+                                                  onSelectFrame:
+                                                      _selectClampedFrameFromRuler,
+                                                  isFrameCached:
+                                                      widget.isFrameCached,
+                                                ),
+                                          ),
                                         );
-                                    final frameRange = plan.frameRange;
+                                      },
+                                    );
 
                                     return Listener(
                                       key: const ValueKey<String>(
@@ -1041,56 +1162,34 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                                           child: ClipRect(
                                             child: OverflowBox(
                                               alignment: Alignment.topLeft,
-                                              minWidth:
-                                                  plan.totalFrameContentWidth,
-                                              maxWidth:
-                                                  plan.totalFrameContentWidth,
+                                              minWidth: totalFrameContentWidth,
+                                              maxWidth: totalFrameContentWidth,
                                               minHeight: headerHeight,
                                               maxHeight: headerHeight,
-                                              child: Transform.translate(
-                                                offset: Offset(
-                                                  -effectiveHorizontalScrollOffset,
-                                                  0,
-                                                ),
-                                                child: SizedBox(
-                                                  width: plan
-                                                      .totalFrameContentWidth,
-                                                  height: headerHeight,
-                                                  // The ruler subscribes to
-                                                  // the cursor + cache
-                                                  // progress ITSELF: ticks
-                                                  // and warming frames
-                                                  // repaint this subtree
-                                                  // only.
-                                                  child: ListenableBuilder(
-                                                    listenable:
-                                                        Listenable.merge([
-                                                          widget.frameCursor,
-                                                          ?widget.cacheProgress,
-                                                        ]),
-                                                    builder: (context, _) => TimelineFrameRuler(
-                                                      frameStartIndex:
-                                                          frameRange.startIndex,
-                                                      frameEndIndexExclusive:
-                                                          frameRange
-                                                              .endIndexExclusive,
-                                                      currentFrameIndex: widget
-                                                          .frameCursor
-                                                          .value,
-                                                      playbackFrameCount: widget
-                                                          .playbackFrameCount,
-                                                      leadingFrameSpacerWidth: plan
-                                                          .leadingFrameSpacerWidth,
-                                                      trailingFrameSpacerWidth:
-                                                          plan.trailingFrameSpacerWidth,
-                                                      metrics: _metrics,
-                                                      onSelectFrame:
-                                                          _selectClampedFrameFromRuler,
-                                                      isFrameCached:
-                                                          widget.isFrameCached,
+                                              // Per-pixel scrolls move the
+                                              // TRANSLATE only; the content
+                                              // is the stable child below.
+                                              child: ValueListenableBuilder<double>(
+                                                valueListenable:
+                                                    _frameAxisOffset,
+                                                child: rulerContent,
+                                                builder: (context, offset, child) {
+                                                  final effective =
+                                                      _effectiveHorizontalScrollOffset(
+                                                        requestedOffset: offset,
+                                                        viewportWidth:
+                                                            viewportWidth,
+                                                      );
+                                                  _lastEffectiveHorizontalScrollOffset =
+                                                      effective;
+                                                  return Transform.translate(
+                                                    offset: Offset(
+                                                      -effective,
+                                                      0,
                                                     ),
-                                                  ),
-                                                ),
+                                                    child: child,
+                                                  );
+                                                },
                                               ),
                                             ),
                                           ),
@@ -1255,7 +1354,7 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                                             final effectiveHorizontalScrollOffset =
                                                 _effectiveHorizontalScrollOffset(
                                                   requestedOffset:
-                                                      _horizontalScrollOffset,
+                                                      _frameAxisOffset.value,
                                                   viewportWidth: viewportWidth,
                                                 );
                                             _lastEffectiveHorizontalScrollOffset =
@@ -1263,124 +1362,147 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                                             _synchronizeHorizontalScrollController(
                                               effectiveHorizontalScrollOffset,
                                             );
-                                            final plan =
-                                                calculateLayerTimelineGridVirtualizationPlan(
-                                                  horizontalScrollOffset:
-                                                      effectiveHorizontalScrollOffset,
-                                                  verticalScrollOffset: 0,
-                                                  viewportWidth: viewportWidth,
-                                                  viewportHeight:
-                                                      viewportHeight,
-                                                  visibleFrameCount:
-                                                      _renderedFrameCount,
-                                                  layerCount: rows.length,
-                                                  metrics: _metrics,
-                                                );
-                                            final frameRange = plan.frameRange;
 
+                                            // The grid body scrolls inside a
+                                            // REAL scrollable — pixels are
+                                            // free. Only the frame WINDOW
+                                            // (the bucket token) re-windows
+                                            // the rows (UI-R9 #12a).
                                             return TimelineFrameScrollViewport(
                                               controller:
                                                   _horizontalScrollController,
                                               contentWidth:
-                                                  plan.totalFrameContentWidth,
+                                                  _renderedFrameCount *
+                                                  _metrics.frameCellWidth,
                                               contentHeight:
                                                   verticalContentHeight,
-                                              child: TimelineFrameGridStack(
-                                                rowsBody: TimelineFrameRowsScrollBody(
-                                                  rows: windowRows,
-                                                  leadingLayerSpacerHeight:
-                                                      leadingRowSpacerHeight,
-                                                  trailingLayerSpacerHeight:
-                                                      trailingRowSpacerHeight,
-                                                  dragPreview:
-                                                      widget.dragPreview,
-                                                  activeLayerId:
-                                                      widget.activeLayerId,
-                                                  playbackFrameCount:
-                                                      widget.playbackFrameCount,
-                                                  frameStartIndex:
-                                                      frameRange.startIndex,
-                                                  frameEndIndexExclusive:
-                                                      frameRange
-                                                          .endIndexExclusive,
-                                                  leadingFrameSpacerWidth: plan
-                                                      .leadingFrameSpacerWidth,
-                                                  trailingFrameSpacerWidth: plan
-                                                      .trailingFrameSpacerWidth,
-                                                  totalFrameContentWidth: plan
-                                                      .totalFrameContentWidth,
-                                                  metrics: _metrics,
-                                                  exposureStateForLayer: widget
-                                                      .exposureStateForLayer,
-                                                  frameNameForLayer:
-                                                      widget.frameNameForLayer,
-                                                  onSelectLayer:
-                                                      widget.onSelectLayer,
-                                                  onSelectFrame:
-                                                      widget.onSelectFrame,
-                                                  onActivateCell:
-                                                      widget.onActivateCell,
-                                                  instructionDefById:
-                                                      widget.instructionDefById,
-                                                  audioPeaksFor:
-                                                      widget.audioPeaksFor,
-                                                  projectFps: widget.projectFps,
-                                                  onRemoveAudioClip:
-                                                      widget.onRemoveAudioClip,
-                                                  onDropMediaAsset:
-                                                      widget.onDropMediaAsset,
-                                                  onSetAudioClipOffset: widget
-                                                      .onSetAudioClipOffset,
-                                                  audioOffsetDrag:
-                                                      widget.audioOffsetDrag,
-                                                  onSetAudioClipFades: widget
-                                                      .onSetAudioClipFades,
-                                                  onSetAudioClipGain:
-                                                      widget.onSetAudioClipGain,
-                                                  commaDrag: widget.commaDrag,
-                                                  rangeGesture: rangeGesture,
-                                                  runEdit: widget.runEdit,
-                                                  laneEdit: widget.laneEdit,
-                                                  seSpillInLayerIds:
-                                                      widget.seSpillInLayerIds,
-                                                ),
-                                                cutEndBoundaryLeft:
-                                                    timelineCutEndBoundaryX(
+                                              child: ValueListenableBuilder<int>(
+                                                valueListenable:
+                                                    _frameWindowBucket,
+                                                builder: (context, _, _) {
+                                                  final plan =
+                                                      calculateLayerTimelineGridVirtualizationPlan(
+                                                        horizontalScrollOffset:
+                                                            _effectiveHorizontalScrollOffset(
+                                                              requestedOffset:
+                                                                  _frameAxisOffset
+                                                                      .value,
+                                                              viewportWidth:
+                                                                  viewportWidth,
+                                                            ),
+                                                        verticalScrollOffset: 0,
+                                                        viewportWidth:
+                                                            viewportWidth,
+                                                        viewportHeight:
+                                                            viewportHeight,
+                                                        visibleFrameCount:
+                                                            _renderedFrameCount,
+                                                        layerCount: rows.length,
+                                                        metrics: _metrics,
+                                                      );
+                                                  final frameRange =
+                                                      plan.frameRange;
+                                                  return TimelineFrameGridStack(
+                                                    rowsBody: TimelineFrameRowsScrollBody(
+                                                      rows: windowRows,
+                                                      leadingLayerSpacerHeight:
+                                                          leadingRowSpacerHeight,
+                                                      trailingLayerSpacerHeight:
+                                                          trailingRowSpacerHeight,
+                                                      dragPreview:
+                                                          widget.dragPreview,
+                                                      activeLayerId:
+                                                          widget.activeLayerId,
                                                       playbackFrameCount: widget
                                                           .playbackFrameCount,
+                                                      frameStartIndex:
+                                                          frameRange.startIndex,
+                                                      frameEndIndexExclusive:
+                                                          frameRange
+                                                              .endIndexExclusive,
+                                                      leadingFrameSpacerWidth: plan
+                                                          .leadingFrameSpacerWidth,
+                                                      trailingFrameSpacerWidth:
+                                                          plan.trailingFrameSpacerWidth,
+                                                      totalFrameContentWidth: plan
+                                                          .totalFrameContentWidth,
                                                       metrics: _metrics,
+                                                      exposureStateForLayer: widget
+                                                          .exposureStateForLayer,
+                                                      frameNameForLayer: widget
+                                                          .frameNameForLayer,
+                                                      onSelectLayer:
+                                                          widget.onSelectLayer,
+                                                      onSelectFrame:
+                                                          widget.onSelectFrame,
+                                                      onActivateCell:
+                                                          widget.onActivateCell,
+                                                      instructionDefById: widget
+                                                          .instructionDefById,
+                                                      audioPeaksFor:
+                                                          widget.audioPeaksFor,
+                                                      projectFps:
+                                                          widget.projectFps,
+                                                      onRemoveAudioClip: widget
+                                                          .onRemoveAudioClip,
+                                                      onDropMediaAsset: widget
+                                                          .onDropMediaAsset,
+                                                      onSetAudioClipOffset: widget
+                                                          .onSetAudioClipOffset,
+                                                      audioOffsetDrag: widget
+                                                          .audioOffsetDrag,
+                                                      onSetAudioClipFades: widget
+                                                          .onSetAudioClipFades,
+                                                      onSetAudioClipGain: widget
+                                                          .onSetAudioClipGain,
+                                                      commaDrag:
+                                                          widget.commaDrag,
+                                                      rangeGesture:
+                                                          rangeGesture,
+                                                      runEdit: widget.runEdit,
+                                                      laneEdit: widget.laneEdit,
+                                                      seSpillInLayerIds: widget
+                                                          .seSpillInLayerIds,
                                                     ),
-                                                // The cursor layer decides
-                                                // per frame what to show —
-                                                // the slot itself is static
-                                                // so ticks rebuild nothing
-                                                // here.
-                                                showPlayhead: true,
-                                                playheadWidth:
-                                                    plan.totalFrameContentWidth,
-                                                playhead: TimelineCursorLayer(
-                                                  frameCursor:
-                                                      widget.frameCursor,
-                                                  dragPreview:
-                                                      widget.dragPreview,
-                                                  frameRangeSelection:
-                                                      rangeHooks?.selection,
-                                                  rows: rows,
-                                                  activeLayerId:
-                                                      widget.activeLayerId,
-                                                  frameStartIndex:
-                                                      frameRange.startIndex,
-                                                  frameEndIndexExclusive:
-                                                      frameRange
-                                                          .endIndexExclusive,
-                                                  leadingFrameSpacerWidth: plan
-                                                      .leadingFrameSpacerWidth,
-                                                  metrics: _metrics,
-                                                  exposureStateForLayer: widget
-                                                      .exposureStateForLayer,
-                                                  crossAxisExtent:
-                                                      verticalContentHeight,
-                                                ),
+                                                    cutEndBoundaryLeft:
+                                                        timelineCutEndBoundaryX(
+                                                          playbackFrameCount: widget
+                                                              .playbackFrameCount,
+                                                          metrics: _metrics,
+                                                        ),
+                                                    // The cursor layer decides
+                                                    // per frame what to show —
+                                                    // the slot itself is static
+                                                    // so ticks rebuild nothing
+                                                    // here.
+                                                    showPlayhead: true,
+                                                    playheadWidth: plan
+                                                        .totalFrameContentWidth,
+                                                    playhead: TimelineCursorLayer(
+                                                      frameCursor:
+                                                          widget.frameCursor,
+                                                      dragPreview:
+                                                          widget.dragPreview,
+                                                      frameRangeSelection:
+                                                          rangeHooks?.selection,
+                                                      rows: rows,
+                                                      activeLayerId:
+                                                          widget.activeLayerId,
+                                                      frameStartIndex:
+                                                          frameRange.startIndex,
+                                                      frameEndIndexExclusive:
+                                                          frameRange
+                                                              .endIndexExclusive,
+                                                      leadingFrameSpacerWidth: plan
+                                                          .leadingFrameSpacerWidth,
+                                                      metrics: _metrics,
+                                                      exposureStateForLayer: widget
+                                                          .exposureStateForLayer,
+                                                      crossAxisExtent:
+                                                          verticalContentHeight,
+                                                    ),
+                                                  );
+                                                },
                                               ),
                                             );
                                           },

@@ -53,7 +53,7 @@ void main() {
       );
     });
 
-    test('never shrinks when scrolling back', () {
+    test('never shrinks MID-GESTURE (allowShrink false)', () {
       expect(
         endlessTrailingFrames(
           baseFrameCount: 48,
@@ -64,6 +64,54 @@ void main() {
         ),
         200,
       );
+    });
+
+    test('shrinks back once scrolling settles (UI-R9 #11): scrolled home, '
+        'the runway releases to the base target', () {
+      expect(
+        endlessTrailingFrames(
+          baseFrameCount: 48,
+          currentTrailingFrames: 200,
+          scrollOffset: 0,
+          viewportExtent: 480,
+          frameCellExtent: 48,
+          runwayFrames: 120,
+          allowShrink: true,
+        ),
+        // Target: ceil(480/48) + 120 − 48 = 82.
+        82,
+      );
+    });
+
+    test('shrink hysteresis: a release smaller than one viewport of frames '
+        'keeps the current extent (no thumb jitter)', () {
+      expect(
+        endlessTrailingFrames(
+          baseFrameCount: 48,
+          currentTrailingFrames: 88,
+          scrollOffset: 0,
+          viewportExtent: 480,
+          frameCellExtent: 48,
+          runwayFrames: 120,
+          allowShrink: true,
+        ),
+        // Target 82; release 6 < 10 (one viewport) → hold.
+        88,
+      );
+    });
+
+    test('the shrunken extent always covers the current viewport edge', () {
+      final trailing = endlessTrailingFrames(
+        baseFrameCount: 48,
+        currentTrailingFrames: 500,
+        scrollOffset: 4800,
+        viewportExtent: 480,
+        frameCellExtent: 48,
+        runwayFrames: 120,
+        allowShrink: true,
+      );
+      // Edge frame = (4800+480)/48 = 110; extent 48+trailing must cover it.
+      expect(48 + trailing, greaterThanOrEqualTo(110));
     });
 
     test('unscrolled short content adds nothing', () {

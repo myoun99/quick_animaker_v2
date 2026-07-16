@@ -269,7 +269,15 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
 
   late final ScrollController _frameScrollController;
   late final ScrollController _layerScrollController;
-  double _frameScrollOffset = 0;
+
+  /// Frame-axis offset + window bucket notifiers (UI-R9 #12a, the
+  /// horizontal grid's structure transposed): scroll pixels move the rail
+  /// translate only; cell crossings re-window the columns; the grid never
+  /// rebuilds per pixel.
+  final ValueNotifier<double> _frameAxisOffset = ValueNotifier<double>(0);
+  final ValueNotifier<int> _frameWindowBucket = ValueNotifier<int>(0);
+  ScrollPosition? _watchedFramePosition;
+
   double _lastEffectiveFrameScrollOffset = 0;
   double? _scheduledFrameOffsetCorrection;
   int _endlessTrailingFrames = 0;
@@ -309,33 +317,82 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
 
   @override
   void dispose() {
+    _watchedFramePosition?.isScrollingNotifier.removeListener(
+      _handleFrameScrollActivity,
+    );
     _frameScrollController
       ..removeListener(_handleFrameScroll)
       ..dispose();
     _layerScrollController.dispose();
+    _frameAxisOffset.dispose();
+    _frameWindowBucket.dispose();
     super.dispose();
   }
 
+  /// Frame-axis scroll (UI-R9 #12a): NO setState per pixel — only an
+  /// endless-extent growth (a real relayout, rare) rebuilds the grid.
   void _handleFrameScroll() {
-    final offset = _frameScrollController.hasClients
-        ? _frameScrollController.offset
-        : 0.0;
-    if (offset == _frameScrollOffset) {
+    if (!_frameScrollController.hasClients) {
       return;
     }
-    final nextTrailingFrames = _frameScrollController.hasClients
-        ? endlessTrailingFrames(
-            baseFrameCount: _visibleFrameCount,
-            currentTrailingFrames: _endlessTrailingFrames,
-            scrollOffset: offset,
-            viewportExtent: _frameScrollController.position.viewportDimension,
-            frameCellExtent: _metrics.frameCellWidth,
-          )
-        : _endlessTrailingFrames;
-    setState(() {
-      _frameScrollOffset = offset;
-      _endlessTrailingFrames = nextTrailingFrames;
-    });
+    _watchFrameScrollActivity();
+    final offset = _frameScrollController.offset;
+    if (offset == _frameAxisOffset.value) {
+      return;
+    }
+    _frameAxisOffset.value = offset;
+    final bucket = _metrics.frameCellWidth <= 0
+        ? 0
+        : (offset / _metrics.frameCellWidth).floor();
+    if (bucket != _frameWindowBucket.value) {
+      _frameWindowBucket.value = bucket;
+    }
+    final position = _frameScrollController.position;
+    final nextTrailingFrames = endlessTrailingFrames(
+      baseFrameCount: _visibleFrameCount,
+      currentTrailingFrames: _endlessTrailingFrames,
+      scrollOffset: offset,
+      viewportExtent: position.viewportDimension,
+      frameCellExtent: _metrics.frameCellWidth,
+      // Discrete moves (wheel ticks, programmatic jumps) may shrink right
+      // away; gesture pixels never rescale mid-drag (the settle listener
+      // applies the release).
+      allowShrink: !position.isScrollingNotifier.value,
+    );
+    if (nextTrailingFrames != _endlessTrailingFrames) {
+      setState(() => _endlessTrailingFrames = nextTrailingFrames);
+    }
+  }
+
+  void _watchFrameScrollActivity() {
+    final position = _frameScrollController.position;
+    if (identical(position, _watchedFramePosition)) {
+      return;
+    }
+    _watchedFramePosition?.isScrollingNotifier.removeListener(
+      _handleFrameScrollActivity,
+    );
+    _watchedFramePosition = position;
+    position.isScrollingNotifier.addListener(_handleFrameScrollActivity);
+  }
+
+  /// Scroll settled: the lazy endless SHRINK (UI-R9 #11).
+  void _handleFrameScrollActivity() {
+    final position = _watchedFramePosition;
+    if (position == null || position.isScrollingNotifier.value) {
+      return;
+    }
+    final nextTrailingFrames = endlessTrailingFrames(
+      baseFrameCount: _visibleFrameCount,
+      currentTrailingFrames: _endlessTrailingFrames,
+      scrollOffset: position.pixels,
+      viewportExtent: position.viewportDimension,
+      frameCellExtent: _metrics.frameCellWidth,
+      allowShrink: true,
+    );
+    if (nextTrailingFrames != _endlessTrailingFrames && mounted) {
+      setState(() => _endlessTrailingFrames = nextTrailingFrames);
+    }
   }
 
   TimelineFrameRange get _frameRangePolicy =>
@@ -563,7 +620,7 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
                   .toDouble()
             : 0.0;
         final effectiveFrameScrollOffset = _effectiveFrameScrollOffset(
-          requestedOffset: _frameScrollOffset,
+          requestedOffset: _frameAxisOffset.value,
           viewportExtent: bodyViewportHeight,
         );
         _lastEffectiveFrameScrollOffset = effectiveFrameScrollOffset;
@@ -599,19 +656,24 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
         final sectionRuns = timelineSectionRuns(entries);
 
         // The shared virtualization plan with the frame axis fed through the
-        // "horizontal" inputs (the axes are swapped in this grid).
-        final plan = calculateTimelineVirtualizationPlan(
-          horizontalScrollOffset: effectiveFrameScrollOffset,
-          verticalScrollOffset: 0,
-          viewportWidth: bodyViewportHeight,
-          viewportHeight: 0,
-          frameCellWidth: _metrics.frameCellWidth,
-          layerRowHeight: _metrics.layerRowHeight,
-          frameCount: _renderedFrameCount,
-          layerCount: entries.length,
-        );
-        final frameRange = plan.frameRange;
-        final totalFrameContentHeight = plan.totalFrameContentWidth;
+        // "horizontal" inputs (the axes are swapped in this grid). Computed
+        // INSIDE the window-bucket subscribers (UI-R9 #12a): scroll pixels
+        // re-window nothing.
+        TimelineVirtualizationPlan framePlan() =>
+            calculateTimelineVirtualizationPlan(
+              horizontalScrollOffset: _effectiveFrameScrollOffset(
+                requestedOffset: _frameAxisOffset.value,
+                viewportExtent: bodyViewportHeight,
+              ),
+              verticalScrollOffset: 0,
+              viewportWidth: bodyViewportHeight,
+              viewportHeight: 0,
+              frameCellWidth: _metrics.frameCellWidth,
+              layerRowHeight: _metrics.layerRowHeight,
+              frameCount: _renderedFrameCount,
+              layerCount: entries.length,
+            );
+        final totalFrameContentHeight = _totalFrameContentHeight;
         // Columns are no longer uniformly wide: collapsed sections fold to
         // a slim strip.
         final columnsContentWidth = timelineDisplayRowsExtent(
@@ -675,26 +737,30 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
                                   maxHeight: totalFrameContentHeight,
                                   minWidth: _metrics.layerControlsWidth,
                                   maxWidth: _metrics.layerControlsWidth,
-                                  child: Transform.translate(
-                                    offset: Offset(
-                                      0,
-                                      -effectiveFrameScrollOffset,
-                                    ),
-                                    child: SizedBox(
-                                      width: _metrics.layerControlsWidth,
-                                      height: totalFrameContentHeight,
-                                      child: Stack(
-                                        children: [
-                                          // The rail subscribes to the
-                                          // cursor + cache progress itself:
-                                          // ticks repaint this subtree only.
-                                          ListenableBuilder(
-                                            listenable: Listenable.merge([
-                                              widget.frameCursor,
-                                              ?widget.cacheProgress,
-                                            ]),
-                                            builder: (context, _) =>
-                                                _XSheetFrameNumberRail(
+                                  // Pixels move the TRANSLATE only; the rail
+                                  // content re-windows on cell crossings.
+                                  child: ValueListenableBuilder<double>(
+                                    valueListenable: _frameAxisOffset,
+                                    child: ValueListenableBuilder<int>(
+                                      valueListenable: _frameWindowBucket,
+                                      builder: (context, _, _) {
+                                        final plan = framePlan();
+                                        final frameRange = plan.frameRange;
+                                        return SizedBox(
+                                          width: _metrics.layerControlsWidth,
+                                          height: totalFrameContentHeight,
+                                          child: Stack(
+                                            children: [
+                                              // The rail subscribes to the
+                                              // cursor + cache progress
+                                              // itself: ticks repaint this
+                                              // subtree only.
+                                              ListenableBuilder(
+                                                listenable: Listenable.merge([
+                                                  widget.frameCursor,
+                                                  ?widget.cacheProgress,
+                                                ]),
+                                                builder: (context, _) => _XSheetFrameNumberRail(
                                                   frameStartIndex:
                                                       frameRange.startIndex,
                                                   frameEndIndexExclusive:
@@ -714,14 +780,29 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
                                                   isFrameCached:
                                                       widget.isFrameCached,
                                                 ),
+                                              ),
+                                              TimelineRulerCutEndBoundary(
+                                                axis: Axis.vertical,
+                                                left: cutEndBoundaryOffset,
+                                              ),
+                                            ],
                                           ),
-                                          TimelineRulerCutEndBoundary(
-                                            axis: Axis.vertical,
-                                            left: cutEndBoundaryOffset,
-                                          ),
-                                        ],
-                                      ),
+                                        );
+                                      },
                                     ),
+                                    builder: (context, offset, child) {
+                                      final effective =
+                                          _effectiveFrameScrollOffset(
+                                            requestedOffset: offset,
+                                            viewportExtent: bodyViewportHeight,
+                                          );
+                                      _lastEffectiveFrameScrollOffset =
+                                          effective;
+                                      return Transform.translate(
+                                        offset: Offset(0, -effective),
+                                        child: child,
+                                      );
+                                    },
                                   ),
                                 ),
                               ),
@@ -885,70 +966,84 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
                                       controller: _frameScrollController,
                                       child: SizedBox(
                                         height: totalFrameContentHeight,
-                                        child: Stack(
-                                          children: [
-                                            Row(
-                                              crossAxisAlignment:
-                                                  CrossAxisAlignment.start,
+                                        // Pixels scroll the real viewport;
+                                        // only cell crossings re-window the
+                                        // columns (UI-R9 #12a).
+                                        child: ValueListenableBuilder<int>(
+                                          valueListenable: _frameWindowBucket,
+                                          builder: (context, _, _) {
+                                            final plan = framePlan();
+                                            final frameRange = plan.frameRange;
+                                            return Stack(
                                               children: [
-                                                // RepaintBoundary per column
-                                                // (mirrors the horizontal
-                                                // rows): the cursor layer
-                                                // repaints alone on ticks.
-                                                // The gate inside makes an
-                                                // edge-drag step rebuild
-                                                // exactly the dragged
-                                                // layer's column.
-                                                for (
-                                                  var index = 0;
-                                                  index < entries.length;
-                                                  index += 1
-                                                )
-                                                  _gatedColumn(
-                                                    entries[index],
-                                                    frameRange,
-                                                    plan,
+                                                Row(
+                                                  crossAxisAlignment:
+                                                      CrossAxisAlignment.start,
+                                                  children: [
+                                                    // RepaintBoundary per
+                                                    // column (mirrors the
+                                                    // horizontal rows): the
+                                                    // cursor layer repaints
+                                                    // alone on ticks. The
+                                                    // gate inside makes an
+                                                    // edge-drag step rebuild
+                                                    // exactly the dragged
+                                                    // layer's column.
+                                                    for (
+                                                      var index = 0;
+                                                      index < entries.length;
+                                                      index += 1
+                                                    )
+                                                      _gatedColumn(
+                                                        entries[index],
+                                                        frameRange,
+                                                        plan,
+                                                      ),
+                                                  ],
+                                                ),
+                                                // The cursor layer carries
+                                                // the playhead + selection
+                                                // visuals; ticks repaint it
+                                                // alone.
+                                                Positioned.fill(
+                                                  child: TimelineCursorLayer(
+                                                    axis: Axis.vertical,
+                                                    selectedSemanticsKey:
+                                                        const ValueKey<String>(
+                                                          'xsheet-selected-cell',
+                                                        ),
+                                                    frameRangeSelection: widget
+                                                        .rangeHooks
+                                                        ?.selection,
+                                                    frameCursor:
+                                                        widget.frameCursor,
+                                                    dragPreview:
+                                                        widget.dragPreview,
+                                                    rows: entries,
+                                                    activeLayerId:
+                                                        widget.activeLayerId,
+                                                    frameStartIndex:
+                                                        frameRange.startIndex,
+                                                    frameEndIndexExclusive:
+                                                        frameRange
+                                                            .endIndexExclusive,
+                                                    leadingFrameSpacerWidth: plan
+                                                        .leadingFrameSpacerWidth,
+                                                    metrics: _metrics,
+                                                    exposureStateForLayer: widget
+                                                        .exposureStateForLayer,
+                                                    crossAxisExtent:
+                                                        entries.length *
+                                                        _metrics.layerRowHeight,
                                                   ),
+                                                ),
+                                                TimelineBodyCutEndBoundary(
+                                                  axis: Axis.vertical,
+                                                  left: cutEndBoundaryOffset,
+                                                ),
                                               ],
-                                            ),
-                                            // The cursor layer carries the
-                                            // playhead + selection visuals;
-                                            // ticks repaint it alone.
-                                            Positioned.fill(
-                                              child: TimelineCursorLayer(
-                                                axis: Axis.vertical,
-                                                selectedSemanticsKey:
-                                                    const ValueKey<String>(
-                                                      'xsheet-selected-cell',
-                                                    ),
-                                                frameRangeSelection: widget
-                                                    .rangeHooks
-                                                    ?.selection,
-                                                frameCursor: widget.frameCursor,
-                                                dragPreview: widget.dragPreview,
-                                                rows: entries,
-                                                activeLayerId:
-                                                    widget.activeLayerId,
-                                                frameStartIndex:
-                                                    frameRange.startIndex,
-                                                frameEndIndexExclusive:
-                                                    frameRange
-                                                        .endIndexExclusive,
-                                                leadingFrameSpacerWidth: plan
-                                                    .leadingFrameSpacerWidth,
-                                                metrics: _metrics,
-                                                exposureStateForLayer: widget
-                                                    .exposureStateForLayer,
-                                                crossAxisExtent:
-                                                    entries.length *
-                                                    _metrics.layerRowHeight,
-                                              ),
-                                            ),
-                                            TimelineBodyCutEndBoundary(
-                                              axis: Axis.vertical,
-                                              left: cutEndBoundaryOffset,
-                                            ),
-                                          ],
+                                            );
+                                          },
                                         ),
                                       ),
                                     ),
