@@ -146,13 +146,22 @@ void main() {
       final celColumns = document.columns
           .where((column) => column.kind == TimesheetColumnKind.cel)
           .toList();
-      expect(celColumns, hasLength(8), reason: 'blank CELL form columns');
+      expect(celColumns, hasLength(8), reason: 'CELL form columns');
+      // The CELL headers mirror the ACTION layer names (UI-R10 #10); the
+      // content stays blank handwriting space.
+      expect(celColumns[0].label, 'Line');
+      expect(celColumns[1].label, 'Color');
+      expect(celColumns[2].label, isEmpty);
       expect(
         celColumns.every(
-          (column) => column.label.isEmpty && column.layerName == null,
+          (column) =>
+              column.layerName == null &&
+              column.cells.every(
+                (cell) => cell.kind == TimesheetCellKind.empty,
+              ),
         ),
         isTrue,
-        reason: 'the CELL block stays unlettered blank paper',
+        reason: 'headers only — no backing layer, no content',
       );
       expect(
         document.columns

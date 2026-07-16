@@ -86,6 +86,7 @@ class BrushCanvasPanel extends StatefulWidget {
     this.onStrokeInputActiveChanged,
     this.onSelectionInteractionChanged,
     this.allowViewRotation = true,
+    this.statusStripActions = const <Widget>[],
   }) : assert(
          coordinator != null || contentOverride != null,
          'Without a coordinator the panel needs a content override.',
@@ -103,6 +104,10 @@ class BrushCanvasPanel extends StatefulWidget {
   final CanvasViewport? viewport;
   final ValueChanged<CanvasViewport>? onViewportChanged;
   final CanvasEditorSelectionLabels selectionLabels;
+
+  /// Host commands rendered right-aligned in the panel's status strip
+  /// (UI-R10 #18); always visible — the title ellipsizes first.
+  final List<Widget> statusStripActions;
 
   /// Optional layer stacked over the canvas inside the editor viewport,
   /// receiving the live viewport so it can transform canvas coordinates
@@ -479,6 +484,7 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel> {
             height: boundedHeight,
             child: _CanvasEditorPanelShell(
               title: widget.selectionLabels.title,
+              actions: widget.statusStripActions,
               rightStripBar: _memoizedRightStripBar(),
               bottomBar: _memoizedBottomBar(),
               child: LayoutBuilder(
@@ -1113,12 +1119,18 @@ class _CanvasEditorPanelShell extends StatelessWidget {
     required this.child,
     required this.bottomBar,
     required this.rightStripBar,
+    this.actions = const <Widget>[],
   });
 
   final String title;
   final Widget child;
   final Widget bottomBar;
   final Widget rightStripBar;
+
+  /// Host commands living IN the status strip, right-aligned (UI-R10 #18
+  /// — the timesheet's toolbar row retired into here). Always visible;
+  /// the title text ellipsizes first when the panel narrows.
+  final List<Widget> actions;
 
   @override
   Widget build(BuildContext context) {
@@ -1169,13 +1181,20 @@ class _CanvasEditorPanelShell extends StatelessWidget {
                         bottom: BorderSide(color: colorScheme.outlineVariant),
                       ),
                     ),
-                    child: Text(
-                      title,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        fontSize: 11,
-                        color: colorScheme.onSurfaceVariant,
-                      ),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            title,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              fontSize: 11,
+                              color: colorScheme.onSurfaceVariant,
+                            ),
+                          ),
+                        ),
+                        ...actions,
+                      ],
                     ),
                   ),
                 ),

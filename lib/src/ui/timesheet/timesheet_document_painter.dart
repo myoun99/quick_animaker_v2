@@ -1,5 +1,6 @@
 import 'dart:math' as math;
 
+import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
 
 import '../../models/camera_instruction.dart';
@@ -8,6 +9,7 @@ import '../../models/timesheet_document.dart';
 import '../../models/timesheet_info.dart';
 import '../text/dialogue_fit_layout.dart';
 import '../theme/app_theme.dart';
+import '../timeline/timeline_drag_preview.dart';
 import 'timesheet_notation.dart';
 
 /// Geometry of the rendered sheet document in canvas (document) space,
@@ -292,13 +294,22 @@ class TimesheetDocumentLayout {
 /// marks, X cells, camera keys, the data-driven cut-end strikethrough and
 /// the playhead row — under the panel viewport transform (the same
 /// inside-the-picture transform the brush canvas uses, crisp at any zoom).
+/// Which stratum of the sheet a painter instance draws (UI-R10 #9 — the
+/// PSD-export layering, live): the printed FORM (paper, grid, boxes,
+/// printed labels) is static per document structure; the CONTENT (cell
+/// texts, header values, memo, data lines) is what edits and drag
+/// previews re-print. Null paints both (exports, focused tests).
+enum TimesheetPaintLayer { form, content }
+
 class TimesheetDocumentPainter extends CustomPainter {
-  const TimesheetDocumentPainter({
+  TimesheetDocumentPainter({
     required this.document,
     required this.layout,
     this.viewport,
     this.notation = TimesheetNotation.english,
-  });
+    this.paintLayer,
+    this.dragPreview,
+  }) : super(repaint: dragPreview);
 
   final TimesheetDocument document;
   final TimesheetDocumentLayout layout;
@@ -307,6 +318,42 @@ class TimesheetDocumentPainter extends CustomPainter {
   /// The NOTATION-language vocabulary the sheet prints in (UI-R10 #7);
   /// focused tests keep the pre-R10 English default.
   final TimesheetNotation notation;
+
+  /// Which stratum to draw; null = both (the pre-split single painter).
+  final TimesheetPaintLayer? paintLayer;
+
+  /// The session's scoped drag channel (UI-R10 #9, replacing the UI-R9
+  /// patch overlay): while a timeline drag targets an ACTION column's
+  /// layer, THAT column's cells re-derive from the preview layer at paint
+  /// time — the content stratum repaints per step (texts only, the form
+  /// underneath never re-records), the document stays stale until the
+  /// release commits.
+  final ValueListenable<TimelineDragPreview?>? dragPreview;
+
+  bool get _drawForm => paintLayer != TimesheetPaintLayer.content;
+  bool get _drawContent => paintLayer != TimesheetPaintLayer.form;
+
+  /// The column's display cells, with an in-flight drag preview
+  /// substituted for its layer (ACTION columns only — SE windowing stays
+  /// the document's job).
+  List<TimesheetCell> displayCellsFor(TimesheetColumn column) {
+    final preview = dragPreview?.value;
+    final layerId = column.layerId;
+    if (preview == null ||
+        layerId == null ||
+        column.kind != TimesheetColumnKind.action) {
+      return column.cells;
+    }
+    final previewLayer = timelineDragPreviewLayerFor(preview, layerId);
+    if (previewLayer == null) {
+      return column.cells;
+    }
+    return timesheetLayerCells(
+      layer: previewLayer,
+      rowCount: document.rowCount,
+      playbackFrameCount: document.playbackFrameCount,
+    );
+  }
 
   static const Color _paper = Color(0xFFF6F4F0);
   static const Color _ink = Color(0xFF33322F);
@@ -329,9 +376,13 @@ class TimesheetDocumentPainter extends CustomPainter {
     final drawTexts = (resolvedViewport?.zoom ?? 1.0) >= _textZoomThreshold;
 
     if (layout.continuous) {
-      _paintPaper(canvas, 0);
+      if (_drawForm) {
+        _paintPaper(canvas, 0);
+      }
       _paintHeaderBand(canvas, 0, drawTexts: drawTexts);
-      _paintMemoBand(canvas, 0, drawTexts: drawTexts);
+      if (_drawContent) {
+        _paintMemoBand(canvas, 0, drawTexts: drawTexts);
+      }
       _paintHalf(
         canvas,
         pageIndex: 0,
@@ -342,9 +393,13 @@ class TimesheetDocumentPainter extends CustomPainter {
       );
     } else {
       for (final page in document.pages) {
-        _paintPaper(canvas, page.index);
+        if (_drawForm) {
+          _paintPaper(canvas, page.index);
+        }
         _paintHeaderBand(canvas, page.index, drawTexts: drawTexts);
-        _paintMemoBand(canvas, page.index, drawTexts: drawTexts);
+        if (_drawContent) {
+          _paintMemoBand(canvas, page.index, drawTexts: drawTexts);
+        }
         for (var half = 0; half < 2; half += 1) {
           final rowCount = layout.halfRowCount(half);
           if (rowCount <= 0) {
@@ -362,7 +417,9 @@ class TimesheetDocumentPainter extends CustomPainter {
         }
       }
     }
-    _paintCutEndLine(canvas);
+    if (_drawContent) {
+      _paintCutEndLine(canvas);
+    }
 
     canvas.restore();
   }
@@ -389,34 +446,43 @@ class TimesheetDocumentPainter extends CustomPainter {
     required bool drawTexts,
   }) {
     final band = layout.headerBandRect(pageIndex);
-    final boxPaint = Paint()
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 1.1
-      ..color = _gridBold;
-    canvas.drawRect(band, boxPaint);
-
-    for (final box in layout.headerFieldBoxes(pageIndex)) {
-      canvas.drawRect(box.rect, boxPaint);
-      if (!drawTexts) {
-        continue;
+    if (_drawForm) {
+      final boxPaint = Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 1.1
+        ..color = _gridBold;
+      canvas.drawRect(band, boxPaint);
+      for (final box in layout.headerFieldBoxes(pageIndex)) {
+        canvas.drawRect(box.rect, boxPaint);
       }
-      _text(
-        canvas,
-        headerFieldLabel(box.field, notation),
-        Offset(box.rect.center.dx, box.rect.top + 5),
-        fontSize: 8,
-        color: _gridMedium,
-        centeredAtX: true,
-      );
-      _text(
-        canvas,
-        _headerFieldValue(box.field, pageIndex),
-        Offset(box.rect.center.dx, box.rect.top + 26),
-        fontSize: 14,
-        bold: true,
-        centeredAtX: true,
-        maxWidth: box.rect.width - 12,
-      );
+    }
+    if (!drawTexts) {
+      return;
+    }
+    for (final box in layout.headerFieldBoxes(pageIndex)) {
+      // The printed labels belong to the FORM; the user's values are
+      // CONTENT (UI-R10 #9 — the PSD layer split, live).
+      if (_drawForm) {
+        _text(
+          canvas,
+          headerFieldLabel(box.field, notation),
+          Offset(box.rect.center.dx, box.rect.top + 5),
+          fontSize: 8,
+          color: _gridMedium,
+          centeredAtX: true,
+        );
+      }
+      if (_drawContent) {
+        _text(
+          canvas,
+          _headerFieldValue(box.field, pageIndex),
+          Offset(box.rect.center.dx, box.rect.top + 26),
+          fontSize: 14,
+          bold: true,
+          centeredAtX: true,
+          maxWidth: box.rect.width - 12,
+        );
+      }
     }
   }
 
@@ -525,8 +591,8 @@ class TimesheetDocumentPainter extends CustomPainter {
       ..color = _gridBold
       ..strokeWidth = 1.6;
 
-    // Group titles + letter row.
-    if (drawTexts) {
+    // Group titles + letter row (printed form).
+    if (drawTexts && _drawForm) {
       _paintGroupTitles(canvas, left, columnsTop);
       for (var column = 0; column < document.columns.length; column += 1) {
         // Unbacked slots print nothing — no placeholder letters.
@@ -548,22 +614,36 @@ class TimesheetDocumentPainter extends CustomPainter {
         );
       }
     }
-    canvas.drawLine(
-      Offset(left, columnsTop),
-      Offset(right, columnsTop),
-      mediumPaint,
-    );
-    canvas.drawLine(
-      Offset(left, lettersTop),
-      Offset(right, lettersTop),
-      lightPaint,
-    );
+    if (_drawForm) {
+      canvas.drawLine(
+        Offset(left, columnsTop),
+        Offset(right, columnsTop),
+        mediumPaint,
+      );
+      canvas.drawLine(
+        Offset(left, lettersTop),
+        Offset(right, lettersTop),
+        lightPaint,
+      );
+    }
 
     // Row lines: light per frame, medium every 6 frames, bold on second
     // boundaries. SE columns print NO interior frame rules (R6-② — the
     // real Toei sheet leaves the S strip clean; its vertical borders and
     // the table's outer edges stay), so interior lines draw in segments
     // skipping the SE ranges.
+    if (!_drawForm) {
+      // Content-only: skip the grid entirely and print the cells.
+      _paintHalfCells(
+        canvas,
+        left: left,
+        rowsTop: rowsTop,
+        startFrame: startFrame,
+        rowCount: rowCount,
+        drawTexts: drawTexts,
+      );
+      return;
+    }
     final seRanges = <(double, double)>[];
     for (var column = 0; column < document.columns.length; column += 1) {
       if (document.columns[column].kind != TimesheetColumnKind.se) {
@@ -666,18 +746,42 @@ class TimesheetDocumentPainter extends CustomPainter {
       }
     }
 
-    // Cells (ACTION columns carry the animation layers' exposures).
+    if (_drawContent) {
+      _paintHalfCells(
+        canvas,
+        left: left,
+        rowsTop: rowsTop,
+        startFrame: startFrame,
+        rowCount: rowCount,
+        drawTexts: drawTexts,
+      );
+    }
+  }
+
+  /// The CONTENT stratum of one half (UI-R10 #9): every column's cell
+  /// texts/marks/lines, with in-flight drag previews substituted per
+  /// column — this is what re-prints per drag step while the form
+  /// underneath never re-records.
+  void _paintHalfCells(
+    Canvas canvas, {
+    required double left,
+    required double rowsTop,
+    required int startFrame,
+    required int rowCount,
+    required bool drawTexts,
+  }) {
     for (var column = 0; column < document.columns.length; column += 1) {
       final spec = document.columns[column];
+      final cells = displayCellsFor(spec);
       final columnLeft = left + layout.columnLeftInHalf(column);
       final columnWidth = layout.columnWidthFor(spec.kind);
       final centerX = columnLeft + columnWidth / 2;
       for (var row = 0; row < rowCount; row += 1) {
         final frame = startFrame + row;
-        if (frame >= spec.cells.length) {
+        if (frame >= cells.length) {
           break;
         }
-        final cell = spec.cells[frame];
+        final cell = cells[frame];
         final seColumn = spec.kind == TimesheetColumnKind.se;
         final cellTop = rowsTop + row * TimesheetDocumentLayout.rowHeight;
         final cellBottom = cellTop + TimesheetDocumentLayout.rowHeight;
@@ -762,6 +866,29 @@ class TimesheetDocumentPainter extends CustomPainter {
               Offset(centerX, cellCenterY),
               2.8,
               Paint()..color = _ink,
+            );
+          case TimesheetCellKind.repeatStart:
+            // A repeat ghost chain prints the NOTATION-language repeat
+            // word once (UI-R10 #6) — the expanded cel numbers live in
+            // the timeline for exporters, never here.
+            if (drawTexts) {
+              _text(
+                canvas,
+                notation.repeat,
+                Offset(centerX, cellTop + 3),
+                fontSize: 8,
+                color: _ink,
+                centeredAtX: true,
+                maxWidth: columnWidth - 2,
+              );
+            }
+          case TimesheetCellKind.repeatSpan:
+            canvas.drawLine(
+              Offset(centerX, cellTop),
+              Offset(centerX, cellBottom),
+              Paint()
+                ..color = _gridMedium
+                ..strokeWidth = 1.0,
             );
           case TimesheetCellKind.emptyRunStart:
             if (drawTexts) {
@@ -1293,7 +1420,9 @@ class TimesheetDocumentPainter extends CustomPainter {
     return !identical(oldDelegate.document, document) ||
         oldDelegate.layout.continuous != layout.continuous ||
         oldDelegate.viewport != viewport ||
-        !identical(oldDelegate.notation, notation);
+        !identical(oldDelegate.notation, notation) ||
+        oldDelegate.paintLayer != paintLayer ||
+        !identical(oldDelegate.dragPreview, dragPreview);
   }
 }
 
