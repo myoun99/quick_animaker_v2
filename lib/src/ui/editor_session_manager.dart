@@ -4149,12 +4149,26 @@ class EditorSessionManager extends ChangeNotifier {
       }
     }
 
+    // The behavior anchors to its EDGE block (UI-R10 #4): the end side to
+    // the run's LAST block, the start side to the FIRST — splitting the
+    // run keeps the property with the fragment that owns that edge.
+    var edgeAnchor = run.anchorFrameId;
+    if (side == TimelineRunEdgeSide.end) {
+      for (final entry in before.timeline.entries) {
+        if (entry.value.ghost ||
+            entry.key < run.startIndex ||
+            entry.key >= run.endIndexExclusive) {
+          continue;
+        }
+        edgeAnchor = entry.value.frameId!;
+      }
+    }
     final behaviors = [
       for (final behavior in before.runBehaviors)
         if (!ownsThisEdge(behavior)) behavior,
       if (mode != null)
         TimelineRunBehavior(
-          anchorFrameId: run.anchorFrameId,
+          anchorFrameId: edgeAnchor,
           side: side,
           mode: mode,
           patternAnchorFrameId: patternAnchor,

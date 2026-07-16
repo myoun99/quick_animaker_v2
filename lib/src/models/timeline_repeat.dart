@@ -463,6 +463,38 @@ TimelineRunBehavior? runEdgeBehaviorAt(
   return found;
 }
 
+/// The behavior OWNING the ghost that covers [frameIndex]; null when the
+/// cell is not ghost-covered or the owner vanished. The cells painter
+/// reads the mode off this (hold ghosts draw ㅡ dashes, repeat ghosts
+/// text-only cel names — UI-R10 #11).
+TimelineRunBehavior? runBehaviorOwningGhostAt(Layer layer, int frameIndex) {
+  String? ownerId;
+  final entry = layer.timeline[frameIndex];
+  if (entry != null) {
+    if (entry.ghost) {
+      ownerId = entry.ghostOwnerId;
+    }
+  } else {
+    final coveringKey = layer.timeline.lastKeyBefore(frameIndex);
+    if (coveringKey != null) {
+      final covering = layer.timeline[coveringKey]!;
+      if (covering.ghost && frameIndex < coveringKey + covering.length!) {
+        ownerId = covering.ghostOwnerId;
+      }
+    }
+  }
+  if (ownerId == null) {
+    return null;
+  }
+  TimelineRunBehavior? found;
+  for (final behavior in layer.runBehaviors) {
+    if (behavior.ghostOwnerId == ownerId) {
+      found = behavior; // Last spec in list order wins (dedupe mirror).
+    }
+  }
+  return found;
+}
+
 /// Whether [index] on [layer] falls inside a GHOST exposure (a derived
 /// repeat instance) — the timeline cells dim these and the editing
 /// affordances (grips, move, run-end handles) stand down on them.
