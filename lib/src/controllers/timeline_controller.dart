@@ -23,7 +23,7 @@ import '../services/project_repository.dart';
 class TimelineController {
   TimelineController({
     required ProjectRepository repository,
-    required CutId cutId,
+    required CutId? cutId,
     HistoryManager? historyManager,
     int initialFrameIndex = 0,
     int Function(LayerId layerId)? frameOffsetForLayer,
@@ -38,7 +38,11 @@ class TimelineController {
 
   final ProjectRepository _repository;
   final HistoryManager? _historyManager;
-  final CutId _cutId;
+
+  /// NULL = the session has no active cut (gap state, UI-R9 #3): queries
+  /// resolve against no cut and mutations are unreachable (the UI stands
+  /// down); [_requireLayer] still throws as the defensive backstop.
+  final CutId? _cutId;
 
   /// Track-owned SE support: SE timelines live on the track's GLOBAL frame
   /// axis while this controller's playhead is cut-local. [_requireLayer]
@@ -844,7 +848,7 @@ class TimelineController {
 
   Cut? _findCutOrNull() {
     final project = _repository.currentProject;
-    if (project == null) {
+    if (project == null || _cutId == null) {
       return null;
     }
 

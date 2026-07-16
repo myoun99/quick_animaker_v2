@@ -109,7 +109,7 @@ void main() {
       'undo restores everything', () {
     final (s, a, b) = fixture();
     final frameIds = [a.timeline[0]!.frameId!, a.timeline[3]!.frameId!];
-    final cut = s.activeCut;
+    final cut = s.requireActiveCut;
     final fromKeys = [
       for (final id in frameIds) s.brushFrameKeyForCut(cut, a.id, id),
     ];

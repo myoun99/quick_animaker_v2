@@ -39,7 +39,9 @@ class CanvasScrubPreview extends StatefulWidget {
 
   final ValueListenable<int> frameCursor;
   final CutFrameCompositeCache compositeCache;
-  final Cut cut;
+  /// Null = no active cut (gap state, UI-R9 #3): the preview is the void
+  /// regardless of the parking value.
+  final Cut? cut;
   final PlaybackQuality Function() qualityOf;
 
   /// The session's gap parking (UI-R7 #9): non-null while the scrub sits
@@ -115,9 +117,9 @@ class _CanvasScrubPreviewState extends State<CanvasScrubPreview> {
   @override
   Widget build(BuildContext context) {
     final cut = widget.cut;
-    // A gap parking shows the no-cut VOID (R16-⑥ semantics, live during
-    // the drag — UI-R7 #9): no paper, no held frame.
-    if (widget.gapParking?.value != null) {
+    // A gap parking (or the no-cut state itself) shows the VOID (R16-⑥
+    // semantics, live during the drag — UI-R7 #9): no paper, no frame.
+    if (cut == null || widget.gapParking?.value != null) {
       return const SizedBox.expand(
         key: ValueKey<String>('canvas-scrub-preview-gap-void'),
       );

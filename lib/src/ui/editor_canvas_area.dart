@@ -219,7 +219,10 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
     // layer's wrap composes cut ∘ layer into ONE pose sample (similarities
     // compose exactly), so draw-through keeps landing strokes in artwork
     // coordinates through the single Transform's hit-test inverse.
-    final canvasSize = session.activeCut.canvasSize;
+    // Gap state (no active cut, UI-R9 #3): the void keeps a stable stage
+    // geometry — the camera frame size stands in for the missing cut.
+    final canvasSize =
+        session.activeCutOrNull?.canvasSize ?? session.cameraFrameSize;
     final cutPoseSample = session.activeCutCanvasPoseSample();
     final interactiveWrapPose = cutPoseSample == null
         ? interactivePose
@@ -266,7 +269,7 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
               // Camera mode still needs artwork on screen: fall
               // back to the first drawn layer at the playhead.
               selection: selection,
-              canvasSize: session.activeCut.canvasSize,
+              canvasSize: canvasSize,
               frameStore: session.brushFrameStore,
               cacheInvalidationSink: session.cacheInvalidationHub,
               historyManager: session.historyManager,
@@ -290,8 +293,10 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
               // see"). Picks NEVER switch tools (R11-②): the eyedropper stays
               // armed until the user changes tools, Alt-picks keep the
               // painting tool.
+              // Lazy: only reachable with an editable selection, which a
+              // gap state never offers (requireActiveCut = backstop).
               sampleColorAt: (point) => sampleCompositeColor(
-                cut: session.activeCut,
+                cut: session.requireActiveCut,
                 frameIndex: session.currentFrameIndex,
                 surfaceResolver: session.brushSurfaceForLayerFrame,
                 point: point,
@@ -308,7 +313,7 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
               // through the stroke funnel onto the active layer's frame.
               selectionMaskOptions: widget.selectionMaskOptions,
               fillDabAt: (point, color) => buildFillDab(
-                cut: session.activeCut,
+                cut: session.requireActiveCut,
                 frameIndex: session.currentFrameIndex,
                 surfaceResolver: session.brushSurfaceForLayerFrame,
                 point: point,
@@ -411,8 +416,12 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
                                 painter: _CutFadeWashPainter(
                                   viewport: viewport,
                                   canvasSize: canvasSize,
-                                  color: cutFadeTargetColor(session.activeCut)
-                                      .withValues(
+                                  // A visible fade wash implies a cut (the
+                                  // fade opacity defaults to 1 without one).
+                                  color:
+                                      cutFadeTargetColor(
+                                        session.requireActiveCut,
+                                      ).withValues(
                                         alpha: (1 - cutFadeOpacity).clamp(
                                           0.0,
                                           1.0,
@@ -498,7 +507,8 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
                   ? (context, viewport) => CanvasScrubPreview(
                       frameCursor: session.editingFrameCursor,
                       compositeCache: session.cutFrameCompositeCache,
-                      cut: session.activeCut,
+                      // Null in the no-cut gap state: the preview voids.
+                      cut: session.activeCutOrNull,
                       qualityOf: () => session.playbackQuality,
                       // Gap scrubs park per move (UI-R7 #9): the preview
                       // shows the no-cut void, not the owner cut's last
@@ -510,7 +520,9 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
                           session.activeCutCanvasPoseSample(frameIndex: frame),
                       cutFadeOpacityAt: (frame) => session
                           .activeCutEditingFadeOpacity(frameIndex: frame),
-                      fadeColor: cutFadeTargetColor(session.activeCut),
+                      fadeColor: session.activeCutOrNull == null
+                          ? const Color(0xFF000000)
+                          : cutFadeTargetColor(session.requireActiveCut),
                       viewport: viewport,
                       paperBackground: session.projectBackground,
                     )

@@ -220,14 +220,18 @@ class EditorMenuBar extends StatelessWidget {
     _item(
       id: 'file-export',
       label: 'Export…',
-      onPressed: () {
-        unawaited(
-          showDialog<void>(
-            context: context,
-            builder: (context) => ExportDialog(session: session),
-          ),
-        );
-      },
+      // The export dialog is cut-anchored — disabled in the no-cut gap
+      // state (UI-R9 #3).
+      onPressed: session.activeCutOrNull == null
+          ? null
+          : () {
+              unawaited(
+                showDialog<void>(
+                  context: context,
+                  builder: (context) => ExportDialog(session: session),
+                ),
+              );
+            },
     ),
   ];
 
@@ -310,10 +314,13 @@ class EditorMenuBar extends StatelessWidget {
   // --- Cut ------------------------------------------------------------------
 
   Future<void> _renameActiveCut(BuildContext context) async {
+    final cut = session.activeCutOrNull;
+    if (cut == null) {
+      return; // Gap state: no cut to rename.
+    }
     final nextName = await showDialog<String>(
       context: context,
-      builder: (context) =>
-          RenameCutDialog(initialName: session.activeCut.name),
+      builder: (context) => RenameCutDialog(initialName: cut.name),
     );
     if (!context.mounted || nextName == null || nextName.trim().isEmpty) {
       return;
@@ -322,10 +329,13 @@ class EditorMenuBar extends StatelessWidget {
   }
 
   Future<void> _resizeActiveCutCanvas(BuildContext context) async {
+    final cut = session.activeCutOrNull;
+    if (cut == null) {
+      return; // Gap state: no cut canvas to resize.
+    }
     final request = await showDialog<CanvasResizeRequest>(
       context: context,
-      builder: (context) =>
-          CanvasSizeDialog(initialSize: session.activeCut.canvasSize),
+      builder: (context) => CanvasSizeDialog(initialSize: cut.canvasSize),
     );
     if (!context.mounted || request == null) {
       return;
@@ -384,7 +394,10 @@ class EditorMenuBar extends StatelessWidget {
   /// Bakes per frame; paste onto the canvas-sequence layer in a
   /// camera-frame-sized comp.
   void _copyCameraAeKeyframes(BuildContext context) {
-    final cut = session.activeCut;
+    final cut = session.activeCutOrNull;
+    if (cut == null) {
+      return; // Gap state: no camera work to bake.
+    }
     final cameraSize = session.cameraFrameSize;
     final text = buildAeTransformKeyframeData(
       framesPerSecond: session.projectFps,

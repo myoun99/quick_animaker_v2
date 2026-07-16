@@ -31,7 +31,7 @@ class TimelineViewCluster extends StatelessWidget {
   final ValueListenable<int> frameCursor;
 
   /// Track-global playhead frame (UI-R9 #6, storyboard only): when set,
-  /// the counter reads '<global> · <cut-local>' — the global number LEFT
+  /// the counter reads `<global> · <cut-local>` — the global number LEFT
   /// of the local one. The counter subscribes to both, so gap parking
   /// (which moves the global without touching the cut-local cursor)
   /// refreshes the label too. Null (the timeline tab) keeps the plain

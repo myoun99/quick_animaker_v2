@@ -26,7 +26,7 @@ void main() {
         initialProject: createDefaultProject(),
       );
       addTearDown(session.dispose);
-      final cut = session.activeCut;
+      final cut = session.requireActiveCut;
       final layer = cut.layers.firstWhere(
         (candidate) => candidate.kind == LayerKind.animation,
       );
@@ -37,20 +37,20 @@ void main() {
       session.createDrawingAtCurrentFrame();
       final frame = session.selectedFrame!;
       final frameKey = session.brushFrameKeyForCut(
-        session.activeCut,
+        session.requireActiveCut,
         layer.id,
         frame.id,
       );
       // Dabs around the CANVAS CENTER — the default canvas is much larger
       // than a video frame, and the camera views its center region.
-      final canvasSize = session.activeCut.canvasSize;
+      final canvasSize = session.requireActiveCut.canvasSize;
       final centerX = canvasSize.width / 2;
       final centerY = canvasSize.height / 2;
       BrushFrameEditingCoordinator(
         initialFrameKey: frameKey,
         frameStore: session.brushFrameStore,
         sessionStore: BrushFrameEditSessionStore(
-          canvasSize: session.activeCut.canvasSize,
+          canvasSize: session.requireActiveCut.canvasSize,
         ),
         historyPolicy: const BrushHistoryPolicy(
           userUndoLimit: 8,
@@ -89,7 +89,7 @@ void main() {
       );
 
       final image = await ExportFrameRenderer(session: session).renderComposite(
-        ExportFrameTask(cut: session.activeCut, frameIndex: 0),
+        ExportFrameTask(cut: session.requireActiveCut, frameIndex: 0),
         ExportSizeMode.camera,
         outputSize: const CanvasSize(width: 128, height: 72),
       );

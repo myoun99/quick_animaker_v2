@@ -546,11 +546,11 @@ class _BrushLabDriverState extends State<_BrushLabDriver> {
     }
     _log('fill-roundtrip: filled, coverage ${_undecodedCount()}');
 
-    final originalCutId = session.activeCut.id;
+    final originalCutId = session.requireActiveCut.id;
     session.duplicateActiveCut();
     await _settleFrames(20);
     _log(
-      'fill-roundtrip: after duplicate active=${session.activeCut.id} '
+      'fill-roundtrip: after duplicate active=${session.requireActiveCut.id} '
       '(original=$originalCutId)',
     );
     session.selectCut(originalCutId);
@@ -568,11 +568,11 @@ class _BrushLabDriverState extends State<_BrushLabDriver> {
     // DIFFERENT-SIZED cuts run the host's global store resize - the
     // suspected bug engine.
     try {
-      final cut1 = session.activeCut.id;
-      final smallSize = session.activeCut.canvasSize;
+      final cut1 = session.requireActiveCut.id;
+      final smallSize = session.requireActiveCut.canvasSize;
       session.duplicateActiveCut(); // cut2 (active), same size as cut1.
       await _settleFrames(10);
-      final cut2 = session.activeCut.id;
+      final cut2 = session.requireActiveCut.id;
       session.resizeActiveCutCanvas(
         const CanvasSize(width: 8000, height: 8000),
         anchor: CanvasResizeAnchor.topLeft,

@@ -56,12 +56,21 @@ int? storyboardPlayheadFrame(
       : null;
   if (playbackPosition == null) {
     // Editing playhead: a GAP PARKING reads its exact stored global
-    // (R16-⑥); otherwise the ONE axis model's territory-clamped global —
-    // the same math the session's editingGlobalFrame speaks.
-    return session.gapParkedGlobalFrame ??
-        TrackFrameAxis(
-          layout,
-        ).clampedGlobalOf(session.activeCutId, session.currentFrameIndex);
+    // (R16-⑥); otherwise the playhead clamps to the CUT's last frame
+    // (UI-R9 #4 — the timeline's over-end runway is a clipped view of
+    // the cut, never the trailing gap) — the same math the session's
+    // editingGlobalFrame speaks. No cut + no parking = no playhead.
+    final parked = session.gapParkedGlobalFrame;
+    if (parked != null) {
+      return parked;
+    }
+    final cutId = session.activeCutId;
+    if (cutId == null) {
+      return null;
+    }
+    return TrackFrameAxis(
+      layout,
+    ).clampedToCutGlobalOf(cutId, session.currentFrameIndex);
   }
   for (final entry in layout) {
     if (entry.cutId == playbackPosition.cutId) {
@@ -144,20 +153,31 @@ void commitStoryboardScrub(EditorSessionManager session) {
   }
 }
 
-/// Switching into the storyboard clamps an over-end playhead back into the
-/// cut's territory — its frames PLUS its trailing gap (the over-end runway
-/// gap landings live in, R14-①); the track's last cut keeps its endless
-/// runway — so the frame counter and the playhead line agree.
+/// Switching into the storyboard clamps an over-end playhead back onto the
+/// CUT's last frame (UI-R9 #4 — the runway is a clipped view of the cut,
+/// so tab-switching never lands the playhead in the trailing gap); the
+/// track's last cut keeps its endless runway — so the frame counter and
+/// the playhead line agree. Gap parkings (no active cut) need no clamp.
 void clampPlayheadForStoryboard(EditorSessionManager session) {
   if (session.playback.isActive) {
     return;
   }
-  final maxLocal = TrackFrameAxis(
-    storyboardActiveTrackLayout(session),
-  ).territoryLastLocalOf(session.activeCutId);
-  if (maxLocal != null &&
-      maxLocal >= 0 &&
-      session.currentFrameIndex > maxLocal) {
+  final cutId = session.activeCutId;
+  if (cutId == null) {
+    return;
+  }
+  final layout = storyboardActiveTrackLayout(session);
+  final entry = TrackFrameAxis(layout).entryFor(cutId);
+  if (entry == null) {
+    return;
+  }
+  // The track's LAST cut keeps the endless runway (no next cut to leak
+  // into); every other cut clamps to its own last frame.
+  if (layout.isNotEmpty && layout.last.cutId == cutId) {
+    return;
+  }
+  final maxLocal = entry.duration > 0 ? entry.duration - 1 : 0;
+  if (session.currentFrameIndex > maxLocal) {
     session.selectFrameIndex(maxLocal);
   }
 }

@@ -28,17 +28,26 @@ class CanvasPlaybackController extends ChangeNotifier {
     required this.resolveActiveTrackId,
     required this.resolveFps,
     this.onStopped,
+    this.onStoppedInGap,
     this.onPlaylistWarmRequested,
   });
 
   final Project Function() resolveProject;
-  final CutId Function() resolveActiveCutId;
+
+  /// Null = the session stands in a gap (no active cut, UI-R9 #3): an
+  /// active-cut-scoped [play] resolves an empty playlist and no-ops.
+  final CutId? Function() resolveActiveCutId;
   final TrackId Function() resolveActiveTrackId;
   final int Function() resolveFps;
 
   /// Fired on [stop] with the last position so the owner can sync the real
   /// playhead (and switch the active cut after a play-all run).
   final void Function(PlaybackPosition lastPosition)? onStopped;
+
+  /// Fired on [stop] when the last frame was a playlist GAP (no position):
+  /// the owner parks the editing playhead there with NO active cut
+  /// (UI-R9 #3 — stopping in a gap matches the editing gap semantics).
+  final void Function(int globalFrame)? onStoppedInGap;
 
   /// Fired on [play] so the prerender scheduler can warm the playlist;
   /// [startGlobalFrame] lets warming run playhead-forward (wrapping) so the
@@ -230,6 +239,7 @@ class CanvasPlaybackController extends ChangeNotifier {
       return;
     }
     final lastPosition = position;
+    final lastGlobal = _playlist == null ? null : _currentGlobalFrame;
     _stopTicker();
     _playlist = null;
     _isPlaying = false;
@@ -238,6 +248,8 @@ class CanvasPlaybackController extends ChangeNotifier {
     notifyListeners();
     if (lastPosition != null) {
       onStopped?.call(lastPosition);
+    } else if (lastGlobal != null) {
+      onStoppedInGap?.call(lastGlobal);
     }
   }
 

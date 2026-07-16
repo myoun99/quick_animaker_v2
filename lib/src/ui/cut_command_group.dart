@@ -27,10 +27,13 @@ class _CutCommandGroupState extends State<CutCommandGroup> {
   EditorSessionManager get session => widget.session;
 
   Future<void> _renameActiveCut() async {
+    final cut = session.activeCutOrNull;
+    if (cut == null) {
+      return; // Gap state: no cut to rename.
+    }
     final nextName = await showDialog<String>(
       context: context,
-      builder: (context) =>
-          RenameCutDialog(initialName: session.activeCut.name),
+      builder: (context) => RenameCutDialog(initialName: cut.name),
     );
     if (!mounted || nextName == null || nextName.trim().isEmpty) {
       return;
@@ -54,10 +57,13 @@ class _CutCommandGroupState extends State<CutCommandGroup> {
   }
 
   Future<void> _resizeActiveCutCanvas() async {
+    final cut = session.activeCutOrNull;
+    if (cut == null) {
+      return; // Gap state: no cut canvas to resize.
+    }
     final request = await showDialog<CanvasResizeRequest>(
       context: context,
-      builder: (context) =>
-          CanvasSizeDialog(initialSize: session.activeCut.canvasSize),
+      builder: (context) => CanvasSizeDialog(initialSize: cut.canvasSize),
     );
     if (!mounted || request == null) {
       return;

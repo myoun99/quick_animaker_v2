@@ -98,4 +98,21 @@ class TrackFrameAxis {
             ? local
             : territoryLast);
   }
+
+  /// ([cutId], [localFrame]) as a global frame, clamped to the CUT itself
+  /// (its last frame — never the trailing gap). The timeline's over-end
+  /// runway is a clipped view of the cut (UI-R9 #4): displaying it on the
+  /// global axis must stop at the cut end, not leak into the gap. Null for
+  /// unknown cuts.
+  int? clampedToCutGlobalOf(CutId cutId, int localFrame) {
+    final entry = entryFor(cutId);
+    if (entry == null) {
+      return null;
+    }
+    final lastLocal = entry.duration < 1 ? 0 : entry.duration - 1;
+    final local = localFrame < 0
+        ? 0
+        : (localFrame > lastLocal ? lastLocal : localFrame);
+    return entry.startFrame + local;
+  }
 }
