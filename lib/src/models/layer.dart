@@ -40,14 +40,14 @@ class Layer {
     this.attachedToLayerId,
     this.attachedPlacement = AttachedPlacement.above,
     Map<FrameId, FrameId> baseFrameLinks = const {},
-    List<TimelineRepeatRegion> repeatRegions = const [],
+    List<TimelineRunBehavior> runBehaviors = const [],
   }) : frames = List.unmodifiable(frames),
        timeline = _immutableTimeline(timeline ?? _deriveTimeline(frames)),
        instructions = immutableInstructionMap(instructions ?? const {}),
        audioClips = List.unmodifiable(audioClips),
        transformTrack = transformTrack ?? TransformTrack.empty(),
        baseFrameLinks = Map.unmodifiable(baseFrameLinks),
-       repeatRegions = List.unmodifiable(repeatRegions);
+       runBehaviors = List.unmodifiable(runBehaviors);
 
   final LayerId id;
   final String name;
@@ -109,10 +109,11 @@ class Layer {
   /// come back with the cel (audio-clip semantics).
   final Map<FrameId, FrameId> baseFrameLinks;
 
-  /// TVP-style REPEAT specs (UI-R8): live regions whose GHOST exposures
-  /// are derived from the current timeline by [rederiveRepeatRegions] on
-  /// every edit — see [TimelineRepeatRegion].
-  final List<TimelineRepeatRegion> repeatRegions;
+  /// TVP-style run-edge properties (UI-R9 #10 N/H/R): live specs whose
+  /// GHOST exposures are derived from the current timeline by
+  /// [rederiveRunBehaviors] on every edit and cut-duration change — see
+  /// [TimelineRunBehavior].
+  final List<TimelineRunBehavior> runBehaviors;
 
   Layer copyWith({
     LayerId? id,
@@ -132,7 +133,7 @@ class Layer {
     LayerId? attachedToLayerId,
     AttachedPlacement? attachedPlacement,
     Map<FrameId, FrameId>? baseFrameLinks,
-    List<TimelineRepeatRegion>? repeatRegions,
+    List<TimelineRunBehavior>? runBehaviors,
   }) {
     final nextFrames = frames ?? this.frames;
     return Layer(
@@ -155,7 +156,7 @@ class Layer {
       attachedToLayerId: attachedToLayerId ?? this.attachedToLayerId,
       attachedPlacement: attachedPlacement ?? this.attachedPlacement,
       baseFrameLinks: baseFrameLinks ?? this.baseFrameLinks,
-      repeatRegions: repeatRegions ?? this.repeatRegions,
+      runBehaviors: runBehaviors ?? this.runBehaviors,
     );
   }
 
@@ -177,9 +178,9 @@ class Layer {
     'onTimesheet': onTimesheet,
     'mark': mark.toJson(),
     if (isFillReference) 'fillReference': true,
-    if (repeatRegions.isNotEmpty)
-      'repeatRegions': [
-        for (final region in repeatRegions) region.toJson(),
+    if (runBehaviors.isNotEmpty)
+      'runBehaviors': [
+        for (final behavior in runBehaviors) behavior.toJson(),
       ],
     if (transformTrack.isNotEmpty) 'transform': transformTrack.toJson(),
     if (attachedToLayerId != null) ...{
@@ -252,11 +253,13 @@ class Layer {
           ? LayerMark.fromJson(json['mark'])
           : LayerMark.none,
       isFillReference: json['fillReference'] as bool? ?? false,
-      repeatRegions: json['repeatRegions'] == null
+      // Legacy 'repeatRegions' JSON is ignored (no production data): its
+      // stale ghost entries strip on the first rederive.
+      runBehaviors: json['runBehaviors'] == null
           ? const []
           : [
-              for (final region in json['repeatRegions'] as List<dynamic>)
-                TimelineRepeatRegion.fromJson(region as Map<String, dynamic>),
+              for (final behavior in json['runBehaviors'] as List<dynamic>)
+                TimelineRunBehavior.fromJson(behavior as Map<String, dynamic>),
             ],
       transformTrack: json['transform'] == null
           ? null
@@ -300,7 +303,7 @@ class Layer {
           other.attachedToLayerId == attachedToLayerId &&
           other.attachedPlacement == attachedPlacement &&
           mapEquals(other.baseFrameLinks, baseFrameLinks) &&
-          listEquals(other.repeatRegions, repeatRegions);
+          listEquals(other.runBehaviors, runBehaviors);
 
   @override
   int get hashCode => Object.hash(
@@ -329,7 +332,7 @@ class Layer {
         (entry) => Object.hash(entry.key, entry.value),
       ),
     ),
-    Object.hashAll(repeatRegions),
+    Object.hashAll(runBehaviors),
   );
 
   @override
@@ -377,7 +380,7 @@ class _RawTimelineItem {
     this.frameId,
     this.length,
     this.ghost = false,
-    this.repeatRegionId,
+    this.ghostOwnerId,
     this.breakdownOffsets = const [],
   });
 
@@ -388,7 +391,7 @@ class _RawTimelineItem {
   final FrameId? frameId;
   final int? length;
   final bool ghost;
-  final String? repeatRegionId;
+  final String? ghostOwnerId;
   final List<int> breakdownOffsets;
 }
 
@@ -440,7 +443,9 @@ SplayTreeMap<int, TimelineExposure> _timelineFromJson(
           : FrameId.fromJson(frameIdJson as Map<String, dynamic>),
       length: lengthJson is int && lengthJson >= 1 ? lengthJson : null,
       ghost: exposureJson['ghost'] == true,
-      repeatRegionId: exposureJson['repeatRegionId'] as String?,
+      ghostOwnerId:
+          (exposureJson['ghostOwner'] ?? exposureJson['repeatRegionId'])
+              as String?,
       breakdownOffsets: [
         for (final offset
             in exposureJson['breakdown'] as List<dynamic>? ?? const [])
@@ -516,7 +521,7 @@ SplayTreeMap<int, TimelineExposure> _timelineFromJson(
           item.frameId!,
           length: length,
           ghost: item.ghost,
-          repeatRegionId: item.repeatRegionId,
+          ghostOwnerId: item.ghostOwnerId,
         );
         if (item.breakdownOffsets.isNotEmpty) {
           // copyWith normalizes (sorts, dedupes, clamps to the length).

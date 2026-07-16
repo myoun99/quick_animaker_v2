@@ -13,6 +13,7 @@ import '../models/layer_kind.dart';
 import '../models/layer_mark.dart';
 import '../models/media_asset.dart';
 import '../models/storyboard_frame_metadata.dart';
+import '../models/timeline_repeat.dart';
 import '../models/timesheet_info.dart';
 import '../models/project.dart';
 import '../models/project_background.dart';
@@ -217,7 +218,16 @@ class ProjectRepository {
       final next = updateCutAnywhere(
         project,
         cutId,
-        (cut) => cut.copyWith(duration: duration),
+        // Hold/repeat run edges fill ghosts TO THE CUT END, so a duration
+        // change re-derives every layer here — the only rederive trigger
+        // that is not a layer edit (identity for layers without specs).
+        (cut) => cut.copyWith(
+          duration: duration,
+          layers: [
+            for (final layer in cut.layers)
+              rederiveRunBehaviors(layer, cutFrameCount: duration),
+          ],
+        ),
       );
       if (next == null) {
         throw StateError('Cut not found: $cutId');

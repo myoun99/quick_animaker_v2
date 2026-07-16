@@ -3709,9 +3709,9 @@ class EditorSessionManager extends ChangeNotifier {
         ? null
         : BlockMoveDragPreview(
             previewLayers: {
-              plan.sourceAfter.id: rederiveRepeatRegions(plan.sourceAfter),
+              plan.sourceAfter.id: rederiveRunBehaviors(plan.sourceAfter, cutFrameCount: _activeCutFrameCount),
               if (plan.targetAfter != null)
-                plan.targetAfter!.id: rederiveRepeatRegions(plan.targetAfter!),
+                plan.targetAfter!.id: rederiveRunBehaviors(plan.targetAfter!, cutFrameCount: _activeCutFrameCount),
             },
           );
   }
@@ -3733,13 +3733,13 @@ class EditorSessionManager extends ChangeNotifier {
       UpdateLayerTimelineCommand(
         repository: _repository,
         before: source,
-        after: rederiveRepeatRegions(plan.sourceAfter),
+        after: rederiveRunBehaviors(plan.sourceAfter, cutFrameCount: _activeCutFrameCount),
       ),
       if (plan.targetBefore != null)
         UpdateLayerTimelineCommand(
           repository: _repository,
           before: plan.targetBefore!,
-          after: rederiveRepeatRegions(plan.targetAfter!),
+          after: rederiveRunBehaviors(plan.targetAfter!, cutFrameCount: _activeCutFrameCount),
         ),
     ];
     if (plan.isCrossLayer && plan.movedFrameIds.isNotEmpty) {
@@ -3852,9 +3852,9 @@ class EditorSessionManager extends ChangeNotifier {
         ? null
         : BlockMoveDragPreview(
             previewLayers: {
-              plan.sourceAfter.id: rederiveRepeatRegions(plan.sourceAfter),
+              plan.sourceAfter.id: rederiveRunBehaviors(plan.sourceAfter, cutFrameCount: _activeCutFrameCount),
               if (plan.targetAfter != null)
-                plan.targetAfter!.id: rederiveRepeatRegions(plan.targetAfter!),
+                plan.targetAfter!.id: rederiveRunBehaviors(plan.targetAfter!, cutFrameCount: _activeCutFrameCount),
             },
           );
     // The selection outline follows the previewed landing live.
@@ -3899,13 +3899,13 @@ class EditorSessionManager extends ChangeNotifier {
       UpdateLayerTimelineCommand(
         repository: _repository,
         before: source,
-        after: rederiveRepeatRegions(plan.sourceAfter),
+        after: rederiveRunBehaviors(plan.sourceAfter, cutFrameCount: _activeCutFrameCount),
       ),
       if (plan.targetBefore != null)
         UpdateLayerTimelineCommand(
           repository: _repository,
           before: plan.targetBefore!,
-          after: rederiveRepeatRegions(plan.targetAfter!),
+          after: rederiveRunBehaviors(plan.targetAfter!, cutFrameCount: _activeCutFrameCount),
         ),
     ];
     if (plan.isCrossLayer && plan.movedFrameIds.isNotEmpty) {
@@ -4036,7 +4036,10 @@ class EditorSessionManager extends ChangeNotifier {
     );
     _addFramesAfter = result == null
         ? null
-        : rederiveRepeatRegions(result.layer);
+        : rederiveRunBehaviors(
+            result.layer,
+            cutFrameCount: _activeCutFrameCount,
+          );
     dragPreview.value = _addFramesAfter == null
         ? null
         : ExposureEdgeDragPreview(previewLayer: _addFramesAfter!);
@@ -4067,164 +4070,106 @@ class EditorSessionManager extends ChangeNotifier {
     dragPreview.value = null;
   }
 
-  // --- REPEAT region drag (UI-R8 [↻] handle) --------------------------------
+  // --- Run-edge properties (UI-R9 #10 N/H/R tags) ----------------------------
 
-  Layer? _repeatDragBefore;
-  String? _repeatDragRegionId;
-  FrameId? _repeatDragAnchorFrameId;
-  int _repeatDragSpanFrames = 1;
-  Layer? _repeatDragAfter;
+  /// The run-behavior fill boundary (hold/repeat edges fill to the cut
+  /// end); zero without a cut.
+  int get _activeCutFrameCount => activeCutOrNull?.duration ?? 0;
 
-  /// Starts a repeat drag (UI-R8 [↻]): [regionId] resizes an existing
-  /// region; otherwise a NEW region repeats the current selection (when it
-  /// covers the block) or the glued run containing [blockStartIndex].
-  bool beginRepeatRegionDrag({
+  /// Sets or clears the [side] edge property of the glued run containing
+  /// [blockStartIndex] (UI-R9 #10): `mode` null = None. Repeat captures
+  /// the current frame-range selection as its pattern when the selection
+  /// covers the run's edge block (end side: selection start → run end;
+  /// start side: run start → selection end); otherwise the whole run
+  /// cycles. Ghosts always fill to the cut boundary. One undo step,
+  /// committed immediately.
+  void setRunEdgeBehavior({
     required LayerId layerId,
     required int blockStartIndex,
-    String? regionId,
+    required TimelineRunEdgeSide side,
+    TimelineRunEdgeMode? mode,
   }) {
     if (!_blockMoveEligible(layerId)) {
-      return false;
-    }
-    final layer = _layerById(layerId);
-    if (layer == null) {
-      return false;
-    }
-    if (regionId != null) {
-      for (final region in layer.repeatRegions) {
-        if (region.id == regionId) {
-          _repeatDragBefore = layer;
-          _repeatDragRegionId = regionId;
-          _repeatDragAnchorFrameId = region.anchorFrameId;
-          _repeatDragSpanFrames = region.sourceSpanFrames;
-          _repeatDragAfter = null;
-          return true;
-        }
-      }
-      return false;
-    }
-    // The repeat unit (user rule): the selection when it covers this
-    // block, else the glued run.
-    final selection = frameRangeSelection.value;
-    int spanStart;
-    int spanEndExclusive;
-    if (selection != null &&
-        selection.layerId == layerId &&
-        selection.contains(blockStartIndex)) {
-      spanStart = selection.startIndex;
-      spanEndExclusive = selection.endIndexExclusive;
-    } else {
-      final run = gluedRunAt(layer, blockStartIndex);
-      if (run == null) {
-        return false;
-      }
-      spanStart = run.startIndex;
-      spanEndExclusive = run.endIndexExclusive;
-    }
-    final anchorEntry = layer.timeline[spanStart];
-    FrameId? anchorFrameId = anchorEntry != null && anchorEntry.isDrawing
-        ? anchorEntry.frameId
-        : null;
-    if (anchorFrameId == null) {
-      // A selection may start on empty cells; anchor on the first block.
-      for (final entry in layer.timeline.entries) {
-        if (entry.key >= spanStart &&
-            entry.key < spanEndExclusive &&
-            entry.value.isDrawing &&
-            !entry.value.ghost) {
-          anchorFrameId = entry.value.frameId;
-          spanEndExclusive =
-              spanEndExclusive - (entry.key - spanStart);
-          spanStart = entry.key;
-          break;
-        }
-      }
-    }
-    if (anchorFrameId == null) {
-      return false;
-    }
-    var ordinal = 1;
-    final usedIds = {for (final region in layer.repeatRegions) region.id};
-    while (usedIds.contains('repeat-$ordinal')) {
-      ordinal += 1;
-    }
-    _repeatDragBefore = layer;
-    _repeatDragRegionId = 'repeat-$ordinal';
-    _repeatDragAnchorFrameId = anchorFrameId;
-    _repeatDragSpanFrames = spanEndExclusive - spanStart;
-    _repeatDragAfter = null;
-    return true;
-  }
-
-  /// Live preview: the region covers [frameCount] ghost frames (0 removes
-  /// it).
-  void updateRepeatRegionDrag(int frameCount) {
-    final before = _repeatDragBefore;
-    final regionId = _repeatDragRegionId;
-    final anchor = _repeatDragAnchorFrameId;
-    if (before == null || regionId == null || anchor == null) {
       return;
     }
-    final regions = [
-      for (final region in before.repeatRegions)
-        if (region.id != regionId) region,
-      if (frameCount > 0)
-        TimelineRepeatRegion(
-          id: regionId,
-          anchorFrameId: anchor,
-          sourceSpanFrames: _repeatDragSpanFrames,
-          frameCount: frameCount,
+    final before = _layerById(layerId);
+    if (before == null) {
+      return;
+    }
+    final run = gluedRunAt(before, blockStartIndex);
+    if (run == null) {
+      return;
+    }
+
+    // Replace any behavior already sitting on this (run, side).
+    bool ownsThisEdge(TimelineRunBehavior behavior) {
+      if (behavior.side != side) {
+        return false;
+      }
+      for (final entry in before.timeline.entries) {
+        if (entry.value.ghost ||
+            entry.value.frameId != behavior.anchorFrameId) {
+          continue;
+        }
+        return entry.key >= run.startIndex &&
+            entry.key < run.endIndexExclusive;
+      }
+      return false;
+    }
+
+    FrameId? patternAnchor;
+    if (mode == TimelineRunEdgeMode.repeat) {
+      final selection = frameRangeSelection.value;
+      if (selection != null && selection.layerId == layerId) {
+        if (side == TimelineRunEdgeSide.end &&
+            selection.contains(run.endIndexExclusive - 1) &&
+            selection.startIndex > run.startIndex) {
+          // Pattern = first block at/after the selection start → run end.
+          for (final entry in before.timeline.entries) {
+            if (!entry.value.ghost &&
+                entry.key >= selection.startIndex &&
+                entry.key < run.endIndexExclusive) {
+              patternAnchor = entry.value.frameId;
+              break;
+            }
+          }
+        } else if (side == TimelineRunEdgeSide.start &&
+            selection.contains(run.startIndex) &&
+            selection.endIndexExclusive < run.endIndexExclusive) {
+          // Pattern = run start → the last block ending by the selection.
+          for (final entry in before.timeline.entries) {
+            if (entry.value.ghost ||
+                entry.key < run.startIndex ||
+                entry.key >= selection.endIndexExclusive) {
+              continue;
+            }
+            patternAnchor = entry.value.frameId;
+          }
+        }
+      }
+    }
+
+    final behaviors = [
+      for (final behavior in before.runBehaviors)
+        if (!ownsThisEdge(behavior)) behavior,
+      if (mode != null)
+        TimelineRunBehavior(
+          anchorFrameId: run.anchorFrameId,
+          side: side,
+          mode: mode,
+          patternAnchorFrameId: patternAnchor,
         ),
     ];
-    final after = rederiveRepeatRegions(
-      before.copyWith(repeatRegions: regions),
+    final after = rederiveRunBehaviors(
+      before.copyWith(runBehaviors: behaviors),
+      cutFrameCount: _activeCutFrameCount,
     );
-    _repeatDragAfter = after == before ? null : after;
-    dragPreview.value = _repeatDragAfter == null
-        ? null
-        : ExposureEdgeDragPreview(previewLayer: _repeatDragAfter!);
-  }
-
-  /// Commits the region change as ONE undo step.
-  void endRepeatRegionDrag() {
-    final before = _repeatDragBefore;
-    final after = _repeatDragAfter;
-    _repeatDragBefore = null;
-    _repeatDragRegionId = null;
-    _repeatDragAnchorFrameId = null;
-    _repeatDragAfter = null;
-    dragPreview.value = null;
-    if (before == null || after == null || after == before) {
+    if (after == before) {
       return;
     }
     _timelineController.commitLayerTimelineDrag(before: before, after: after);
     _warmActiveCut();
     notifyListeners();
-  }
-
-  void cancelRepeatRegionDrag() {
-    _repeatDragBefore = null;
-    _repeatDragRegionId = null;
-    _repeatDragAnchorFrameId = null;
-    _repeatDragAfter = null;
-    dragPreview.value = null;
-  }
-
-  /// One-shot region write (tests + future numeric input): create/resize
-  /// the repeat anchored at the run containing [anchorIndex].
-  void setRepeatRegionFrames({
-    required LayerId layerId,
-    required int anchorIndex,
-    required int frameCount,
-  }) {
-    if (!beginRepeatRegionDrag(
-      layerId: layerId,
-      blockStartIndex: anchorIndex,
-    )) {
-      return;
-    }
-    updateRepeatRegionDrag(frameCount);
-    endRepeatRegionDrag();
   }
 
   Layer? _layerById(LayerId layerId) {

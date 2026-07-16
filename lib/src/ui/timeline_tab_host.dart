@@ -854,8 +854,9 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
               onCancel: _session.cancelFrameRangeMoveDrag,
             ),
           ),
-          // The TVP run-edge handles (UI-R8): [+] drags new one-frame
-          // drawings onto a run, [↻] drags a live repeat region (ghosts).
+          // The TVP run-edge cluster (UI-R9 #10): [+] drags new one-frame
+          // drawings onto a run; the property tag sets the edge's
+          // None/Hold/Repeat mode (ghosts fill to the cut boundary).
           runEdit: TimelineRunEditCallbacks(
             onAddBegin: (layerId, blockStartIndex, {required atEnd}) =>
                 _session.beginRunFramesAddDrag(
@@ -866,15 +867,13 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
             onAddUpdate: _session.updateRunFramesAddDrag,
             onAddEnd: _session.endRunFramesAddDrag,
             onAddCancel: _session.cancelRunFramesAddDrag,
-            onRepeatBegin: (layerId, blockStartIndex, regionId) =>
-                _session.beginRepeatRegionDrag(
+            onEdgeModeSelected: (layerId, blockStartIndex, side, mode) =>
+                _session.setRunEdgeBehavior(
                   layerId: layerId,
                   blockStartIndex: blockStartIndex,
-                  regionId: regionId,
+                  side: side,
+                  mode: mode,
                 ),
-            onRepeatUpdate: _session.updateRepeatRegionDrag,
-            onRepeatEnd: _session.endRepeatRegionDrag,
-            onRepeatCancel: _session.cancelRepeatRegionDrag,
           ),
           orientation: widget.orientation,
           onOrientationChanged: widget.onOrientationChanged,

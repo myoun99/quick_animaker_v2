@@ -20,7 +20,7 @@ class TimelineExposure {
     FrameId this.frameId, {
     required int this.length,
     this.ghost = false,
-    this.repeatRegionId,
+    this.ghostOwnerId,
     this.breakdownOffsets = const [],
   }) : type = TimelineExposureType.drawing,
        assert(length >= 1, 'Drawing exposure length must be at least 1.');
@@ -31,16 +31,16 @@ class TimelineExposure {
   /// Hold length in frames; non-null iff [type] is drawing.
   final int? length;
 
-  /// A DERIVED repeat instance (UI-R8, TVP-style repeat): synthesized by
-  /// the repeat rederive pass from its region's source span — never
-  /// authored directly, wiped and rebuilt on every timeline edit. Ghosts
-  /// share the source's frameId (drawing at a ghost index edits the
-  /// source) and render dimmed on the timeline cells only; playback and
-  /// the canvas treat them as ordinary exposures.
+  /// A DERIVED exposure (UI-R8/UI-R9, TVP-style hold/repeat edges):
+  /// synthesized by the run-behavior rederive pass — never authored
+  /// directly, wiped and rebuilt on every timeline edit. Ghosts share the
+  /// source's frameId (drawing at a ghost index edits the source) and
+  /// render dimmed on the timeline cells only; playback and the canvas
+  /// treat them as ordinary exposures.
   final bool ghost;
 
-  /// The owning [TimelineRepeatRegion.id] when [ghost] is true.
-  final String? repeatRegionId;
+  /// The owning `TimelineRunBehavior.ghostOwnerId` when [ghost] is true.
+  final String? ghostOwnerId;
 
   /// The inbetween DOTS (중간나누기 ●) inside this block, as offsets from
   /// the block start — sorted, unique, each in `1..length-1` (offset 0 is
@@ -75,7 +75,7 @@ class TimelineExposure {
       frameId ?? this.frameId!,
       length: nextLength,
       ghost: ghost,
-      repeatRegionId: repeatRegionId,
+      ghostOwnerId: ghostOwnerId,
       // Normalization clamps offsets to the (possibly new) length — a
       // shrink drops what it cut off.
       breakdownOffsets: _normalizedOffsets(
@@ -90,7 +90,7 @@ class TimelineExposure {
     if (frameId != null) 'frameId': frameId!.toJson(),
     if (length != null) 'length': length,
     if (ghost) 'ghost': true,
-    if (repeatRegionId != null) 'repeatRegionId': repeatRegionId,
+    if (ghostOwnerId != null) 'ghostOwner': ghostOwnerId,
     if (breakdownOffsets.isNotEmpty) 'breakdown': breakdownOffsets,
   };
 
@@ -117,7 +117,8 @@ class TimelineExposure {
       FrameId.fromJson(frameIdJson as Map<String, dynamic>),
       length: length,
       ghost: json['ghost'] == true,
-      repeatRegionId: json['repeatRegionId'] as String?,
+      ghostOwnerId:
+          (json['ghostOwner'] ?? json['repeatRegionId']) as String?,
       breakdownOffsets: _normalizedOffsets([
         for (final offset in (json['breakdown'] as List<dynamic>? ?? const []))
           offset as int,
@@ -145,7 +146,7 @@ class TimelineExposure {
           other.frameId == frameId &&
           other.length == length &&
           other.ghost == ghost &&
-          other.repeatRegionId == repeatRegionId &&
+          other.ghostOwnerId == ghostOwnerId &&
           _sameOffsets(other.breakdownOffsets);
 
   @override
@@ -154,13 +155,13 @@ class TimelineExposure {
     frameId,
     length,
     ghost,
-    repeatRegionId,
+    ghostOwnerId,
     Object.hashAll(breakdownOffsets),
   );
 
   @override
   String toString() =>
       'TimelineExposure(type: $type, frameId: $frameId, length: $length'
-      '${ghost ? ', ghost($repeatRegionId)' : ''}'
+      '${ghost ? ', ghost($ghostOwnerId)' : ''}'
       '${breakdownOffsets.isEmpty ? '' : ', breakdown: $breakdownOffsets'})';
 }
