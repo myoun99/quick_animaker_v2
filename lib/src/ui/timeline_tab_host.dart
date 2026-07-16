@@ -19,6 +19,7 @@ import 'playback/canvas_playback_controller.dart';
 import 'playback/playback_transport_controls.dart';
 import '../models/transform_track.dart';
 import '../services/camera_pose_resolver.dart';
+import 'text/app_strings.dart';
 import 'timeline/camera_key_edit.dart';
 import 'timeline/property_lane_model.dart';
 import 'timeline/se_audio_lane.dart';
@@ -958,11 +959,14 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               timelineToolbar,
-              const Expanded(
+              Expanded(
                 child: Center(
-                  child: Text(
-                    '선택된 컷 없음',
-                    key: ValueKey<String>('timeline-empty-no-cut'),
+                  child: ValueListenableBuilder(
+                    valueListenable: _session.languageSettings,
+                    builder: (context, settings, _) => Text(
+                      AppStrings.of(settings.programLanguage).noCutSelected,
+                      key: const ValueKey<String>('timeline-empty-no-cut'),
+                    ),
                   ),
                 ),
               ),

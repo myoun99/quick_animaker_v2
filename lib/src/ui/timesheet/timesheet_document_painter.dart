@@ -8,6 +8,7 @@ import '../../models/timesheet_document.dart';
 import '../../models/timesheet_info.dart';
 import '../text/dialogue_fit_layout.dart';
 import '../theme/app_theme.dart';
+import 'timesheet_notation.dart';
 
 /// Geometry of the rendered sheet document in canvas (document) space,
 /// modeled on the Japanese paper form (A-1/IG style): a B4-portrait page
@@ -296,11 +297,16 @@ class TimesheetDocumentPainter extends CustomPainter {
     required this.document,
     required this.layout,
     this.viewport,
+    this.notation = TimesheetNotation.english,
   });
 
   final TimesheetDocument document;
   final TimesheetDocumentLayout layout;
   final CanvasViewport? viewport;
+
+  /// The NOTATION-language vocabulary the sheet prints in (UI-R10 #7);
+  /// focused tests keep the pre-R10 English default.
+  final TimesheetNotation notation;
 
   static const Color _paper = Color(0xFFF6F4F0);
   static const Color _ink = Color(0xFF33322F);
@@ -396,7 +402,7 @@ class TimesheetDocumentPainter extends CustomPainter {
       }
       _text(
         canvas,
-        headerFieldLabel(box.field),
+        headerFieldLabel(box.field, notation),
         Offset(box.rect.center.dx, box.rect.top + 5),
         fontSize: 8,
         color: _gridMedium,
@@ -414,16 +420,19 @@ class TimesheetDocumentPainter extends CustomPainter {
     }
   }
 
-  /// The printed box label, the reference forms' wording (R7-⑥).
-  static String headerFieldLabel(TimesheetHeaderField field) {
+  /// The printed box label in the sheet's notation language (UI-R10 #7).
+  static String headerFieldLabel(
+    TimesheetHeaderField field, [
+    TimesheetNotation notation = TimesheetNotation.english,
+  ]) {
     return switch (field) {
-      TimesheetHeaderField.episode => 'Ep.no',
-      TimesheetHeaderField.title => 'Title',
-      TimesheetHeaderField.scene => 'Scene',
-      TimesheetHeaderField.cut => 'Cut.no',
-      TimesheetHeaderField.time => 'Duration',
-      TimesheetHeaderField.name => 'Name',
-      TimesheetHeaderField.sheet => 'Page',
+      TimesheetHeaderField.episode => notation.episode,
+      TimesheetHeaderField.title => notation.title,
+      TimesheetHeaderField.scene => notation.scene,
+      TimesheetHeaderField.cut => notation.cut,
+      TimesheetHeaderField.time => notation.duration,
+      TimesheetHeaderField.name => notation.name,
+      TimesheetHeaderField.sheet => notation.page,
     };
   }
 
@@ -1283,7 +1292,8 @@ class TimesheetDocumentPainter extends CustomPainter {
   bool shouldRepaint(covariant TimesheetDocumentPainter oldDelegate) {
     return !identical(oldDelegate.document, document) ||
         oldDelegate.layout.continuous != layout.continuous ||
-        oldDelegate.viewport != viewport;
+        oldDelegate.viewport != viewport ||
+        !identical(oldDelegate.notation, notation);
   }
 }
 

@@ -8,6 +8,7 @@ import '../../models/attached_placement.dart';
 import '../../services/persistence/project_autosave_service.dart';
 import '../dialogs/canvas_size_dialog.dart';
 import '../dialogs/delete_layer_dialog.dart';
+import '../dialogs/language_settings_dialog.dart';
 import '../dialogs/project_background_dialog.dart';
 import '../dialogs/rename_cut_dialog.dart';
 import '../dialogs/rename_layer_dialog.dart';
@@ -308,6 +309,13 @@ class EditorMenuBar extends StatelessWidget {
                 ),
               );
             },
+    ),
+    _item(
+      id: 'edit-language-settings',
+      label: 'Language Settings…',
+      onPressed: () {
+        unawaited(showLanguageSettingsDialog(context, session: session));
+      },
     ),
   ];
 

@@ -1,9 +1,12 @@
+import 'dart:async' show unawaited;
 import 'dart:io';
 import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart';
 
 import '../controllers/default_layer_helpers.dart';
+import '../models/app_language.dart';
+import '../services/persistence/app_language_settings_store.dart';
 import '../controllers/editing_session_state.dart';
 import '../controllers/layer_controller.dart';
 import '../controllers/timeline_controller.dart';
@@ -102,9 +105,12 @@ class EditorSessionManager extends ChangeNotifier {
   EditorSessionManager({
     required Project initialProject,
     AudioPeaksStore? audioPeaksStore,
+    AppLanguageSettingsStore? languageSettingsStore,
   }) : _editingSession = EditingSessionState.forProject(initialProject),
        _injectedAudioPeaksStore = audioPeaksStore,
+       _languageSettingsStore = languageSettingsStore,
        _repository = ProjectRepository(initialProject: initialProject) {
+    unawaited(_restoreLanguageSettings());
     _historyManager = HistoryManager();
     _cutCommandCoordinator = CutCommandCoordinator(
       repository: _repository,
@@ -126,6 +132,34 @@ class EditorSessionManager extends ChangeNotifier {
 
   final EditingSessionState _editingSession;
   final ProjectRepository _repository;
+
+  // --- Language settings (UI-R10 #7) ----------------------------------------
+
+  /// Injectable persistence; null (tests) keeps the in-memory defaults.
+  final AppLanguageSettingsStore? _languageSettingsStore;
+
+  /// The program + notation languages — a value-only channel (widgets
+  /// subscribe where they read strings; no whole-session notify).
+  final ValueNotifier<AppLanguageSettings> languageSettings =
+      ValueNotifier<AppLanguageSettings>(const AppLanguageSettings());
+
+  Future<void> _restoreLanguageSettings() async {
+    final restored = await _languageSettingsStore?.load();
+    if (restored != null) {
+      languageSettings.value = restored;
+    }
+  }
+
+  void setLanguageSettings(AppLanguageSettings settings) {
+    if (settings == languageSettings.value) {
+      return;
+    }
+    languageSettings.value = settings;
+    final store = _languageSettingsStore;
+    if (store != null) {
+      unawaited(store.save(settings));
+    }
+  }
 
   /// App-level brush stroke store shared with the canvas host, so commands
   /// (e.g. anchored canvas resize) can transform stroke data.
@@ -535,6 +569,7 @@ class EditorSessionManager extends ChangeNotifier {
     cutFrameCompositeCache.dispose();
     layerFrameImageCache.dispose();
     audioPeaksStore.dispose();
+    languageSettings.dispose();
     editingFrameCursor.dispose();
     frameScrubActive.dispose();
     frameSeekCommitted.dispose();

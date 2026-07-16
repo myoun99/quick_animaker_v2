@@ -13,6 +13,7 @@ import 'editor_session_manager.dart';
 import 'timesheet/timesheet_document_painter.dart';
 import 'timesheet/timesheet_drag_preview_painter.dart';
 import 'timesheet/timesheet_header_edit_layer.dart';
+import 'timesheet/timesheet_notation.dart';
 import 'timesheet/timesheet_ink_controller.dart';
 import 'timesheet/timesheet_ink_layer.dart';
 
@@ -373,6 +374,15 @@ class _TimesheetTabHostState extends State<TimesheetTabHost> {
                               document: document,
                               layout: layout,
                               viewport: viewport,
+                              // The sheet prints in the NOTATION language
+                              // (UI-R10 #7) — independent of the app
+                              // chrome's program language.
+                              notation: TimesheetNotation.of(
+                                session
+                                    .languageSettings
+                                    .value
+                                    .notationLanguage,
+                              ),
                             ),
                             child: const SizedBox.expand(),
                           ),
