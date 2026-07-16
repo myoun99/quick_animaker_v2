@@ -2,11 +2,11 @@
 /// timeline controller, the playback composite plan/signature, and the UI
 /// state mapping so every consumer agrees on what a frame shows.
 ///
-/// A drawing entry at `s` with length `n` covers `[s, s + n)`. Marks never
-/// cover anything. Everything else is empty (rendered as "X" cells).
-/// Lookups use the SplayTreeMap navigation methods (lastKeyBefore /
-/// firstKeyAfter), so a query costs O(log n) plus a walk over any marks
-/// directly between the query point and its covering drawing.
+/// A drawing entry at `s` with length `n` covers `[s, s + n)`; every
+/// timeline entry is a drawing (inbetween dots live INSIDE entries as
+/// [TimelineExposure.breakdownOffsets]). Everything else is empty
+/// (rendered as "X" cells). Lookups use the SplayTreeMap navigation
+/// methods (lastKeyBefore / firstKeyAfter), so a query costs O(log n).
 library;
 
 import 'dart:collection';
@@ -44,21 +44,17 @@ TimelineDrawingBlock? lastDrawingBlockAtOrBefore(
     return null;
   }
 
-  var key = timeline.containsKey(frameIndex)
+  final key = timeline.containsKey(frameIndex)
       ? frameIndex
       : timeline.lastKeyBefore(frameIndex);
-  while (key != null) {
-    final entry = timeline[key]!;
-    if (entry.isDrawing) {
-      return TimelineDrawingBlock(startIndex: key, entry: entry);
-    }
-    key = timeline.lastKeyBefore(key);
+  if (key == null) {
+    return null;
   }
-  return null;
+  return TimelineDrawingBlock(startIndex: key, entry: timeline[key]!);
 }
 
 /// The drawing block covering [frameIndex], or `null` when the cell is
-/// empty (an "X" cell) or holds only a mark.
+/// empty (an "X" cell).
 TimelineDrawingBlock? coveringDrawingBlockAt(
   SplayTreeMap<int, TimelineExposure> timeline,
   int frameIndex,
@@ -83,15 +79,11 @@ TimelineDrawingBlock? nextDrawingBlockAfter(
   SplayTreeMap<int, TimelineExposure> timeline,
   int frameIndex,
 ) {
-  var key = timeline.firstKeyAfter(frameIndex);
-  while (key != null) {
-    final entry = timeline[key]!;
-    if (entry.isDrawing) {
-      return TimelineDrawingBlock(startIndex: key, entry: entry);
-    }
-    key = timeline.firstKeyAfter(key);
+  final key = timeline.firstKeyAfter(frameIndex);
+  if (key == null) {
+    return null;
   }
-  return null;
+  return TimelineDrawingBlock(startIndex: key, entry: timeline[key]!);
 }
 
 /// The last drawing block starting strictly before [frameIndex].
@@ -99,69 +91,51 @@ TimelineDrawingBlock? previousDrawingBlockBefore(
   SplayTreeMap<int, TimelineExposure> timeline,
   int frameIndex,
 ) {
-  var key = timeline.lastKeyBefore(frameIndex);
-  while (key != null) {
-    final entry = timeline[key]!;
-    if (entry.isDrawing) {
-      return TimelineDrawingBlock(startIndex: key, entry: entry);
-    }
-    key = timeline.lastKeyBefore(key);
+  final key = timeline.lastKeyBefore(frameIndex);
+  if (key == null) {
+    return null;
   }
-  return null;
+  return TimelineDrawingBlock(startIndex: key, entry: timeline[key]!);
 }
 
-/// Whether a mark entry sits exactly at [frameIndex].
-bool hasMarkAt(SplayTreeMap<int, TimelineExposure> timeline, int frameIndex) {
-  return timeline[frameIndex]?.isMark ?? false;
+/// Whether a block-owned inbetween dot (중간나누기 ●) renders at
+/// [frameIndex]: the covering block carries a breakdown offset there.
+bool hasBreakdownDotAt(
+  SplayTreeMap<int, TimelineExposure> timeline,
+  int frameIndex,
+) {
+  final block = coveringDrawingBlockAt(timeline, frameIndex);
+  if (block == null) {
+    return false;
+  }
+  return block.entry.hasBreakdownAt(frameIndex - block.startIndex);
 }
 
-/// One past the last authored cell: the maximum drawing block end or
-/// mark index + 1. Zero for an empty timeline.
+/// One past the last authored cell: the maximum drawing block end. Zero
+/// for an empty timeline.
 int authoredTimelineExtent(SplayTreeMap<int, TimelineExposure> timeline) {
-  if (timeline.isEmpty) {
+  final lastKey = timeline.lastKey();
+  if (lastKey == null) {
     return 0;
   }
-
-  final lastKey = timeline.lastKey()!;
-  final lastEntry = timeline[lastKey]!;
-  final lastAuthoredEnd = lastEntry.isMark
-      ? lastKey + 1
-      : lastKey + lastEntry.length!;
-
-  // The last drawing block can end past a trailing mark; compare both.
-  final lastDrawing = lastEntry.isDrawing
-      ? null
-      : previousDrawingBlockBefore(timeline, lastKey);
-  final lastDrawingEnd = lastDrawing?.endIndexExclusive ?? 0;
-  return lastAuthoredEnd > lastDrawingEnd ? lastAuthoredEnd : lastDrawingEnd;
+  return lastKey + timeline[lastKey]!.length!;
 }
 
 /// All drawing blocks in start order.
 List<TimelineDrawingBlock> drawingBlocks(
   SplayTreeMap<int, TimelineExposure> timeline,
 ) {
-  final blocks = <TimelineDrawingBlock>[];
-  for (final entry in timeline.entries) {
-    if (entry.value.isDrawing) {
-      blocks.add(
-        TimelineDrawingBlock(startIndex: entry.key, entry: entry.value),
-      );
-    }
-  }
-  return blocks;
+  return [
+    for (final entry in timeline.entries)
+      TimelineDrawingBlock(startIndex: entry.key, entry: entry.value),
+  ];
 }
 
 /// Validates the coverage invariant: drawing blocks must not overlap the
-/// next drawing start, and marks must not sit on a covered start... marks
-/// MAY sit inside holds or empty space, but never share an index with a
-/// drawing entry (impossible by map keys) — so the only structural
-/// invariant is block overlap. Throws [ArgumentError] on violation.
+/// next drawing start. Throws [ArgumentError] on violation.
 void validateTimelineCoverage(SplayTreeMap<int, TimelineExposure> timeline) {
   TimelineDrawingBlock? previous;
   for (final entry in timeline.entries) {
-    if (!entry.value.isDrawing) {
-      continue;
-    }
     final block = TimelineDrawingBlock(
       startIndex: entry.key,
       entry: entry.value,

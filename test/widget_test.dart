@@ -1823,16 +1823,23 @@ Line 8''';
       );
       _expectCellText('layer-1', 1, '○');
 
+      // Grow the block to [1,4) so a held cell can take the dot, cut the
+      // hold back at 3, then dot the held cell at 2 (dots are block-owned).
+      await _dragBlockEndGrip(tester, 'layer-1', 0, 2);
       await _tapTimelineCell(
         tester,
-        const ValueKey<String>('timeline-cell-layer-1-2'),
+        const ValueKey<String>('timeline-cell-layer-1-3'),
       );
       await _tapToolbarButton(
         tester,
         const ValueKey<String>('blank-exposure-button'),
       );
-      _expectCellText('layer-1', 2, 'X');
+      _expectCellText('layer-1', 3, 'X');
 
+      await _tapTimelineCell(
+        tester,
+        const ValueKey<String>('timeline-cell-layer-1-2'),
+      );
       await _tapToolbarButton(
         tester,
         const ValueKey<String>('toggle-mark-button'),
@@ -2237,7 +2244,7 @@ Line 8''';
   });
 
   testWidgets(
-    'mark button toggles current cell without changing exposure marker',
+    'mark button toggles a held-cell dot without changing the drawing start',
     (WidgetTester tester) async {
       await tester.pumpWidget(const QuickAnimakerApp());
 
@@ -2247,15 +2254,24 @@ Line 8''';
       expect(markButton, findsOneWidget);
       expect(find.byTooltip('Mark ●'), findsOneWidget);
 
-      await tester.ensureVisible(markButton);
-      await tester.pumpAndSettle();
-      await tester.tap(markButton);
-      await tester.pumpAndSettle();
-
-      _expectCellText('default-layer-1', 0, '●');
+      // Dots are block-owned (UI-R9 #8): an empty cell offers no toggle.
       expect(
-        _anyCellSemanticsLabel('default-layer-1', 'inbetween mark'),
-        isTrue,
+        await _isActionButtonEnabled(
+          tester,
+          const ValueKey<String>('toggle-mark-button'),
+        ),
+        isFalse,
+      );
+
+      // Author a 2-frame block and stand on its held cell.
+      await _tapToolbarButton(
+        tester,
+        const ValueKey<String>('new-frame-button'),
+      );
+      await _dragBlockEndGrip(tester, 'default-layer-1', 0, 1);
+      await _tapTimelineCell(
+        tester,
+        const ValueKey<String>('timeline-cell-default-layer-1-1'),
       );
 
       await tester.ensureVisible(markButton);
@@ -2263,8 +2279,24 @@ Line 8''';
       await tester.tap(markButton);
       await tester.pumpAndSettle();
 
-      _expectNoCellText('default-layer-1', 0, '●');
-      _expectCellText('default-layer-1', 0, 'X');
+      _expectCellText('default-layer-1', 1, '●');
+      expect(
+        _anyCellSemanticsLabel('default-layer-1', 'inbetween mark'),
+        isTrue,
+      );
+      // The drawing start is untouched.
+      _expectCellText('default-layer-1', 0, '○');
+
+      await tester.ensureVisible(markButton);
+      await tester.pumpAndSettle();
+      await tester.tap(markButton);
+      await tester.pumpAndSettle();
+
+      _expectNoCellText('default-layer-1', 1, '●');
+      expect(
+        _anyCellSemanticsLabel('default-layer-1', 'inbetween mark'),
+        isFalse,
+      );
     },
   );
 
@@ -2554,7 +2586,8 @@ Line 8''';
   });
 
   testWidgets(
-    'linked paste on a marked empty cell replaces the mark with a drawing',
+    'linked paste on a dot-held cell: the drawing wins and the cut-off '
+    'dot drops',
     (WidgetTester tester) async {
       await tester.pumpWidget(const QuickAnimakerApp());
 
@@ -2580,19 +2613,24 @@ Line 8''';
         isFalse,
       );
 
+      // Grow the block to [0,2) and dot its held cell.
+      await _tapTimelineCell(
+        tester,
+        const ValueKey<String>('timeline-cell-default-layer-1-0'),
+      );
+      await _dragBlockEndGrip(tester, 'default-layer-1', 0, 1);
       await _tapTimelineCell(
         tester,
         const ValueKey<String>('timeline-cell-default-layer-1-1'),
       );
-      _expectCellText('default-layer-1', 1, 'X');
-
       await _tapToolbarButton(
         tester,
         const ValueKey<String>('toggle-mark-button'),
       );
       _expectCellText('default-layer-1', 1, '●');
 
-      // One entry per cell: pasting a linked frame REPLACES the mark.
+      // The paste authors a drawing start on the dot's cell: the covering
+      // block shrinks to [0,1) and the cut-off dot goes with it.
       await _tapToolbarButton(
         tester,
         const ValueKey<String>('paste-linked-frame-button'),

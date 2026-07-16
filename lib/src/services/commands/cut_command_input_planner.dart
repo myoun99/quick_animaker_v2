@@ -176,9 +176,6 @@ PasteLayerCommandInputPlan planPasteLayerCommandInput({
         .map((frame) => frame.copyWith(id: frameIdMap[frame.id]))
         .toList(),
     timeline: payload.timeline.map((index, exposure) {
-      if (exposure.isMark) {
-        return MapEntry(index, exposure);
-      }
       final sourceFrameId = exposure.frameId;
       final newFrameId = sourceFrameId == null
           ? null

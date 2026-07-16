@@ -152,42 +152,34 @@ void main() {
     });
   });
 
-  group('marks', () {
-    test('marks ride with a pushed block; marks in the resized block stay '
-        'absolute', () {
-      // A[0,4) with mark at 2, glued B[4,6) with mark at 5.
+  group('marks (block-owned breakdown dots)', () {
+    test('dots ride inside their blocks through a comma shift', () {
+      // A[0,4) with a dot at offset 2, glued B[4,6) with a dot at offset 1.
       final harness = _Harness({
-        0: _drawing('a', 4),
-        2: const TimelineExposure.mark(),
-        4: _drawing('b', 2),
-        5: const TimelineExposure.mark(),
+        0: _drawing('a', 4, dots: [2]),
+        4: _drawing('b', 2, dots: [1]),
       });
 
       harness.shift(blockStart: 0, edge: TimelineBlockEdge.end, delta: 2);
 
+      // A grows in place (dot offset unchanged); B is pushed to 6 and its
+      // dot rides along for free.
       harness.expectTimeline({
-        0: _drawing('a', 6),
-        2: const TimelineExposure.mark(),
-        6: _drawing('b', 2),
-        7: const TimelineExposure.mark(),
+        0: _drawing('a', 6, dots: [2]),
+        6: _drawing('b', 2, dots: [1]),
       });
     });
 
-    test('a mark overlapped by a moved drawing start is dropped', () {
-      // A[0,2) .. mark at 3 .. B[4,5): shrink A by 1 pulls glued... B is
-      // separated; instead push B onto the mark: grow A by 2 → B lands on 4
-      // stays... use grow 3: A[0,5), B pushed 4→5... mark at 3 is inside
-      // A's new coverage (fine). Push B onto a free mark instead:
+    test('a comma shrink drops the dots it cut off', () {
       final harness = _Harness({
-        0: _drawing('a', 2),
-        2: _drawing('b', 1),
-        5: const TimelineExposure.mark(),
+        0: _drawing('a', 4, dots: [1, 3]),
       });
 
-      harness.shift(blockStart: 0, edge: TimelineBlockEdge.end, delta: 3);
+      harness.shift(blockStart: 0, edge: TimelineBlockEdge.end, delta: -2);
 
-      // B glued follows to 5 where the free mark sat: drawing wins.
-      harness.expectTimeline({0: _drawing('a', 5), 5: _drawing('b', 1)});
+      harness.expectTimeline({
+        0: _drawing('a', 2, dots: [1]),
+      });
     });
   });
 
@@ -204,8 +196,12 @@ void main() {
   });
 }
 
-TimelineExposure _drawing(String frameId, int length) {
-  return TimelineExposure.drawing(FrameId(frameId), length: length);
+TimelineExposure _drawing(String frameId, int length, {List<int>? dots}) {
+  return TimelineExposure.drawing(
+    FrameId(frameId),
+    length: length,
+    breakdownOffsets: dots ?? const [],
+  );
 }
 
 class _Harness {

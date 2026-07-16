@@ -1,11 +1,14 @@
-/// The two things a timeline index can record: a drawing (a cel block start
-/// with an explicit length) or an inbetween mark.
+/// What a timeline index records: a drawing (a cel block start with an
+/// explicit length). Inbetween dots live INSIDE drawing entries as
+/// `TimelineExposure.breakdownOffsets` — there is no standalone mark
+/// entry anymore.
 ///
 /// Emptiness is NOT a timeline entry: cells not covered by any drawing
 /// block are simply uncovered, and the UI renders them with the timesheet
-/// "X" glyph. (The legacy `blank` entry type is migrated away on load — a
-/// blank used to terminate a hold, which explicit drawing lengths now
-/// express directly.)
+/// "X" glyph. (The legacy `blank` and `mark` entry types are migrated
+/// away on load — a blank used to terminate a hold, which explicit
+/// drawing lengths now express directly, and covered marks fold into
+/// their block's offsets. [mark] survives only so legacy JSON parses.)
 enum TimelineExposureType {
   drawing,
   mark;

@@ -42,8 +42,11 @@ void main() {
           id: 'layer-1',
           frames: [frame],
           timeline: {
-            0: TimelineExposure.drawing(frame.id, length: 4),
-            4: const TimelineExposure.mark(),
+            0: TimelineExposure.drawing(
+              frame.id,
+              length: 4,
+              breakdownOffsets: const [2],
+            ),
           },
           isVisible: false,
           opacity: 0.42,
@@ -146,7 +149,12 @@ void main() {
         frames: [
           _frame(id: 'frame-animation', strokes: [_stroke('stroke')]),
         ],
-        timeline: const {0: TimelineExposure.mark()},
+        timeline: {
+          0: TimelineExposure.drawing(
+            const FrameId('frame-animation'),
+            length: 1,
+          ),
+        },
       );
       final cut = _cut(id: 'cut-1', layers: [storyboardLayer, animationLayer]);
       final repository = ProjectRepository(initialProject: _project([cut]));

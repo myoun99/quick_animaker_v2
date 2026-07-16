@@ -404,9 +404,10 @@ class TimesheetDocument {
   }
 
   /// Derives one layer's column cells from the unified timeline model:
-  /// drawing starts carry the cel number, covered rows hold, marks show ○,
-  /// and the FIRST row of each uncovered run inside the playback range gets
-  /// the X (marks continue a run — same rule as the timeline grids).
+  /// drawing starts carry the cel number, covered rows hold, block-owned
+  /// inbetween dots (breakdownOffsets) show ● on their held rows, and the
+  /// FIRST row of each uncovered run inside the playback range gets the X
+  /// (same rule as the timeline grids).
   static List<TimesheetCell> _layerCells({
     required Layer layer,
     required int rowCount,
@@ -427,7 +428,8 @@ class TimesheetDocument {
         for (final frame in layer.frames) frame.id: frame.seName,
     };
 
-    // Drawing coverage + marks straight from the timeline entries.
+    // Drawing coverage straight from the timeline entries; the block's
+    // breakdown offsets overlay their held rows as ● cells.
     final covered = List<bool>.filled(rowCount, false);
     for (final entry in layer.timeline.entries) {
       final start = entry.key;
@@ -435,10 +437,6 @@ class TimesheetDocument {
         continue;
       }
       final exposure = entry.value;
-      if (exposure.isMark) {
-        cells[start] = const TimesheetCell(TimesheetCellKind.mark);
-        continue;
-      }
       final endExclusive = (start + exposure.length!).clamp(0, rowCount);
       cells[start] = TimesheetCell(
         TimesheetCellKind.drawing,
@@ -452,7 +450,9 @@ class TimesheetDocument {
         // the ACTION hold bar per the exposure-bar setting (drawn from the
         // (N+1)th comma of N+ holds only).
         cells[row] = TimesheetCell(
-          TimesheetCellKind.held,
+          exposure.hasBreakdownAt(row - start)
+              ? TimesheetCellKind.mark
+              : TimesheetCellKind.held,
           spanLength: endExclusive - start,
           spanOffset: row - start,
         );
@@ -461,7 +461,7 @@ class TimesheetDocument {
     }
 
     // X only at the first uncovered row of each run, only inside the
-    // playback range; a mark row continues the run instead of restarting it.
+    // playback range.
     if (!markEmptyRuns) {
       return cells;
     }
@@ -469,10 +469,6 @@ class TimesheetDocument {
     for (var row = 0; row < playbackFrameCount && row < rowCount; row += 1) {
       if (covered[row]) {
         inEmptyRun = false;
-        continue;
-      }
-      if (cells[row].kind == TimesheetCellKind.mark) {
-        inEmptyRun = true;
         continue;
       }
       if (!inEmptyRun) {

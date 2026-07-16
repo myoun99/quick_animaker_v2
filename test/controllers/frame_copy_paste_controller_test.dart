@@ -187,29 +187,6 @@ void main() {
       );
     });
 
-    test('paste linked frame replaces a mark at the same index (one entry '
-        'per cell — the drawing wins)', () {
-      final fixture = _fixture(
-        _layer(
-          timeline: {
-            0: TimelineExposure.drawing(const FrameId('a'), length: 3),
-            3: const TimelineExposure.mark(),
-            5: TimelineExposure.drawing(const FrameId('b'), length: 4),
-          },
-        ),
-      );
-      fixture.controller.selectFrameIndex(3);
-
-      fixture.controller.pasteLinkedFrameForLayer(
-        layerId: const LayerId('layer'),
-        frameId: const FrameId('a'),
-      );
-
-      final layer = _latestLayer(fixture.repository);
-      expect(layer.timeline[3]!.isDrawing, isTrue);
-      expect(hasMarkAt(layer.timeline, 3), isFalse);
-    });
-
     test('paste linked frame does not create a new Frame or clone strokes', () {
       final fixture = _fixture(_layer());
       final beforeFrames = fixture.layer.frames;

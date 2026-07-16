@@ -137,10 +137,6 @@ TimelineExposure _duplicateTimelineExposure({
   required TimelineExposure exposure,
   required Map<FrameId, FrameId> frameIdMap,
 }) {
-  if (exposure.isMark) {
-    return exposure;
-  }
-
   final sourceFrameId = exposure.frameId;
   final newFrameId = sourceFrameId == null ? null : frameIdMap[sourceFrameId];
   if (sourceFrameId == null || newFrameId == null) {

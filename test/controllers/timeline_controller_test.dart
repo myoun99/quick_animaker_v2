@@ -132,18 +132,6 @@ void main() {
       );
     });
 
-    test('replaces a mark on the target cell', () {
-      final fixture = _fixture(timeline: {4: const TimelineExposure.mark()});
-      fixture.controller.selectFrameIndex(4);
-
-      fixture.controller.createDrawingFrameForLayer(
-        layerId: _layerId,
-        frameId: const FrameId('new'),
-      );
-
-      expect(fixture.layer.timeline[4]!.isDrawing, isTrue);
-    });
-
     test('clamps the requested length against the next block', () {
       final fixture = _fixture();
       fixture.controller.selectFrameIndex(4);

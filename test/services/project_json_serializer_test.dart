@@ -56,13 +56,14 @@ void main() {
       expect(serializer.decode(serializer.encode(restored)), restored);
     });
 
-    test('preserves timeline marks through JSON', () {
+    test('preserves breakdown-dot offsets through JSON', () {
       final restored = serializer.decode(serializer.encode(_sampleProject()));
 
       // The ink layer stays first; loading appends the fixture rows after.
       expect(
-        restored.tracks.single.cuts.single.layers.first.timeline[3],
-        const TimelineExposure.mark(),
+        restored.tracks.single.cuts.single.layers.first.timeline[0]!
+            .breakdownOffsets,
+        const [1],
       );
       expect(
         restored.tracks.single.cuts.single.layers.first.frames,
@@ -70,12 +71,12 @@ void main() {
       );
       expect(
         restored.tracks.single.cuts.single.layers.first.timeline,
-        hasLength(2),
+        hasLength(1),
       );
     });
 
-    test('loads legacy layer JSON with a separate marks map by merging it '
-        'into the timeline', () {
+    test('loads legacy layer JSON with a separate marks map by folding '
+        'covered marks into the block offsets', () {
       final json =
           jsonDecode(serializer.encode(_sampleProject()))
               as Map<String, dynamic>;
@@ -87,13 +88,17 @@ void main() {
                   as Map<String, dynamic>)['layers']
               as List<dynamic>;
       final layerMap = layerJson.single as Map<String, dynamic>;
-      (layerMap['timeline'] as List<dynamic>).removeWhere(
-        (item) =>
-            ((item as Map<String, dynamic>)['exposure']
-                as Map<String, dynamic>)['type'] ==
-            'mark',
-      );
+      // Rewind the drawing entry to the legacy shape: no inline offsets,
+      // the dot in the separate marks map instead (covered by [0,2)).
+      for (final item in layerMap['timeline'] as List<dynamic>) {
+        ((item as Map<String, dynamic>)['exposure'] as Map<String, dynamic>)
+            .remove('breakdown');
+      }
       layerMap['marks'] = [
+        {
+          'index': 1,
+          'mark': {'type': 'inbetween'},
+        },
         {
           'index': 5,
           'mark': {'type': 'inbetween'},
@@ -102,10 +107,11 @@ void main() {
 
       final restored = serializer.decode(jsonEncode(json));
 
-      expect(
-        restored.tracks.single.cuts.single.layers.first.timeline[5],
-        const TimelineExposure.mark(),
-      );
+      final timeline =
+          restored.tracks.single.cuts.single.layers.first.timeline;
+      expect(timeline[0]!.breakdownOffsets, const [1]);
+      // The free mark at 5 (uncovered) drops.
+      expect(timeline.containsKey(5), isFalse);
     });
 
     test('rejects negative mark index in JSON', () {
@@ -177,8 +183,11 @@ Layer _sampleLayer() {
     frames: [_sampleFrame()],
     opacity: 0.75,
     timeline: {
-      0: TimelineExposure.drawing(const FrameId('frame-1'), length: 2),
-      3: const TimelineExposure.mark(),
+      0: TimelineExposure.drawing(
+        const FrameId('frame-1'),
+        length: 2,
+        breakdownOffsets: const [1],
+      ),
     },
   );
 }

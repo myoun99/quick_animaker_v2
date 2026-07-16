@@ -105,8 +105,8 @@ void main() {
     expect(Cut.fromJson(flushJson).leadingGapFrames, 0);
   });
 
-  test('layer timeline map serializes and deserializes drawing and mark '
-      'entries', () {
+  test('layer timeline map serializes and deserializes drawing entries '
+      'with breakdown offsets', () {
     final layer = Layer(
       id: const LayerId('layer-timeline'),
       name: 'Timeline Layer',
@@ -114,15 +114,18 @@ void main() {
         Frame(id: const FrameId('frame-a'), duration: 2, strokes: const []),
       ],
       timeline: {
-        0: TimelineExposure.drawing(const FrameId('frame-a'), length: 6),
-        6: const TimelineExposure.mark(),
+        0: TimelineExposure.drawing(
+          const FrameId('frame-a'),
+          length: 6,
+          breakdownOffsets: const [2, 4],
+        ),
       },
     );
 
     final restored = Layer.fromJson(layer.toJson());
 
     expect(restored, layer);
-    expect(restored.timeline[6], const TimelineExposure.mark());
+    expect(restored.timeline[0]!.breakdownOffsets, const [2, 4]);
   });
 
   test(

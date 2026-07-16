@@ -747,13 +747,12 @@ class TimesheetDocumentPainter extends CustomPainter {
                 ..strokeWidth = 1.6,
             );
           case TimesheetCellKind.mark:
+            // Block-owned inbetween dot: FILLED ● (same glyph as the
+            // timeline cells), not the legacy hollow ○.
             canvas.drawCircle(
               Offset(centerX, cellCenterY),
-              4,
-              Paint()
-                ..style = PaintingStyle.stroke
-                ..strokeWidth = 1.1
-                ..color = _ink,
+              2.8,
+              Paint()..color = _ink,
             );
           case TimesheetCellKind.emptyRunStart:
             if (drawTexts) {

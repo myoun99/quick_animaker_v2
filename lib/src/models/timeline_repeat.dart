@@ -138,8 +138,10 @@ Layer rederiveRepeatRegions(Layer layer) {
     final spanEnd = spanStart + region.sourceSpanFrames;
 
     // The span's pattern: base drawing entries starting within the span,
-    // as (offset from span start, frameId, length clamped to the span).
-    final pattern = <({int offset, FrameId frameId, int length})>[];
+    // as (offset from span start, frameId, length clamped to the span,
+    // the block's inbetween-dot offsets).
+    final pattern =
+        <({int offset, FrameId frameId, int length, List<int> dots})>[];
     for (final entry in base.entries) {
       if (entry.key < spanStart || entry.key >= spanEnd) {
         continue;
@@ -150,7 +152,12 @@ Layer rederiveRepeatRegions(Layer layer) {
       }
       final offset = entry.key - spanStart;
       final length = exposure.length!.clamp(1, spanEnd - entry.key);
-      pattern.add((offset: offset, frameId: exposure.frameId!, length: length));
+      pattern.add((
+        offset: offset,
+        frameId: exposure.frameId!,
+        length: length,
+        dots: exposure.breakdownOffsets,
+      ));
     }
     if (pattern.isEmpty) {
       continue; // Nothing to repeat (span holds no drawings) — drop.
@@ -196,12 +203,18 @@ Layer rederiveRepeatRegions(Layer layer) {
           break;
         }
         final length = part.length.clamp(1, limit - start);
-        result[start] = TimelineExposure.drawing(
+        var ghost = TimelineExposure.drawing(
           part.frameId,
           length: length,
           ghost: true,
           repeatRegionId: region.id,
         );
+        if (part.dots.isNotEmpty) {
+          // Ghost copies carry the source block's dots; copyWith clamps
+          // them to the (possibly shorter) ghost length.
+          ghost = ghost.copyWith(breakdownOffsets: part.dots);
+        }
+        result[start] = ghost;
       }
     }
     keptRegions.add(region);

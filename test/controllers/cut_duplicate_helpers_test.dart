@@ -74,12 +74,15 @@ void main() {
       expect(duplicate.layers[1].frames.single.name, 'C');
       expect(duplicate.layers[1].frames.single.duration, 2);
 
-      expect(duplicate.layers[0].timeline.keys, orderedEquals([0, 3, 5, 7]));
+      expect(duplicate.layers[0].timeline.keys, orderedEquals([0, 5, 7]));
       expect(
         duplicate.layers[0].timeline[0],
-        TimelineExposure.drawing(const FrameId('frame-copy-a'), length: 3),
+        TimelineExposure.drawing(
+          const FrameId('frame-copy-a'),
+          length: 3,
+          breakdownOffsets: const [1],
+        ),
       );
-      expect(duplicate.layers[0].timeline[3], const TimelineExposure.mark());
       expect(
         duplicate.layers[0].timeline[5],
         TimelineExposure.drawing(const FrameId('frame-copy-b'), length: 2),
@@ -327,8 +330,11 @@ Cut _sourceCut() {
           Frame(id: const FrameId('frame-b'), duration: 1, strokes: const []),
         ],
         timeline: {
-          0: TimelineExposure.drawing(const FrameId('frame-a'), length: 3),
-          3: const TimelineExposure.mark(),
+          0: TimelineExposure.drawing(
+            const FrameId('frame-a'),
+            length: 3,
+            breakdownOffsets: const [1],
+          ),
           5: TimelineExposure.drawing(const FrameId('frame-b'), length: 2),
           7: TimelineExposure.drawing(const FrameId('frame-a'), length: 1),
         },

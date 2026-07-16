@@ -144,22 +144,21 @@ void main() {
     expect(s.layers.firstWhere((l) => l.id == b.id).timeline[7], isNull);
   });
 
-  test('a mark landing stays illegal: preview clears, release is a no-op', () {
+  test('dot toggle on an empty cell is a session no-op: dots are '
+      'block-owned, nothing recorded, no notify', () {
     final (s, a, _) = twoLayerSession();
-    // Drop a mark at frame 4 on layer A (empty space there).
-    s.selectFrameIndex(4);
-    s.toggleMarkAtCurrentFrame();
-    s.selectFrameIndex(0);
+    s.selectFrameIndex(4); // Empty space on layer A.
     final undoProbe = s.canUndo;
     var notifies = 0;
     s.addListener(() => notifies += 1);
 
-    s.beginDrawingBlockMoveDrag(layerId: a.id, blockStartIndex: 0);
-    s.updateDrawingBlockMoveDrag(frameDelta: 4);
-    expect(s.dragPreview.value, isNull);
+    expect(s.canToggleMarkAtCurrentFrame, isFalse);
+    s.toggleMarkAtCurrentFrame();
 
-    s.endDrawingBlockMoveDrag();
-    expect(s.layers.firstWhere((l) => l.id == a.id).timeline[0], isNotNull);
+    expect(
+      s.layers.firstWhere((l) => l.id == a.id).timeline.containsKey(4),
+      isFalse,
+    );
     expect(s.canUndo, undoProbe);
     expect(notifies, 0);
   });

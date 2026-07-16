@@ -77,19 +77,15 @@ void main() {
       expect(_latestLayer(fixture.repository), _editingLayer());
     });
 
-    test('delete cell does nothing on mark-only cell', () {
-      final markOnlyLayer = Layer(
-        id: const LayerId('layer'),
-        name: 'Layer',
-        frames: const [],
-        timeline: const {4: TimelineExposure.mark()},
-      );
-      final fixture = _fixture(markOnlyLayer);
-      fixture.controller.selectFrameIndex(4);
+    test('delete cell does nothing on a dot-held cell (not a block start)',
+        () {
+      final dottedLayer = _editingLayer(markIndex: 1);
+      final fixture = _fixture(dottedLayer);
+      fixture.controller.selectFrameIndex(1);
 
       fixture.controller.deleteCellForLayer(layerId: const LayerId('layer'));
 
-      expect(_latestLayer(fixture.repository), markOnlyLayer);
+      expect(_latestLayer(fixture.repository), dottedLayer);
     });
 
     test(
@@ -101,29 +97,31 @@ void main() {
         fixture.controller.deleteCellForLayer(layerId: const LayerId('layer'));
         final layer = _latestLayer(fixture.repository);
 
-        expect(layer.timeline.keys, orderedEquals([0, 2, 9]));
+        expect(layer.timeline.keys, orderedEquals([0, 9]));
         expect(
           layer.frames.map((frame) => frame.id),
           orderedEquals([const FrameId('a')]),
         );
-        expect(layer.timeline[2], const TimelineExposure.mark());
+        expect(layer.timeline[0]!.breakdownOffsets, const [2]);
         expect(layer.timeline[9]?.frameId, const FrameId('a'));
       },
     );
 
-    test('delete drawing start keeps unrelated marks in the timeline', () {
+    test('delete drawing start deletes its block-owned dots with it', () {
       final fixture = _fixture(_editingLayer(markIndex: 7));
       fixture.controller.selectFrameIndex(5);
 
       fixture.controller.deleteCellForLayer(layerId: const LayerId('layer'));
       final layer = _latestLayer(fixture.repository);
 
-      expect(layer.timeline.keys, orderedEquals([0, 7, 9]));
+      expect(layer.timeline.keys, orderedEquals([0, 9]));
       expect(
         layer.frames.map((frame) => frame.id),
         orderedEquals([const FrameId('a')]),
       );
-      expect(layer.timeline[7], const TimelineExposure.mark());
+      for (final entry in layer.timeline.values) {
+        expect(entry.breakdownOffsets, isEmpty);
+      }
     });
 
     test(
@@ -241,7 +239,8 @@ void main() {
 
 const _cutId = CutId('cut');
 
-/// a[0,3) .. X[3,5) .. b[5,9) .. a[9,12); optional mark entry.
+/// a[0,3) .. X[3,5) .. b[5,9) .. a[9,12); optional block-owned dot at
+/// [markIndex] (folded into the covering block's breakdownOffsets).
 Layer _editingLayer({int? markIndex}) {
   final timeline = <int, TimelineExposure>{
     0: TimelineExposure.drawing(const FrameId('a'), length: 3),
@@ -249,7 +248,10 @@ Layer _editingLayer({int? markIndex}) {
     9: TimelineExposure.drawing(const FrameId('a'), length: 3),
   };
   if (markIndex != null) {
-    timeline[markIndex] = const TimelineExposure.mark();
+    final start = timeline.keys.lastWhere((key) => key <= markIndex);
+    timeline[start] = timeline[start]!.copyWith(
+      breakdownOffsets: [markIndex - start],
+    );
   }
   return Layer(
     id: const LayerId('layer'),

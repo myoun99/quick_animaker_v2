@@ -15,12 +15,13 @@ import 'package:quick_animaker_v2/src/models/track_id.dart';
 import 'package:quick_animaker_v2/src/services/history_manager.dart';
 import 'package:quick_animaker_v2/src/services/project_repository.dart';
 
-/// Inbetween marks in the UNIFIED timeline map: one entry per index, a mark
-/// or a drawing — marks live on held or empty cells only and never affect
-/// blocks or canvas resolution.
+/// Inbetween dots are BLOCK-OWNED (UI-R9 #8): they live inside a drawing
+/// entry as breakdownOffsets (held cells only, offset 1..length-1) and
+/// ride every move/copy of the block. Empty cells and block starts take
+/// no dot; ghosts get theirs from the source block.
 void main() {
-  group('Timeline marks', () {
-    test('empty layer has no mark and rejects negative toggle checks', () {
+  group('Timeline marks (block-owned breakdown dots)', () {
+    test('empty layer has no dot and rejects negative toggle checks', () {
       final fixture = _fixture(_markedTestLayer());
 
       expect(
@@ -36,70 +37,100 @@ void main() {
       );
     });
 
-    test('toggle mark on and off records a mark entry without touching the '
-        'drawing block', () {
+    test('toggle dot on and off edits the covering block entry in place', () {
       final fixture = _fixture(_markedTestLayer());
-      fixture.controller.selectFrameIndex(4);
+      fixture.controller.selectFrameIndex(1);
 
       fixture.controller.toggleMarkForLayer(layerId: const LayerId('layer'));
       var layer = _latestLayer(fixture.repository);
-      expect(layer.timeline[4], const TimelineExposure.mark());
+      expect(layer.timeline[0]!.breakdownOffsets, const [1]);
+      expect(layer.timeline.keys, [0]);
       expect(layer.frames, hasLength(1));
-      expect(layer.timeline[0]!.isDrawing, isTrue);
+      expect(
+        fixture.controller.hasMarkAt(layer: layer, frameIndex: 1),
+        isTrue,
+      );
 
       fixture.controller.toggleMarkForLayer(layerId: const LayerId('layer'));
       layer = _latestLayer(fixture.repository);
-      expect(layer.timeline.containsKey(4), isFalse);
+      expect(layer.timeline[0]!.breakdownOffsets, isEmpty);
       expect(layer.frames, hasLength(1));
     });
 
-    test(
-      'marks are allowed on held and empty cells but not drawing starts',
-      () {
-        final fixture = _fixture(_markedTestLayer());
+    test('dots are allowed on held cells only: no block starts, no empty '
+        'cells, no ghosts', () {
+      final fixture = _fixture(_markedTestLayer());
 
+      // Block start = the drawing itself.
+      expect(
+        fixture.controller.canToggleMarkAt(layer: fixture.layer, frameIndex: 0),
+        isFalse,
+      );
+      // Held cells inside the block.
+      for (final index in [1, 2]) {
         expect(
           fixture.controller.canToggleMarkAt(
             layer: fixture.layer,
-            frameIndex: 0,
+            frameIndex: index,
+          ),
+          isTrue,
+          reason: 'index $index',
+        );
+      }
+      // Empty cells have no block to own the dot (author a frame first).
+      for (final index in [3, 4, 8]) {
+        expect(
+          fixture.controller.canToggleMarkAt(
+            layer: fixture.layer,
+            frameIndex: index,
           ),
           isFalse,
+          reason: 'index $index',
         );
-        for (final index in [1, 4, 8]) {
-          expect(
-            fixture.controller.canToggleMarkAt(
-              layer: fixture.layer,
-              frameIndex: index,
-            ),
-            isTrue,
-            reason: 'index $index',
-          );
-        }
+      }
 
-        // Toggling on the drawing start is a no-op.
-        fixture.controller.selectFrameIndex(0);
-        fixture.controller.toggleMarkForLayer(layerId: const LayerId('layer'));
-        expect(_latestLayer(fixture.repository).timeline[0]!.isDrawing, isTrue);
-      },
-    );
+      // Ghost blocks are derived: their dots come from the source.
+      final ghostLayer = Layer(
+        id: const LayerId('ghost-layer'),
+        name: 'Ghost layer',
+        frames: [
+          Frame(id: const FrameId('a'), duration: 2, strokes: const []),
+        ],
+        timeline: {
+          0: TimelineExposure.drawing(const FrameId('a'), length: 2),
+          2: TimelineExposure.drawing(
+            const FrameId('a'),
+            length: 2,
+            ghost: true,
+            repeatRegionId: 'region',
+          ),
+        },
+      );
+      expect(
+        fixture.controller.canToggleMarkAt(layer: ghostLayer, frameIndex: 3),
+        isFalse,
+      );
 
-    test('marks never affect blocks, canvas resolution, or block length', () {
+      // Toggling where it's disallowed is a no-op.
+      fixture.controller.selectFrameIndex(0);
+      fixture.controller.toggleMarkForLayer(layerId: const LayerId('layer'));
+      expect(_latestLayer(fixture.repository).timeline[0]!.breakdownOffsets,
+          isEmpty);
+      fixture.controller.selectFrameIndex(4);
+      fixture.controller.toggleMarkForLayer(layerId: const LayerId('layer'));
+      expect(_latestLayer(fixture.repository).timeline.keys, [0]);
+    });
+
+    test('dots never affect blocks, canvas resolution, or block length', () {
       final fixture = _fixture(_markedTestLayer());
       fixture.controller.selectFrameIndex(1);
       fixture.controller.toggleMarkForLayer(layerId: const LayerId('layer'));
-      fixture.controller.selectFrameIndex(4);
-      fixture.controller.toggleMarkForLayer(layerId: const LayerId('layer'));
 
       final layer = _latestLayer(fixture.repository);
-      // Mark inside the hold: the covering frame still shows.
+      // Dot inside the hold: the covering frame still shows.
       expect(
         fixture.controller.resolveFrameIdForLayer(layer: layer, frameIndex: 1),
         const FrameId('a'),
-      );
-      // Mark in empty space: no block forms and nothing shows.
-      expect(
-        fixture.controller.resolveFrameForLayer(layer: layer, frameIndex: 4),
-        isNull,
       );
       expect(
         fixture.controller.effectiveDurationForLayerFrame(
@@ -110,33 +141,39 @@ void main() {
       );
     });
 
-    test('undo and redo mark add and remove', () {
+    test('undo and redo dot add and remove', () {
       final history = HistoryManager();
       final fixture = _fixture(_markedTestLayer(), historyManager: history);
       fixture.controller.selectFrameIndex(2);
 
       fixture.controller.toggleMarkForLayer(layerId: const LayerId('layer'));
       expect(
-        _latestLayer(fixture.repository).timeline[2],
-        const TimelineExposure.mark(),
+        _latestLayer(fixture.repository).timeline[0]!.breakdownOffsets,
+        const [2],
       );
 
       history.undo();
-      expect(_latestLayer(fixture.repository).timeline.containsKey(2), isFalse);
+      expect(
+        _latestLayer(fixture.repository).timeline[0]!.breakdownOffsets,
+        isEmpty,
+      );
 
       history.redo();
       expect(
-        _latestLayer(fixture.repository).timeline[2],
-        const TimelineExposure.mark(),
+        _latestLayer(fixture.repository).timeline[0]!.breakdownOffsets,
+        const [2],
       );
 
       fixture.controller.toggleMarkForLayer(layerId: const LayerId('layer'));
-      expect(_latestLayer(fixture.repository).timeline.containsKey(2), isFalse);
+      expect(
+        _latestLayer(fixture.repository).timeline[0]!.breakdownOffsets,
+        isEmpty,
+      );
 
       history.undo();
       expect(
-        _latestLayer(fixture.repository).timeline[2],
-        const TimelineExposure.mark(),
+        _latestLayer(fixture.repository).timeline[0]!.breakdownOffsets,
+        const [2],
       );
     });
   });

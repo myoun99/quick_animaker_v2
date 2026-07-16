@@ -4954,18 +4954,16 @@ class EditorSessionManager extends ChangeNotifier {
       return TimelineCellExposureState.drawingStart;
     }
 
-    final hasMark = _timelineController.hasMarkAt(
-      layer: layer,
-      frameIndex: frameIndex,
-    );
     final held = _timelineController.isHeldExposureForLayer(
       layer: layer,
       frameIndex: frameIndex,
     );
-    if (hasMark) {
-      return held
-          ? TimelineCellExposureState.markHeld
-          : TimelineCellExposureState.markUncovered;
+    // Block-owned dots live on held cells only (offsets 1..length-1), so
+    // markUncovered is never produced anymore — the enum value survives
+    // solely for exhaustive switches over legacy-visual states.
+    if (held &&
+        _timelineController.hasMarkAt(layer: layer, frameIndex: frameIndex)) {
+      return TimelineCellExposureState.markHeld;
     }
     return held
         ? TimelineCellExposureState.held
@@ -5039,7 +5037,9 @@ class EditorSessionManager extends ChangeNotifier {
             ? 'Held + ●: Paste / Copy / Rename / Mark'
             : 'Held + ●: Copy / Rename / Mark';
       case TimelineCellExposureState.uncovered:
-        return canPaste ? 'X: Paste / New Frame / Mark' : 'X: New Frame / Mark';
+        // Dots are block-owned: an empty cell offers no Mark (author an
+        // unnamed frame first).
+        return canPaste ? 'X: Paste / New Frame' : 'X: New Frame';
       case TimelineCellExposureState.markUncovered:
         return canPaste
             ? 'X + ●: Paste / New Frame / Mark'

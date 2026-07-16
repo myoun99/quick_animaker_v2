@@ -152,7 +152,7 @@ class TimelineController {
     if (frameIndex < 0) {
       return false;
     }
-    return layer.timeline[frameIndex]?.isMark ?? false;
+    return hasBreakdownDotAt(layer.timeline, frameIndex);
   }
 
   int? exposureStartIndexForLayer({
@@ -196,8 +196,7 @@ class TimelineController {
 
   // --- Drawing creation ------------------------------------------------------
 
-  /// A drawing can be created on any uncovered cell (a mark there is
-  /// replaced — the drawing wins).
+  /// A drawing can be created on any uncovered cell.
   bool canCreateDrawingAt({required Layer layer, required int frameIndex}) {
     if (frameIndex < 0) {
       return false;
@@ -290,15 +289,20 @@ class TimelineController {
     );
   }
 
-  // --- Marks -----------------------------------------------------------------
+  // --- Marks (block-owned inbetween dots) --------------------------------------
 
-  /// Marks live on held or empty cells only; a drawing start keeps its
-  /// drawing (the unified map records one thing per index).
+  /// Inbetween dots live on the HELD cells of a real drawing block only
+  /// (offset 1..length-1): a block start is the drawing itself, an empty
+  /// cell has no block to own the dot (author an unnamed frame first), and
+  /// ghosts are derived — their dots come from the source block.
   bool canToggleMarkAt({required Layer layer, required int frameIndex}) {
     if (frameIndex < 0) {
       return false;
     }
-    return !(layer.timeline[frameIndex]?.isDrawing ?? false);
+    final block = coveringDrawingBlockAt(layer.timeline, frameIndex);
+    return block != null &&
+        !block.entry.ghost &&
+        frameIndex > block.startIndex;
   }
 
   void toggleMarkForLayer({required LayerId layerId}) {
@@ -308,14 +312,20 @@ class TimelineController {
       return;
     }
 
+    final block = coveringDrawingBlockAt(before.timeline, frameIndex)!;
+    final offset = frameIndex - block.startIndex;
+    final entry = block.entry;
     final nextTimeline = SplayTreeMap<int, TimelineExposure>.from(
       before.timeline,
     );
-    if (nextTimeline[frameIndex]?.isMark ?? false) {
-      nextTimeline.remove(frameIndex);
-    } else {
-      nextTimeline[frameIndex] = const TimelineExposure.mark();
-    }
+    nextTimeline[block.startIndex] = entry.copyWith(
+      breakdownOffsets: entry.hasBreakdownAt(offset)
+          ? [
+              for (final existing in entry.breakdownOffsets)
+                if (existing != offset) existing,
+            ]
+          : [...entry.breakdownOffsets, offset],
+    );
     _applyLayerEdit(
       before: before,
       after: before.copyWith(timeline: nextTimeline),
@@ -750,29 +760,12 @@ class TimelineController {
       );
     }
 
-    // Rebuild: drawings at their new starts; marks ride with the block that
-    // covered them (target-block marks stay absolute), free marks stay put.
+    // Rebuild: drawings at their new starts. Block-owned dots ride inside
+    // the entries for free; copyWith drops offsets a shrink cut off.
     final next = SplayTreeMap<int, TimelineExposure>();
     for (var i = 0; i < blocks.length; i += 1) {
       next[newStarts[i]] = blocks[i].entry.copyWith(length: newLengths[i]);
     }
-
-    for (final entry in timeline.entries) {
-      if (!entry.value.isMark) {
-        continue;
-      }
-      var markIndex = entry.key;
-      for (var i = 0; i < blocks.length; i += 1) {
-        if (i != targetIndex && blocks[i].covers(markIndex)) {
-          markIndex += newStarts[i] - blocks[i].startIndex;
-          break;
-        }
-      }
-      if (markIndex >= 0 && !next.containsKey(markIndex)) {
-        next[markIndex] = entry.value;
-      }
-    }
-
     return next;
   }
 
