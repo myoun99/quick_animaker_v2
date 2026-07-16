@@ -76,10 +76,13 @@ void main() {
       findsNothing,
     );
 
+    // The header cells are PASSIVE (UI-R10 #25): selection rides the
+    // grid's ruler scrub listener, not per-cell taps — the standalone
+    // ruler forwards nothing.
     await tester.tap(
       find.byKey(const ValueKey<String>('timeline-frame-header-4')),
+      warnIfMissed: false,
     );
-
-    expect(selectedFrameIndex, 4);
+    expect(selectedFrameIndex, isNull);
   });
 }

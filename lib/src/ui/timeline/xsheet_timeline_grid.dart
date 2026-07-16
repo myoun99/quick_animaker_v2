@@ -1195,7 +1195,6 @@ class _XSheetFrameNumberRail extends StatelessWidget {
                 frameIndex < playbackFrameCount &&
                 (isFrameCached?.call(frameIndex) ?? false),
             metrics: metrics,
-            onSelectFrame: onSelectFrame,
             framesPerSecond: framesPerSecond,
             showSeconds: showSeconds,
           ),
@@ -1216,7 +1215,6 @@ class _FrameNumberCell extends StatelessWidget {
     required this.outsidePlaybackRange,
     required this.cached,
     required this.metrics,
-    required this.onSelectFrame,
     this.framesPerSecond = 24,
     this.showSeconds = false,
   });
@@ -1226,7 +1224,6 @@ class _FrameNumberCell extends StatelessWidget {
   final bool outsidePlaybackRange;
   final bool cached;
   final TimelineGridMetrics metrics;
-  final ValueChanged<int> onSelectFrame;
   final int framesPerSecond;
   final bool showSeconds;
 
@@ -1234,81 +1231,81 @@ class _FrameNumberCell extends StatelessWidget {
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
 
-    return InkWell(
+    // NO per-cell InkWell (UI-R10 #25): the rail's viewport-level scrub
+    // Listener already selects on raw pointer-down — the per-frame ink
+    // machinery was pure zoom/extent-rebuild cost.
+    return Container(
       // Key kept from the old per-frame row so existing flows/tests hold.
       key: ValueKey<String>('xsheet-frame-row-$frameIndex'),
-      onTap: () => onSelectFrame(frameIndex),
-      child: Container(
-        width: metrics.layerControlsWidth,
-        height: metrics.frameCellWidth,
-        decoration: BoxDecoration(
-          color: selected
-              ? Color.alphaBlend(
-                  timelineSelectedFrameBorderColor.withValues(alpha: 0.12),
-                  colorScheme.surface,
-                )
-              : outsidePlaybackRange
-              ? colorScheme.surfaceContainerHighest.withValues(alpha: 0.72)
-              : colorScheme.surface,
-          border: Border.all(
-            color: outsidePlaybackRange
-                ? colorScheme.outlineVariant.withValues(alpha: 0.55)
-                : colorScheme.outlineVariant,
-          ),
+      width: metrics.layerControlsWidth,
+      height: metrics.frameCellWidth,
+      decoration: BoxDecoration(
+        color: selected
+            ? Color.alphaBlend(
+                timelineSelectedFrameBorderColor.withValues(alpha: 0.12),
+                colorScheme.surface,
+              )
+            : outsidePlaybackRange
+            ? colorScheme.surfaceContainerHighest.withValues(alpha: 0.72)
+            : colorScheme.surface,
+        border: Border.all(
+          color: outsidePlaybackRange
+              ? colorScheme.outlineVariant.withValues(alpha: 0.55)
+              : colorScheme.outlineVariant,
         ),
-        // The Stack must FILL the cell (no Container alignment, which
-        // loosens constraints and shrink-wraps it to the text) so the
-        // cached strip's right edge is the rail/cells boundary — the
-        // transposed twin of the horizontal header's bottom-edge strip.
-        child: Stack(
-          children: [
-            // Seconds column on the left (UI-R10 #27): the 1-based second
-            // prints bold on its boundary row; the frame number reads
-            // absolute in frame mode, the 1..fps cycle in seconds mode.
-            if (frameIndex % framesPerSecond == 0)
-              Positioned(
-                left: 3,
-                top: 0,
-                bottom: 0,
-                child: Center(
-                  child: Text(
-                    '${frameIndex ~/ framesPerSecond + 1}',
-                    style: TextStyle(
-                      fontSize: 9,
-                      fontWeight: FontWeight.w700,
-                      color: colorScheme.onSurfaceVariant,
-                    ),
+      ),
+      // The Stack must FILL the cell (no Container alignment, which
+      // loosens constraints and shrink-wraps it to the text) so the
+      // cached strip's right edge is the rail/cells boundary — the
+      // transposed twin of the horizontal header's bottom-edge strip.
+      child: Stack(
+        children: [
+          // Seconds column on the left (UI-R10 #27): the 1-based second
+          // prints bold on its boundary row; the frame number reads
+          // absolute in frame mode, the 1..fps cycle in seconds mode.
+          if (frameIndex % framesPerSecond == 0)
+            Positioned(
+              left: 3,
+              top: 0,
+              bottom: 0,
+              child: Center(
+                child: Text(
+                  '${frameIndex ~/ framesPerSecond + 1}',
+                  style: TextStyle(
+                    fontSize: 9,
+                    fontWeight: FontWeight.w700,
+                    color: colorScheme.onSurfaceVariant,
                   ),
                 ),
               ),
-            Center(
-              child: Text(
-                showSeconds
-                    ? '${frameIndex % framesPerSecond + 1}'
-                    : '${frameIndex + 1}',
-                style: TextStyle(
-                  color: outsidePlaybackRange
-                      ? colorScheme.onSurfaceVariant.withValues(alpha: 0.55)
-                      : colorScheme.onSurface,
-                ),
+            ),
+          Center(
+            child: Text(
+              showSeconds
+                  ? '${frameIndex % framesPerSecond + 1}'
+                  : '${frameIndex + 1}',
+              style: TextStyle(
+                color: outsidePlaybackRange
+                    ? colorScheme.onSurfaceVariant.withValues(alpha: 0.55)
+                    : colorScheme.onSurface,
               ),
             ),
-            // Transposed cached-range strip: the horizontal header draws it
-            // along the bottom edge (facing the cells); here the cells sit
-            // to the RIGHT of the rail.
-            if (cached)
-              Positioned(
-                top: 0,
-                bottom: 0,
-                right: 0,
-                child: Container(
-                  key: ValueKey<String>('xsheet-frame-cached-$frameIndex'),
-                  width: 3,
-                  color: const Color(0xFF54B435),
-                ),
+          ),
+          // Transposed cached-range strip: the horizontal header draws it
+          // along the bottom edge (facing the cells); here the cells sit
+          // to the RIGHT of the rail.
+          if (cached)
+            Positioned(
+              top: 0,
+              bottom: 0,
+              right: 0,
+              child: Container(
+                key: ValueKey<String>('xsheet-frame-cached-$frameIndex'),
+                width: 3,
+                color: const Color(0xFF54B435),
               ),
-          ],
-        ),
+            ),
+        ],
       ),
     );
   }

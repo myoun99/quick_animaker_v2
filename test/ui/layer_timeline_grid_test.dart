@@ -1219,13 +1219,7 @@ void main() {
     await tester.pump();
 
     expect(currentFrameIndex, 9);
-    final selectedHeader = tester.widget<Container>(
-      find.descendant(
-        of: find.byKey(const ValueKey<String>('timeline-frame-header-9')),
-        matching: find.byType(Container),
-      ),
-    );
-    final decoration = selectedHeader.decoration as BoxDecoration;
+    final decoration = _headerDecoration(tester, 9);
     final border = decoration.border as Border;
 
     expect(decoration.color, isNotNull);
@@ -2405,10 +2399,11 @@ void _expectNoSelectedExposureRangeBorder(WidgetTester tester, String key) {
 }
 
 BoxDecoration _headerDecoration(WidgetTester tester, int frameIndex) {
-  final inkWell = tester.widget<InkWell>(
+  // The header cells are PASSIVE Containers now (UI-R10 #25 dropped the
+  // per-cell InkWell — selection rides the ruler's scrub listener).
+  final container = tester.widget<Container>(
     find.byKey(ValueKey<String>('timeline-frame-header-$frameIndex')),
   );
-  final container = inkWell.child! as Container;
   return container.decoration! as BoxDecoration;
 }
 
