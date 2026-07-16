@@ -23,7 +23,8 @@ import 'timeline/camera_key_edit.dart';
 import 'timeline/property_lane_model.dart';
 import 'timeline/se_audio_lane.dart';
 import 'timeline/timeline_action_toolbar.dart';
-import 'timeline/timeline_block_move_handle.dart';
+import 'timeline/timeline_frame_range_gesture.dart';
+import 'timeline/timeline_run_end_handles.dart';
 import 'timeline/timeline_exposure_comma_drag_policy.dart';
 import 'timeline/timeline_orientation.dart';
 import 'timeline/timeline_panel.dart';
@@ -820,22 +821,51 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
             onEnd: _session.endExposureEdgeDrag,
             onCancel: _session.cancelExposureEdgeDrag,
           ),
-          // Whole-block moves (R10-④b): grab the block's body to slide it
-          // along the frame axis or carry it onto another drawing layer —
-          // same live-preview + one-undo discipline as the edge grips.
-          blockMove: TimelineBlockMoveCallbacks(
-            onBegin: (layerId, blockStartIndex) =>
-                _session.beginDrawingBlockMoveDrag(
+          // TVP-style frame ranges (UI-R8): a cell drag SELECTS a range
+          // (block-snapped), a drag starting inside the selection MOVES it
+          // — the block-body immediate move's successor, same live-preview
+          // + one-undo discipline.
+          rangeHooks: TimelineFrameRangeHooks(
+            selection: _session.frameRangeSelection,
+            onSelectUpdate: (layerId, anchorIndex, headIndex) =>
+                _session.updateFrameRangeSelectionDrag(
+                  layerId: layerId,
+                  anchorIndex: anchorIndex,
+                  headIndex: headIndex,
+                ),
+            onClear: _session.clearFrameRangeSelection,
+            move: TimelineRangeMoveCallbacks(
+              onBegin: _session.beginFrameRangeMoveDrag,
+              onUpdate: ({required frameDelta, targetLayerId}) =>
+                  _session.updateFrameRangeMoveDrag(
+                    frameDelta: frameDelta,
+                    targetLayerId: targetLayerId,
+                  ),
+              onEnd: _session.endFrameRangeMoveDrag,
+              onCancel: _session.cancelFrameRangeMoveDrag,
+            ),
+          ),
+          // The TVP run-edge handles (UI-R8): [+] drags new one-frame
+          // drawings onto a run, [↻] drags a live repeat region (ghosts).
+          runEdit: TimelineRunEditCallbacks(
+            onAddBegin: (layerId, blockStartIndex, {required atEnd}) =>
+                _session.beginRunFramesAddDrag(
                   layerId: layerId,
                   blockStartIndex: blockStartIndex,
+                  atEnd: atEnd,
                 ),
-            onUpdate: ({required frameDelta, targetLayerId}) =>
-                _session.updateDrawingBlockMoveDrag(
-                  frameDelta: frameDelta,
-                  targetLayerId: targetLayerId,
+            onAddUpdate: _session.updateRunFramesAddDrag,
+            onAddEnd: _session.endRunFramesAddDrag,
+            onAddCancel: _session.cancelRunFramesAddDrag,
+            onRepeatBegin: (layerId, blockStartIndex, regionId) =>
+                _session.beginRepeatRegionDrag(
+                  layerId: layerId,
+                  blockStartIndex: blockStartIndex,
+                  regionId: regionId,
                 ),
-            onEnd: _session.endDrawingBlockMoveDrag,
-            onCancel: _session.cancelDrawingBlockMoveDrag,
+            onRepeatUpdate: _session.updateRepeatRegionDrag,
+            onRepeatEnd: _session.endRepeatRegionDrag,
+            onRepeatCancel: _session.cancelRepeatRegionDrag,
           ),
           orientation: widget.orientation,
           onOrientationChanged: widget.onOrientationChanged,

@@ -6,15 +6,17 @@ import '../../services/audio/audio_peaks_extractor.dart';
 import '../../models/layer_id.dart';
 import '../../models/layer_kind.dart';
 import '../../models/timeline_coverage.dart';
-import 'timeline_block_move_handle.dart';
 import 'timeline_cell_editor_policy.dart';
 import 'timeline_cell_exposure_state.dart';
 import 'timeline_cell_style.dart';
 import 'timeline_exposure_block_visual.dart';
 import 'timeline_exposure_comma_drag_handle.dart';
 import 'timeline_exposure_comma_drag_policy.dart';
+import '../../models/timeline_repeat.dart';
 import 'timeline_frame_cell.dart';
 import 'timeline_frame_coordinate_policy.dart';
+import 'timeline_frame_range_gesture.dart';
+import 'timeline_run_end_handles.dart';
 import 'timeline_grid_metrics.dart';
 import 'timeline_instruction_row_visual.dart';
 import 'timeline_se_row_visual.dart';
@@ -46,7 +48,8 @@ class TimelineFrameCellsRow extends StatelessWidget {
     this.onRemoveAudioClip,
     this.onDropMediaAsset,
     this.commaDrag,
-    this.blockMove,
+    this.rangeGesture,
+    this.runEdit,
     this.baseLayer,
     this.seSpillsIn = false,
   });
@@ -89,13 +92,16 @@ class TimelineFrameCellsRow extends StatelessWidget {
   /// Comma-drag hooks; null hides the block edge grips.
   final TimelineCommaDragCallbacks? commaDrag;
 
-  /// Whole-block move hooks (R10-④b); null hides the block body handles.
-  final TimelineBlockMoveHandleCallbacks? blockMove;
+  /// The range select/move gesture bundle (UI-R8 — the block-body move
+  /// handle's successor); null keeps the row display-only.
+  final TimelineRangeGestureCallbacks? rangeGesture;
+
+  /// The run-edge [+]/[↻] handle hooks (UI-R8); null hides the handles.
+  final TimelineRunEditCallbacks? runEdit;
 
   /// The row's COMMITTED repository layer while [layer] carries a drag
-  /// preview. The block-move handles mount from THIS one so a preview step
-  /// (the block leaving for another row) never unmounts the handle that
-  /// owns the live gesture (R12-③); null falls back to [layer].
+  /// preview (kept for callers even though the range gesture layer mounts
+  /// row-wide and never unmounts mid-preview); null falls back to [layer].
   final Layer? baseLayer;
 
   /// Track-SE rows whose display clone starts with a block spilling in
@@ -113,7 +119,7 @@ class TimelineFrameCellsRow extends StatelessWidget {
         ? instructionCellExposureState(layer, frameIndex)
         : exposureStateForLayer(layer, frameIndex);
     final commaDrag = this.commaDrag;
-    final blockMove = this.blockMove;
+    final rangeGesture = this.rangeGesture;
 
     return Stack(
       key: ValueKey<String>('timeline-frame-row-area-${layer.id}'),
@@ -139,6 +145,7 @@ class TimelineFrameCellsRow extends StatelessWidget {
                 height: metrics.layerRowHeight,
                 active: active,
                 outsidePlaybackRange: frameIndex >= playbackFrameCount,
+                ghost: timelineIndexIsGhost(layer, frameIndex),
                 exposureState: stateAt(frameIndex),
                 exposureBlockSegment:
                     calculateTimelineExposureBlockVisualSegment(
@@ -243,20 +250,35 @@ class TimelineFrameCellsRow extends StatelessWidget {
             axis: Axis.horizontal,
             defById: instructionDefById!,
           ),
-        // Body handles mount UNDER the grips: the edges keep comma-drag
-        // priority, the body between them moves the block whole.
-        if (blockMove != null &&
+        // The range gesture layer replaces the block-body move handle
+        // (UI-R8, TVP style): a pan on the cells SELECTS a frame range —
+        // a pan starting inside the current selection MOVES it. Mounted
+        // UNDER the grips so the edges keep comma-drag priority.
+        if (rangeGesture != null &&
             layerKindHoldsDrawings(layer.kind) &&
             !layerKindUsesSeSheetCells(layer.kind))
-          ...timelineRowBlockMoveHandles(
-            layerId: layer.id,
-            blocks: drawingBlocks((baseLayer ?? layer).timeline),
+          TimelineFrameRangeGestureLayer(
+            layer: layer,
+            frameStartIndex: frameStartIndex,
+            leadingFrameSpacerWidth: leadingFrameSpacerWidth,
+            frameCellExtent: metrics.frameCellWidth,
+            crossAxisExtent: metrics.layerRowHeight,
+            callbacks: rangeGesture,
+            axis: Axis.horizontal,
+          ),
+        // The TVP run-edge handles (UI-R8): [+] add-frames + [↻] repeat,
+        // hugging each glued run's edges where space is free.
+        if (runEdit != null &&
+            layerKindHoldsDrawings(layer.kind) &&
+            !layerKindUsesSeSheetCells(layer.kind))
+          ...timelineRowRunEndHandles(
+            layer: layer,
             frameStartIndex: frameStartIndex,
             frameEndIndexExclusive: frameEndIndexExclusive,
             leadingFrameSpacerWidth: leadingFrameSpacerWidth,
             frameCellExtent: metrics.frameCellWidth,
             crossAxisExtent: metrics.layerRowHeight,
-            callbacks: blockMove,
+            callbacks: runEdit!,
             axis: Axis.horizontal,
           ),
         if (commaDrag != null && layerKindHoldsDrawings(layer.kind))
@@ -308,6 +330,10 @@ List<Widget> timelineRowBlockEdgeGrips({
     final block = blocks[ordinal];
     if (block.endIndexExclusive <= frameStartIndex ||
         block.startIndex >= frameEndIndexExclusive) {
+      continue;
+    }
+    // Ghost repeat instances are DERIVED — no timing grips (UI-R8).
+    if (block.entry.ghost) {
       continue;
     }
 

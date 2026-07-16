@@ -8,6 +8,7 @@ import '../models/layer.dart';
 import '../models/layer_id.dart';
 import '../models/timeline_coverage.dart';
 import '../models/timeline_exposure.dart';
+import '../models/timeline_repeat.dart';
 import '../services/commands/update_layer_timeline_command.dart';
 import '../services/history_manager.dart';
 import '../services/project_repository.dart';
@@ -612,7 +613,8 @@ class TimelineController {
       edge: edge,
       delta: clampedDelta,
     );
-    return layer.copyWith(timeline: nextTimeline);
+    // Live preview keeps the ghosts following the dragged run (UI-R8).
+    return rederiveRepeatRegions(layer.copyWith(timeline: nextTimeline));
   }
 
   void shiftExposureEdge({
@@ -800,10 +802,14 @@ class TimelineController {
   }
 
   void _applyLayerEdit({required Layer before, required Layer after}) {
+    // THE repeat normalize choke point (UI-R8): every timeline edit lands
+    // here, so the derived ghost entries re-arrange with whatever the edit
+    // did to their source run (live sync). Layers without regions/ghosts
+    // pass through untouched (identity).
     final command = UpdateLayerTimelineCommand(
       repository: _repository,
       before: before,
-      after: after,
+      after: rederiveRepeatRegions(after),
     );
     final historyManager = _historyManager;
     if (historyManager == null) {

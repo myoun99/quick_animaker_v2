@@ -10,11 +10,12 @@ import 'layer_timeline_display_adapter.dart';
 import 'layer_timeline_grid.dart';
 import 'property_lane_model.dart';
 import 'se_audio_lane.dart' show AudioOffsetDragCallbacks;
-import 'timeline_block_move_handle.dart';
 import 'timeline_cell_exposure_state.dart';
 import 'timeline_drag_preview.dart';
 import 'timeline_exposure_comma_drag_policy.dart';
+import 'timeline_frame_range_gesture.dart';
 import 'timeline_grid_metrics.dart';
+import 'timeline_run_end_handles.dart';
 import 'timeline_layer_controls_header.dart' show LayerLegendCallbacks;
 import 'timeline_row_filter.dart';
 import 'timeline_section_bracket_rail.dart' show TimelineSectionRailCallbacks;
@@ -57,7 +58,8 @@ class TimelinePanel extends StatefulWidget {
     this.onToggleLayerFx,
     this.onToggleLayerMuted,
     this.commaDrag,
-    this.blockMove,
+    this.rangeHooks,
+    this.runEdit,
     this.isFrameCached,
     required this.orientation,
     required this.onOrientationChanged,
@@ -182,9 +184,13 @@ class TimelinePanel extends StatefulWidget {
   /// orientations; null hides the grips.
   final TimelineCommaDragCallbacks? commaDrag;
 
-  /// Whole-block move hooks (R10-④b), shared by both orientations; null
-  /// hides the block body handles.
-  final TimelineBlockMoveCallbacks? blockMove;
+  /// The frame-range select/move hooks (UI-R8), shared by both
+  /// orientations; null keeps rows display-only.
+  final TimelineFrameRangeHooks? rangeHooks;
+
+  /// The run-edge [+]/[↻] handle hooks (UI-R8), both orientations; null
+  /// hides the handles.
+  final TimelineRunEditCallbacks? runEdit;
 
   /// Cached-range resolver for the green strip (horizontal ruler and the
   /// X-sheet frame rail).
@@ -359,7 +365,8 @@ class _TimelinePanelState extends State<TimelinePanel> {
                     layerFxEnabledOf: widget.layerFxEnabledOf,
                     onToggleLayerFx: widget.onToggleLayerFx,
                     commaDrag: widget.commaDrag,
-                    blockMove: widget.blockMove,
+                    rangeHooks: widget.rangeHooks,
+                    runEdit: widget.runEdit,
                     isFrameCached: widget.isFrameCached,
                     metrics: horizontalMetrics,
                     expandedLaneLayerIds: widget.expandedLaneLayerIds,
@@ -414,7 +421,8 @@ class _TimelinePanelState extends State<TimelinePanel> {
                     layerFxEnabledOf: widget.layerFxEnabledOf,
                     onToggleLayerFx: widget.onToggleLayerFx,
                     commaDrag: widget.commaDrag,
-                    blockMove: widget.blockMove,
+                    rangeHooks: widget.rangeHooks,
+                    runEdit: widget.runEdit,
                     isFrameCached: widget.isFrameCached,
                     metrics: xsheetMetrics,
                     expandedLaneLayerIds: widget.expandedLaneLayerIds,

@@ -15,19 +15,34 @@ class TimelineExposure {
   const TimelineExposure.drawing(
     FrameId this.frameId, {
     required int this.length,
+    this.ghost = false,
+    this.repeatRegionId,
   }) : type = TimelineExposureType.drawing,
        assert(length >= 1, 'Drawing exposure length must be at least 1.');
 
   const TimelineExposure.mark()
     : type = TimelineExposureType.mark,
       frameId = null,
-      length = null;
+      length = null,
+      ghost = false,
+      repeatRegionId = null;
 
   final TimelineExposureType type;
   final FrameId? frameId;
 
   /// Hold length in frames; non-null iff [type] is drawing.
   final int? length;
+
+  /// A DERIVED repeat instance (UI-R8, TVP-style repeat): synthesized by
+  /// the repeat rederive pass from its region's source span — never
+  /// authored directly, wiped and rebuilt on every timeline edit. Ghosts
+  /// share the source's frameId (drawing at a ghost index edits the
+  /// source) and render dimmed on the timeline cells only; playback and
+  /// the canvas treat them as ordinary exposures.
+  final bool ghost;
+
+  /// The owning [TimelineRepeatRegion.id] when [ghost] is true.
+  final String? repeatRegionId;
 
   bool get isDrawing => type == TimelineExposureType.drawing;
   bool get isMark => type == TimelineExposureType.mark;
@@ -39,6 +54,8 @@ class TimelineExposure {
     return TimelineExposure.drawing(
       frameId ?? this.frameId!,
       length: length ?? this.length!,
+      ghost: ghost,
+      repeatRegionId: repeatRegionId,
     );
   }
 
@@ -46,6 +63,8 @@ class TimelineExposure {
     'type': type.toJson(),
     if (frameId != null) 'frameId': frameId!.toJson(),
     if (length != null) 'length': length,
+    if (ghost) 'ghost': true,
+    if (repeatRegionId != null) 'repeatRegionId': repeatRegionId,
   };
 
   /// Decodes the CURRENT format only. Legacy entries (`blank` type, drawing
@@ -70,6 +89,8 @@ class TimelineExposure {
     return TimelineExposure.drawing(
       FrameId.fromJson(frameIdJson as Map<String, dynamic>),
       length: length,
+      ghost: json['ghost'] == true,
+      repeatRegionId: json['repeatRegionId'] as String?,
     );
   }
 
@@ -79,12 +100,15 @@ class TimelineExposure {
       other is TimelineExposure &&
           other.type == type &&
           other.frameId == frameId &&
-          other.length == length;
+          other.length == length &&
+          other.ghost == ghost &&
+          other.repeatRegionId == repeatRegionId;
 
   @override
-  int get hashCode => Object.hash(type, frameId, length);
+  int get hashCode => Object.hash(type, frameId, length, ghost, repeatRegionId);
 
   @override
   String toString() =>
-      'TimelineExposure(type: $type, frameId: $frameId, length: $length)';
+      'TimelineExposure(type: $type, frameId: $frameId, length: $length'
+      '${ghost ? ', ghost($repeatRegionId)' : ''})';
 }

@@ -181,6 +181,201 @@ DrawingBlockMovePlan? planDrawingBlockMove({
   );
 }
 
+/// Plans moving EVERY drawing block inside [rangeStartIndex,
+/// rangeEndIndexExclusive) on [source] by [frameDelta] frames onto [target]
+/// as ONE RIGID GROUP (relative offsets — internal gaps included — are
+/// preserved). The UI-R8 range move: the selection is block-snapped, so
+/// the range always holds whole blocks.
+///
+/// Same rules as [planDrawingBlockMove], applied group-wise:
+/// - same-layer slides bulldoze (the group never passes a neighbour);
+///   leftward clamps at frame 0;
+/// - any landing (moved or pushed) on a mark's exact index is rejected;
+/// - cross-layer moves carry the moved cels; a cel referenced by an entry
+///   OUTSIDE the moved set stays (rejected) to keep links intact — entries
+///   linked WITHIN the range travel together sharing their cel.
+///
+/// GHOST entries (derived repeat instances) never move and never obstruct:
+/// both timelines are planned ghost-free and the caller re-derives repeats
+/// afterwards. A range intersecting a ghost is rejected outright.
+DrawingBlockMovePlan? planDrawingRangeMove({
+  required Layer source,
+  required Layer target,
+  required int rangeStartIndex,
+  required int rangeEndIndexExclusive,
+  required int frameDelta,
+}) {
+  if (rangeEndIndexExclusive <= rangeStartIndex) {
+    return null;
+  }
+  final sameLayer = source.id == target.id;
+  if (sameLayer && frameDelta == 0) {
+    return null;
+  }
+
+  // Plan on ghost-free timelines: derived entries neither move nor block.
+  SplayTreeMap<int, TimelineExposure> baseTimeline(Layer layer) {
+    final base = SplayTreeMap<int, TimelineExposure>();
+    layer.timeline.forEach((index, entry) {
+      if (!(entry.isDrawing && entry.ghost)) {
+        base[index] = entry;
+      }
+    });
+    return base;
+  }
+
+  final sourceBase = baseTimeline(source);
+  final targetBase = sameLayer ? sourceBase : baseTimeline(target);
+
+  final moved = <TimelineDrawingBlock>[];
+  for (final block in drawingBlocks(sourceBase)) {
+    if (block.startIndex >= rangeStartIndex &&
+        block.endIndexExclusive <= rangeEndIndexExclusive) {
+      moved.add(block);
+    } else if (block.startIndex < rangeEndIndexExclusive &&
+        block.endIndexExclusive > rangeStartIndex) {
+      // A partially covered block means the range was not block-snapped.
+      return null;
+    }
+  }
+  if (moved.isEmpty) {
+    return null;
+  }
+  // A range overlapping ghost instances cannot move (their timing is the
+  // repeat region's). The snap already excludes them; stay defensive.
+  for (final entry in source.timeline.entries) {
+    if (entry.key >= rangeStartIndex &&
+        entry.key < rangeEndIndexExclusive &&
+        entry.value.isDrawing &&
+        entry.value.ghost) {
+      return null;
+    }
+  }
+
+  final groupStart = moved.first.startIndex;
+  final groupEndExclusive = moved.last.endIndexExclusive;
+  final groupSpan = groupEndExclusive - groupStart;
+  final movedStarts = {for (final block in moved) block.startIndex};
+
+  // Cross-layer: the cels travel with the group. A cel referenced from
+  // outside the moved set stays put (link preserved — move rejected).
+  final movedFrames = <Frame>[];
+  final movedFrameIds = <FrameId>[];
+  if (!sameLayer) {
+    final frameIds = <FrameId>{for (final block in moved) block.frameId};
+    for (final candidate in source.timeline.entries) {
+      if (movedStarts.contains(candidate.key)) {
+        continue;
+      }
+      final entry = candidate.value;
+      if (entry.isDrawing && frameIds.contains(entry.frameId)) {
+        return null;
+      }
+    }
+    for (final frameId in frameIds) {
+      Frame? frame;
+      for (final candidate in source.frames) {
+        if (candidate.id == frameId) {
+          frame = candidate;
+          break;
+        }
+      }
+      if (frame == null) {
+        return null;
+      }
+      movedFrames.add(frame);
+      movedFrameIds.add(frameId);
+    }
+  }
+
+  final others = [
+    for (final block in drawingBlocks(targetBase))
+      if (!(sameLayer && movedStarts.contains(block.startIndex))) block,
+  ];
+
+  final resolved = _resolvePushedLanding(
+    others: others,
+    requestedStart: groupStart + frameDelta,
+    movedLength: groupSpan,
+    pushRight: frameDelta >= 0,
+    leftwardCap: sameLayer ? groupStart : math.max(0, groupStart),
+    sameLayerStart: sameLayer ? groupStart : null,
+  );
+  if (resolved == null) {
+    return null;
+  }
+  final (:destStart, :pushes) = resolved;
+  if (sameLayer && destStart == groupStart && pushes.isEmpty) {
+    return null;
+  }
+
+  bool startsOnMark(SplayTreeMap<int, TimelineExposure> timeline, int start) {
+    final atStart = timeline[start];
+    return atStart != null && atStart.isMark;
+  }
+
+  for (final block in moved) {
+    final landing = destStart + (block.startIndex - groupStart);
+    if (startsOnMark(targetBase, landing)) {
+      return null;
+    }
+  }
+  for (final push in pushes) {
+    if (push.newStart != push.block.startIndex &&
+        startsOnMark(targetBase, push.newStart)) {
+      return null;
+    }
+  }
+
+  SplayTreeMap<int, TimelineExposure> targetTimelineAfter() {
+    final timeline = SplayTreeMap<int, TimelineExposure>.of(targetBase);
+    if (sameLayer) {
+      for (final start in movedStarts) {
+        timeline.remove(start);
+      }
+    }
+    for (final push in pushes) {
+      timeline.remove(push.block.startIndex);
+    }
+    for (final push in pushes) {
+      timeline[push.newStart] = push.block.entry;
+    }
+    for (final block in moved) {
+      timeline[destStart + (block.startIndex - groupStart)] = block.entry;
+    }
+    return timeline;
+  }
+
+  if (sameLayer) {
+    return DrawingBlockMovePlan(
+      sourceAfter: source.copyWith(timeline: targetTimelineAfter()),
+      destinationStartIndex: destStart,
+    );
+  }
+
+  final movedFrameIdSet = {for (final id in movedFrameIds) id};
+  final sourceTimeline = SplayTreeMap<int, TimelineExposure>.of(sourceBase);
+  for (final start in movedStarts) {
+    sourceTimeline.remove(start);
+  }
+  return DrawingBlockMovePlan(
+    sourceAfter: source.copyWith(
+      timeline: sourceTimeline,
+      frames: [
+        for (final frame in source.frames)
+          if (!movedFrameIdSet.contains(frame.id)) frame,
+      ],
+    ),
+    targetBefore: target,
+    targetAfter: target.copyWith(
+      timeline: targetTimelineAfter(),
+      frames: [...target.frames, ...movedFrames],
+    ),
+    movedFrameIds: movedFrameIds,
+    destinationStartIndex: destStart,
+  );
+}
+
 typedef _Push = ({TimelineDrawingBlock block, int newStart});
 
 /// Where the moved block lands and which blocks it shoves aside.
