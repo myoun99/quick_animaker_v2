@@ -1433,6 +1433,8 @@ class EditorSessionManager extends ChangeNotifier {
       return;
     }
 
+    final fromGap =
+        _gapGlobalFrame != null || _editingSession.activeCutId == null;
     // The visibility solo is cut-scoped: restore the eyes before leaving.
     if (_layerVisibilitySoloEnabled) {
       _exitVisibilitySolo();
@@ -1441,6 +1443,12 @@ class EditorSessionManager extends ChangeNotifier {
     _copiedFrame = null;
     clearFrameRangeSelection();
     _rebuildActiveCutControllers();
+    if (fromGap) {
+      // Activating a cut FROM the gap lands on ITS first frame (UI-R10
+      // #14): the stale gap-global cursor never leaks into the new cut
+      // (selectFrameIndex also clears the parking).
+      selectFrameIndex(0);
+    }
     _warmActiveCut();
     notifyListeners();
   }
@@ -4591,16 +4599,15 @@ class EditorSessionManager extends ChangeNotifier {
     }
     final owner = axis.ownerOf(globalFrame);
     if (axis.isGap(globalFrame)) {
-      // Gap moves ride the cursor path and park PER MOVE (UI-R7 #9) — no
-      // committed seek and no cut switch mid-drag; the RELEASE commits
-      // the no-cut state (commitFrameScrub, UI-R9 #3). The cursor holds
-      // the runway local inside the active cut's own trailing gap and 0
-      // elsewhere (display rides the parking either way).
-      final local = owner != null && owner.cutId == activeCutId
-          ? math.max(0, globalFrame - owner.startFrame)
-          : 0;
-      scrubFrameIndex(local);
+      // Gap moves park PER MOVE (UI-R7 #9) and the FIRST gap entry
+      // deselects the cut IMMEDIATELY (UI-R10 #13): the timesheet and
+      // timeline empty out live during the drag, not on release
+      // (commitFrameScrub stays the idempotent backstop).
       _gapGlobalFrame = globalFrame;
+      if (_deselectActiveCutForGap()) {
+        frameSeekCommitted.value += 1;
+        notifyListeners();
+      }
       return;
     }
     if (owner == null || owner.cutId != activeCutId) {

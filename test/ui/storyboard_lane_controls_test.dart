@@ -76,6 +76,7 @@ Project _project({Cut Function(Cut cut)? mapCut, List<Layer>? seLayers}) {
 Future<void> _pumpPanel(
   WidgetTester tester, {
   required Project project,
+  CutId? activeCutId = const CutId('lane-cut'),
   void Function(CutId cutId, int fadeInFrames, int fadeOutFrames)? onSetCutFade,
   void Function(CutId cutId, CutFadeTarget fadeTarget)? onSetCutFadeTarget,
   ValueChanged<LayerId>? onToggleLayerVisibility,
@@ -102,7 +103,7 @@ Future<void> _pumpPanel(
         body: StatefulBuilder(
           builder: (context, setState) => StoryboardPanel(
             project: project,
-            activeCutId: const CutId('lane-cut'),
+            activeCutId: activeCutId,
             onCutSelected: (_) {},
             pixelsPerFrame: 12,
             projectFps: 24,
@@ -169,6 +170,26 @@ Future<void> _expandVTransform(WidgetTester tester) async {
 }
 
 void main() {
+  testWidgets('a GAP (no active cut) keeps the SE rail controls up '
+      '(UI-R10 #12): track-owned rows never depend on a cut', (
+    tester,
+  ) async {
+    await _pumpPanel(
+      tester,
+      project: _project(),
+      activeCutId: null,
+      onToggleLayerVisibility: (_) {},
+    );
+
+    expect(
+      find.byKey(
+        const ValueKey<String>('storyboard-layer-visibility-lane-se'),
+      ),
+      findsOneWidget,
+      reason: 'the SE eye survives the no-cut state',
+    );
+  });
+
   testWidgets('the V-track chevron twirls down the Transform GROUP header '
       '(collapsed, AE-style) and the header opens the lanes with the '
       'fade-envelope Opacity strip last', (tester) async {

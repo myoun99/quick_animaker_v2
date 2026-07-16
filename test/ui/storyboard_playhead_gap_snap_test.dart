@@ -90,8 +90,9 @@ void main() {
     expect(s.editingPlayheadInGap, isFalse);
   });
 
-  test('an editing scrub into the active cut\'s trailing gap rides the '
-      'cursor path (no session notify) with an over-end cursor', () {
+  test('an editing scrub inside the cut rides the cursor path (no session '
+      'notify); crossing into the gap deselects IMMEDIATELY (UI-R10 #13)',
+      () {
     final (s, first, _, aEnd) = gappedSession();
     s.selectCut(first);
     var notifies = 0;
@@ -99,27 +100,32 @@ void main() {
 
     scrubStoryboardGlobalFrame(s, aEnd - 2);
     expect(s.editingFrameCursor.value, aEnd - 2);
+    expect(notifies, 0, reason: 'in-cut moves stay on the cursor path');
+
     scrubStoryboardGlobalFrame(s, aEnd + 1);
-    expect(s.editingFrameCursor.value, aEnd + 1, reason: 'gap = over-end');
-    expect(notifies, 0);
+    expect(s.activeCutId, isNull, reason: 'mid-drag no-cut (UI-R10 #13)');
+    expect(s.gapParkedGlobalFrame, aEnd + 1);
+    expect(notifies, 1, reason: 'ONE notify on the gap entry');
   });
 
-  test('gap scrubs PARK per move (UI-R7 #9): the playhead follows the exact '
-      'gap frame, the void shows DURING the drag, the release keeps the '
-      'parking, and scrubbing back onto the cut un-parks', () {
+  test('gap scrubs PARK per move: the first gap entry deselects (one '
+      'notify), further gap moves stay silent, the release keeps the '
+      'parking, and scrubbing back onto the cut re-selects', () {
     final (s, first, _, aEnd) = gappedSession();
     s.selectCut(first);
     var notifies = 0;
     s.addListener(() => notifies += 1);
 
     scrubStoryboardGlobalFrame(s, aEnd + 1);
+    expect(s.activeCutId, isNull);
     expect(s.gapParkedGlobalFrame, aEnd + 1);
     expect(storyboardPlayheadFrame(s), aEnd + 1);
     expect(s.editingPlayheadInGap, isTrue);
+    expect(notifies, 1, reason: 'the gap entry deselect');
 
     scrubStoryboardGlobalFrame(s, aEnd + 3);
     expect(s.gapParkedGlobalFrame, aEnd + 3);
-    expect(notifies, 0, reason: 'cursor path — no full seek per gap move');
+    expect(notifies, 1, reason: 'further gap moves ride the parking only');
 
     commitStoryboardScrub(s);
     expect(
@@ -131,11 +137,12 @@ void main() {
 
     scrubStoryboardGlobalFrame(s, 2);
     expect(s.gapParkedGlobalFrame, isNull, reason: 'back on the cut');
+    expect(s.activeCutId, first, reason: 'the cut re-selects');
     commitStoryboardScrub(s);
   });
 
-  test('the LEADING gap scrubs on the cursor path too (UI-R7 #9: it used '
-      'to full-seek per move and the ruler could not land there)', () {
+  test('the LEADING gap scrub deselects on entry and parks per move '
+      '(UI-R10 #13 over the UI-R7 #9 cursor path)', () {
     final s = EditorSessionManager(initialProject: createDefaultProject());
     final cutId = s.repository.requireProject().tracks.first.cuts.first.id;
     s.repository.updateCutLeadingGap(cutId: cutId, leadingGapFrames: 3);
@@ -143,11 +150,12 @@ void main() {
     s.addListener(() => notifies += 1);
 
     scrubStoryboardGlobalFrame(s, 1);
+    expect(s.activeCutId, isNull);
     expect(s.gapParkedGlobalFrame, 1);
     expect(storyboardPlayheadFrame(s), 1);
     scrubStoryboardGlobalFrame(s, 2);
     expect(s.gapParkedGlobalFrame, 2);
-    expect(notifies, 0, reason: 'cursor path — no full seek per move');
+    expect(notifies, 1, reason: 'one deselect notify, then parking only');
 
     commitStoryboardScrub(s);
     expect(
