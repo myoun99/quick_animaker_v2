@@ -22,12 +22,21 @@ class TimelineViewCluster extends StatelessWidget {
     required this.onShowSecondsChanged,
     required this.pixelsPerFrame,
     required this.onPixelsPerFrameChanged,
+    this.globalFrame,
     this.trailing = const <Widget>[],
   });
 
   /// The editing/playback cursor — the counter subscribes to this alone so
   /// a tick rebuilds one Text, nothing else (playback-perf architecture).
   final ValueListenable<int> frameCursor;
+
+  /// Track-global playhead frame (UI-R9 #6, storyboard only): when set,
+  /// the counter reads '<global> · <cut-local>' — the global number LEFT
+  /// of the local one. The counter subscribes to both, so gap parking
+  /// (which moves the global without touching the cut-local cursor)
+  /// refreshes the label too. Null (the timeline tab) keeps the plain
+  /// cut-local counter.
+  final ValueListenable<int?>? globalFrame;
 
   final int projectFps;
   final bool showSeconds;
@@ -38,26 +47,35 @@ class TimelineViewCluster extends StatelessWidget {
   /// Host-specific controls after the zoom slider (orientation toggle).
   final List<Widget> trailing;
 
+  String _frameLabel(int oneBasedFrame) => showSeconds
+      ? timelineSecondsLabel(oneBasedFrame, projectFps)
+      : '$oneBasedFrame';
+
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
+    final globalFrame = this.globalFrame;
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        ValueListenableBuilder<int>(
-          valueListenable: frameCursor,
-          builder: (context, cursorFrame, _) => Text(
-            showSeconds
-                ? timelineSecondsLabel(cursorFrame + 1, projectFps)
-                : '${cursorFrame + 1}',
-            key: const ValueKey<String>('timeline-current-frame-counter'),
-            style: TextStyle(
-              fontFamily: 'monospace',
-              fontSize: 13,
-              fontWeight: FontWeight.w600,
-              color: colorScheme.primary,
-            ),
-          ),
+        ListenableBuilder(
+          listenable: globalFrame == null
+              ? frameCursor
+              : Listenable.merge([frameCursor, globalFrame]),
+          builder: (context, _) {
+            final local = _frameLabel(frameCursor.value + 1);
+            final global = globalFrame?.value;
+            return Text(
+              global == null ? local : '${_frameLabel(global + 1)} · $local',
+              key: const ValueKey<String>('timeline-current-frame-counter'),
+              style: TextStyle(
+                fontFamily: 'monospace',
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+                color: colorScheme.primary,
+              ),
+            );
+          },
         ),
         const SizedBox(width: 4),
         IconButton(

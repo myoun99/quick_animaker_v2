@@ -17,7 +17,6 @@ import 'package:quick_animaker_v2/src/models/layer.dart';
 import 'package:quick_animaker_v2/src/models/layer_id.dart';
 import 'package:quick_animaker_v2/src/models/playback_quality.dart';
 import 'package:quick_animaker_v2/src/models/project.dart';
-import 'package:quick_animaker_v2/src/models/project_background.dart';
 import 'package:quick_animaker_v2/src/models/project_id.dart';
 import 'package:quick_animaker_v2/src/models/property_track.dart';
 import 'package:quick_animaker_v2/src/models/timeline_exposure.dart';
@@ -345,8 +344,9 @@ void main() {
     hidden.composites.dispose();
   });
 
-  testWidgets('a playlist GAP frame shows the project background (R10-⑥ '
-      'superseded W3c black): the picture is withheld, no fade wash', (
+  testWidgets('a playlist GAP frame is a VOID (UI-R9 #2, superseding '
+      'R10-⑥): picture AND paper withheld, no fade wash — the panel '
+      'background shows through like the gap-parked scrub preview', (
     tester,
   ) async {
     // The single cut preceded by 3 empty frames: all-cuts playback spends
@@ -386,19 +386,17 @@ void main() {
     expect(controller.position, isNull);
     expect(painterOf(tester).image, isNull, reason: 'gap shows no picture');
     expect(
-      painterOf(tester).fadeOpacity,
-      1,
-      reason: 'no wash — the paper (project background) shows through',
+      painterOf(tester).paintPaper,
+      isFalse,
+      reason: 'gap shows no paper either — a void, not the background',
     );
-    expect(
-      painterOf(tester).paperBackground,
-      ProjectBackground.defaultBackground,
-    );
+    expect(painterOf(tester).fadeOpacity, 1, reason: 'no wash in the gap');
 
-    // Crossing into the cut restores the picture and lifts the wash.
+    // Crossing into the cut restores the paper, the picture and the wash.
     controller.seekToGlobalFrame(3);
     await tester.pump();
     expect(painterOf(tester).image, isNotNull);
+    expect(painterOf(tester).paintPaper, isTrue);
     expect(painterOf(tester).fadeOpacity, 1);
 
     controller.stop();

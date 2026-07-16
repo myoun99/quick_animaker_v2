@@ -41,6 +41,7 @@ class PlaybackFramePainter extends CustomPainter {
     this.letterboxColor = const Color(0xFF15191C),
     this.paperColor = const Color(0xFFEDEDED),
     this.paperBackground,
+    this.paintPaper = true,
   }) : assert(
          cameraPose == null || cameraFrameSize != null,
          'Camera mode needs the camera frame size.',
@@ -88,7 +89,15 @@ class PlaybackFramePainter extends CustomPainter {
   /// and may render the transparent checkerboard.
   final ProjectBackground? paperBackground;
 
+  /// False = no paper at all (playlist GAPS, UI-R9 #2): the panel's own
+  /// background shows through — the same void the gap-parked scrub
+  /// preview shows. There is no cut in a gap, so there is no paper.
+  final bool paintPaper;
+
   void _paintPaper(Canvas canvas, Rect rect) {
+    if (!paintPaper) {
+      return;
+    }
     final background = paperBackground;
     if (background != null) {
       paintProjectPaper(canvas, rect, background);
@@ -221,5 +230,6 @@ class PlaybackFramePainter extends CustomPainter {
       oldDelegate.fadeColor != fadeColor ||
       oldDelegate.letterboxColor != letterboxColor ||
       oldDelegate.paperColor != paperColor ||
-      oldDelegate.paperBackground != paperBackground;
+      oldDelegate.paperBackground != paperBackground ||
+      oldDelegate.paintPaper != paintPaper;
 }

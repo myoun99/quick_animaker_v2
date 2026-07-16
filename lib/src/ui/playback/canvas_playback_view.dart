@@ -127,9 +127,10 @@ class _CanvasPlaybackViewState extends State<CanvasPlaybackView>
     final canvasSize =
         cut?.canvasSize ?? _heldCanvasSize ?? widget.cameraFrameSize;
 
-    // A playlist GAP (empty frames between cuts): background only —
-    // no held frame, no fade wash; the paper paints the project
-    // background (R10-⑥: gaps show it, black by choice not default).
+    // A playlist GAP (empty frames between cuts): a VOID — no held frame,
+    // no fade wash, and NO paper (UI-R9 #2, superseding R10-⑥'s
+    // background-only gaps): there is no cut in a gap, so the panel's own
+    // background shows through, exactly like the gap-parked scrub preview.
     final inGap =
         widget.controller.isActive &&
         widget.controller.globalFrameIndexListenable.value != null &&
@@ -200,6 +201,7 @@ class _CanvasPlaybackViewState extends State<CanvasPlaybackView>
               cutPose: cutPose,
               cutAnchorPoint: cutAnchorPoint,
               paperBackground: widget.background,
+              paintPaper: !inGap,
               fadeOpacity:
                   !inGap && cut != null && position != null && cutFxEnabled
                   ? cut.fadeOpacityAt(position.localFrameIndex)

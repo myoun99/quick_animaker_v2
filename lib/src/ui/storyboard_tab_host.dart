@@ -304,6 +304,9 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
           const SizedBox(width: 8),
           TimelineViewCluster(
             frameCursor: _session.editingFrameCursor,
+            // Global · cut-local pair (UI-R9 #6) — the channel already
+            // follows scrubs, gap parking and playback ticks.
+            globalFrame: _playheadGlobalFrame,
             projectFps: _session.projectFps,
             showSeconds: widget.showSeconds,
             onShowSecondsChanged: widget.onShowSecondsChanged,
@@ -426,7 +429,6 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
               onLayerOpacityChanged: _session.previewLayerOpacity,
               onLayerOpacityChangeEnd: _session.commitLayerOpacity,
               onLayerMarkSelected: _session.setLayerMark,
-              onToggleLayerTimesheet: _session.toggleLayerTimesheet,
               layerFxEnabledOf: _session.isLayerFxEnabled,
               onToggleLayerFx: _session.toggleLayerFx,
               // The timeline's rail legend on this panel too (UI-R5): the

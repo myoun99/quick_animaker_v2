@@ -320,6 +320,7 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
   double _verticalScrollOffset = 0;
   double _lastEffectiveHorizontalScrollOffset = 0;
   double? _scheduledHorizontalOffsetCorrection;
+  double? _scheduledVerticalOffsetCorrection;
   int _endlessTrailingFrames = 0;
   final GlobalKey _rulerScrubViewportKey = GlobalKey();
   int? _lastRulerScrubbedFrameIndex;
@@ -504,6 +505,47 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
       _scheduledHorizontalOffsetCorrection = null;
       if (_horizontalScrollController.offset != targetOffset) {
         _horizontalScrollController.jumpTo(targetOffset);
+      }
+    });
+  }
+
+  /// The vertical mirror of the horizontal clamp machinery (UI-R9 #9):
+  /// collapsing transform lanes SHRINKS the row content, but the scroll
+  /// controller's pixels don't move on their own — windowing from the
+  /// stale, now-out-of-range offset inflated the leading spacer and pushed
+  /// every section downward (top alignment broke).
+  double _effectiveVerticalScrollOffset({
+    required double requestedOffset,
+    required double viewportHeight,
+    required double contentHeight,
+  }) {
+    final maxOffset = math.max(0.0, contentHeight - viewportHeight);
+    return requestedOffset.clamp(0.0, maxOffset).toDouble();
+  }
+
+  void _synchronizeVerticalScrollController(double effectiveOffset) {
+    if (!_verticalScrollController.hasClients ||
+        _verticalScrollController.offset == effectiveOffset ||
+        _scheduledVerticalOffsetCorrection == effectiveOffset) {
+      return;
+    }
+
+    _scheduledVerticalOffsetCorrection = effectiveOffset;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !_verticalScrollController.hasClients) {
+        _scheduledVerticalOffsetCorrection = null;
+        return;
+      }
+
+      final maxScrollExtent =
+          _verticalScrollController.position.maxScrollExtent;
+      final targetOffset = effectiveOffset
+          .clamp(0.0, maxScrollExtent)
+          .toDouble();
+
+      _scheduledVerticalOffsetCorrection = null;
+      if (_verticalScrollController.offset != targetOffset) {
+        _verticalScrollController.jumpTo(targetOffset);
       }
     });
   }
@@ -881,13 +923,26 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                     // overlays keep the FULL row list — their offsets are
                     // absolute. Without a real viewport measurement
                     // (unbounded hosts) every row builds, like before.
+                    // The offset is CLAMPED to the current content before
+                    // windowing (UI-R9 #9): lane collapses shrink the rows
+                    // under a stale scroll offset, and the raw value would
+                    // inflate the leading spacer (sections pushed down).
+                    final effectiveVerticalScrollOffset =
+                        _effectiveVerticalScrollOffset(
+                          requestedOffset: _verticalScrollOffset,
+                          viewportHeight: bodyViewportHeight,
+                          contentHeight: verticalContentHeight,
+                        );
+                    _synchronizeVerticalScrollController(
+                      effectiveVerticalScrollOffset,
+                    );
                     final rowWindow = bodyViewportHeight <= 0
                         ? TimelineVisibleRange(
                             startIndex: 0,
                             endIndexExclusive: rows.length,
                           )
                         : calculateVisibleIndexRange(
-                            scrollOffset: _verticalScrollOffset,
+                            scrollOffset: effectiveVerticalScrollOffset,
                             viewportExtent: bodyViewportHeight,
                             itemExtent: _metrics.layerRowHeight,
                             itemCount: rows.length,

@@ -149,7 +149,6 @@ class StoryboardPanel extends StatefulWidget {
     this.onLayerOpacityChanged,
     this.onLayerOpacityChangeEnd,
     this.onLayerMarkSelected,
-    this.onToggleLayerTimesheet,
     this.layerFxEnabledOf,
     this.onToggleLayerFx,
     this.cutFxEnabledOf,
@@ -325,9 +324,6 @@ class StoryboardPanel extends StatefulWidget {
   final void Function(LayerId layerId, double opacity)? onLayerOpacityChangeEnd;
 
   final void Function(LayerId layerId, LayerMark mark)? onLayerMarkSelected;
-
-  /// The sheet toggle in the timeline slot (UI-R5 unification).
-  final ValueChanged<LayerId>? onToggleLayerTimesheet;
 
   final bool Function(LayerId layerId)? layerFxEnabledOf;
   final ValueChanged<LayerId>? onToggleLayerFx;
@@ -657,7 +653,6 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
           widget.activeLayerId != null &&
           trackLayer.id == widget.activeLayerId,
       onSelectLayer: widget.onSelectLayer,
-      onToggleLayerTimesheet: widget.onToggleLayerTimesheet,
       laneExpanded: widget.expandedSeAudioRows.contains(
         StoryboardPanel.seRowKey(track, slot),
       ),
@@ -1615,7 +1610,6 @@ class _StoryboardSeLabel extends StatelessWidget {
     this.onLayerOpacityChanged,
     this.onLayerOpacityChangeEnd,
     this.onLayerMarkSelected,
-    this.onToggleLayerTimesheet,
     this.layerFxEnabledOf,
     this.onToggleLayerFx,
     this.opacityDragPreview,
@@ -1648,9 +1642,6 @@ class _StoryboardSeLabel extends StatelessWidget {
   final void Function(LayerId layerId, double opacity)? onLayerOpacityChangeEnd;
 
   final void Function(LayerId layerId, LayerMark mark)? onLayerMarkSelected;
-
-  /// Timeline parity (UI-R5): the sheet toggle in the timeline slot.
-  final ValueChanged<LayerId>? onToggleLayerTimesheet;
 
   final bool Function(LayerId layerId)? layerFxEnabledOf;
   final ValueChanged<LayerId>? onToggleLayerFx;
@@ -1729,17 +1720,12 @@ class _StoryboardSeLabel extends StatelessWidget {
                 )
               else
                 const SizedBox(width: layerLaneToggleSlotWidth),
-              // Timeline parity: the sheet toggle joins the storyboard S
-              // rows too (same session hook, same slot).
-              if (layer != null && onToggleLayerTimesheet != null)
-                LayerTimesheetToggleButton(
-                  keyPrefix: 'storyboard',
-                  layerId: layer.id,
-                  onTimesheet: layer.onTimesheet,
-                  onToggle: onToggleLayerTimesheet!,
-                )
-              else
-                const SizedBox(width: layerTimesheetSlotWidth),
+              // NO sheet toggle here (UI-R9 #5): the timesheet flag is a
+              // CUT-scoped setting ("drop this layer from THIS cut's
+              // sheet") and the storyboard rail is track-global — the
+              // slot stays reserved (empty) so the grid keeps lining up
+              // and a future control can move in.
+              const SizedBox(width: layerTimesheetSlotWidth),
               const SizedBox(width: layerControlChipGap),
               if (layer != null && onLayerMarkSelected != null)
                 LayerMarkChip(

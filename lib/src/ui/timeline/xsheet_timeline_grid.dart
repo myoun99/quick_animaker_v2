@@ -921,10 +921,9 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
                                                     const ValueKey<String>(
                                                       'xsheet-selected-cell',
                                                     ),
-                                                frameRangeSelection:
-                                                    widget
-                                                        .rangeHooks
-                                                        ?.selection,
+                                                frameRangeSelection: widget
+                                                    .rangeHooks
+                                                    ?.selection,
                                                 frameCursor: widget.frameCursor,
                                                 dragPreview: widget.dragPreview,
                                                 rows: entries,
@@ -1365,12 +1364,14 @@ class _XSheetFrameCellsColumn extends StatelessWidget {
               callbacks: rangeGesture,
               axis: Axis.vertical,
             ),
-          // The TVP run-edge handles (UI-R8), transposed.
+          // The TVP run-edge handles (UI-R8), transposed. Mounted from the
+          // COMMITTED layer so an add-start preview never remounts the
+          // handle mid-gesture (R12-③).
           if (runEdit != null &&
               layerKindHoldsDrawings(layer.kind) &&
               !layerKindUsesSeSheetCells(layer.kind))
             ...timelineRowRunEndHandles(
-              layer: layer,
+              layer: baseLayer ?? layer,
               frameStartIndex: frameStartIndex,
               frameEndIndexExclusive: frameEndIndexExclusive,
               leadingFrameSpacerWidth: leadingFrameSpacerHeight,
