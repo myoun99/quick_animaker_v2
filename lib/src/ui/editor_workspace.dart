@@ -971,6 +971,8 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
               _timesheetContinuous,
               _timesheetViewport,
               _timesheetInkEnabled,
+              // The notation language reprints the sheet (UI-R10 #7).
+              widget.session.languageSettings,
             ]),
             builder: (context) => TimesheetTabHost(
               session: widget.session,
