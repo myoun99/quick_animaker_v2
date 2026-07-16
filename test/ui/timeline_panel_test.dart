@@ -10,6 +10,8 @@ import 'package:quick_animaker_v2/src/ui/timeline/timeline_orientation.dart';
 import 'package:quick_animaker_v2/src/ui/timeline/timeline_panel.dart';
 import 'package:quick_animaker_v2/src/ui/timeline/xsheet_timeline_grid.dart';
 
+import 'timeline/timeline_cell_probe.dart';
+
 void main() {
   testWidgets('horizontal mode renders integrated layer timeline', (
     tester,
@@ -27,10 +29,7 @@ void main() {
       findsNothing,
     );
     expect(find.byKey(const ValueKey<String>('legend-layer')), findsOneWidget);
-    expect(
-      find.byKey(const ValueKey<String>('timeline-cell-layer-1-0')),
-      findsOneWidget,
-    );
+    expect(timelineCellInWindow(tester, 'layer-1', 0), isTrue);
   });
 
   testWidgets('vertical mode renders integrated X-sheet timeline', (
@@ -49,8 +48,8 @@ void main() {
       findsNothing,
     );
     expect(
-      find.byKey(const ValueKey<String>('xsheet-cell-layer-1-0')),
-      findsOneWidget,
+      timelineCellInWindow(tester, 'layer-1', 0, prefix: 'xsheet'),
+      isTrue,
     );
   });
 
@@ -83,10 +82,7 @@ void main() {
 
     expect(layerCTop, lessThan(layerBTop));
     expect(layerBTop, lessThan(layerATop));
-    expect(
-      find.byKey(const ValueKey<String>('timeline-cell-layer-c-0')),
-      findsOneWidget,
-    );
+    expect(timelineCellInWindow(tester, 'layer-c', 0), isTrue);
   });
 
   testWidgets('vertical mode keeps raw XSheet order A B C left-to-right', (
@@ -122,21 +118,19 @@ void main() {
     expect(layerALeft, lessThan(layerBLeft));
     expect(layerBLeft, lessThan(layerCLeft));
     expect(
-      find.byKey(const ValueKey<String>('xsheet-cell-layer-a-0')),
-      findsOneWidget,
+      timelineCellInWindow(tester, 'layer-a', 0, prefix: 'xsheet'),
+      isTrue,
     );
     expect(
-      find.byKey(const ValueKey<String>('xsheet-cell-layer-b-0')),
-      findsOneWidget,
+      timelineCellInWindow(tester, 'layer-b', 0, prefix: 'xsheet'),
+      isTrue,
     );
     expect(
-      find.byKey(const ValueKey<String>('xsheet-cell-layer-c-0')),
-      findsOneWidget,
+      timelineCellInWindow(tester, 'layer-c', 0, prefix: 'xsheet'),
+      isTrue,
     );
 
-    await tester.tap(
-      find.byKey(const ValueKey<String>('xsheet-cell-layer-c-0')),
-    );
+    await tapTimelineCell(tester, 'layer-c', 0, prefix: 'xsheet');
 
     expect(selectedLayerId, const LayerId('layer-c'));
   });
@@ -172,7 +166,17 @@ void main() {
       ),
     );
 
-    expect(find.bySemanticsLabel('held exposure'), findsOneWidget);
+    expect(
+      timelineCellModel(
+        tester,
+        'layer-1',
+        0,
+        prefix: find.byType(XSheetTimelineGrid).evaluate().isEmpty
+            ? 'timeline'
+            : 'xsheet',
+      ).semanticsLabel,
+      'held exposure',
+    );
   });
 
   testWidgets('exposure state callback is used in vertical mode', (
@@ -188,7 +192,17 @@ void main() {
       ),
     );
 
-    expect(find.bySemanticsLabel('held exposure'), findsOneWidget);
+    expect(
+      timelineCellModel(
+        tester,
+        'layer-1',
+        0,
+        prefix: find.byType(XSheetTimelineGrid).evaluate().isEmpty
+            ? 'timeline'
+            : 'xsheet',
+      ).semanticsLabel,
+      'held exposure',
+    );
   });
 
   testWidgets('renders only one orientation toggle control', (tester) async {
@@ -278,9 +292,7 @@ void main() {
       _panel(onSelectFrame: (frameIndex) => selectedFrameIndex = frameIndex),
     );
 
-    await tester.tap(
-      find.byKey(const ValueKey<String>('timeline-cell-layer-1-3')),
-    );
+    await tapTimelineCell(tester, 'layer-1', 3);
 
     expect(selectedFrameIndex, 3);
   });
@@ -311,8 +323,11 @@ void main() {
       ),
     );
 
-    expect(find.text('●'), findsOneWidget);
-    expect(find.bySemanticsLabel('inbetween mark'), findsOneWidget);
+    expect(timelineCellModel(tester, 'layer-1', 0).glyph, '●');
+    expect(
+      timelineCellModel(tester, 'layer-1', 0).semanticsLabel,
+      'inbetween mark',
+    );
   });
 
   testWidgets('highlights current frame without triangle label', (
@@ -344,7 +359,7 @@ void main() {
             : null,
       ),
     );
-    expect(find.text('A1'), findsOneWidget);
+    expect(timelineCellModel(tester, 'layer-1', 0).glyph, 'A1');
 
     await tester.pumpWidget(
       _panel(
@@ -355,7 +370,10 @@ void main() {
             : null,
       ),
     );
-    expect(find.text('A1'), findsOneWidget);
+    expect(
+      timelineCellModel(tester, 'layer-1', 0, prefix: 'xsheet').glyph,
+      'A1',
+    );
   });
 
   testWidgets('forwards selected cell and layer highlights to both grids', (

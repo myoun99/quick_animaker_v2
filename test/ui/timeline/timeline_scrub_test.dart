@@ -19,6 +19,8 @@ import 'package:quick_animaker_v2/src/ui/storyboard_tab_host.dart';
 import 'package:quick_animaker_v2/src/ui/timeline/xsheet_timeline_grid.dart';
 import 'package:quick_animaker_v2/src/ui/timeline_tab_host.dart';
 
+import 'timeline_cell_probe.dart';
+
 /// The ruler-scrub performance invariant (R4): drag moves ride the cursor
 /// path — per-move frames go to the scrub callback WITHOUT a session
 /// notify, and the pointer's release commits the selection exactly once.
@@ -257,10 +259,10 @@ void main() {
       await tester.pumpAndSettle();
       notifies = 0;
 
-      final cellFinder = find.byKey(
-        const ValueKey<String>('timeline-cell-cel-a-3'),
+      final rowFinder = find.byKey(
+        const ValueKey<String>('timeline-row-cells-cel-a'),
       );
-      final cellBefore = tester.widget(cellFinder);
+      final rowBefore = tester.widget(rowFinder);
 
       final scrubArea = find.byKey(
         const ValueKey<String>('timeline-frame-ruler-scrub-area'),
@@ -273,7 +275,7 @@ void main() {
       expect(notifies, 0, reason: 'scrub moves must not notify the session');
       expect(manager.currentFrameIndex, 5);
       expect(
-        identical(tester.widget(cellFinder), cellBefore),
+        identical(tester.widget(rowFinder), rowBefore),
         isTrue,
         reason: 'scrub moves must never rebuild cells',
       );
@@ -281,9 +283,7 @@ void main() {
       final ring = find.byKey(const ValueKey<String>('timeline-selected-cell'));
       expect(
         tester.getTopLeft(ring),
-        tester.getTopLeft(
-          find.byKey(const ValueKey<String>('timeline-cell-cel-a-5')),
-        ),
+        timelineCellGlobalRect(tester, 'cel-a', 5).topLeft,
       );
 
       final commitsBefore = manager.frameSeekCommitted.value;

@@ -15,6 +15,8 @@ import 'package:quick_animaker_v2/src/ui/timeline/timeline_cell_exposure_state.d
 import 'package:quick_animaker_v2/src/ui/timeline/timeline_orientation.dart';
 import 'package:quick_animaker_v2/src/ui/timeline/timeline_panel.dart';
 
+import 'timeline/timeline_cell_probe.dart';
+
 void main() {
   group('TimelinePanel baseline smoke', () {
     testWidgets('renders without throwing with a minimal project cut', (
@@ -55,7 +57,8 @@ void main() {
 
       _expectKeyOnce('timeline-layer-row-layer-1');
       _expectKeyOnce('timeline-frame-row-area-layer-1');
-      _expectKeyOnce('timeline-cell-layer-1-0');
+      _expectKeyOnce('timeline-row-cells-layer-1');
+      expect(timelineCellInWindow(tester, 'layer-1', 0), isTrue);
     });
 
     testWidgets('renders current-frame playhead baseline', (tester) async {
@@ -86,7 +89,7 @@ void main() {
       await tester.pumpWidget(
         _panel(onSelectFrame: (frameIndex) => selectedFrameIndex = frameIndex),
       );
-      await tester.tap(_key('timeline-cell-layer-1-3'));
+      await tapTimelineCell(tester, 'layer-1', 3);
 
       expect(selectedFrameIndex, 3);
     });

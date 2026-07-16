@@ -9,6 +9,12 @@ import 'package:quick_animaker_v2/src/ui/timeline/xsheet_timeline_grid.dart';
 import 'package:quick_animaker_v2/src/ui/timeline/timeline_cell_exposure_state.dart';
 import 'package:quick_animaker_v2/src/ui/timeline/timeline_cell_style.dart';
 
+import 'timeline/timeline_cell_probe.dart';
+
+/// Painted-cell glyph probe, X-sheet prefix (UI-R9 #12b).
+String _xsheetGlyph(WidgetTester tester, String layerId, int frameIndex) =>
+    timelineCellModel(tester, layerId, frameIndex, prefix: 'xsheet').glyph;
+
 void main() {
   testWidgets('renders integrated layer controls in headers', (tester) async {
     await tester.pumpWidget(_grid());
@@ -149,12 +155,12 @@ void main() {
       findsOneWidget,
     );
     expect(
-      find.byKey(const ValueKey<String>('xsheet-cell-layer-1-0')),
-      findsOneWidget,
+      timelineCellInWindow(tester, 'layer-1', 0, prefix: 'xsheet'),
+      isTrue,
     );
     expect(
-      find.byKey(const ValueKey<String>('xsheet-cell-layer-2-0')),
-      findsOneWidget,
+      timelineCellInWindow(tester, 'layer-2', 0, prefix: 'xsheet'),
+      isTrue,
     );
   });
 
@@ -169,9 +175,7 @@ void main() {
       ),
     );
 
-    await tester.tap(
-      find.byKey(const ValueKey<String>('xsheet-cell-layer-1-3')),
-    );
+    await tapTimelineCell(tester, 'layer-1', 3, prefix: 'xsheet');
 
     expect(selectedLayerId, const LayerId('layer-1'));
     expect(selectedFrameIndex, 3);
@@ -201,7 +205,7 @@ void main() {
       ),
     );
 
-    expect(find.text('○'), findsOneWidget);
+    expect(_xsheetGlyph(tester, 'layer-2', 2), '○');
   });
 
   testWidgets('shows held exposure marker', (tester) async {
@@ -214,7 +218,15 @@ void main() {
       ),
     );
 
-    expect(find.bySemanticsLabel('held exposure'), findsOneWidget);
+    expect(
+      timelineCellModel(
+        tester,
+        'layer-2',
+        2,
+        prefix: 'xsheet',
+      ).semanticsLabel,
+      'held exposure',
+    );
   });
 
   testWidgets('only the first cell of an empty run shows the timesheet X', (
@@ -222,18 +234,8 @@ void main() {
   ) async {
     await tester.pumpWidget(_grid());
 
-    final runStart = find.byKey(
-      const ValueKey<String>('xsheet-cell-layer-2-0'),
-    );
-    final runBody = find.byKey(const ValueKey<String>('xsheet-cell-layer-2-2'));
-    expect(
-      find.descendant(of: runStart, matching: find.text('X')),
-      findsOneWidget,
-    );
-    expect(
-      find.descendant(of: runBody, matching: find.text('X')),
-      findsNothing,
-    );
+    expect(_xsheetGlyph(tester, 'layer-2', 0), 'X');
+    expect(_xsheetGlyph(tester, 'layer-2', 2), '');
   });
 
   testWidgets('shows inbetween mark with priority over exposure marker', (
@@ -248,10 +250,16 @@ void main() {
       ),
     );
 
-    final cell = find.byKey(const ValueKey<String>('xsheet-cell-layer-2-2'));
-    expect(find.descendant(of: cell, matching: find.text('●')), findsOneWidget);
-    expect(find.descendant(of: cell, matching: find.text('○')), findsNothing);
-    expect(find.bySemanticsLabel('inbetween mark'), findsOneWidget);
+    expect(_xsheetGlyph(tester, 'layer-2', 2), '●');
+    expect(
+      timelineCellModel(
+        tester,
+        'layer-2',
+        2,
+        prefix: 'xsheet',
+      ).semanticsLabel,
+      'inbetween mark',
+    );
   });
 
   testWidgets('shows inbetween mark on blank held cell', (tester) async {
@@ -264,15 +272,22 @@ void main() {
       ),
     );
 
-    expect(find.text('●'), findsOneWidget);
-    expect(find.bySemanticsLabel('inbetween mark'), findsOneWidget);
+    expect(_xsheetGlyph(tester, 'layer-2', 2), '●');
   });
 
   testWidgets('empty cells stay blank', (tester) async {
     await tester.pumpWidget(_grid());
 
-    expect(find.text('○'), findsNothing);
-    expect(find.bySemanticsLabel('held exposure'), findsNothing);
+    expect(_xsheetGlyph(tester, 'layer-1', 2), isNot('○'));
+    expect(
+      timelineCellModel(
+        tester,
+        'layer-1',
+        2,
+        prefix: 'xsheet',
+      ).semanticsLabel,
+      isNull,
+    );
   });
 
   testWidgets('current frame row uses plain text', (tester) async {
@@ -302,12 +317,7 @@ void main() {
       ),
     );
 
-    final cell = find.byKey(const ValueKey<String>('xsheet-cell-layer-2-2'));
-    expect(
-      find.descendant(of: cell, matching: find.text('A1')),
-      findsOneWidget,
-    );
-    expect(find.descendant(of: cell, matching: find.text('○')), findsNothing);
+    expect(_xsheetGlyph(tester, 'layer-2', 2), 'A1');
 
     await tester.pumpWidget(
       _grid(
@@ -322,8 +332,7 @@ void main() {
       ),
     );
 
-    expect(find.descendant(of: cell, matching: find.text('●')), findsOneWidget);
-    expect(find.descendant(of: cell, matching: find.text('A1')), findsNothing);
+    expect(_xsheetGlyph(tester, 'layer-2', 2), '●');
   });
 
   testWidgets('marks only the active current cell as selected', (tester) async {
@@ -338,12 +347,12 @@ void main() {
       findsOneWidget,
     );
     expect(
-      find.byKey(const ValueKey<String>('xsheet-cell-layer-1-2')),
-      findsOneWidget,
+      timelineCellInWindow(tester, 'layer-1', 2, prefix: 'xsheet'),
+      isTrue,
     );
     expect(
-      find.byKey(const ValueKey<String>('xsheet-cell-layer-2-2')),
-      findsOneWidget,
+      timelineCellInWindow(tester, 'layer-2', 2, prefix: 'xsheet'),
+      isTrue,
     );
   });
 
@@ -358,8 +367,7 @@ void main() {
             : TimelineCellExposureState.uncovered,
       ),
     );
-    var cell = find.byKey(const ValueKey<String>('xsheet-cell-layer-1-0'));
-    expect(find.descendant(of: cell, matching: find.text('○')), findsOneWidget);
+    expect(_xsheetGlyph(tester, 'layer-1', 0), '○');
 
     await tester.pumpWidget(
       _grid(
@@ -369,8 +377,7 @@ void main() {
             : TimelineCellExposureState.uncovered,
       ),
     );
-    cell = find.byKey(const ValueKey<String>('xsheet-cell-layer-1-0'));
-    expect(find.descendant(of: cell, matching: find.text('X')), findsOneWidget);
+    expect(_xsheetGlyph(tester, 'layer-1', 0), 'X');
 
     await tester.pumpWidget(
       _grid(
@@ -384,12 +391,7 @@ void main() {
             : null,
       ),
     );
-    cell = find.byKey(const ValueKey<String>('xsheet-cell-layer-1-0'));
-    expect(
-      find.descendant(of: cell, matching: find.text('A1')),
-      findsOneWidget,
-    );
-    expect(find.descendant(of: cell, matching: find.text('○')), findsNothing);
+    expect(_xsheetGlyph(tester, 'layer-1', 0), 'A1');
 
     await tester.pumpWidget(
       _grid(
@@ -403,10 +405,7 @@ void main() {
             : null,
       ),
     );
-    cell = find.byKey(const ValueKey<String>('xsheet-cell-layer-1-0'));
-    expect(find.descendant(of: cell, matching: find.text('●')), findsOneWidget);
-    expect(find.descendant(of: cell, matching: find.text('A1')), findsNothing);
-    expect(find.descendant(of: cell, matching: find.text('○')), findsNothing);
+    expect(_xsheetGlyph(tester, 'layer-1', 0), '●');
   });
 
   testWidgets('held exposure run renders as one vertical block', (
@@ -499,12 +498,12 @@ void main() {
     await tester.pumpWidget(_grid(frameCount: 500));
 
     expect(
-      find.byKey(const ValueKey<String>('xsheet-cell-layer-1-0')),
-      findsOneWidget,
+      timelineCellInWindow(tester, 'layer-1', 0, prefix: 'xsheet'),
+      isTrue,
     );
     expect(
-      find.byKey(const ValueKey<String>('xsheet-cell-layer-1-499')),
-      findsNothing,
+      timelineCellInWindow(tester, 'layer-1', 499, prefix: 'xsheet'),
+      isFalse,
     );
     expect(
       find.byKey(const ValueKey<String>('xsheet-frame-rail-trailing-spacer')),
@@ -579,9 +578,15 @@ void main() {
 }
 
 BoxDecoration _cellDecoration(WidgetTester tester, String key) {
-  final inkWell = tester.widget<InkWell>(find.byKey(ValueKey<String>(key)));
-  final container = inkWell.child! as Container;
-  return container.decoration! as BoxDecoration;
+  // Painted cells (UI-R9 #12b): decoration reads resolve through the
+  // painter probe.
+  final cell = parseTimelineCellKey(key);
+  return timelineCellDecoration(
+    tester,
+    cell.layerId,
+    cell.frameIndex,
+    prefix: 'xsheet',
+  );
 }
 
 Widget _grid({

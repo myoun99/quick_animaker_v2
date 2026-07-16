@@ -5,7 +5,10 @@ import 'package:quick_animaker_v2/main.dart';
 import 'package:quick_animaker_v2/src/models/cut_id.dart';
 import 'package:quick_animaker_v2/src/ui/storyboard_panel.dart';
 import 'package:quick_animaker_v2/src/ui/storyboard_timeline_layout.dart';
+import 'package:quick_animaker_v2/src/ui/timeline/timeline_row_cells_painter.dart';
 import 'package:quick_animaker_v2/src/ui/widgets/field_slider.dart';
+
+import 'ui/timeline/timeline_cell_probe.dart';
 
 import 'ui/flyout_test_helpers.dart' show readCommandEnabled;
 
@@ -72,10 +75,21 @@ Finder _timelineLayerRows() {
 }
 
 Future<void> _tapTimelineCell(WidgetTester tester, ValueKey<String> key) async {
+  // Painted drawing rows carry no per-cell widgets (UI-R9 #12b): resolve
+  // the tap point through the painter probe; sparse rows (SE / camera /
+  // instruction) still expose their cell keys.
   final cell = find.byKey(key);
-  await tester.ensureVisible(cell);
-  await tester.pumpAndSettle();
-  await tester.tap(cell);
+  if (cell.evaluate().isNotEmpty) {
+    await tester.ensureVisible(cell);
+    await tester.pumpAndSettle();
+    await tester.tap(cell);
+    await tester.pumpAndSettle();
+    return;
+  }
+  final parsed = parseTimelineCellKey(key.value);
+  await tester.tapAt(
+    timelineCellCenter(tester, parsed.layerId, parsed.frameIndex),
+  );
   await tester.pumpAndSettle();
 }
 
@@ -201,28 +215,39 @@ Future<void> _dragCutOnto(
   });
 }
 
-Finder _timelineCell(String layerId, int frameIndex) {
-  return find.byKey(ValueKey<String>('timeline-cell-$layerId-$frameIndex'));
+// Painted drawing rows (UI-R9 #12b): the cell glyph reads off the painter
+// probe — finder evaluation needs no tester, so these keep their
+// tester-less signatures.
+TimelineRowCellsPainter _rowPainter(String layerId) {
+  final element = find
+      .byKey(ValueKey<String>('timeline-row-cells-$layerId'))
+      .evaluate()
+      .single;
+  return (element.widget as CustomPaint).painter! as TimelineRowCellsPainter;
 }
 
 void _expectCellText(String layerId, int frameIndex, String text) {
-  expect(
-    find.descendant(
-      of: _timelineCell(layerId, frameIndex),
-      matching: find.text(text),
-    ),
-    findsOneWidget,
-  );
+  expect(_rowPainter(layerId).cellModelAt(frameIndex).glyph, text);
+}
+
+/// Whether any cell in [layerId]'s built window carries [label] — the
+/// painted successor of `find.bySemanticsLabel` over drawing cells.
+bool _anyCellSemanticsLabel(String layerId, String label) {
+  final painter = _rowPainter(layerId);
+  for (
+    var frameIndex = painter.frameStartIndex;
+    frameIndex < painter.frameEndIndexExclusive;
+    frameIndex += 1
+  ) {
+    if (painter.cellModelAt(frameIndex).semanticsLabel == label) {
+      return true;
+    }
+  }
+  return false;
 }
 
 void _expectNoCellText(String layerId, int frameIndex, String text) {
-  expect(
-    find.descendant(
-      of: _timelineCell(layerId, frameIndex),
-      matching: find.text(text),
-    ),
-    findsNothing,
-  );
+  expect(_rowPainter(layerId).cellModelAt(frameIndex).glyph, isNot(text));
 }
 
 Future<void> _renameCurrentFrame(WidgetTester tester, String name) async {
@@ -351,10 +376,35 @@ void _expectCurrentFrame(WidgetTester tester, int frameNumber) {
 String? _selectedCellStateLabel(WidgetTester tester) {
   // The selection ring lives on the grid cursor layer, positioned exactly
   // over the selected cell — find the cell sharing its top-left and read
-  // that cell's marker semantics.
+  // its marker semantics. Drawing rows are PAINTED (UI-R9 #12b): scan the
+  // row painters' geometry first, then the sparse widget cells.
   final ringTopLeft = tester.getTopLeft(
     find.byKey(const ValueKey<String>('timeline-selected-cell')),
   );
+  final paintedRows = find.byWidgetPredicate(
+    (widget) =>
+        widget.key is ValueKey<String> &&
+        (widget.key as ValueKey<String>).value.startsWith(
+          'timeline-row-cells-',
+        ),
+  );
+  for (final element in paintedRows.evaluate()) {
+    final painter =
+        (element.widget as CustomPaint).painter! as TimelineRowCellsPainter;
+    final box = element.renderObject! as RenderBox;
+    for (
+      var frameIndex = painter.frameStartIndex;
+      frameIndex < painter.frameEndIndexExclusive;
+      frameIndex += 1
+    ) {
+      final topLeft = box.localToGlobal(
+        painter.cellRectFor(frameIndex).topLeft,
+      );
+      if ((topLeft - ringTopLeft).distance < 0.5) {
+        return painter.cellModelAt(frameIndex).semanticsLabel;
+      }
+    }
+  }
   final cells = find.byWidgetPredicate(
     (widget) =>
         widget.key is ValueKey<String> &&
@@ -1375,13 +1425,13 @@ Line 8''';
     expect(find.text('B'), findsNothing);
     await _expectCutsNamed(tester, 'New Cut', 0);
     expect(find.text('A'), findsWidgets);
-    expect(find.text('X'), findsWidgets);
+    _expectCellText('default-layer-1', 0, 'X');
     expect(
-      find.byKey(const ValueKey<String>('timeline-cell-default-layer-1-0')),
+      find.byKey(const ValueKey<String>('timeline-row-cells-default-layer-1')),
       findsOneWidget,
     );
     expect(
-      find.byKey(const ValueKey<String>('timeline-cell-default-layer-2-0')),
+      find.byKey(const ValueKey<String>('timeline-row-cells-default-layer-2')),
       findsNothing,
     );
     await _expectActiveCutName(tester, '1');
@@ -1495,7 +1545,7 @@ Line 8''';
 
     _expectActiveLayerName('B');
     expect(
-      find.byKey(const ValueKey<String>('timeline-cell-default-layer-2-0')),
+      find.byKey(const ValueKey<String>('timeline-row-cells-default-layer-2')),
       findsOneWidget,
     );
     expect(
@@ -1524,7 +1574,7 @@ Line 8''';
 
     _expectActiveLayerName('C');
     expect(
-      find.byKey(const ValueKey<String>('timeline-cell-default-layer-3-0')),
+      find.byKey(const ValueKey<String>('timeline-row-cells-default-layer-3')),
       findsOneWidget,
     );
     _expectCellText('default-layer-3', 0, 'X');
@@ -1614,21 +1664,19 @@ Line 8''';
     expect(layerALeft, lessThan(layerBLeft));
     expect(layerBLeft, lessThan(layerCLeft));
     expect(
-      find.byKey(const ValueKey<String>('xsheet-cell-default-layer-1-0')),
+      find.byKey(const ValueKey<String>('xsheet-row-cells-default-layer-1')),
       findsOneWidget,
     );
     expect(
-      find.byKey(const ValueKey<String>('xsheet-cell-default-layer-2-0')),
+      find.byKey(const ValueKey<String>('xsheet-row-cells-default-layer-2')),
       findsOneWidget,
     );
     expect(
-      find.byKey(const ValueKey<String>('xsheet-cell-default-layer-3-0')),
+      find.byKey(const ValueKey<String>('xsheet-row-cells-default-layer-3')),
       findsOneWidget,
     );
 
-    await tester.tap(
-      find.byKey(const ValueKey<String>('xsheet-cell-default-layer-1-0')),
-    );
+    await tapTimelineCell(tester, 'default-layer-1', 0, prefix: 'xsheet');
     await tester.pumpAndSettle();
     expect(
       find.descendant(
@@ -1660,10 +1708,10 @@ Line 8''';
     expect(find.text('B'), findsNothing);
     expect(find.text('A'), findsWidgets);
     expect(
-      find.byKey(const ValueKey<String>('timeline-cell-layer-1-0')),
+      find.byKey(const ValueKey<String>('timeline-row-cells-layer-1')),
       findsOneWidget,
     );
-    expect(find.text('X'), findsWidgets);
+    _expectCellText('layer-1', 0, 'X');
     expect(await _activeCutId(tester), const CutId('cut-1'));
 
     await _tapStoryboardCutBlock(tester, 'default-cut-1');
@@ -1700,7 +1748,7 @@ Line 8''';
     await _showTimelinePanel(tester);
 
     expect(
-      find.byKey(const ValueKey<String>('timeline-cell-layer-1-0')),
+      find.byKey(const ValueKey<String>('timeline-row-cells-layer-1')),
       findsOneWidget,
     );
     expect(
@@ -1799,7 +1847,10 @@ Line 8''';
       _expectCellText('default-layer-1', 0, 'X');
       _expectNoCellText('default-layer-1', 1, 'X');
       _expectNoCellText('default-layer-1', 2, '●');
-      expect(find.bySemanticsLabel('inbetween mark'), findsNothing);
+      expect(
+        _anyCellSemanticsLabel('default-layer-1', 'inbetween mark'),
+        isFalse,
+      );
     },
   );
 
@@ -1852,10 +1903,10 @@ Line 8''';
         tester,
         const ValueKey<String>('new-frame-button'),
       );
-      await tester.tap(
-        find.byKey(const ValueKey<String>('timeline-cell-default-layer-1-3')),
+      await _tapTimelineCell(
+        tester,
+        const ValueKey<String>('timeline-cell-default-layer-1-3'),
       );
-      await tester.pumpAndSettle();
       await _tapToolbarButton(
         tester,
         const ValueKey<String>('new-frame-button'),
@@ -2037,30 +2088,17 @@ Line 8''';
   ) async {
     await tester.pumpWidget(const QuickAnimakerApp());
 
-    final layer1FirstCell = find.byKey(
-      const ValueKey<String>('timeline-cell-default-layer-1-0'),
-    );
-
+    _expectCellText('default-layer-1', 0, 'X');
     expect(
-      find.descendant(of: layer1FirstCell, matching: find.text('X')),
-      findsOneWidget,
-    );
-    expect(
-      find.byKey(const ValueKey<String>('timeline-cell-default-layer-2-0')),
+      find.byKey(const ValueKey<String>('timeline-row-cells-default-layer-2')),
       findsNothing,
     );
     // Paper-sheet style: only the FIRST cell of the empty run reads X.
+    _expectNoCellText('default-layer-1', 1, 'X');
     expect(
-      find.descendant(
-        of: find.byKey(
-          const ValueKey<String>('timeline-cell-default-layer-1-1'),
-        ),
-        matching: find.text('X'),
-      ),
-      findsNothing,
+      _rowPainter('default-layer-1').cellModelAt(0).semanticsLabel,
+      isNull,
     );
-    expect(find.bySemanticsLabel('drawing start'), findsNothing);
-    expect(find.bySemanticsLabel('inbetween mark'), findsNothing);
   });
 
   testWidgets(
@@ -2209,8 +2247,15 @@ Line 8''';
       expect(markButton, findsOneWidget);
       expect(find.byTooltip('Mark ●'), findsOneWidget);
 
-      final layer1FirstCell = find.byKey(
-        const ValueKey<String>('timeline-cell-default-layer-1-0'),
+      await tester.ensureVisible(markButton);
+      await tester.pumpAndSettle();
+      await tester.tap(markButton);
+      await tester.pumpAndSettle();
+
+      _expectCellText('default-layer-1', 0, '●');
+      expect(
+        _anyCellSemanticsLabel('default-layer-1', 'inbetween mark'),
+        isTrue,
       );
 
       await tester.ensureVisible(markButton);
@@ -2218,25 +2263,8 @@ Line 8''';
       await tester.tap(markButton);
       await tester.pumpAndSettle();
 
-      expect(
-        find.descendant(of: layer1FirstCell, matching: find.text('●')),
-        findsOneWidget,
-      );
-      expect(find.bySemanticsLabel('inbetween mark'), findsOneWidget);
-
-      await tester.ensureVisible(markButton);
-      await tester.pumpAndSettle();
-      await tester.tap(markButton);
-      await tester.pumpAndSettle();
-
-      expect(
-        find.descendant(of: layer1FirstCell, matching: find.text('●')),
-        findsNothing,
-      );
-      expect(
-        find.descendant(of: layer1FirstCell, matching: find.text('X')),
-        findsOneWidget,
-      );
+      _expectNoCellText('default-layer-1', 0, '●');
+      _expectCellText('default-layer-1', 0, 'X');
     },
   );
 
@@ -2259,23 +2287,16 @@ Line 8''';
       await tester.tap(newFrameButton);
       await tester.pumpAndSettle();
 
-      final layer1FirstCell = find.byKey(
-        const ValueKey<String>('timeline-cell-default-layer-1-0'),
-      );
-      final layer2FirstCell = find.byKey(
-        const ValueKey<String>('timeline-cell-default-layer-2-0'),
-      );
-
+      _expectCellText('default-layer-1', 0, '○');
+      _expectCellText('default-layer-2', 0, 'X');
       expect(
-        find.descendant(of: layer1FirstCell, matching: find.text('○')),
-        findsOneWidget,
+        _anyCellSemanticsLabel('default-layer-1', 'drawing start'),
+        isTrue,
       );
       expect(
-        find.descendant(of: layer2FirstCell, matching: find.text('X')),
-        findsOneWidget,
+        _anyCellSemanticsLabel('default-layer-1', 'inbetween mark'),
+        isFalse,
       );
-      expect(find.bySemanticsLabel('drawing start'), findsOneWidget);
-      expect(find.bySemanticsLabel('inbetween mark'), findsNothing);
     },
   );
   testWidgets(
@@ -2336,14 +2357,7 @@ Line 8''';
         find.byKey(const ValueKey<String>('rename-frame-ok-button')),
       );
       await tester.pumpAndSettle();
-
-      final layer1FirstCell = find.byKey(
-        const ValueKey<String>('timeline-cell-default-layer-1-0'),
-      );
-      expect(
-        find.descendant(of: layer1FirstCell, matching: find.text('A1')),
-        findsOneWidget,
-      );
+      _expectCellText('default-layer-1', 0, 'A1');
 
       // Marks live on held/empty cells only; on a drawing start the mark
       // button is disabled under the unified model.
@@ -2367,14 +2381,8 @@ Line 8''';
         tester,
         const ValueKey<String>('delete-cell-button'),
       );
-      expect(
-        find.descendant(of: layer1FirstCell, matching: find.text('A1')),
-        findsNothing,
-      );
-      expect(
-        find.descendant(of: layer1FirstCell, matching: find.text('●')),
-        findsNothing,
-      );
+      _expectNoCellText('default-layer-1', 0, 'A1');
+      _expectNoCellText('default-layer-1', 0, '●');
       expect(
         await _isActionButtonEnabled(
           tester,
@@ -2397,18 +2405,11 @@ Line 8''';
 
     await _tapToolbarButton(tester, const ValueKey<String>('new-frame-button'));
     await _renameCurrentFrame(tester, 'A1');
-    expect(find.text('A1'), findsWidgets);
+    _expectCellText('default-layer-1', 0, 'A1');
 
     await _renameCurrentFrame(tester, '   ');
 
-    final layer1FirstCell = find.byKey(
-      const ValueKey<String>('timeline-cell-default-layer-1-0'),
-    );
-    expect(
-      find.descendant(of: layer1FirstCell, matching: find.text('○')),
-      findsOneWidget,
-    );
-    expect(find.text('A1'), findsNothing);
+    _expectCellText('default-layer-1', 0, '○');
   });
 
   testWidgets('conflicting frame name dialog cancel leaves frames unchanged', (
@@ -2441,20 +2442,8 @@ Line 8''';
     );
     await tester.pumpAndSettle();
 
-    final firstCell = find.byKey(
-      const ValueKey<String>('timeline-cell-default-layer-1-0'),
-    );
-    final secondCell = find.byKey(
-      const ValueKey<String>('timeline-cell-default-layer-1-1'),
-    );
-    expect(
-      find.descendant(of: firstCell, matching: find.text('A1')),
-      findsOneWidget,
-    );
-    expect(
-      find.descendant(of: secondCell, matching: find.text('○')),
-      findsOneWidget,
-    );
+    _expectCellText('default-layer-1', 0, 'A1');
+    _expectCellText('default-layer-1', 1, '○');
   });
 
   testWidgets('conflicting frame name link merges into existing material', (
@@ -2472,20 +2461,8 @@ Line 8''';
     );
     await tester.pumpAndSettle();
 
-    final firstCell = find.byKey(
-      const ValueKey<String>('timeline-cell-default-layer-1-0'),
-    );
-    final secondCell = find.byKey(
-      const ValueKey<String>('timeline-cell-default-layer-1-1'),
-    );
-    expect(
-      find.descendant(of: firstCell, matching: find.text('A1')),
-      findsOneWidget,
-    );
-    expect(
-      find.descendant(of: secondCell, matching: find.text('A1')),
-      findsOneWidget,
-    );
+    _expectCellText('default-layer-1', 0, 'A1');
+    _expectCellText('default-layer-1', 1, 'A1');
     expect(find.text('Rename only'), findsNothing);
   });
 
@@ -2514,14 +2491,7 @@ Line 8''';
       find.byKey(const ValueKey<String>('rename-frame-cancel-button')),
     );
     await tester.pumpAndSettle();
-
-    final layer1FirstCell = find.byKey(
-      const ValueKey<String>('timeline-cell-default-layer-1-0'),
-    );
-    expect(
-      find.descendant(of: layer1FirstCell, matching: find.text('○')),
-      findsOneWidget,
-    );
+    _expectCellText('default-layer-1', 0, '○');
     expect(find.text('Cancelled'), findsNothing);
   });
 
@@ -2579,20 +2549,8 @@ Line 8''';
       const ValueKey<String>('paste-linked-frame-button'),
     );
 
-    final firstCell = find.byKey(
-      const ValueKey<String>('timeline-cell-default-layer-1-0'),
-    );
-    final secondCell = find.byKey(
-      const ValueKey<String>('timeline-cell-default-layer-1-1'),
-    );
-    expect(
-      find.descendant(of: firstCell, matching: find.text('○')),
-      findsOneWidget,
-    );
-    expect(
-      find.descendant(of: secondCell, matching: find.text('○')),
-      findsOneWidget,
-    );
+    _expectCellText('default-layer-1', 0, '○');
+    _expectCellText('default-layer-1', 1, '○');
   });
 
   testWidgets(
@@ -2626,22 +2584,13 @@ Line 8''';
         tester,
         const ValueKey<String>('timeline-cell-default-layer-1-1'),
       );
-      final secondCell = find.byKey(
-        const ValueKey<String>('timeline-cell-default-layer-1-1'),
-      );
-      expect(
-        find.descendant(of: secondCell, matching: find.text('X')),
-        findsOneWidget,
-      );
+      _expectCellText('default-layer-1', 1, 'X');
 
       await _tapToolbarButton(
         tester,
         const ValueKey<String>('toggle-mark-button'),
       );
-      expect(
-        find.descendant(of: secondCell, matching: find.text('●')),
-        findsOneWidget,
-      );
+      _expectCellText('default-layer-1', 1, '●');
 
       // One entry per cell: pasting a linked frame REPLACES the mark.
       await _tapToolbarButton(
@@ -2649,14 +2598,8 @@ Line 8''';
         const ValueKey<String>('paste-linked-frame-button'),
       );
 
-      expect(
-        find.descendant(of: secondCell, matching: find.text('●')),
-        findsNothing,
-      );
-      expect(
-        find.descendant(of: secondCell, matching: find.text('○')),
-        findsOneWidget,
-      );
+      _expectNoCellText('default-layer-1', 1, '●');
+      _expectCellText('default-layer-1', 1, '○');
       expect(_selectedCellStateLabel(tester), 'drawing start');
     },
   );

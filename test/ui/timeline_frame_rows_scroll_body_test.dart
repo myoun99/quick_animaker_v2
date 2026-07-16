@@ -8,6 +8,8 @@ import 'package:quick_animaker_v2/src/ui/timeline/timeline_frame_cells_row.dart'
 import 'package:quick_animaker_v2/src/ui/timeline/timeline_frame_rows_scroll_body.dart';
 import 'package:quick_animaker_v2/src/ui/timeline/timeline_grid_metrics.dart';
 
+import 'timeline/timeline_cell_probe.dart';
+
 void main() {
   group('TimelineFrameRowsScrollBody', () {
     testWidgets('exposes the stable body key exactly once', (tester) async {
@@ -60,10 +62,9 @@ void main() {
         ),
       );
 
-      expect(_cellFinder(layerId, 0), findsOneWidget);
-      expect(_cellFinder(layerId, 1), findsOneWidget);
-      expect(_cellFinder(layerId, 2), findsOneWidget);
-      expect(_cellFinder(layerId, 3), findsNothing);
+      expect(timelineCellInWindow(tester, layerId.value, 0), isTrue);
+      expect(timelineCellInWindow(tester, layerId.value, 2), isTrue);
+      expect(timelineCellInWindow(tester, layerId.value, 3), isFalse);
     });
 
     testWidgets('renders empty layer placeholder without rows or cells', (
@@ -112,10 +113,7 @@ void main() {
         ),
       );
 
-      expect(
-        find.byKey(const ValueKey<String>('timeline-cell-layer-active-1')),
-        findsOneWidget,
-      );
+      expect(timelineCellInWindow(tester, 'layer-active', 1), isTrue);
       // The playback-performance architecture: the selection ring and the
       // exposure outline are the grid cursor layer's job, never the rows'.
       expect(
@@ -147,7 +145,7 @@ void main() {
         ),
       );
 
-      await tester.tap(_cellFinder(layer.id, 1));
+      await tapTimelineCell(tester, layer.id.value, 1);
 
       expect(selectedLayerId, layer.id);
       expect(selectedFrameIndex, 1);
@@ -171,9 +169,9 @@ void main() {
         ),
       );
 
-      expect(find.text('○'), findsOneWidget);
-      expect(find.text('Pose A'), findsOneWidget);
-      expect(find.text('●'), findsOneWidget);
+      expect(timelineCellModel(tester, 'layer-a', 0).glyph, '○');
+      expect(timelineCellModel(tester, 'layer-a', 1).glyph, 'Pose A');
+      expect(timelineCellModel(tester, 'layer-a', 2).glyph, '●');
     });
   });
 }
@@ -193,9 +191,6 @@ Finder _keyStartingWith(String prefix) => find.byWidgetPredicate((widget) {
 
 Finder _rowFinder(Layer layer) =>
     find.byKey(ValueKey<String>('timeline-frame-row-area-${layer.id}'));
-
-Finder _cellFinder(LayerId layerId, int frameIndex) =>
-    find.byKey(ValueKey<String>('timeline-cell-$layerId-$frameIndex'));
 
 Widget _body({
   required List<Layer> layers,

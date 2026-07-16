@@ -17,6 +17,7 @@ import 'package:quick_animaker_v2/src/services/project_repository.dart';
 import 'package:quick_animaker_v2/src/ui/home_page.dart';
 
 import '../flyout_test_helpers.dart';
+import 'timeline_cell_probe.dart';
 
 /// Entrance unification: EVERY layer kind opens its instance editor on
 /// double-tap, and the toolbar Add / Edit Instance buttons dispatch by
@@ -93,10 +94,20 @@ Future<ProjectRepository> _pumpHome(WidgetTester tester) async {
 }
 
 Future<void> _doubleTapCell(WidgetTester tester, String cellKey) async {
-  final cell = find.byKey(ValueKey<String>(cellKey));
-  await tester.tap(cell);
+  // Painted drawing rows have no per-cell widgets (UI-R9 #12b): resolve
+  // the tap point through the painter probe; sparse rows (SE / camera /
+  // instruction) still carry their cell keys.
+  final cellFinder = find.byKey(ValueKey<String>(cellKey));
+  final Offset target;
+  if (cellFinder.evaluate().isNotEmpty) {
+    target = tester.getCenter(cellFinder);
+  } else {
+    final cell = parseTimelineCellKey(cellKey);
+    target = timelineCellCenter(tester, cell.layerId, cell.frameIndex);
+  }
+  await tester.tapAt(target);
   await tester.pump(const Duration(milliseconds: 60));
-  await tester.tap(cell);
+  await tester.tapAt(target);
   await tester.pumpAndSettle();
 }
 
@@ -109,9 +120,7 @@ void main() {
     final repository = await _pumpHome(tester);
 
     // Single tap: selection only, no dialog.
-    await tester.tap(
-      find.byKey(const ValueKey<String>('timeline-cell-draw-2')),
-    );
+    await tapTimelineCell(tester, 'draw', 2);
     await tester.pumpAndSettle();
     expect(find.text('Rename Frame'), findsNothing);
     // The selection ring lives on the grid cursor layer and sits exactly
@@ -120,9 +129,7 @@ void main() {
       tester.getTopLeft(
         find.byKey(const ValueKey<String>('timeline-selected-cell')),
       ),
-      tester.getTopLeft(
-        find.byKey(const ValueKey<String>('timeline-cell-draw-2')),
-      ),
+      timelineCellGlobalRect(tester, 'draw', 2).topLeft,
     );
 
     await _doubleTapCell(tester, 'timeline-cell-draw-1');

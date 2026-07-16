@@ -13,6 +13,8 @@ import 'package:quick_animaker_v2/src/ui/timeline/timeline_cell_exposure_state.d
 import 'package:quick_animaker_v2/src/ui/timeline/timeline_drag_preview.dart';
 import 'package:quick_animaker_v2/src/ui/timeline/xsheet_timeline_grid.dart';
 
+import 'timeline_cell_probe.dart';
+
 /// THE edit-drag performance invariant (W1): an edge-drag step travels the
 /// scoped [dragPreview] channel only — it rebuilds the dragged layer's row
 /// gate (and the cursor overlay), never the other rows, the grid, or the
@@ -88,15 +90,12 @@ void main() {
         ),
       );
 
-      final cellA2 = find.byKey(
-        const ValueKey<String>('timeline-cell-layer-a-2'),
+      final rowB = find.byKey(
+        const ValueKey<String>('timeline-row-cells-layer-b'),
       );
-      final cellB1 = find.byKey(
-        const ValueKey<String>('timeline-cell-layer-b-1'),
-      );
-      final cellB1Before = tester.widget(cellB1);
+      final rowBBefore = tester.widget(rowB);
       // Base: block [0,2) — frame 2 is an empty X cell.
-      expect(find.descendant(of: cellA2, matching: find.text('X')), findsOne);
+      expect(timelineCellModel(tester, 'layer-a', 2).glyph, 'X');
 
       // One drag step: the preview layer holds the block out to length 4.
       preview.value = ExposureEdgeDragPreview(
@@ -109,13 +108,10 @@ void main() {
       await tester.pump();
 
       // The dragged row follows the preview…
+      expect(timelineCellModel(tester, 'layer-a', 2).glyph, isNot('X'));
+      // …and the OTHER row was never rebuilt (paint identity, UI-R9 #12b).
       expect(
-        find.descendant(of: cellA2, matching: find.text('X')),
-        findsNothing,
-      );
-      // …and the OTHER row's cells were never rebuilt.
-      expect(
-        identical(tester.widget(cellB1), cellB1Before),
+        identical(tester.widget(rowB), rowBBefore),
         isTrue,
         reason: 'a drag step must rebuild only the dragged layer\'s row',
       );
@@ -123,8 +119,8 @@ void main() {
       // Clearing the preview restores the base row.
       preview.value = null;
       await tester.pump();
-      expect(find.descendant(of: cellA2, matching: find.text('X')), findsOne);
-      expect(identical(tester.widget(cellB1), cellB1Before), isTrue);
+      expect(timelineCellModel(tester, 'layer-a', 2).glyph, 'X');
+      expect(identical(tester.widget(rowB), rowBBefore), isTrue);
     });
 
     testWidgets('X-sheet columns gate the same way (Axis policy)', (
@@ -159,14 +155,14 @@ void main() {
         ),
       );
 
-      final cellA2 = find.byKey(
-        const ValueKey<String>('xsheet-cell-layer-a-2'),
+      final columnB = find.byKey(
+        const ValueKey<String>('xsheet-row-cells-layer-b'),
       );
-      final cellB1 = find.byKey(
-        const ValueKey<String>('xsheet-cell-layer-b-1'),
+      final columnBBefore = tester.widget(columnB);
+      expect(
+        timelineCellModel(tester, 'layer-a', 2, prefix: 'xsheet').glyph,
+        'X',
       );
-      final cellB1Before = tester.widget(cellB1);
-      expect(find.descendant(of: cellA2, matching: find.text('X')), findsOne);
 
       preview.value = ExposureEdgeDragPreview(
         previewLayer: layerA.copyWith(
@@ -178,11 +174,11 @@ void main() {
       await tester.pump();
 
       expect(
-        find.descendant(of: cellA2, matching: find.text('X')),
-        findsNothing,
+        timelineCellModel(tester, 'layer-a', 2, prefix: 'xsheet').glyph,
+        isNot('X'),
       );
       expect(
-        identical(tester.widget(cellB1), cellB1Before),
+        identical(tester.widget(columnB), columnBBefore),
         isTrue,
         reason: 'a drag step must rebuild only the dragged layer\'s column',
       );
@@ -269,10 +265,10 @@ void main() {
       );
 
       final nearCell = find.byKey(
-        const ValueKey<String>('timeline-cell-layer-0-0'),
+        const ValueKey<String>('timeline-row-cells-layer-0'),
       );
       final farCell = find.byKey(
-        const ValueKey<String>('timeline-cell-layer-38-0'),
+        const ValueKey<String>('timeline-row-cells-layer-38'),
       );
       expect(nearCell, findsOneWidget);
       expect(
@@ -335,14 +331,14 @@ void main() {
         ),
       );
 
-      final cellA2 = find.byKey(
-        const ValueKey<String>('timeline-cell-layer-a-2'),
+      final rowA = find.byKey(
+        const ValueKey<String>('timeline-row-cells-layer-a'),
       );
-      final cellB1 = find.byKey(
-        const ValueKey<String>('timeline-cell-layer-b-1'),
+      final rowB = find.byKey(
+        const ValueKey<String>('timeline-row-cells-layer-b'),
       );
-      final cellA2Before = tester.widget(cellA2);
-      final cellB1Before = tester.widget(cellB1);
+      final rowABefore = tester.widget(rowA);
+      final rowBBefore = tester.widget(rowB);
 
       // A commit-style rebuild: layer A's identity changes, B's does not.
       layerA = layerA.copyWith(
@@ -354,12 +350,12 @@ void main() {
       await tester.pump();
 
       expect(
-        identical(tester.widget(cellB1), cellB1Before),
+        identical(tester.widget(rowB), rowBBefore),
         isTrue,
         reason: 'rows of identical layers must reuse their cached widget',
       );
       expect(
-        identical(tester.widget(cellA2), cellA2Before),
+        identical(tester.widget(rowA), rowABefore),
         isFalse,
         reason: 'the edited layer\'s row must rebuild',
       );
