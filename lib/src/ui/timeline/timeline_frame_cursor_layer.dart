@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import '../../models/layer.dart';
 import '../../models/layer_id.dart';
 import '../../models/layer_kind.dart';
+import '../../models/timeline_frame_range.dart';
 import 'property_lane_model.dart';
 import 'selected_exposure_display_range_policy.dart';
 import 'timeline_cell_exposure_state.dart';
@@ -39,12 +40,18 @@ class TimelineCursorLayer extends StatelessWidget {
     required this.crossAxisExtent,
     this.axis = Axis.horizontal,
     this.dragPreview,
+    this.frameRangeSelection,
     this.selectedSemanticsKey = const ValueKey<String>(
       'timeline-selected-cell',
     ),
   });
 
   final ValueListenable<int> frameCursor;
+
+  /// The session's frame-range selection (UI-R8): rendered as an accent
+  /// span over the selected layer's row — this layer repaints, the rows
+  /// never rebuild for it (value-only channel, cursor-layer pattern).
+  final ValueListenable<TimelineFrameRangeSelection?>? frameRangeSelection;
 
   /// The session's edit-drag preview channel: while a comma drag targets
   /// the active layer, the selection visuals (the selected-exposure
@@ -75,7 +82,11 @@ class TimelineCursorLayer extends StatelessWidget {
   Widget build(BuildContext context) {
     final horizontal = axis == Axis.horizontal;
     return ListenableBuilder(
-      listenable: Listenable.merge([frameCursor, ?dragPreview]),
+      listenable: Listenable.merge([
+        frameCursor,
+        ?dragPreview,
+        ?frameRangeSelection,
+      ]),
       builder: (context, _) {
         final frame = frameCursor.value;
         final cursorVisible =
@@ -96,6 +107,71 @@ class TimelineCursorLayer extends StatelessWidget {
               axis: axis,
             ),
         ];
+
+        // The frame-range selection (UI-R8): an accent span over the
+        // selected layer's row — selection reads from color alone.
+        final range = frameRangeSelection?.value;
+        if (range != null &&
+            range.endIndexExclusive > frameStartIndex &&
+            range.startIndex < frameEndIndexExclusive) {
+          int? rangeRowIndex;
+          for (var index = 0; index < rows.length; index += 1) {
+            if (!rows[index].isLane &&
+                rows[index].layer.id == range.layerId) {
+              rangeRowIndex = index;
+              break;
+            }
+          }
+          if (rangeRowIndex != null) {
+            final spanStart = frameVisibleX(
+              frameIndex: range.startIndex,
+              frameStartIndex: frameStartIndex,
+              frameCellWidth: metrics.frameCellWidth,
+              leadingFrameSpacerWidth: leadingFrameSpacerWidth,
+            );
+            final spanEnd = frameVisibleX(
+              frameIndex: range.endIndexExclusive,
+              frameStartIndex: frameStartIndex,
+              frameCellWidth: metrics.frameCellWidth,
+              leadingFrameSpacerWidth: leadingFrameSpacerWidth,
+            );
+            final rowOffset = rangeRowIndex * metrics.layerRowHeight;
+            final band = Semantics(
+              key: const ValueKey<String>('timeline-frame-range-selection'),
+              label: 'selected frame range',
+              container: true,
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  color: timelineSelectedFrameBorderColor.withValues(
+                    alpha: 0.18,
+                  ),
+                  border: Border.all(
+                    color: timelineSelectedFrameBorderColor,
+                    width: 2,
+                  ),
+                  borderRadius: const BorderRadius.all(Radius.circular(6)),
+                ),
+              ),
+            );
+            children.add(
+              horizontal
+                  ? Positioned(
+                      left: spanStart,
+                      top: rowOffset,
+                      width: spanEnd - spanStart,
+                      height: metrics.layerRowHeight,
+                      child: band,
+                    )
+                  : Positioned(
+                      top: spanStart,
+                      left: rowOffset,
+                      height: spanEnd - spanStart,
+                      width: metrics.layerRowHeight,
+                      child: band,
+                    ),
+            );
+          }
+        }
 
         // The selection visuals follow the ACTIVE layer's row. The exposure
         // outline stays even while the cursor itself is scrolled out of the

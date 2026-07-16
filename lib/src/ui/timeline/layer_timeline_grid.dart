@@ -9,7 +9,8 @@ import '../../models/layer_id.dart';
 import '../../models/layer_kind.dart';
 import '../../models/layer_mark.dart';
 import '../../services/audio/audio_peaks_extractor.dart';
-import 'timeline_block_move_handle.dart';
+import 'timeline_frame_range_gesture.dart';
+import 'timeline_run_end_handles.dart';
 import 'timeline_cell_exposure_state.dart';
 import 'timeline_drag_preview.dart';
 import 'timeline_exposure_comma_drag_policy.dart';
@@ -80,7 +81,8 @@ class LayerTimelineGrid extends StatefulWidget {
     this.onToggleLayerFillReference,
     this.onToggleLayerMuted,
     this.commaDrag,
-    this.blockMove,
+    this.rangeHooks,
+    this.runEdit,
     this.isFrameCached,
     this.metrics = TimelineGridMetrics.defaults,
     this.expandedLaneLayerIds = const {},
@@ -196,10 +198,14 @@ class LayerTimelineGrid extends StatefulWidget {
   /// X-sheet); null hides the grips.
   final TimelineCommaDragCallbacks? commaDrag;
 
-  /// Whole-block move hooks (R10-④b): the grid resolves the pointer's row
-  /// onto display rows and forwards frame delta + target layer to the
-  /// session. Null hides the block body handles.
-  final TimelineBlockMoveCallbacks? blockMove;
+  /// The frame-range select/move hooks (UI-R8, the block-body move's
+  /// successor): the grid resolves the pointer's row onto display rows and
+  /// forwards frame delta + target layer to the session. Null keeps rows
+  /// display-only.
+  final TimelineFrameRangeHooks? rangeHooks;
+
+  /// The run-edge [+]/[↻] handle hooks (UI-R8); null hides the handles.
+  final TimelineRunEditCallbacks? runEdit;
 
   /// Cached-range resolver for the ruler's green strip.
   final bool Function(int frameIndex)? isFrameCached;
@@ -809,9 +815,9 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
     );
   }
 
-  /// Resolves block-move row deltas against the rows built this pass.
-  final TimelineBlockMoveRowResolver _blockMoveResolver =
-      TimelineBlockMoveRowResolver();
+  /// Resolves range-move row deltas against the rows built this pass.
+  final TimelineRangeMoveRowResolver _rangeMoveResolver =
+      TimelineRangeMoveRowResolver();
 
   @override
   Widget build(BuildContext context) {
@@ -826,12 +832,21 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
       activeLayerId: widget.activeLayerId,
       fxEnabledOf: widget.layerFxEnabledOf,
     );
-    _blockMoveResolver
+    final rangeHooks = widget.rangeHooks;
+    _rangeMoveResolver
       ..rows = rows
-      ..session = widget.blockMove;
-    final blockMoveHandleCallbacks = widget.blockMove == null
+      ..session = rangeHooks?.move;
+    final rangeGesture = rangeHooks == null
         ? null
-        : _blockMoveResolver.handleCallbacks;
+        : TimelineRangeGestureCallbacks(
+            selection: rangeHooks.selection,
+            onSelectUpdate: rangeHooks.onSelectUpdate,
+            onTapClear: (_) => rangeHooks.onClear(),
+            onMoveBegin: _rangeMoveResolver.begin,
+            onMoveUpdate: _rangeMoveResolver.update,
+            onMoveEnd: _rangeMoveResolver.end,
+            onMoveCancel: _rangeMoveResolver.cancel,
+          );
 
     return LayoutBuilder(
       builder: (context, constraints) {
@@ -1268,8 +1283,8 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                                                   onSetAudioClipGain:
                                                       widget.onSetAudioClipGain,
                                                   commaDrag: widget.commaDrag,
-                                                  blockMove:
-                                                      blockMoveHandleCallbacks,
+                                                  rangeGesture: rangeGesture,
+                                                  runEdit: widget.runEdit,
                                                   laneEdit: widget.laneEdit,
                                                   seSpillInLayerIds:
                                                       widget.seSpillInLayerIds,
@@ -1293,6 +1308,8 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                                                       widget.frameCursor,
                                                   dragPreview:
                                                       widget.dragPreview,
+                                                  frameRangeSelection:
+                                                      rangeHooks?.selection,
                                                   rows: rows,
                                                   activeLayerId:
                                                       widget.activeLayerId,

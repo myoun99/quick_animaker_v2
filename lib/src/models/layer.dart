@@ -12,6 +12,7 @@ import 'layer_mark.dart';
 import 'timeline_coverage.dart';
 import 'timeline_exposure.dart';
 import 'timeline_exposure_type.dart';
+import 'timeline_repeat.dart';
 import 'transform_track.dart';
 
 /// A cel layer. Its single [timeline] map records everything authored on
@@ -38,12 +39,14 @@ class Layer {
     this.attachedToLayerId,
     this.attachedPlacement = AttachedPlacement.above,
     Map<FrameId, FrameId> baseFrameLinks = const {},
+    List<TimelineRepeatRegion> repeatRegions = const [],
   }) : frames = List.unmodifiable(frames),
        timeline = _immutableTimeline(timeline ?? _deriveTimeline(frames)),
        instructions = immutableInstructionMap(instructions ?? const {}),
        audioClips = List.unmodifiable(audioClips),
        transformTrack = transformTrack ?? TransformTrack.empty(),
-       baseFrameLinks = Map.unmodifiable(baseFrameLinks);
+       baseFrameLinks = Map.unmodifiable(baseFrameLinks),
+       repeatRegions = List.unmodifiable(repeatRegions);
 
   final LayerId id;
   final String name;
@@ -105,6 +108,11 @@ class Layer {
   /// come back with the cel (audio-clip semantics).
   final Map<FrameId, FrameId> baseFrameLinks;
 
+  /// TVP-style REPEAT specs (UI-R8): live regions whose GHOST exposures
+  /// are derived from the current timeline by [rederiveRepeatRegions] on
+  /// every edit — see [TimelineRepeatRegion].
+  final List<TimelineRepeatRegion> repeatRegions;
+
   Layer copyWith({
     LayerId? id,
     String? name,
@@ -123,6 +131,7 @@ class Layer {
     LayerId? attachedToLayerId,
     AttachedPlacement? attachedPlacement,
     Map<FrameId, FrameId>? baseFrameLinks,
+    List<TimelineRepeatRegion>? repeatRegions,
   }) {
     final nextFrames = frames ?? this.frames;
     return Layer(
@@ -145,6 +154,7 @@ class Layer {
       attachedToLayerId: attachedToLayerId ?? this.attachedToLayerId,
       attachedPlacement: attachedPlacement ?? this.attachedPlacement,
       baseFrameLinks: baseFrameLinks ?? this.baseFrameLinks,
+      repeatRegions: repeatRegions ?? this.repeatRegions,
     );
   }
 
@@ -166,6 +176,10 @@ class Layer {
     'onTimesheet': onTimesheet,
     'mark': mark.toJson(),
     if (isFillReference) 'fillReference': true,
+    if (repeatRegions.isNotEmpty)
+      'repeatRegions': [
+        for (final region in repeatRegions) region.toJson(),
+      ],
     if (transformTrack.isNotEmpty) 'transform': transformTrack.toJson(),
     if (attachedToLayerId != null) ...{
       'attachedTo': attachedToLayerId!.toJson(),
@@ -237,6 +251,12 @@ class Layer {
           ? LayerMark.fromJson(json['mark'])
           : LayerMark.none,
       isFillReference: json['fillReference'] as bool? ?? false,
+      repeatRegions: json['repeatRegions'] == null
+          ? const []
+          : [
+              for (final region in json['repeatRegions'] as List<dynamic>)
+                TimelineRepeatRegion.fromJson(region as Map<String, dynamic>),
+            ],
       transformTrack: json['transform'] == null
           ? null
           : TransformTrack.fromJson(json['transform'] as Map<String, dynamic>),
@@ -278,7 +298,8 @@ class Layer {
           other.transformTrack == transformTrack &&
           other.attachedToLayerId == attachedToLayerId &&
           other.attachedPlacement == attachedPlacement &&
-          mapEquals(other.baseFrameLinks, baseFrameLinks);
+          mapEquals(other.baseFrameLinks, baseFrameLinks) &&
+          listEquals(other.repeatRegions, repeatRegions);
 
   @override
   int get hashCode => Object.hash(
@@ -307,6 +328,7 @@ class Layer {
         (entry) => Object.hash(entry.key, entry.value),
       ),
     ),
+    Object.hashAll(repeatRegions),
   );
 
   @override
@@ -353,6 +375,8 @@ class _RawTimelineItem {
     required this.type,
     this.frameId,
     this.length,
+    this.ghost = false,
+    this.repeatRegionId,
   });
 
   final int index;
@@ -361,6 +385,8 @@ class _RawTimelineItem {
   final String type;
   final FrameId? frameId;
   final int? length;
+  final bool ghost;
+  final String? repeatRegionId;
 }
 
 /// Decodes a timeline from JSON, migrating legacy formats in one pass:
@@ -407,6 +433,8 @@ SplayTreeMap<int, TimelineExposure> _timelineFromJson(
           ? null
           : FrameId.fromJson(frameIdJson as Map<String, dynamic>),
       length: lengthJson is int && lengthJson >= 1 ? lengthJson : null,
+      ghost: exposureJson['ghost'] == true,
+      repeatRegionId: exposureJson['repeatRegionId'] as String?,
     );
   }
 
@@ -474,6 +502,8 @@ SplayTreeMap<int, TimelineExposure> _timelineFromJson(
         timeline[item.index] = TimelineExposure.drawing(
           item.frameId!,
           length: length,
+          ghost: item.ghost,
+          repeatRegionId: item.repeatRegionId,
         );
     }
   }

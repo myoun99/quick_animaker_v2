@@ -24,6 +24,7 @@ class TimelineFrameCell extends StatelessWidget {
     required this.outsidePlaybackRange,
     required this.exposureState,
     required this.exposureBlockSegment,
+    this.ghost = false,
     this.emptyRunStart = false,
     this.frameName,
     required this.onSelectLayer,
@@ -41,6 +42,11 @@ class TimelineFrameCell extends StatelessWidget {
   final bool outsidePlaybackRange;
   final TimelineCellExposureState exposureState;
   final TimelineExposureBlockVisualSegment exposureBlockSegment;
+
+  /// A derived REPEAT instance (UI-R8): the cell dims like the
+  /// out-of-range blend — timeline display only, playback and the canvas
+  /// render ghosts at full quality.
+  final bool ghost;
 
   /// Whether this cell opens an empty run — the timesheet X marks only the
   /// FIRST cell of each empty stretch, like paper sheets.
@@ -85,16 +91,18 @@ class TimelineFrameCell extends StatelessWidget {
       active: active,
       selected: false,
     );
+    // Ghost repeat instances dim like out-of-range cells (UI-R8).
+    final dimmed = outsidePlaybackRange || ghost;
     final backgroundColor = timelineFrameBandTint(
       frameIndex,
-      outsidePlaybackRange
+      dimmed
           ? Color.alphaBlend(
               colorScheme.surfaceContainerHighest.withValues(alpha: 0.54),
               styleColors.background,
             )
           : styleColors.background,
     );
-    final borderColor = outsidePlaybackRange
+    final borderColor = dimmed
         ? Color.alphaBlend(
             colorScheme.outlineVariant.withValues(alpha: 0.55),
             styleColors.border,
@@ -162,17 +170,15 @@ class TimelineFrameCell extends StatelessWidget {
                 // Camera key-summary markers read like the lane key
                 // diamonds: accent, dimmed outside the playback range.
                 color: cameraSummaryCell && exposureState.isCovered
-                    ? AppColors.accent.withValues(
-                        alpha: outsidePlaybackRange ? 0.55 : 1,
-                      )
+                    ? AppColors.accent.withValues(alpha: dimmed ? 0.55 : 1)
                     : timelineCellUsesDrawingInk(effectiveExposureState)
-                    ? (outsidePlaybackRange
+                    ? (dimmed
                           ? timelineDrawingInkColor.withValues(alpha: 0.55)
                           : timelineDrawingInkColor)
                     : isEmptyX
                     // The "X" only marks emptiness; keep it quiet.
                     ? colorScheme.onSurfaceVariant.withValues(alpha: 0.55)
-                    : outsidePlaybackRange
+                    : dimmed
                     ? colorScheme.onSurfaceVariant.withValues(alpha: 0.45)
                     : colorScheme.onSurface,
                 fontWeight:

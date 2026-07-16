@@ -37,6 +37,9 @@ import '../models/timesheet_info.dart';
 import '../models/project.dart';
 import '../models/property_track.dart';
 import '../models/timeline_coverage.dart';
+import '../models/timeline_frame_range.dart';
+import '../models/timeline_repeat.dart';
+import '../models/timeline_run_edit.dart';
 import '../models/track.dart';
 import '../models/track_id.dart';
 import '../models/track_se_window.dart';
@@ -436,6 +439,7 @@ class EditorSessionManager extends ChangeNotifier {
     int? preferredFrameIndex,
   }) {
     _copiedFrame = null;
+    clearFrameRangeSelection();
     _rebuildActiveCutControllers(
       preferredActiveLayerId: preferredActiveLayerId,
       preferredFrameIndex:
@@ -520,6 +524,7 @@ class EditorSessionManager extends ChangeNotifier {
     frameScrubActive.dispose();
     frameSeekCommitted.dispose();
     _gapGlobalFrameNotifier.dispose();
+    frameRangeSelection.dispose();
     brushInputActive.dispose();
     selectionInteractionActive.dispose();
     dragPreview.dispose();
@@ -1369,6 +1374,7 @@ class EditorSessionManager extends ChangeNotifier {
     }
     _editingSession.setActiveCutId(cutId);
     _copiedFrame = null;
+    clearFrameRangeSelection();
     _rebuildActiveCutControllers();
     _warmActiveCut();
     notifyListeners();
@@ -1773,6 +1779,12 @@ class EditorSessionManager extends ChangeNotifier {
   }
 
   void selectLayer(LayerId layerId) {
+    // A frame-range selection is single-layer (UI-R8): moving to another
+    // row drops it.
+    if (frameRangeSelection.value != null &&
+        frameRangeSelection.value!.layerId != layerId) {
+      clearFrameRangeSelection();
+    }
     _layerController.selectLayer(layerId);
     // The solo mode FOLLOWS the active layer (R4 #7).
     _syncVisibilitySolo();
@@ -3489,6 +3501,42 @@ class EditorSessionManager extends ChangeNotifier {
         layer.kind != LayerKind.se;
   }
 
+  // --- Frame RANGE selection (UI-R8, TVP-style) ----------------------------
+
+  /// The selected frame range — ONE layer's [start,end) span snapped to
+  /// whole exposure blocks. Value-only view state (drag moves never fire a
+  /// session notify); cleared on layer/cut switches and plain cell taps.
+  final ValueNotifier<TimelineFrameRangeSelection?> frameRangeSelection =
+      ValueNotifier<TimelineFrameRangeSelection?>(null);
+
+  /// A range-select drag step: [anchorIndex] is where the drag started,
+  /// [headIndex] where the pointer is now (both cut-local cell indices).
+  /// Rows that cannot range-edit (attach/SE/track rows) stay unselectable.
+  void updateFrameRangeSelectionDrag({
+    required LayerId layerId,
+    required int anchorIndex,
+    required int headIndex,
+  }) {
+    if (!_blockMoveEligible(layerId)) {
+      return;
+    }
+    final layer = _layerById(layerId);
+    if (layer == null) {
+      return;
+    }
+    frameRangeSelection.value = snapFrameRangeToBlocks(
+      layer: layer,
+      anchorIndex: anchorIndex,
+      headIndex: headIndex,
+    );
+  }
+
+  void clearFrameRangeSelection() {
+    if (frameRangeSelection.value != null) {
+      frameRangeSelection.value = null;
+    }
+  }
+
   /// Starts a whole-block move on the block starting at [blockStartIndex];
   /// returns false when there is no such block or the row stands down.
   bool beginDrawingBlockMoveDrag({
@@ -3499,8 +3547,10 @@ class EditorSessionManager extends ChangeNotifier {
       return false;
     }
     final layer = _layerById(layerId);
-    if (layer == null ||
-        !(layer.timeline[blockStartIndex]?.isDrawing ?? false)) {
+    final entry = layer?.timeline[blockStartIndex];
+    // Ghost repeat instances are DERIVED — their timing is the region's,
+    // not draggable (UI-R8).
+    if (layer == null || entry == null || !entry.isDrawing || entry.ghost) {
       return false;
     }
     _blockMoveSourceBefore = layer;
@@ -3539,13 +3589,14 @@ class EditorSessionManager extends ChangeNotifier {
             frameDelta: frameDelta,
           );
     _blockMovePlan = plan;
+    // Ghosts follow the moved run LIVE (UI-R8 rederive on the preview).
     dragPreview.value = plan == null
         ? null
         : BlockMoveDragPreview(
             previewLayers: {
-              plan.sourceAfter.id: plan.sourceAfter,
+              plan.sourceAfter.id: rederiveRepeatRegions(plan.sourceAfter),
               if (plan.targetAfter != null)
-                plan.targetAfter!.id: plan.targetAfter!,
+                plan.targetAfter!.id: rederiveRepeatRegions(plan.targetAfter!),
             },
           );
   }
@@ -3567,13 +3618,13 @@ class EditorSessionManager extends ChangeNotifier {
       UpdateLayerTimelineCommand(
         repository: _repository,
         before: source,
-        after: plan.sourceAfter,
+        after: rederiveRepeatRegions(plan.sourceAfter),
       ),
       if (plan.targetBefore != null)
         UpdateLayerTimelineCommand(
           repository: _repository,
           before: plan.targetBefore!,
-          after: plan.targetAfter!,
+          after: rederiveRepeatRegions(plan.targetAfter!),
         ),
     ];
     if (plan.isCrossLayer && plan.movedFrameIds.isNotEmpty) {
@@ -3614,6 +3665,451 @@ class EditorSessionManager extends ChangeNotifier {
     _blockMoveBlockStart = null;
     _blockMovePlan = null;
     dragPreview.value = null;
+  }
+
+  // --- Frame RANGE move drag (UI-R8: drag the selected range) --------------
+
+  Layer? _rangeMoveSourceBefore;
+  TimelineFrameRangeSelection? _rangeMoveSelectionBefore;
+  int? _rangeMoveGroupStart;
+  DrawingBlockMovePlan? _rangeMovePlan;
+
+  /// Starts moving the CURRENT frame-range selection; returns false when
+  /// there is none (or its row stands down).
+  bool beginFrameRangeMoveDrag() {
+    final selection = frameRangeSelection.value;
+    if (selection == null || !_blockMoveEligible(selection.layerId)) {
+      return false;
+    }
+    final layer = _layerById(selection.layerId);
+    if (layer == null) {
+      return false;
+    }
+    int? groupStart;
+    for (final block in drawingBlocks(layer.timeline)) {
+      if (block.entry.ghost) {
+        continue;
+      }
+      if (block.startIndex >= selection.startIndex &&
+          block.endIndexExclusive <= selection.endIndexExclusive) {
+        groupStart = block.startIndex;
+        break;
+      }
+    }
+    if (groupStart == null) {
+      return false; // Nothing but empty cells selected — nothing to move.
+    }
+    _rangeMoveSourceBefore = layer;
+    _rangeMoveSelectionBefore = selection;
+    _rangeMoveGroupStart = groupStart;
+    return true;
+  }
+
+  /// A range-move drag step: live preview on [dragPreview] (repository
+  /// untouched), the selection outline riding the previewed landing.
+  void updateFrameRangeMoveDrag({
+    required int frameDelta,
+    LayerId? targetLayerId,
+  }) {
+    final source = _rangeMoveSourceBefore;
+    final selection = _rangeMoveSelectionBefore;
+    final groupStart = _rangeMoveGroupStart;
+    if (source == null || selection == null || groupStart == null) {
+      return;
+    }
+    Layer? target = source;
+    if (targetLayerId != null && targetLayerId != source.id) {
+      target = _blockMoveEligible(targetLayerId)
+          ? _layerById(targetLayerId)
+          : null;
+    }
+    final plan = target == null
+        ? null
+        : planDrawingRangeMove(
+            source: source,
+            target: target,
+            rangeStartIndex: selection.startIndex,
+            rangeEndIndexExclusive: selection.endIndexExclusive,
+            frameDelta: frameDelta,
+          );
+    _rangeMovePlan = plan;
+    dragPreview.value = plan == null
+        ? null
+        : BlockMoveDragPreview(
+            previewLayers: {
+              plan.sourceAfter.id: rederiveRepeatRegions(plan.sourceAfter),
+              if (plan.targetAfter != null)
+                plan.targetAfter!.id: rederiveRepeatRegions(plan.targetAfter!),
+            },
+          );
+    // The selection outline follows the previewed landing live.
+    if (plan != null) {
+      final landedLayerId = plan.isCrossLayer
+          ? plan.targetAfter!.id
+          : source.id;
+      final startShift = plan.destinationStartIndex - groupStart;
+      final newStart = selection.startIndex + startShift;
+      if (newStart >= 0) {
+        frameRangeSelection.value = TimelineFrameRangeSelection(
+          layerId: landedLayerId,
+          startIndex: newStart,
+          endIndexExclusive: selection.endIndexExclusive + startShift,
+        );
+      }
+    } else {
+      frameRangeSelection.value = selection;
+    }
+  }
+
+  /// Commits the range move as ONE undo step (layer updates + the brush
+  /// re-key on cross-layer carries), mirroring the block-move commit.
+  void endFrameRangeMoveDrag() {
+    final source = _rangeMoveSourceBefore;
+    final selection = _rangeMoveSelectionBefore;
+    final plan = _rangeMovePlan;
+    final landedSelection = frameRangeSelection.value;
+    _rangeMoveSourceBefore = null;
+    _rangeMoveSelectionBefore = null;
+    _rangeMoveGroupStart = null;
+    _rangeMovePlan = null;
+    dragPreview.value = null;
+    if (source == null || selection == null) {
+      return;
+    }
+    if (plan == null) {
+      frameRangeSelection.value = selection;
+      return;
+    }
+    final commands = <Command>[
+      UpdateLayerTimelineCommand(
+        repository: _repository,
+        before: source,
+        after: rederiveRepeatRegions(plan.sourceAfter),
+      ),
+      if (plan.targetBefore != null)
+        UpdateLayerTimelineCommand(
+          repository: _repository,
+          before: plan.targetBefore!,
+          after: rederiveRepeatRegions(plan.targetAfter!),
+        ),
+    ];
+    if (plan.isCrossLayer && plan.movedFrameIds.isNotEmpty) {
+      final cut = activeCut;
+      commands.add(
+        RekeyBrushFramesCommand(
+          store: brushFrameStore,
+          pairs: [
+            for (final frameId in plan.movedFrameIds)
+              (
+                brushFrameKeyForCut(cut, source.id, frameId),
+                brushFrameKeyForCut(cut, plan.targetAfter!.id, frameId),
+              ),
+          ],
+        ),
+      );
+    }
+    _historyManager.execute(
+      commands.length == 1
+          ? commands.single
+          : CompositeCommand(
+              description: 'Move frame range',
+              commands: commands,
+            ),
+    );
+    // The selection stays on the moved frames where they landed.
+    frameRangeSelection.value = landedSelection;
+    if (plan.isCrossLayer) {
+      _layerController.selectLayer(plan.targetAfter!.id);
+    }
+    _warmActiveCut();
+    notifyListeners();
+  }
+
+  /// Drops an in-flight range-move preview, restoring the selection.
+  void cancelFrameRangeMoveDrag() {
+    final selection = _rangeMoveSelectionBefore;
+    _rangeMoveSourceBefore = null;
+    _rangeMoveSelectionBefore = null;
+    _rangeMoveGroupStart = null;
+    _rangeMovePlan = null;
+    dragPreview.value = null;
+    if (selection != null) {
+      frameRangeSelection.value = selection;
+    }
+  }
+
+  // --- Run-edge NEW FRAMES drag (UI-R8 [+] handle) --------------------------
+
+  Layer? _addFramesBefore;
+  int? _addFramesBlockStart;
+  bool _addFramesAtEnd = true;
+  Layer? _addFramesAfter;
+  final List<FrameId> _addFramesReservedIds = [];
+
+  /// Reserves project-unique frame ids for the drag, deterministically:
+  /// the same ordinal always resolves the same id, so every preview step
+  /// and the commit agree.
+  FrameId _reservedNewFrameId(int ordinal) {
+    while (_addFramesReservedIds.length <= ordinal) {
+      final used = <String>{
+        for (final id in _addFramesReservedIds) id.value,
+      };
+      for (final track in _repository.requireProject().tracks) {
+        for (final layer in track.seLayers) {
+          for (final frame in layer.frames) {
+            used.add(frame.id.value);
+          }
+        }
+        for (final cut in track.cuts) {
+          for (final layer in cut.layers) {
+            for (final frame in layer.frames) {
+              used.add(frame.id.value);
+            }
+          }
+        }
+      }
+      var candidate = 1;
+      while (used.contains('frame-$candidate')) {
+        candidate += 1;
+      }
+      _addFramesReservedIds.add(FrameId('frame-$candidate'));
+    }
+    return _addFramesReservedIds[ordinal];
+  }
+
+  /// Starts a "+ add frames" drag at the run edge (UI-R8): [atEnd] picks
+  /// the side. Returns false when the row stands down or there is no run.
+  bool beginRunFramesAddDrag({
+    required LayerId layerId,
+    required int blockStartIndex,
+    required bool atEnd,
+  }) {
+    if (!_blockMoveEligible(layerId)) {
+      return false;
+    }
+    final layer = _layerById(layerId);
+    if (layer == null || gluedRunAt(layer, blockStartIndex) == null) {
+      return false;
+    }
+    _addFramesBefore = layer;
+    _addFramesBlockStart = blockStartIndex;
+    _addFramesAtEnd = atEnd;
+    _addFramesAfter = null;
+    _addFramesReservedIds.clear();
+    return true;
+  }
+
+  /// Live preview: [count] new one-frame drawings at the run edge (0 shows
+  /// the committed state).
+  void updateRunFramesAddDrag(int count) {
+    final before = _addFramesBefore;
+    final blockStart = _addFramesBlockStart;
+    if (before == null || blockStart == null) {
+      return;
+    }
+    if (count < 1) {
+      _addFramesAfter = null;
+      dragPreview.value = null;
+      return;
+    }
+    final result = layerWithNewFramesAtRunEdge(
+      before,
+      blockStartIndex: blockStart,
+      atEnd: _addFramesAtEnd,
+      count: count,
+      frameIdAt: _reservedNewFrameId,
+    );
+    _addFramesAfter = result == null
+        ? null
+        : rederiveRepeatRegions(result.layer);
+    dragPreview.value = _addFramesAfter == null
+        ? null
+        : ExposureEdgeDragPreview(previewLayer: _addFramesAfter!);
+  }
+
+  /// Commits the added frames as ONE undo step.
+  void endRunFramesAddDrag() {
+    final before = _addFramesBefore;
+    final after = _addFramesAfter;
+    _addFramesBefore = null;
+    _addFramesBlockStart = null;
+    _addFramesAfter = null;
+    _addFramesReservedIds.clear();
+    dragPreview.value = null;
+    if (before == null || after == null || after == before) {
+      return;
+    }
+    _timelineController.commitLayerTimelineDrag(before: before, after: after);
+    _warmActiveCut();
+    notifyListeners();
+  }
+
+  void cancelRunFramesAddDrag() {
+    _addFramesBefore = null;
+    _addFramesBlockStart = null;
+    _addFramesAfter = null;
+    _addFramesReservedIds.clear();
+    dragPreview.value = null;
+  }
+
+  // --- REPEAT region drag (UI-R8 [↻] handle) --------------------------------
+
+  Layer? _repeatDragBefore;
+  String? _repeatDragRegionId;
+  FrameId? _repeatDragAnchorFrameId;
+  int _repeatDragSpanFrames = 1;
+  Layer? _repeatDragAfter;
+
+  /// Starts a repeat drag (UI-R8 [↻]): [regionId] resizes an existing
+  /// region; otherwise a NEW region repeats the current selection (when it
+  /// covers the block) or the glued run containing [blockStartIndex].
+  bool beginRepeatRegionDrag({
+    required LayerId layerId,
+    required int blockStartIndex,
+    String? regionId,
+  }) {
+    if (!_blockMoveEligible(layerId)) {
+      return false;
+    }
+    final layer = _layerById(layerId);
+    if (layer == null) {
+      return false;
+    }
+    if (regionId != null) {
+      for (final region in layer.repeatRegions) {
+        if (region.id == regionId) {
+          _repeatDragBefore = layer;
+          _repeatDragRegionId = regionId;
+          _repeatDragAnchorFrameId = region.anchorFrameId;
+          _repeatDragSpanFrames = region.sourceSpanFrames;
+          _repeatDragAfter = null;
+          return true;
+        }
+      }
+      return false;
+    }
+    // The repeat unit (user rule): the selection when it covers this
+    // block, else the glued run.
+    final selection = frameRangeSelection.value;
+    int spanStart;
+    int spanEndExclusive;
+    if (selection != null &&
+        selection.layerId == layerId &&
+        selection.contains(blockStartIndex)) {
+      spanStart = selection.startIndex;
+      spanEndExclusive = selection.endIndexExclusive;
+    } else {
+      final run = gluedRunAt(layer, blockStartIndex);
+      if (run == null) {
+        return false;
+      }
+      spanStart = run.startIndex;
+      spanEndExclusive = run.endIndexExclusive;
+    }
+    final anchorEntry = layer.timeline[spanStart];
+    FrameId? anchorFrameId = anchorEntry != null && anchorEntry.isDrawing
+        ? anchorEntry.frameId
+        : null;
+    if (anchorFrameId == null) {
+      // A selection may start on empty cells; anchor on the first block.
+      for (final entry in layer.timeline.entries) {
+        if (entry.key >= spanStart &&
+            entry.key < spanEndExclusive &&
+            entry.value.isDrawing &&
+            !entry.value.ghost) {
+          anchorFrameId = entry.value.frameId;
+          spanEndExclusive =
+              spanEndExclusive - (entry.key - spanStart);
+          spanStart = entry.key;
+          break;
+        }
+      }
+    }
+    if (anchorFrameId == null) {
+      return false;
+    }
+    var ordinal = 1;
+    final usedIds = {for (final region in layer.repeatRegions) region.id};
+    while (usedIds.contains('repeat-$ordinal')) {
+      ordinal += 1;
+    }
+    _repeatDragBefore = layer;
+    _repeatDragRegionId = 'repeat-$ordinal';
+    _repeatDragAnchorFrameId = anchorFrameId;
+    _repeatDragSpanFrames = spanEndExclusive - spanStart;
+    _repeatDragAfter = null;
+    return true;
+  }
+
+  /// Live preview: the region covers [frameCount] ghost frames (0 removes
+  /// it).
+  void updateRepeatRegionDrag(int frameCount) {
+    final before = _repeatDragBefore;
+    final regionId = _repeatDragRegionId;
+    final anchor = _repeatDragAnchorFrameId;
+    if (before == null || regionId == null || anchor == null) {
+      return;
+    }
+    final regions = [
+      for (final region in before.repeatRegions)
+        if (region.id != regionId) region,
+      if (frameCount > 0)
+        TimelineRepeatRegion(
+          id: regionId,
+          anchorFrameId: anchor,
+          sourceSpanFrames: _repeatDragSpanFrames,
+          frameCount: frameCount,
+        ),
+    ];
+    final after = rederiveRepeatRegions(
+      before.copyWith(repeatRegions: regions),
+    );
+    _repeatDragAfter = after == before ? null : after;
+    dragPreview.value = _repeatDragAfter == null
+        ? null
+        : ExposureEdgeDragPreview(previewLayer: _repeatDragAfter!);
+  }
+
+  /// Commits the region change as ONE undo step.
+  void endRepeatRegionDrag() {
+    final before = _repeatDragBefore;
+    final after = _repeatDragAfter;
+    _repeatDragBefore = null;
+    _repeatDragRegionId = null;
+    _repeatDragAnchorFrameId = null;
+    _repeatDragAfter = null;
+    dragPreview.value = null;
+    if (before == null || after == null || after == before) {
+      return;
+    }
+    _timelineController.commitLayerTimelineDrag(before: before, after: after);
+    _warmActiveCut();
+    notifyListeners();
+  }
+
+  void cancelRepeatRegionDrag() {
+    _repeatDragBefore = null;
+    _repeatDragRegionId = null;
+    _repeatDragAnchorFrameId = null;
+    _repeatDragAfter = null;
+    dragPreview.value = null;
+  }
+
+  /// One-shot region write (tests + future numeric input): create/resize
+  /// the repeat anchored at the run containing [anchorIndex].
+  void setRepeatRegionFrames({
+    required LayerId layerId,
+    required int anchorIndex,
+    required int frameCount,
+  }) {
+    if (!beginRepeatRegionDrag(
+      layerId: layerId,
+      blockStartIndex: anchorIndex,
+    )) {
+      return;
+    }
+    updateRepeatRegionDrag(frameCount);
+    endRepeatRegionDrag();
   }
 
   Layer? _layerById(LayerId layerId) {

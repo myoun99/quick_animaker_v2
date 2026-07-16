@@ -1,0 +1,94 @@
+import 'dart:math' as math;
+
+import 'layer.dart';
+import 'layer_id.dart';
+import 'timeline_coverage.dart';
+import 'timeline_repeat.dart';
+
+/// One layer's selected frame RANGE (UI-R8, TVP-style): [startIndex,
+/// endIndexExclusive) snapped to whole exposure blocks. View state — never
+/// persisted.
+class TimelineFrameRangeSelection {
+  const TimelineFrameRangeSelection({
+    required this.layerId,
+    required this.startIndex,
+    required this.endIndexExclusive,
+  }) : assert(endIndexExclusive > startIndex, 'Range must cover frames.');
+
+  final LayerId layerId;
+  final int startIndex;
+  final int endIndexExclusive;
+
+  int get lengthFrames => endIndexExclusive - startIndex;
+
+  bool contains(int frameIndex) =>
+      frameIndex >= startIndex && frameIndex < endIndexExclusive;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is TimelineFrameRangeSelection &&
+          other.layerId == layerId &&
+          other.startIndex == startIndex &&
+          other.endIndexExclusive == endIndexExclusive;
+
+  @override
+  int get hashCode => Object.hash(layerId, startIndex, endIndexExclusive);
+
+  @override
+  String toString() =>
+      'TimelineFrameRangeSelection($layerId, [$startIndex, '
+      '$endIndexExclusive))';
+}
+
+/// Snaps a raw dragged span to WHOLE exposure blocks (UI-R8 user rule: a
+/// selection half-covering a block extends through it — blocks never split).
+/// Ghost repeat instances are excluded: a selection starting inside a ghost
+/// is void (null), and a selection running into one clamps just before it.
+TimelineFrameRangeSelection? snapFrameRangeToBlocks({
+  required Layer layer,
+  required int anchorIndex,
+  required int headIndex,
+}) {
+  var start = math.max(0, math.min(anchorIndex, headIndex));
+  var endExclusive = math.max(anchorIndex, headIndex) + 1;
+  if (endExclusive <= start) {
+    return null;
+  }
+
+  if (timelineIndexIsGhost(layer, start)) {
+    return null;
+  }
+
+  // Expand both edges outward to their covering blocks.
+  final startBlock = coveringDrawingBlockAt(layer.timeline, start);
+  if (startBlock != null && !startBlock.entry.ghost) {
+    start = math.min(start, startBlock.startIndex);
+  }
+  final endBlock = coveringDrawingBlockAt(layer.timeline, endExclusive - 1);
+  if (endBlock != null && !endBlock.entry.ghost) {
+    endExclusive = math.max(endExclusive, endBlock.endIndexExclusive);
+  }
+
+  // Clamp before the first ghost entry the range would swallow.
+  for (final entry in layer.timeline.entries) {
+    if (entry.key < start) {
+      continue;
+    }
+    if (entry.key >= endExclusive) {
+      break;
+    }
+    if (entry.value.isDrawing && entry.value.ghost) {
+      endExclusive = entry.key;
+      break;
+    }
+  }
+  if (endExclusive <= start) {
+    return null;
+  }
+  return TimelineFrameRangeSelection(
+    layerId: layer.id,
+    startIndex: start,
+    endIndexExclusive: endExclusive,
+  );
+}

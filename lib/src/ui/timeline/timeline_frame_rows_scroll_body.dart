@@ -8,7 +8,8 @@ import '../../models/layer_kind.dart';
 import '../../services/audio/audio_peaks_extractor.dart';
 import 'property_lane_model.dart';
 import 'se_audio_lane.dart';
-import 'timeline_block_move_handle.dart';
+import 'timeline_frame_range_gesture.dart';
+import 'timeline_run_end_handles.dart';
 import 'timeline_cell_exposure_state.dart';
 import 'timeline_drag_preview.dart';
 import 'timeline_exposure_comma_drag_policy.dart';
@@ -45,7 +46,8 @@ class TimelineFrameRowsScrollBody extends StatefulWidget {
     this.onSetAudioClipFades,
     this.onSetAudioClipGain,
     this.commaDrag,
-    this.blockMove,
+    this.rangeGesture,
+    this.runEdit,
     this.laneEdit,
     this.dragPreview,
     this.seSpillInLayerIds = const {},
@@ -107,9 +109,12 @@ class TimelineFrameRowsScrollBody extends StatefulWidget {
 
   final TimelineCommaDragCallbacks? commaDrag;
 
-  /// Whole-block move hooks (R10-④b), row-geometry form (the grid resolves
-  /// row deltas to layers); null hides the block body handles.
-  final TimelineBlockMoveHandleCallbacks? blockMove;
+  /// The range select/move gesture bundle (UI-R8 — the block-body move
+  /// handle's successor); null keeps rows display-only.
+  final TimelineRangeGestureCallbacks? rangeGesture;
+
+  /// The run-edge [+]/[↻] handle hooks (UI-R8); null hides the handles.
+  final TimelineRunEditCallbacks? runEdit;
   final PropertyLaneEditCallbacks? laneEdit;
 
   /// The session's edit-drag preview channel: a drag step rebuilds ONLY the
@@ -147,7 +152,7 @@ typedef _RowMemoInputs = ({
   exposureStateForLayer,
   String? Function(Layer layer, int frameIndex)? frameNameForLayer,
   bool hasCommaDrag,
-  bool hasBlockMove,
+  bool hasRangeGesture,
   bool hasActivateCell,
   ValueListenable<TimelineDragPreview?>? dragPreview,
 });
@@ -199,7 +204,7 @@ class _TimelineFrameRowsScrollBodyState
         a.exposureStateForLayer == b.exposureStateForLayer &&
         a.frameNameForLayer == b.frameNameForLayer &&
         a.hasCommaDrag == b.hasCommaDrag &&
-        a.hasBlockMove == b.hasBlockMove &&
+        a.hasRangeGesture == b.hasRangeGesture &&
         a.hasActivateCell == b.hasActivateCell &&
         identical(a.dragPreview, b.dragPreview);
   }
@@ -226,7 +231,8 @@ class _TimelineFrameRowsScrollBodyState
       onRemoveAudioClip: widget.onRemoveAudioClip,
       onDropMediaAsset: widget.onDropMediaAsset,
       commaDrag: widget.commaDrag,
-      blockMove: widget.blockMove,
+      rangeGesture: widget.rangeGesture,
+      runEdit: widget.runEdit,
       seSpillsIn: widget.seSpillInLayerIds.contains(layer.id),
     );
   }
@@ -312,7 +318,7 @@ class _TimelineFrameRowsScrollBodyState
       exposureStateForLayer: widget.exposureStateForLayer,
       frameNameForLayer: widget.frameNameForLayer,
       hasCommaDrag: widget.commaDrag != null,
-      hasBlockMove: widget.blockMove != null,
+      hasRangeGesture: widget.rangeGesture != null,
       hasActivateCell: widget.onActivateCell != null,
       dragPreview: widget.dragPreview,
     );

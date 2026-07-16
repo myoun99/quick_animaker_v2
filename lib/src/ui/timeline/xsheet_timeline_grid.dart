@@ -16,8 +16,9 @@ import 'timeline_cell_style.dart';
 import 'timeline_drag_preview.dart';
 import 'timeline_exposure_block_visual.dart';
 import 'timeline_exposure_comma_drag_policy.dart';
-import '../../models/timeline_coverage.dart' show drawingBlocks;
-import 'timeline_block_move_handle.dart';
+import '../../models/timeline_repeat.dart';
+import 'timeline_frame_range_gesture.dart';
+import 'timeline_run_end_handles.dart';
 import 'timeline_frame_cell.dart';
 import 'timeline_frame_cells_row.dart' show timelineRowBlockEdgeGrips;
 import 'timeline_frame_coordinate_policy.dart';
@@ -88,7 +89,8 @@ class XSheetTimelineGrid extends StatefulWidget {
     this.onToggleLayerFillReference,
     this.onToggleLayerMuted,
     this.commaDrag,
-    this.blockMove,
+    this.rangeHooks,
+    this.runEdit,
     this.isFrameCached,
     this.metrics = defaultMetrics,
     this.expandedLaneLayerIds = const {},
@@ -198,10 +200,13 @@ class XSheetTimelineGrid extends StatefulWidget {
   /// horizontal timeline); null hides the grips.
   final TimelineCommaDragCallbacks? commaDrag;
 
-  /// Whole-block move hooks (R10-④b): the grid resolves the pointer's
-  /// COLUMN onto display entries and forwards frame delta + target layer
-  /// to the session. Null hides the block body handles.
-  final TimelineBlockMoveCallbacks? blockMove;
+  /// The frame-range select/move hooks (UI-R8, the block-body move's
+  /// successor): the grid resolves the pointer's COLUMN onto display
+  /// entries and forwards frame delta + target layer to the session.
+  final TimelineFrameRangeHooks? rangeHooks;
+
+  /// The run-edge [+]/[↻] handle hooks (UI-R8); null hides the handles.
+  final TimelineRunEditCallbacks? runEdit;
 
   /// Cached-range resolver for the frame rail's green strip (the transposed
   /// counterpart of the horizontal ruler's strip).
@@ -254,9 +259,13 @@ class XSheetTimelineGrid extends StatefulWidget {
 }
 
 class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
-  /// Resolves block-move column deltas against the entries built this pass.
-  final TimelineBlockMoveRowResolver _blockMoveResolver =
-      TimelineBlockMoveRowResolver();
+  /// Resolves range-move column deltas against the entries built this pass.
+  final TimelineRangeMoveRowResolver _rangeMoveResolver =
+      TimelineRangeMoveRowResolver();
+
+  /// The per-build gesture bundle (rebuilt in [build], consumed by the
+  /// column builder).
+  TimelineRangeGestureCallbacks? _rangeGesture;
 
   late final ScrollController _frameScrollController;
   late final ScrollController _layerScrollController;
@@ -534,9 +543,8 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
       onSelectLayer: widget.onSelectLayer,
       onSelectFrame: widget.onSelectFrame,
       commaDrag: widget.commaDrag,
-      blockMove: widget.blockMove == null
-          ? null
-          : _blockMoveResolver.handleCallbacks,
+      rangeGesture: _rangeGesture,
+      runEdit: widget.runEdit,
     );
   }
 
@@ -573,9 +581,21 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
           activeLayerId: widget.activeLayerId,
           fxEnabledOf: widget.layerFxEnabledOf,
         );
-        _blockMoveResolver
+        final rangeHooks = widget.rangeHooks;
+        _rangeMoveResolver
           ..rows = entries
-          ..session = widget.blockMove;
+          ..session = rangeHooks?.move;
+        _rangeGesture = rangeHooks == null
+            ? null
+            : TimelineRangeGestureCallbacks(
+                selection: rangeHooks.selection,
+                onSelectUpdate: rangeHooks.onSelectUpdate,
+                onTapClear: (_) => rangeHooks.onClear(),
+                onMoveBegin: _rangeMoveResolver.begin,
+                onMoveUpdate: _rangeMoveResolver.update,
+                onMoveEnd: _rangeMoveResolver.end,
+                onMoveCancel: _rangeMoveResolver.cancel,
+              );
         final sectionRuns = timelineSectionRuns(entries);
 
         // The shared virtualization plan with the frame axis fed through the
@@ -901,6 +921,10 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
                                                     const ValueKey<String>(
                                                       'xsheet-selected-cell',
                                                     ),
+                                                frameRangeSelection:
+                                                    widget
+                                                        .rangeHooks
+                                                        ?.selection,
                                                 frameCursor: widget.frameCursor,
                                                 dragPreview: widget.dragPreview,
                                                 rows: entries,
@@ -1146,7 +1170,8 @@ class _XSheetFrameCellsColumn extends StatelessWidget {
     this.onRemoveAudioClip,
     this.onDropMediaAsset,
     this.commaDrag,
-    this.blockMove,
+    this.rangeGesture,
+    this.runEdit,
     this.baseLayer,
   });
 
@@ -1182,8 +1207,12 @@ class _XSheetFrameCellsColumn extends StatelessWidget {
 
   final TimelineCommaDragCallbacks? commaDrag;
 
-  /// Whole-block move hooks (R10-④b); null hides the block body handles.
-  final TimelineBlockMoveHandleCallbacks? blockMove;
+  /// The range select/move gesture bundle (UI-R8 — the block-body move
+  /// handle's successor); null keeps the column display-only.
+  final TimelineRangeGestureCallbacks? rangeGesture;
+
+  /// The run-edge [+]/[↻] handle hooks (UI-R8); null hides the handles.
+  final TimelineRunEditCallbacks? runEdit;
 
   @override
   Widget build(BuildContext context) {
@@ -1195,7 +1224,7 @@ class _XSheetFrameCellsColumn extends StatelessWidget {
         ? instructionCellExposureState(layer, frameIndex)
         : exposureStateForLayer(layer, frameIndex);
     final commaDrag = this.commaDrag;
-    final blockMove = this.blockMove;
+    final rangeGesture = this.rangeGesture;
     return SizedBox(
       width: metrics.layerRowHeight,
       child: Stack(
@@ -1220,6 +1249,7 @@ class _XSheetFrameCellsColumn extends StatelessWidget {
                   frameIndex: frameIndex,
                   active: active,
                   outsidePlaybackRange: frameIndex >= playbackFrameCount,
+                  ghost: timelineIndexIsGhost(layer, frameIndex),
                   exposureState: stateAt(frameIndex),
                   exposureBlockSegment:
                       calculateTimelineExposureBlockVisualSegment(
@@ -1319,21 +1349,36 @@ class _XSheetFrameCellsColumn extends StatelessWidget {
               defById: instructionDefById!,
               keyPrefix: 'xsheet',
             ),
-          // Body handles mount UNDER the grips: the edges keep comma-drag
-          // priority, the body between them moves the block whole.
-          if (blockMove != null &&
+          // The range gesture layer replaces the block-body move handle
+          // (UI-R8, axis-transposed): a pan SELECTS a frame range, a pan
+          // starting inside the selection MOVES it. Mounted UNDER the
+          // grips so the edges keep comma-drag priority.
+          if (rangeGesture != null &&
               layerKindHoldsDrawings(layer.kind) &&
               !layerKindUsesSeSheetCells(layer.kind))
-            ...timelineRowBlockMoveHandles(
-              layerId: layer.id,
-              blocks: drawingBlocks((baseLayer ?? layer).timeline),
+            TimelineFrameRangeGestureLayer(
+              layer: layer,
+              frameStartIndex: frameStartIndex,
+              leadingFrameSpacerWidth: leadingFrameSpacerHeight,
+              frameCellExtent: metrics.frameCellWidth,
+              crossAxisExtent: metrics.layerRowHeight,
+              callbacks: rangeGesture,
+              axis: Axis.vertical,
+            ),
+          // The TVP run-edge handles (UI-R8), transposed.
+          if (runEdit != null &&
+              layerKindHoldsDrawings(layer.kind) &&
+              !layerKindUsesSeSheetCells(layer.kind))
+            ...timelineRowRunEndHandles(
+              layer: layer,
               frameStartIndex: frameStartIndex,
               frameEndIndexExclusive: frameEndIndexExclusive,
               leadingFrameSpacerWidth: leadingFrameSpacerHeight,
               frameCellExtent: metrics.frameCellWidth,
               crossAxisExtent: metrics.layerRowHeight,
-              callbacks: blockMove,
+              callbacks: runEdit!,
               axis: Axis.vertical,
+              keyPrefix: 'xsheet',
             ),
           if (commaDrag != null && layerKindHoldsDrawings(layer.kind))
             ...timelineRowBlockEdgeGrips(

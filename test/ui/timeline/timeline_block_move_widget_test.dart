@@ -7,15 +7,16 @@ import 'package:quick_animaker_v2/src/models/layer.dart';
 import 'package:quick_animaker_v2/src/models/layer_id.dart';
 import 'package:quick_animaker_v2/src/models/timeline_coverage.dart';
 import 'package:quick_animaker_v2/src/models/timeline_exposure.dart';
+import 'package:quick_animaker_v2/src/models/timeline_frame_range.dart';
 import 'package:quick_animaker_v2/src/ui/timeline/layer_timeline_grid.dart';
-import 'package:quick_animaker_v2/src/ui/timeline/timeline_block_move_handle.dart';
 import 'package:quick_animaker_v2/src/ui/timeline/timeline_cell_exposure_state.dart';
-import 'package:quick_animaker_v2/src/ui/timeline/timeline_drag_preview.dart';
+import 'package:quick_animaker_v2/src/ui/timeline/timeline_frame_range_gesture.dart';
 import 'package:quick_animaker_v2/src/ui/timeline/timeline_grid_metrics.dart';
 import 'package:quick_animaker_v2/src/ui/timeline/xsheet_timeline_grid.dart';
 
-/// R10-④b: the block BODY handle — pan distances become frame/row steps
-/// and the grid resolves the row under the pointer to the target layer.
+/// UI-R8: the row-wide range gesture layer — a cell drag SELECTS a frame
+/// range, a drag starting inside the selection MOVES it (frame steps along
+/// the main axis, row steps across; the grid resolves rows to layers).
 void main() {
   Layer blockLayer(String id, {int length = 4, int start = 0}) => Layer(
     id: LayerId(id),
@@ -39,13 +40,12 @@ void main() {
   Widget harness({
     required List<Layer> layers,
     required ValueNotifier<int> cursor,
-    TimelineBlockMoveCallbacks? blockMove,
+    required TimelineFrameRangeHooks rangeHooks,
     // Classic geometry: this file's pan distances assume 48×52 cells.
     TimelineGridMetrics metrics = const TimelineGridMetrics(
       frameCellWidth: 48,
       layerRowHeight: 52,
     ),
-    ValueNotifier<TimelineDragPreview?>? dragPreview,
   }) {
     return MaterialApp(
       home: Scaffold(
@@ -62,262 +62,183 @@ void main() {
           onLayerOpacityChanged: (_, _) {},
           onToggleLayerTimesheet: (_) {},
           onLayerMarkSelected: (_, _) {},
-          blockMove: blockMove,
+          rangeHooks: rangeHooks,
           metrics: metrics,
-          dragPreview: dragPreview,
         ),
       ),
     );
   }
 
-  testWidgets('pan distances report frame steps and resolve the row under '
-      'the pointer to the target layer', (tester) async {
-    final updates = <(int, LayerId?)>[];
-    var ended = 0;
-    final cursor = ValueNotifier<int>(0);
-    addTearDown(cursor.dispose);
-
-    await tester.pumpWidget(
-      harness(
-        layers: [blockLayer('layer-a'), blockLayer('layer-b', start: 10)],
-        cursor: cursor,
-        blockMove: TimelineBlockMoveCallbacks(
-          onBegin: (layerId, blockStartIndex) {
-            expect(layerId, const LayerId('layer-a'));
-            expect(blockStartIndex, 0);
-            return true;
-          },
-          onUpdate: ({required frameDelta, targetLayerId}) =>
-              updates.add((frameDelta, targetLayerId)),
-          onEnd: () => ended += 1,
-          onCancel: () {},
-        ),
+  TimelineFrameRangeHooks hooks({
+    required ValueNotifier<TimelineFrameRangeSelection?> selection,
+    void Function(LayerId, int, int)? onSelectUpdate,
+    VoidCallback? onClear,
+    bool Function()? onMoveBegin,
+    void Function({required int frameDelta, LayerId? targetLayerId})?
+    onMoveUpdate,
+    VoidCallback? onMoveEnd,
+  }) {
+    return TimelineFrameRangeHooks(
+      selection: selection,
+      onSelectUpdate: onSelectUpdate ?? (_, _, _) {},
+      onClear: onClear ?? () {},
+      move: TimelineRangeMoveCallbacks(
+        onBegin: onMoveBegin ?? () => true,
+        onUpdate: onMoveUpdate ?? ({required frameDelta, targetLayerId}) {},
+        onEnd: onMoveEnd ?? () {},
+        onCancel: () {},
       ),
     );
+  }
 
-    final handle = find.byKey(
-      const ValueKey<String>('timeline-block-move-handle-layer-a-0'),
-    );
-    expect(handle, findsOneWidget);
-
-    // Two cells right (cell width 48): frame delta 2, own row.
-    await tester.drag(
-      handle,
-      const Offset(96, 0),
-      kind: PointerDeviceKind.mouse,
-    );
-    expect(updates.last, (2, const LayerId('layer-a')));
-    expect(ended, 1);
-
-    // One row down (row height 52): layer B is the target.
-    await tester.drag(
-      handle,
-      const Offset(0, 52),
-      kind: PointerDeviceKind.mouse,
-    );
-    expect(updates.last, (0, const LayerId('layer-b')));
-    expect(ended, 2);
-  });
-
-  testWidgets('touch never grabs a block — the pan arena is pen/mouse only '
-      '(R12-⑤)', (tester) async {
-    var began = 0;
+  testWidgets('a cell drag reports anchor/head SELECT updates, never a '
+      'move', (tester) async {
+    final selectUpdates = <(LayerId, int, int)>[];
+    var moveBegan = 0;
     final cursor = ValueNotifier<int>(0);
+    final selection = ValueNotifier<TimelineFrameRangeSelection?>(null);
     addTearDown(cursor.dispose);
+    addTearDown(selection.dispose);
 
     await tester.pumpWidget(
       harness(
         layers: [blockLayer('layer-a')],
         cursor: cursor,
-        blockMove: TimelineBlockMoveCallbacks(
-          onBegin: (_, _) {
-            began += 1;
+        rangeHooks: hooks(
+          selection: selection,
+          onSelectUpdate: (layerId, anchor, head) =>
+              selectUpdates.add((layerId, anchor, head)),
+          onMoveBegin: () {
+            moveBegan += 1;
             return true;
           },
-          onUpdate: ({required frameDelta, targetLayerId}) {},
-          onEnd: () {},
-          onCancel: () {},
         ),
       ),
     );
 
-    final handle = find.byKey(
-      const ValueKey<String>('timeline-block-move-handle-layer-a-0'),
+    final gestureLayer = find.byKey(
+      const ValueKey<String>('timeline-range-gesture-layer-a'),
     );
-    final stylus = await tester.startGesture(
-      tester.getCenter(handle),
-      kind: PointerDeviceKind.stylus,
-    );
-    await stylus.moveBy(const Offset(96, 0));
-    await stylus.up();
-    await tester.pump();
-    expect(began, 1, reason: 'the pen grabs');
+    expect(gestureLayer, findsOneWidget);
 
-    final touch = await tester.startGesture(tester.getCenter(handle));
-    await touch.moveBy(const Offset(96, 0));
-    await touch.up();
+    // Drag from cell 0 two cells right (48px cells): head lands on 2.
+    final start = tester.getTopLeft(gestureLayer) + const Offset(24, 26);
+    final gesture = await tester.startGesture(
+      start,
+      kind: PointerDeviceKind.mouse,
+    );
+    await gesture.moveBy(const Offset(96, 0));
+    await gesture.up();
     await tester.pump();
-    expect(began, 1, reason: 'a finger drag must scroll, never grab');
+
+    expect(selectUpdates.first, (const LayerId('layer-a'), 0, 0));
+    expect(selectUpdates.last, (const LayerId('layer-a'), 0, 2));
+    expect(moveBegan, 0);
   });
 
-  testWidgets('the handle survives a cross-layer preview step: the gesture '
-      'keeps reporting and commits ONCE on release (R12-③)', (tester) async {
-    final updates = <(int, LayerId?)>[];
+  testWidgets('a drag starting INSIDE the selection moves it: frame steps '
+      'and the row under the pointer resolve to the target layer', (
+    tester,
+  ) async {
+    final moveUpdates = <(int, LayerId?)>[];
     var ended = 0;
     final cursor = ValueNotifier<int>(0);
-    final dragPreview = ValueNotifier<TimelineDragPreview?>(null);
+    final selection = ValueNotifier<TimelineFrameRangeSelection?>(
+      const TimelineFrameRangeSelection(
+        layerId: LayerId('layer-a'),
+        startIndex: 0,
+        endIndexExclusive: 4,
+      ),
+    );
     addTearDown(cursor.dispose);
-    addTearDown(dragPreview.dispose);
-    final layerA = blockLayer('layer-a');
-    final layerB = blockLayer('layer-b', start: 10);
+    addTearDown(selection.dispose);
 
     await tester.pumpWidget(
       harness(
-        layers: [layerA, layerB],
+        layers: [blockLayer('layer-a'), blockLayer('layer-b', start: 10)],
         cursor: cursor,
-        dragPreview: dragPreview,
-        blockMove: TimelineBlockMoveCallbacks(
-          onBegin: (_, _) => true,
-          onUpdate: ({required frameDelta, targetLayerId}) =>
-              updates.add((frameDelta, targetLayerId)),
-          onEnd: () => ended += 1,
-          onCancel: () {},
+        rangeHooks: hooks(
+          selection: selection,
+          onMoveUpdate: ({required frameDelta, targetLayerId}) =>
+              moveUpdates.add((frameDelta, targetLayerId)),
+          onMoveEnd: () => ended += 1,
         ),
       ),
     );
 
-    final handle = find.byKey(
-      const ValueKey<String>('timeline-block-move-handle-layer-a-0'),
+    final gestureLayer = find.byKey(
+      const ValueKey<String>('timeline-range-gesture-layer-a'),
     );
+    // Press inside the selected span (cell 1), two cells right.
+    final start = tester.getTopLeft(gestureLayer) + const Offset(72, 26);
     final gesture = await tester.startGesture(
-      tester.getCenter(handle),
-      kind: PointerDeviceKind.stylus,
+      start,
+      kind: PointerDeviceKind.mouse,
     );
-    await gesture.moveBy(const Offset(0, 52));
-    await tester.pump();
-    expect(updates.last, (0, const LayerId('layer-b')));
-    expect(ended, 0);
-
-    // The session publishes the cross-layer preview: layer A loses the
-    // block, layer B gains it. The SOURCE row rebuilds from the preview —
-    // the handle must stay mounted (it mounts from the committed layer).
-    dragPreview.value = BlockMoveDragPreview(
-      previewLayers: {
-        layerA.id: layerA.copyWith(timeline: const {}),
-        layerB.id: layerB.copyWith(
-          timeline: {
-            ...layerB.timeline,
-            0: TimelineExposure.drawing(const FrameId('layer-a-f1'), length: 4),
-          },
-        ),
-      },
-    );
-    await tester.pump();
-    expect(handle, findsOneWidget);
-    expect(ended, 0, reason: 'no dispose-commit mid-drag');
-
-    // The gesture is still live: further movement keeps reporting.
     await gesture.moveBy(const Offset(96, 0));
     await tester.pump();
-    expect(updates.last, (2, const LayerId('layer-b')));
-    expect(ended, 0);
+    expect(moveUpdates.last, (2, const LayerId('layer-a')));
+
+    // One row down: layer B becomes the target.
+    await gesture.moveBy(const Offset(0, 52));
+    await tester.pump();
+    expect(moveUpdates.last, (2, const LayerId('layer-b')));
 
     await gesture.up();
     await tester.pump();
     expect(ended, 1, reason: 'exactly one commit, on release');
   });
 
-  testWidgets('blocks too narrow for a body between the grips get no '
-      'handle', (tester) async {
+  testWidgets('touch never selects or grabs — the pan arena is pen/mouse '
+      'only (R12-⑤)', (tester) async {
+    final selectUpdates = <(LayerId, int, int)>[];
     final cursor = ValueNotifier<int>(0);
+    final selection = ValueNotifier<TimelineFrameRangeSelection?>(null);
     addTearDown(cursor.dispose);
+    addTearDown(selection.dispose);
 
     await tester.pumpWidget(
       harness(
-        layers: [blockLayer('layer-a', length: 2)],
+        layers: [blockLayer('layer-a')],
         cursor: cursor,
-        blockMove: TimelineBlockMoveCallbacks(
-          onBegin: (_, _) => true,
-          onUpdate: ({required frameDelta, targetLayerId}) {},
-          onEnd: () {},
-          onCancel: () {},
-        ),
-        // 10px cells: a 2-frame block (20px) is narrower than the two
-        // 12px edge grips — the body handle stands down.
-        metrics: TimelineGridMetrics.defaults.copyWith(frameCellWidth: 10),
-      ),
-    );
-
-    expect(
-      find.byKey(
-        const ValueKey<String>('timeline-block-move-handle-layer-a-0'),
-      ),
-      findsNothing,
-    );
-  });
-
-  testWidgets('the X-sheet mounts the same handles (Axis policy)', (
-    tester,
-  ) async {
-    final updates = <(int, LayerId?)>[];
-    final cursor = ValueNotifier<int>(0);
-    addTearDown(cursor.dispose);
-
-    await tester.pumpWidget(
-      MaterialApp(
-        home: Scaffold(
-          body: XSheetTimelineGrid(
-            layers: [blockLayer('layer-a'), blockLayer('layer-b', start: 10)],
-            activeLayerId: const LayerId('layer-a'),
-            frameCursor: cursor,
-            frameCount: 24,
-            exposureStateForLayer: stateFor,
-            onSelectLayer: (_) {},
-            onSelectFrame: (_) {},
-            onAddLayer: () {},
-            onToggleLayerVisibility: (_) {},
-            onLayerOpacityChanged: (_, _) {},
-            onToggleLayerTimesheet: (_) {},
-            onLayerMarkSelected: (_, _) {},
-            blockMove: TimelineBlockMoveCallbacks(
-              onBegin: (_, _) => true,
-              onUpdate: ({required frameDelta, targetLayerId}) =>
-                  updates.add((frameDelta, targetLayerId)),
-              onEnd: () {},
-              onCancel: () {},
-            ),
-          ),
+        rangeHooks: hooks(
+          selection: selection,
+          onSelectUpdate: (layerId, anchor, head) =>
+              selectUpdates.add((layerId, anchor, head)),
         ),
       ),
     );
 
-    final handle = find.byKey(
-      const ValueKey<String>('timeline-block-move-handle-layer-a-0'),
+    final gestureLayer = find.byKey(
+      const ValueKey<String>('timeline-range-gesture-layer-a'),
     );
-    expect(handle, findsOneWidget);
+    final stylus = await tester.startGesture(
+      tester.getTopLeft(gestureLayer) + const Offset(24, 26),
+      kind: PointerDeviceKind.stylus,
+    );
+    await stylus.moveBy(const Offset(96, 0));
+    await stylus.up();
+    await tester.pump();
+    expect(selectUpdates, isNotEmpty, reason: 'the pen selects');
 
-    // Two frame rows down (X-sheet frame row height 36): frame delta 2;
-    // one column right (column width 164): layer B.
-    await tester.drag(
-      handle,
-      const Offset(0, 72),
-      kind: PointerDeviceKind.mouse,
+    selectUpdates.clear();
+    final touch = await tester.startGesture(
+      tester.getTopLeft(gestureLayer) + const Offset(24, 26),
     );
-    expect(updates.last, (2, const LayerId('layer-a')));
-    await tester.drag(
-      handle,
-      const Offset(164, 0),
-      kind: PointerDeviceKind.mouse,
-    );
-    expect(updates.last, (0, const LayerId('layer-b')));
+    await touch.moveBy(const Offset(96, 0));
+    await touch.up();
+    await tester.pump();
+    expect(selectUpdates, isEmpty, reason: 'a finger scrolls, never selects');
   });
 
-  testWidgets('a tap on the block body still selects the cell underneath', (
-    tester,
-  ) async {
+  testWidgets('a plain tap clears the selection AND still selects the cell '
+      'underneath', (tester) async {
     final selectedFrames = <int>[];
+    var cleared = 0;
     final cursor = ValueNotifier<int>(0);
+    final selection = ValueNotifier<TimelineFrameRangeSelection?>(null);
     addTearDown(cursor.dispose);
+    addTearDown(selection.dispose);
 
     await tester.pumpWidget(
       MaterialApp(
@@ -335,22 +256,90 @@ void main() {
             onLayerOpacityChanged: (_, _) {},
             onToggleLayerTimesheet: (_) {},
             onLayerMarkSelected: (_, _) {},
-            blockMove: TimelineBlockMoveCallbacks(
-              onBegin: (_, _) => true,
-              onUpdate: ({required frameDelta, targetLayerId}) {},
-              onEnd: () {},
-              onCancel: () {},
+            rangeHooks: hooks(
+              selection: selection,
+              onClear: () => cleared += 1,
             ),
           ),
         ),
       ),
     );
 
-    // Frame 1 sits mid-block, under the move handle.
     await tester.tap(
       find.byKey(const ValueKey<String>('timeline-cell-layer-a-1')),
       warnIfMissed: false,
     );
     expect(selectedFrames, [1]);
+    expect(cleared, 1);
+  });
+
+  testWidgets('the X-sheet mounts the same gesture layer transposed '
+      '(Axis policy)', (tester) async {
+    final selectUpdates = <(LayerId, int, int)>[];
+    final moveUpdates = <(int, LayerId?)>[];
+    final cursor = ValueNotifier<int>(0);
+    final selection = ValueNotifier<TimelineFrameRangeSelection?>(null);
+    addTearDown(cursor.dispose);
+    addTearDown(selection.dispose);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: XSheetTimelineGrid(
+            layers: [blockLayer('layer-a'), blockLayer('layer-b', start: 10)],
+            activeLayerId: const LayerId('layer-a'),
+            frameCursor: cursor,
+            frameCount: 24,
+            exposureStateForLayer: stateFor,
+            onSelectLayer: (_) {},
+            onSelectFrame: (_) {},
+            onAddLayer: () {},
+            onToggleLayerVisibility: (_) {},
+            onLayerOpacityChanged: (_, _) {},
+            onToggleLayerTimesheet: (_) {},
+            onLayerMarkSelected: (_, _) {},
+            rangeHooks: hooks(
+              selection: selection,
+              onSelectUpdate: (layerId, anchor, head) =>
+                  selectUpdates.add((layerId, anchor, head)),
+              onMoveUpdate: ({required frameDelta, targetLayerId}) =>
+                  moveUpdates.add((frameDelta, targetLayerId)),
+            ),
+          ),
+        ),
+      ),
+    );
+
+    final gestureLayer = find.byKey(
+      const ValueKey<String>('timeline-range-gesture-layer-a'),
+    );
+    expect(gestureLayer, findsOneWidget);
+
+    // Two frame rows down (X-sheet frame row height 36): head = frame 2.
+    final start = tester.getTopLeft(gestureLayer) + const Offset(20, 18);
+    final gesture = await tester.startGesture(
+      start,
+      kind: PointerDeviceKind.mouse,
+    );
+    await gesture.moveBy(const Offset(0, 72));
+    await gesture.up();
+    await tester.pump();
+    expect(selectUpdates.last, (const LayerId('layer-a'), 0, 2));
+
+    // With a selection in place, dragging inside it one COLUMN right
+    // (column width 164) targets layer B.
+    selection.value = const TimelineFrameRangeSelection(
+      layerId: LayerId('layer-a'),
+      startIndex: 0,
+      endIndexExclusive: 4,
+    );
+    final move = await tester.startGesture(
+      start,
+      kind: PointerDeviceKind.mouse,
+    );
+    await move.moveBy(const Offset(164, 0));
+    await move.up();
+    await tester.pump();
+    expect(moveUpdates.last, (0, const LayerId('layer-b')));
   });
 }
