@@ -12,7 +12,7 @@ void main() {
       'unchanged', () {
     final s = EditorSessionManager(initialProject: createDefaultProject());
     addTearDown(s.dispose);
-    final cutId = s.activeCutId;
+    final cutId = s.requireActiveCut.id;
     expect(s.cutById(cutId)!.transformTrack.isEmpty, isTrue);
 
     final posed = TransformTrack.empty().copyWith(
@@ -39,7 +39,7 @@ void main() {
       'clobbering each other', () {
     final s = EditorSessionManager(initialProject: createDefaultProject());
     addTearDown(s.dispose);
-    final cutId = s.activeCutId;
+    final cutId = s.requireActiveCut.id;
 
     s.setCutFade(cutId, fadeInFrames: 3, fadeOutFrames: 0);
     final faded = s.cutById(cutId)!.transformTrack;
@@ -63,7 +63,7 @@ void main() {
       'pose the editing canvas and the scrub preview wrap with', () {
     final s = EditorSessionManager(initialProject: createDefaultProject());
     addTearDown(s.dispose);
-    final cutId = s.activeCutId;
+    final cutId = s.requireActiveCut.id;
 
     expect(s.activeCutCanvasPoseSample(), isNull, reason: 'no keys → null');
 
@@ -83,7 +83,7 @@ void main() {
       ),
     );
     final sample = s.activeCutCanvasPoseSample();
-    final canvas = s.activeCut.canvasSize;
+    final canvas = s.requireActiveCut.canvasSize;
     expect(sample, isNotNull);
     expect(
       sample!.pose.center,
@@ -106,7 +106,7 @@ void main() {
       'follows the fx switch — fx always reflects, bypass restores 1', () {
     final s = EditorSessionManager(initialProject: createDefaultProject());
     addTearDown(s.dispose);
-    final cutId = s.activeCutId;
+    final cutId = s.requireActiveCut.id;
 
     expect(s.activeCutEditingFadeOpacity(), 1, reason: 'no fade keyed');
 

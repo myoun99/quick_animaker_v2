@@ -227,6 +227,7 @@ class EditorSessionManager extends ChangeNotifier {
     resolveActiveTrackId: () => activeCutTrackId,
     resolveFps: () => projectFps,
     onStopped: _onPlaybackStopped,
+    onStoppedInGap: _onPlaybackStoppedInGap,
     onPlaylistWarmRequested: _onPlaybackPlaylistWarmRequested,
   );
 
@@ -250,6 +251,15 @@ class EditorSessionManager extends ChangeNotifier {
     // The mid-playback cut follow is QUIET (R12-B) — this is the one
     // session notify that catches every activeCut consumer up with where
     // playback landed.
+    notifyListeners();
+  }
+
+  /// Stop landed on a playlist GAP frame (UI-R9 #3): match the editing
+  /// gap semantics — park there with NO active cut.
+  void _onPlaybackStoppedInGap(int globalFrame) {
+    _gapGlobalFrame = globalFrame;
+    _deselectActiveCutForGap();
+    frameSeekCommitted.value += 1;
     notifyListeners();
   }
 
@@ -310,7 +320,11 @@ class EditorSessionManager extends ChangeNotifier {
 
   ProjectRepository get repository => _repository;
   HistoryManager get historyManager => _historyManager;
-  CutId get activeCutId => _editingSession.activeCutId;
+
+  /// NULL = the editing playhead stands in a GAP (UI-R9 #3): no cut is
+  /// selected. Cut-scoped surfaces show their empty states; cut-scoped
+  /// commands stand down.
+  CutId? get activeCutId => _editingSession.activeCutId;
 
   bool get canUndo => _historyManager.canUndo;
   bool get canRedo => _historyManager.canRedo;
@@ -499,11 +513,12 @@ class EditorSessionManager extends ChangeNotifier {
   /// Warms the active cut's composites around the playhead ("navigate away
   /// from a frame and it gets pre-rendered").
   void _warmActiveCut() {
-    if (activeCutOrNull == null) {
+    final cut = activeCutOrNull;
+    if (cut == null) {
       return;
     }
     prerenderScheduler.requestWarmCut(
-      cutId: _editingSession.activeCutId,
+      cutId: cut.id,
       quality: playbackQuality,
       aroundFrameIndex: _timelineController.currentFrameIndex,
     );
@@ -573,8 +588,12 @@ class EditorSessionManager extends ChangeNotifier {
     CanvasSize canvasSize, {
     CanvasResizeAnchor anchor = CanvasResizeAnchor.center,
   }) {
+    final cutId = _editingSession.activeCutId;
+    if (cutId == null) {
+      return;
+    }
     _cutCommandCoordinator.resizeCutCanvas(
-      cutId: _editingSession.activeCutId,
+      cutId: cutId,
       canvasSize: canvasSize,
       anchor: anchor,
     );
@@ -583,8 +602,12 @@ class EditorSessionManager extends ChangeNotifier {
   }
 
   void duplicateActiveCut() {
+    final cutId = _editingSession.activeCutId;
+    if (cutId == null) {
+      return;
+    }
     _cutCommandCoordinator.duplicateCut(
-      sourceCutId: _editingSession.activeCutId,
+      sourceCutId: cutId,
       targetTrackId: activeCutTrackId,
     );
     _refreshAfterCutCommand();
@@ -592,27 +615,32 @@ class EditorSessionManager extends ChangeNotifier {
   }
 
   void deleteActiveCut() {
-    _cutCommandCoordinator.deleteCut(cutId: _editingSession.activeCutId);
+    final cutId = _editingSession.activeCutId;
+    if (cutId == null) {
+      return;
+    }
+    _cutCommandCoordinator.deleteCut(cutId: cutId);
     _refreshAfterCutCommand();
     notifyListeners();
   }
 
   CutPosition? get _activeCutPositionOrNull {
+    final cutId = _editingSession.activeCutId;
+    if (cutId == null) {
+      return null;
+    }
     return _cutReorderPlanner.findCutPosition(
       project: _repository.requireProject(),
-      cutId: _editingSession.activeCutId,
+      cutId: cutId,
     );
   }
 
   CutPosition get _activeCutPosition {
-    try {
-      return _cutReorderPlanner.requireCutPosition(
-        project: _repository.requireProject(),
-        cutId: _editingSession.activeCutId,
-      );
-    } on StateError {
+    final position = _activeCutPositionOrNull;
+    if (position == null) {
       throw StateError('Active Cut not found: ${_editingSession.activeCutId}');
     }
+    return position;
   }
 
   bool get canMoveActiveCutLeft {
@@ -682,10 +710,11 @@ class EditorSessionManager extends ChangeNotifier {
   String? get activeCutNote => activeCutOrNull?.metadata.note;
 
   void updateActiveCutNote(String note) {
-    _cutCommandCoordinator.updateCutNote(
-      cutId: _editingSession.activeCutId,
-      note: note,
-    );
+    final cutId = _editingSession.activeCutId;
+    if (cutId == null) {
+      return;
+    }
+    _cutCommandCoordinator.updateCutNote(cutId: cutId, note: note);
     _refreshAfterCutCommand();
     notifyListeners();
   }
@@ -701,10 +730,14 @@ class EditorSessionManager extends ChangeNotifier {
   /// releases the pin back to the first frame when pressed on the pinned
   /// frame itself (toggle; one undo step either way).
   void toggleActiveCutThumbnailFrame() {
+    final cut = activeCutOrNull;
+    if (cut == null) {
+      return;
+    }
     final frame = _timelineController.currentFrameIndex;
-    final pinned = activeCutOrNull?.metadata.thumbnailFrameIndex;
+    final pinned = cut.metadata.thumbnailFrameIndex;
     _cutCommandCoordinator.updateCutThumbnailFrame(
-      cutId: _editingSession.activeCutId,
+      cutId: cut.id,
       frameIndex: pinned == frame ? null : frame,
     );
     _refreshAfterCutCommand();
@@ -724,33 +757,35 @@ class EditorSessionManager extends ChangeNotifier {
     return null;
   }
 
-  int get activeCutPlaybackFrameCount => math.max(1, activeCut.duration);
+  int get activeCutPlaybackFrameCount =>
+      math.max(1, activeCutOrNull?.duration ?? 1);
 
-  Cut get activeCut {
-    final project = _repository.requireProject();
-    for (final track in project.tracks) {
-      for (final cut in track.cuts) {
-        if (cut.id == _editingSession.activeCutId) {
-          return cut;
-        }
-      }
+  /// The active cut, THROWING when none is selected (gap state) — every
+  /// caller is a conscious decision that a cut must exist here (UI-R9 #3
+  /// audit rename; reach for [activeCutOrNull] on read paths instead).
+  Cut get requireActiveCut {
+    final cut = activeCutOrNull;
+    if (cut == null) {
+      throw StateError(
+        'No active Cut (gap state): ${_editingSession.activeCutId}',
+      );
     }
-
-    throw StateError('Active Cut not found: ${_editingSession.activeCutId}');
+    return cut;
   }
 
   void renameActiveCut(String newName) {
-    _cutCommandCoordinator.renameCut(
-      cutId: _editingSession.activeCutId,
-      newName: newName,
-    );
+    final cutId = _editingSession.activeCutId;
+    if (cutId == null) {
+      return;
+    }
+    _cutCommandCoordinator.renameCut(cutId: cutId, newName: newName);
     _refreshAfterCutCommand();
     notifyListeners();
   }
 
   // --- Camera --------------------------------------------------------------
 
-  CutCamera get activeCutCamera => activeCut.camera;
+  CutCamera get activeCutCamera => requireActiveCut.camera;
 
   /// The camera's output frame size (the exported picture size); the camera
   /// view rect on canvas is this divided by the pose zoom.
@@ -760,8 +795,8 @@ class EditorSessionManager extends ChangeNotifier {
 
   /// Resolved camera pose at an arbitrary playback frame (for rendering).
   CameraPose cameraPoseAtFrame(int frameIndex) => resolveCameraPoseAt(
-    camera: activeCut.camera,
-    canvasSize: activeCut.canvasSize,
+    camera: requireActiveCut.camera,
+    canvasSize: requireActiveCut.canvasSize,
     frameIndex: frameIndex,
   );
 
@@ -1021,10 +1056,14 @@ class EditorSessionManager extends ChangeNotifier {
   /// ONCE and stores the result back as the new display cache — repeated
   /// tool taps must not replay the whole stroke history per tap (R11-②③).
   BitmapSurface? brushSurfaceForLayerFrame(Layer layer, Frame frame) {
+    final cut = activeCutOrNull;
+    if (cut == null) {
+      return null; // Gap state: no cut, no artwork.
+    }
     final frameKey = BrushFrameKey(
       projectId: _repository.requireProject().id,
       trackId: activeCutTrackId,
-      cutId: _editingSession.activeCutId,
+      cutId: cut.id,
       layerId: layer.id,
       frameId: frame.id,
     );
@@ -1033,25 +1072,31 @@ class EditorSessionManager extends ChangeNotifier {
     // exists anymore.
     return brushFrameStore.currentSurfaceWithoutReplay(
       frameKey,
-      canvasSize: activeCut.canvasSize,
+      canvasSize: cut.canvasSize,
     );
   }
 
   /// The resolved camera pose at the current playhead frame (keyframe,
   /// interpolation, or the default pose when the cut has no camera work).
   CameraPose get cameraPoseAtCurrentFrame => resolveCameraPoseAt(
-    camera: activeCut.camera,
-    canvasSize: activeCut.canvasSize,
+    camera: requireActiveCut.camera,
+    canvasSize: requireActiveCut.canvasSize,
     frameIndex: _timelineController.currentFrameIndex,
   );
 
   bool get hasCameraKeyframeAtCurrentFrame =>
-      activeCut.camera.keyframeAt(_timelineController.currentFrameIndex) !=
+      activeCutOrNull?.camera.keyframeAt(
+        _timelineController.currentFrameIndex,
+      ) !=
       null;
 
   void setCameraKeyframeAtCurrentFrame(CameraPose pose) {
+    final cutId = _editingSession.activeCutId;
+    if (cutId == null) {
+      return;
+    }
     _cutCommandCoordinator.setCutCameraKeyframe(
-      cutId: _editingSession.activeCutId,
+      cutId: cutId,
       frameIndex: _timelineController.currentFrameIndex,
       pose: pose,
     );
@@ -1060,8 +1105,12 @@ class EditorSessionManager extends ChangeNotifier {
   }
 
   void removeCameraKeyframeAtCurrentFrame() {
+    final cutId = _editingSession.activeCutId;
+    if (cutId == null) {
+      return;
+    }
     _cutCommandCoordinator.removeCutCameraKeyframe(
-      cutId: _editingSession.activeCutId,
+      cutId: cutId,
       frameIndex: _timelineController.currentFrameIndex,
     );
     _refreshAfterCutCommand();
@@ -1069,7 +1118,11 @@ class EditorSessionManager extends ChangeNotifier {
   }
 
   void clearActiveCutCamera() {
-    _cutCommandCoordinator.clearCutCamera(cutId: _editingSession.activeCutId);
+    final cutId = _editingSession.activeCutId;
+    if (cutId == null) {
+      return;
+    }
+    _cutCommandCoordinator.clearCutCamera(cutId: cutId);
     _refreshAfterCutCommand();
     notifyListeners();
   }
@@ -1080,8 +1133,12 @@ class EditorSessionManager extends ChangeNotifier {
     TransformTrack track, {
     String description = 'Edit camera keyframes',
   }) {
+    final cutId = _editingSession.activeCutId;
+    if (cutId == null) {
+      return;
+    }
     _cutCommandCoordinator.updateCutCamera(
-      cutId: _editingSession.activeCutId,
+      cutId: cutId,
       camera: CutCamera.fromTrack(track),
       description: description,
     );
@@ -1153,8 +1210,12 @@ class EditorSessionManager extends ChangeNotifier {
     TransformTrack track, {
     String description = 'Edit layer transform',
   }) {
+    final cutId = _editingSession.activeCutId;
+    if (cutId == null) {
+      return;
+    }
     _cutCommandCoordinator.updateLayerTransformTrack(
-      cutId: _editingSession.activeCutId,
+      cutId: cutId,
       layerId: layerId,
       transformTrack: track,
       description: description,
@@ -1167,7 +1228,7 @@ class EditorSessionManager extends ChangeNotifier {
   TransformPose layerPoseAtFrame(Layer layer, int frameIndex) {
     return layer.transformTrack.resolveAt(
       frameIndex: frameIndex,
-      orElse: () => layerIdentityPose(activeCut.canvasSize),
+      orElse: () => layerIdentityPose(requireActiveCut.canvasSize),
     );
   }
 
@@ -1177,8 +1238,8 @@ class EditorSessionManager extends ChangeNotifier {
   CanvasPoint layerAnchorPointAtFrame(Layer layer, int frameIndex) {
     return resolveLayerAnchorPointAt(layer: layer, frameIndex: frameIndex) ??
         CanvasPoint(
-          x: activeCut.canvasSize.width / 2,
-          y: activeCut.canvasSize.height / 2,
+          x: requireActiveCut.canvasSize.width / 2,
+          y: requireActiveCut.canvasSize.height / 2,
         );
   }
 
@@ -1324,14 +1385,16 @@ class EditorSessionManager extends ChangeNotifier {
   }
 
   void undo() {
-    final beforeLayers = List<Layer>.of(activeCut.layers);
+    final beforeLayers = List<Layer>.of(
+      activeCutOrNull?.layers ?? const <Layer>[],
+    );
     final previousActiveLayerId = _layerController.activeLayerId;
     final previousFrameIndex = _timelineController.currentFrameIndex;
 
     _historyManager.undo();
     final preferredLayerId = _preferredLayerAfterLayerListChange(
       beforeLayers: beforeLayers,
-      afterLayers: activeCut.layers,
+      afterLayers: activeCutOrNull?.layers ?? const <Layer>[],
       previousActiveLayerId: previousActiveLayerId,
     );
     _refreshAfterCutCommand(
@@ -1342,14 +1405,16 @@ class EditorSessionManager extends ChangeNotifier {
   }
 
   void redo() {
-    final beforeLayers = List<Layer>.of(activeCut.layers);
+    final beforeLayers = List<Layer>.of(
+      activeCutOrNull?.layers ?? const <Layer>[],
+    );
     final previousActiveLayerId = _layerController.activeLayerId;
     final previousFrameIndex = _timelineController.currentFrameIndex;
 
     _historyManager.redo();
     final preferredLayerId = _preferredLayerAfterLayerListChange(
       beforeLayers: beforeLayers,
-      afterLayers: activeCut.layers,
+      afterLayers: activeCutOrNull?.layers ?? const <Layer>[],
       previousActiveLayerId: previousActiveLayerId,
     );
     _refreshAfterCutCommand(
@@ -1405,10 +1470,14 @@ class EditorSessionManager extends ChangeNotifier {
       return null;
     }
 
+    final cutId = _editingSession.activeCutId;
+    if (cutId == null) {
+      return null; // Gap state: no cut, no brush target.
+    }
     return BrushEditorSelection(
       projectId: _repository.requireProject().id,
       trackId: activeCutTrackId,
-      cutId: _editingSession.activeCutId,
+      cutId: cutId,
       layerId: activeLayer.id,
       frameId: selectedFrame.id,
     );
@@ -1424,7 +1493,11 @@ class EditorSessionManager extends ChangeNotifier {
     if (isAttachedLayer(activeLayer)) {
       return true;
     }
-    final layers = activeCut.layers;
+    final cut = activeCutOrNull;
+    if (cut == null) {
+      return false;
+    }
+    final layers = cut.layers;
     return switch (activeLayer.kind) {
       LayerKind.camera => false,
       // The sheet's fixture floors: at least two SE rows (S1·S2, now
@@ -1453,8 +1526,12 @@ class EditorSessionManager extends ChangeNotifier {
   /// visible drawing layer with a frame at the playhead, so there is artwork
   /// to frame. `null` when the cut has nothing drawn at this frame.
   BrushEditorSelection? get cameraBackdropSelection {
+    final cut = activeCutOrNull;
+    if (cut == null) {
+      return null;
+    }
     final frameIndex = _timelineController.currentFrameIndex;
-    for (final layer in activeCut.layers) {
+    for (final layer in cut.layers) {
       if (layer.kind == LayerKind.camera || !layer.isVisible) {
         continue;
       }
@@ -1468,7 +1545,7 @@ class EditorSessionManager extends ChangeNotifier {
       return BrushEditorSelection(
         projectId: _repository.requireProject().id,
         trackId: activeCutTrackId,
-        cutId: _editingSession.activeCutId,
+        cutId: cut.id,
         layerId: layer.id,
         frameId: frame.id,
       );
@@ -1550,8 +1627,12 @@ class EditorSessionManager extends ChangeNotifier {
       return;
     }
 
+    final cut = activeCutOrNull;
+    if (cut == null) {
+      return;
+    }
     final activeLayer = this.activeLayer;
-    final targetLayers = activeCut.layers;
+    final targetLayers = cut.layers;
     final activeLayerIndex = activeLayer == null
         ? -1
         : targetLayers.indexWhere((layer) => layer.id == activeLayer.id);
@@ -1560,7 +1641,7 @@ class EditorSessionManager extends ChangeNotifier {
         : activeLayerIndex + 1;
 
     final pastedLayerId = _cutCommandCoordinator.pasteLayer(
-      cutId: _editingSession.activeCutId,
+      cutId: cut.id,
       payload: payload,
       insertionIndex: insertionIndex,
     );
@@ -1581,7 +1662,9 @@ class EditorSessionManager extends ChangeNotifier {
     }
 
     final duplicatedLayerId = _cutCommandCoordinator.duplicateLayer(
-      cutId: _editingSession.activeCutId,
+      // A non-null active layer implies an active cut (gap state has no
+      // rows at all).
+      cutId: requireActiveCut.id,
       sourceLayerId: activeLayer.id,
     );
     _refreshAfterCutCommand(preferredActiveLayerId: duplicatedLayerId);
@@ -1614,14 +1697,14 @@ class EditorSessionManager extends ChangeNotifier {
       return;
     }
 
-    final beforeLayers = List<Layer>.of(activeCut.layers);
+    final beforeLayers = List<Layer>.of(requireActiveCut.layers);
     final nextActiveLayerId = _stableLayerIdAfterDeleting(
       beforeLayers: beforeLayers,
       deletedLayerId: activeLayer.id,
     );
 
     _cutCommandCoordinator.deleteLayer(
-      cutId: _editingSession.activeCutId,
+      cutId: requireActiveCut.id,
       layerId: activeLayer.id,
     );
     _refreshAfterCutCommand(preferredActiveLayerId: nextActiveLayerId);
@@ -1636,7 +1719,7 @@ class EditorSessionManager extends ChangeNotifier {
 
     final activeLayerId = activeLayer.id;
     _cutCommandCoordinator.renameLayer(
-      cutId: _editingSession.activeCutId,
+      cutId: requireActiveCut.id,
       layerId: activeLayerId,
       name: name,
     );
@@ -1653,6 +1736,10 @@ class EditorSessionManager extends ChangeNotifier {
   /// Kind-explicit Add Layer (the split button's ▾ list): the same naming
   /// and insertion rules as [addLayer] with the requested kind.
   void addLayerOfKind(LayerKind kind) {
+    if (activeCutOrNull == null) {
+      return; // Gap state: no cut to add into (SE rows need one too —
+      //         selection lives in the cut-scoped row list).
+    }
     _layerSequence += 1;
     final layerId = defaultLayerIdForSequence(_layerSequence);
     switch (kind) {
@@ -1698,7 +1785,7 @@ class EditorSessionManager extends ChangeNotifier {
         // attach rows adjacent, W5).
         final active = activeLayer;
         if (active != null && isAttachedLayer(active)) {
-          final cut = activeCut;
+          final cut = requireActiveCut;
           _layerController.addLayer(
             layer: createDefaultAnimationLayer(
               layerId: layerId,
@@ -1727,7 +1814,7 @@ class EditorSessionManager extends ChangeNotifier {
     }
     if (isAttachedLayer(active)) {
       // Adding from an attach row targets ITS base (same group).
-      return attachedBaseOf(active, activeCut.layers) != null;
+      return attachedBaseOf(active, requireActiveCut.layers) != null;
     }
     return canCarryAttachedLayers(active);
   }
@@ -1741,7 +1828,7 @@ class EditorSessionManager extends ChangeNotifier {
       return;
     }
     final active = activeLayer!;
-    final cut = activeCut;
+    final cut = requireActiveCut;
     final base = isAttachedLayer(active)
         ? attachedBaseOf(active, cut.layers)!
         : active;
@@ -1895,8 +1982,9 @@ class EditorSessionManager extends ChangeNotifier {
   /// step; no controller rebuild — the flag never affects rendering.
   void toggleLayerTimesheet(LayerId layerId) {
     final layer = layers.firstWhere((layer) => layer.id == layerId);
+    // A resolvable row implies an active cut (gap state has no rows).
     _cutCommandCoordinator.setLayerTimesheet(
-      cutId: _editingSession.activeCutId,
+      cutId: requireActiveCut.id,
       layerId: layerId,
       onTimesheet: !layer.onTimesheet,
     );
@@ -1910,7 +1998,7 @@ class EditorSessionManager extends ChangeNotifier {
   void toggleLayerFillReference(LayerId layerId) {
     final layer = layers.firstWhere((layer) => layer.id == layerId);
     _cutCommandCoordinator.setLayerFillReference(
-      cutId: _editingSession.activeCutId,
+      cutId: requireActiveCut.id,
       layerId: layerId,
       isFillReference: !layer.isFillReference,
     );
@@ -1942,8 +2030,12 @@ class EditorSessionManager extends ChangeNotifier {
 
   /// Sets [layerId]'s organizational color mark. One undo step.
   void setLayerMark(LayerId layerId, LayerMark mark) {
+    final cutId = _editingSession.activeCutId;
+    if (cutId == null) {
+      return;
+    }
     _cutCommandCoordinator.setLayerMark(
-      cutId: _editingSession.activeCutId,
+      cutId: cutId,
       layerId: layerId,
       mark: mark,
     );
@@ -1999,9 +2091,13 @@ class EditorSessionManager extends ChangeNotifier {
   /// Track-owned SE rows join the sweep: the flag commands resolve through
   /// the anywhere lookup now (the SE mark/sheet fix).
   void setAllLayersOnTimesheet(bool onTimesheet) {
-    final cutId = _editingSession.activeCutId;
+    final cut = activeCutOrNull;
+    if (cut == null) {
+      return;
+    }
+    final cutId = cut.id;
     final commands = <Command>[
-      for (final layer in [...activeCut.layers, ...activeTrack.seLayers])
+      for (final layer in [...cut.layers, ...activeTrack.seLayers])
         if (layer.attachedToLayerId == null && layer.onTimesheet != onTimesheet)
           UpdateLayerTimesheetCommand(
             repository: _repository,
@@ -2027,9 +2123,13 @@ class EditorSessionManager extends ChangeNotifier {
   /// Clears every layer mark of the active cut (track-owned SE rows
   /// included, like the sheet sweep) — one undo.
   void clearAllLayerMarks() {
-    final cutId = _editingSession.activeCutId;
+    final cut = activeCutOrNull;
+    if (cut == null) {
+      return;
+    }
+    final cutId = cut.id;
     final commands = <Command>[
-      for (final layer in [...activeCut.layers, ...activeTrack.seLayers])
+      for (final layer in [...cut.layers, ...activeTrack.seLayers])
         if (layer.mark != LayerMark.none)
           UpdateLayerMarkCommand(
             repository: _repository,
@@ -2053,9 +2153,13 @@ class EditorSessionManager extends ChangeNotifier {
   /// Drops the fill-reference flag from every layer — one undo (cut-owned
   /// layers, like the sheet sweep).
   void clearAllFillReferences() {
-    final cutId = _editingSession.activeCutId;
+    final cut = activeCutOrNull;
+    if (cut == null) {
+      return;
+    }
+    final cutId = cut.id;
     final commands = <Command>[
-      for (final layer in activeCut.layers)
+      for (final layer in cut.layers)
         if (layer.isFillReference)
           UpdateLayerFillReferenceCommand(
             repository: _repository,
@@ -2117,8 +2221,12 @@ class EditorSessionManager extends ChangeNotifier {
     Map<int, InstructionEvent> instructions, {
     String description = 'Edit instructions',
   }) {
+    final cutId = _editingSession.activeCutId;
+    if (cutId == null) {
+      return;
+    }
     _cutCommandCoordinator.updateLayerInstructions(
-      cutId: _editingSession.activeCutId,
+      cutId: cutId,
       layerId: layerId,
       instructions: instructions,
       description: description,
@@ -2155,7 +2263,11 @@ class EditorSessionManager extends ChangeNotifier {
 
     // New events take the dialog's length (clamped into the cut; the add
     // helper clamps at the next span too); null fills to the cut end.
-    final available = (activeCut.duration - frameIndex).clamp(1, 1 << 20);
+    // A resolvable instruction layer implies an active cut.
+    final available = (requireActiveCut.duration - frameIndex).clamp(
+      1,
+      1 << 20,
+    );
     final covering = instructionSpanCovering(layer.instructions, frameIndex);
     final next = covering != null
         ? instructionMapWithEventReplaced(
@@ -2189,7 +2301,7 @@ class EditorSessionManager extends ChangeNotifier {
       }
     }
     _cutCommandCoordinator.updateLayerInstructions(
-      cutId: _editingSession.activeCutId,
+      cutId: requireActiveCut.id,
       layerId: layerId,
       instructions: next,
       description: covering == null ? 'Add instruction' : 'Edit instruction',
@@ -2253,7 +2365,7 @@ class EditorSessionManager extends ChangeNotifier {
     // SE-instance creation above) so the browser can offer it for reuse.
     addMediaAssets([filePath]);
     _cutCommandCoordinator.updateLayerAudioClips(
-      cutId: _editingSession.activeCutId,
+      cutId: requireActiveCut.id,
       layerId: carrier.id,
       audioClips: [
         ...carrier.audioClips,
@@ -2275,7 +2387,7 @@ class EditorSessionManager extends ChangeNotifier {
     }
     final next = [...layer.audioClips]..removeAt(clipIndex);
     _cutCommandCoordinator.updateLayerAudioClips(
-      cutId: _editingSession.activeCutId,
+      cutId: requireActiveCut.id,
       layerId: layerId,
       audioClips: next,
       description: 'Remove audio',
@@ -2301,7 +2413,7 @@ class EditorSessionManager extends ChangeNotifier {
     final next = [...layer.audioClips];
     next[clipIndex] = next[clipIndex].copyWith(offsetFrames: clamped);
     _cutCommandCoordinator.updateLayerAudioClips(
-      cutId: _editingSession.activeCutId,
+      cutId: requireActiveCut.id,
       layerId: layerId,
       audioClips: next,
       description: 'Slide sound',
@@ -2354,7 +2466,7 @@ class EditorSessionManager extends ChangeNotifier {
     final next = [...layer.audioClips];
     next[clipIndex] = next[clipIndex].copyWith(offsetFrames: clamped);
     _repository.updateLayerAudioClips(
-      cutId: _editingSession.activeCutId,
+      cutId: requireActiveCut.id,
       layerId: layerId,
       audioClips: next,
     );
@@ -2382,12 +2494,12 @@ class EditorSessionManager extends ChangeNotifier {
       return;
     }
     _repository.updateLayerAudioClips(
-      cutId: _editingSession.activeCutId,
+      cutId: requireActiveCut.id,
       layerId: layerId,
       audioClips: before,
     );
     _cutCommandCoordinator.updateLayerAudioClips(
-      cutId: _editingSession.activeCutId,
+      cutId: requireActiveCut.id,
       layerId: layerId,
       audioClips: after,
       description: 'Slide sound',
@@ -2410,7 +2522,7 @@ class EditorSessionManager extends ChangeNotifier {
       return;
     }
     _repository.updateLayerAudioClips(
-      cutId: _editingSession.activeCutId,
+      cutId: requireActiveCut.id,
       layerId: layerId,
       audioClips: before,
     );
@@ -2444,7 +2556,7 @@ class EditorSessionManager extends ChangeNotifier {
       fadeOutFrames: clampedOut,
     );
     _cutCommandCoordinator.updateLayerAudioClips(
-      cutId: _editingSession.activeCutId,
+      cutId: requireActiveCut.id,
       layerId: layerId,
       audioClips: next,
       description: 'Fade sound',
@@ -2469,7 +2581,7 @@ class EditorSessionManager extends ChangeNotifier {
     final next = [...layer.audioClips];
     next[clipIndex] = next[clipIndex].copyWith(gain: clamped);
     _cutCommandCoordinator.updateLayerAudioClips(
-      cutId: _editingSession.activeCutId,
+      cutId: requireActiveCut.id,
       layerId: layerId,
       audioClips: next,
       description: 'Sound gain',
@@ -2590,7 +2702,7 @@ class EditorSessionManager extends ChangeNotifier {
     }
     addMediaAssets([path]);
     _cutCommandCoordinator.updateLayerAudioClips(
-      cutId: _editingSession.activeCutId,
+      cutId: requireActiveCut.id,
       layerId: layerId,
       audioClips: [
         ...layer.audioClips,
@@ -2665,7 +2777,7 @@ class EditorSessionManager extends ChangeNotifier {
     }
 
     _cutCommandCoordinator.updateLayerKind(
-      cutId: _editingSession.activeCutId,
+      cutId: requireActiveCut.id,
       layerId: targetLayer.id,
       kind: targetLayer.kind == LayerKind.art
           ? LayerKind.animation
@@ -2686,7 +2798,7 @@ class EditorSessionManager extends ChangeNotifier {
         : LayerKind.storyboard;
 
     _cutCommandCoordinator.updateLayerKind(
-      cutId: _editingSession.activeCutId,
+      cutId: requireActiveCut.id,
       layerId: targetLayer.id,
       kind: nextKind,
     );
@@ -2722,7 +2834,10 @@ class EditorSessionManager extends ChangeNotifier {
   /// when the base shows nothing there, the base is gone, or the cel is
   /// already linked on [attached].
   FrameId? _attachTargetBaseFrameIdAt(Layer attached) {
-    final base = attachedBaseOf(attached, activeCut.layers);
+    final base = attachedBaseOf(
+      attached,
+      activeCutOrNull?.layers ?? const <Layer>[],
+    );
     if (base == null) {
       return null;
     }
@@ -2818,7 +2933,7 @@ class EditorSessionManager extends ChangeNotifier {
       _historyManager.execute(
         CreateAttachedCelCommand(
           repository: _repository,
-          cutId: _editingSession.activeCutId,
+          cutId: requireActiveCut.id,
           layerId: layer.id,
           baseFrameId: baseFrameId,
           frameId: FrameId(_nextFrameId(layer.id)),
@@ -3628,7 +3743,7 @@ class EditorSessionManager extends ChangeNotifier {
         ),
     ];
     if (plan.isCrossLayer && plan.movedFrameIds.isNotEmpty) {
-      final cut = activeCut;
+      final cut = requireActiveCut;
       commands.add(
         RekeyBrushFramesCommand(
           store: brushFrameStore,
@@ -3794,7 +3909,7 @@ class EditorSessionManager extends ChangeNotifier {
         ),
     ];
     if (plan.isCrossLayer && plan.movedFrameIds.isNotEmpty) {
-      final cut = activeCut;
+      final cut = requireActiveCut;
       commands.add(
         RekeyBrushFramesCommand(
           store: brushFrameStore,
@@ -4246,7 +4361,7 @@ class EditorSessionManager extends ChangeNotifier {
     }
 
     final remaining =
-        activeCut.duration - _timelineController.currentFrameIndex;
+        requireActiveCut.duration - _timelineController.currentFrameIndex;
     final available = remaining < 1 ? 1 : remaining;
     _frameSequence += 1;
     _timelineController.createDrawingFrameForLayer(
@@ -4434,18 +4549,49 @@ class EditorSessionManager extends ChangeNotifier {
 
   /// The editing playhead as a track-global frame. A gap parking returns
   /// its stored global; otherwise over-end positions clamp to the active
-  /// cut's TERRITORY (its frames plus its trailing gap; the last cut's
-  /// runway is endless) so a stale local index never addresses the next
-  /// cut.
-  int get editingGlobalFrame =>
-      _gapGlobalFrame ??
-      trackFrameAxis().clampedGlobalOf(activeCutId, currentFrameIndex) ??
-      currentFrameIndex;
+  /// CUT's last frame (UI-R9 #4 — the timeline's runway is a clipped view
+  /// of the cut, so the global axis never shows it inside the trailing
+  /// gap).
+  int get editingGlobalFrame {
+    final parked = _gapGlobalFrame;
+    if (parked != null) {
+      return parked;
+    }
+    final cutId = activeCutId;
+    if (cutId == null) {
+      // No cut and no parking: a degenerate state (empty project open).
+      return currentFrameIndex;
+    }
+    return trackFrameAxis().clampedToCutGlobalOf(cutId, currentFrameIndex) ??
+        currentFrameIndex;
+  }
+
+  /// Deselects the active cut for a GAP landing (UI-R9 #3): standing in a
+  /// gap means NO cut is selected — the timeline/timesheet show their
+  /// empty states and the canvas shows the void. QUIET: callers notify
+  /// (they batch it with the parking + commit signals). False when no cut
+  /// was selected to begin with.
+  bool _deselectActiveCutForGap() {
+    if (_editingSession.activeCutId == null) {
+      return false;
+    }
+    // The visibility solo is cut-scoped: restore the eyes before leaving
+    // (the selectCut contract).
+    if (_layerVisibilitySoloEnabled) {
+      _exitVisibilitySolo();
+    }
+    _editingSession.setActiveCutId(null);
+    _copiedFrame = null;
+    clearFrameRangeSelection();
+    _rebuildActiveCutControllers();
+    return true;
+  }
 
   /// THE canonical seek: a global frame in. Inside a cut it selects
-  /// cut + local frame; in a GAP it PARKS there (R16-⑥) — the stored
-  /// global addresses the gap exactly, INCLUDING the leading gap before
-  /// the first cut, and the canvas shows the no-cut void.
+  /// cut + local frame; in a GAP it deselects the cut ENTIRELY (UI-R9 #3)
+  /// and PARKS there — the stored global addresses the gap exactly,
+  /// including the leading gap before the first cut, and the canvas shows
+  /// the no-cut void.
   void selectGlobalFrame(int globalFrame) {
     if (editingInteractionBusy) {
       return;
@@ -4455,22 +4601,18 @@ class EditorSessionManager extends ChangeNotifier {
       return;
     }
     final local = axis.localOf(globalFrame);
-    if (local == null) {
-      // The leading gap before the FIRST cut has no owner cut at all.
-      selectFrameIndex(0);
+    if (local == null || axis.isGap(globalFrame)) {
+      // A GAP (leading or mid-track): no cut there — park + deselect.
       _gapGlobalFrame = globalFrame;
+      _deselectActiveCutForGap();
+      frameSeekCommitted.value += 1;
+      notifyListeners();
       return;
     }
     if (local.cutId != activeCutId) {
       selectCut(local.cutId);
     }
     selectFrameIndex(local.localFrame);
-    if (axis.isGap(globalFrame)) {
-      // Mid-track gap: the runway local addresses it, but the parking is
-      // still a NO-CUT position for the canvas (stored after the seek —
-      // selectFrameIndex clears stale parkings).
-      _gapGlobalFrame = globalFrame;
-    }
   }
 
   /// Global scrub: rides the cursor path inside the active cut's
@@ -4489,26 +4631,26 @@ class EditorSessionManager extends ChangeNotifier {
       return;
     }
     final owner = axis.ownerOf(globalFrame);
-    if (owner == null) {
-      // The leading gap before the FIRST cut: no owner cut — hold the
-      // local cursor at 0 and let the parking carry the exact position.
-      scrubFrameIndex(0);
-      _gapGlobalFrame = globalFrame;
-      return;
-    }
-    if (owner.cutId != activeCutId) {
-      selectGlobalFrame(globalFrame);
-      return;
-    }
-    final local = math.max(0, globalFrame - owner.startFrame);
     if (axis.isGap(globalFrame)) {
+      // Gap moves ride the cursor path and park PER MOVE (UI-R7 #9) — no
+      // committed seek and no cut switch mid-drag; the RELEASE commits
+      // the no-cut state (commitFrameScrub, UI-R9 #3). The cursor holds
+      // the runway local inside the active cut's own trailing gap and 0
+      // elsewhere (display rides the parking either way).
+      final local = owner != null && owner.cutId == activeCutId
+          ? math.max(0, globalFrame - owner.startFrame)
+          : 0;
       scrubFrameIndex(local);
       _gapGlobalFrame = globalFrame;
       return;
     }
+    if (owner == null || owner.cutId != activeCutId) {
+      selectGlobalFrame(globalFrame);
+      return;
+    }
     // Scrubbing back onto the cut un-parks.
     _gapGlobalFrame = null;
-    scrubFrameIndex(local);
+    scrubFrameIndex(math.max(0, globalFrame - owner.startFrame));
   }
 
   // --- Onion skin (P2: Callipeg peg model) -----------------------------------
@@ -4655,7 +4797,11 @@ class EditorSessionManager extends ChangeNotifier {
   /// Steps the playhead one frame forward (flipping `.`), clamped at the
   /// cut's last frame.
   void selectNextFrame() {
-    final last = math.max(0, activeCut.duration - 1);
+    final cut = activeCutOrNull;
+    if (cut == null) {
+      return; // Gap state: no cut axis to flip along.
+    }
+    final last = math.max(0, cut.duration - 1);
     final current = _timelineController.currentFrameIndex;
     if (current >= last) {
       return;
@@ -4742,18 +4888,19 @@ class EditorSessionManager extends ChangeNotifier {
 
   /// The scrub gesture's release: ends the preview and commits the
   /// scrubbed playhead as ONE ordinary seek (warm + committed-seek signal).
-  /// A gap-parked scrub keeps its parking through the commit (UI-R7 #9) —
-  /// the cut-local seek would otherwise clamp the playhead back onto the
-  /// cut.
+  /// A gap-parked release COMMITS the no-cut state (UI-R9 #3): the active
+  /// cut deselects and the parking carries the exact position.
   void commitFrameScrub() {
     if (frameScrubActive.value) {
       frameScrubActive.value = false;
     }
-    final parked = _gapGlobalFrame;
-    selectFrameIndex(_timelineController.currentFrameIndex);
-    if (parked != null) {
-      _gapGlobalFrame = parked;
+    if (_gapGlobalFrame != null) {
+      _deselectActiveCutForGap();
+      frameSeekCommitted.value += 1;
+      notifyListeners();
+      return;
     }
+    selectFrameIndex(_timelineController.currentFrameIndex);
   }
 
   bool hasMarkForLayer(Layer layer, int frameIndex) {
@@ -4769,7 +4916,8 @@ class EditorSessionManager extends ChangeNotifier {
   /// renders it marker-styled (no paper block).
   String? frameNameForLayer(Layer layer, int frameIndex) {
     if (layer.kind == LayerKind.camera) {
-      final track = activeCut.camera.track;
+      // A camera row exists only with a cut on screen.
+      final track = requireActiveCut.camera.track;
       final interpolations = [
         track.anchorPoint.keyAt(frameIndex)?.interpolation,
         track.position.keyAt(frameIndex)?.interpolation,
@@ -4794,7 +4942,7 @@ class EditorSessionManager extends ChangeNotifier {
   TimelineCellExposureState exposureStateForLayer(Layer layer, int frameIndex) {
     if (layer.kind == LayerKind.camera) {
       // The camera row's cells mirror the cut's camera keyframes.
-      return activeCut.camera.keyframeAt(frameIndex) != null
+      return activeCutOrNull?.camera.keyframeAt(frameIndex) != null
           ? TimelineCellExposureState.drawingStart
           : TimelineCellExposureState.uncovered;
     }
@@ -4927,12 +5075,13 @@ class EditorSessionManager extends ChangeNotifier {
 
   CanvasEditorSelectionLabels get canvasSelectionLabels {
     final project = _repository.requireProject();
-    final cut = activeCut;
+    final cut = activeCutOrNull;
     final layer = _layerController.activeLayer;
     final frame = selectedFrame;
     return CanvasEditorSelectionLabels(
       projectLabel: project.name,
-      cutLabel: cut.name,
+      // Gap state: no cut selected — the label says so.
+      cutLabel: cut?.name ?? '—',
       layerLabel: layer?.name ?? '-',
       frameLabel: _currentFrameDisplayLabel(layer, frame),
     );

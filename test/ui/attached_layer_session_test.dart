@@ -17,7 +17,7 @@ void main() {
     return (s, base);
   }
 
-  List<Layer> cutLayers(EditorSessionManager s) => s.activeCut.layers;
+  List<Layer> cutLayers(EditorSessionManager s) => s.requireActiveCut.layers;
 
   test('addAttachedLayer places rows adjacent to the base — below before, '
       'above after — selected on creation and off the timesheet', () {

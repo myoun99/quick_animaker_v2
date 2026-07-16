@@ -192,7 +192,9 @@ class StoryboardPanel extends StatefulWidget {
   /// subtrees. Null renders [project] as-is.
   final ValueListenable<TimelineDragPreview?>? dragPreview;
 
-  final CutId activeCutId;
+  /// Null = no cut selected (gap state, UI-R9 #3): no highlight,
+  /// cut-scoped rail controls stand down.
+  final CutId? activeCutId;
   final ValueChanged<CutId> onCutSelected;
 
   /// The session's active layer — the S row carrying it gets the timeline
@@ -1586,8 +1588,9 @@ Layer? _trackSeAt(Track track, int slot) =>
 /// while the active cut lives on another track (the controls then hide 窶・
 /// same stand-down as before, though the layer identity no longer depends
 /// on the cut).
-Layer? _activeSlotLayerOf(Track track, CutId activeCutId, int slot) {
-  if (!track.cuts.any((cut) => cut.id == activeCutId)) {
+Layer? _activeSlotLayerOf(Track track, CutId? activeCutId, int slot) {
+  if (activeCutId == null ||
+      !track.cuts.any((cut) => cut.id == activeCutId)) {
     return null;
   }
   return _trackSeAt(track, slot);
@@ -2880,7 +2883,9 @@ class _StoryboardTrackRow extends StatelessWidget {
 
   final Track track;
   final List<StoryboardTimelineLayoutEntry> layoutEntries;
-  final CutId activeCutId;
+  /// Null = no cut selected (gap state, UI-R9 #3): no highlight,
+  /// cut-scoped rail controls stand down.
+  final CutId? activeCutId;
   final ValueChanged<CutId> onCutSelected;
   final CutReorderedCallback? onCutReordered;
   final StoryboardCutTrimCallbacks? cutTrim;

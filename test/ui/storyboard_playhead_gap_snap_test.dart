@@ -6,10 +6,12 @@ import 'package:quick_animaker_v2/src/ui/playback/canvas_playback_controller.dar
 import 'package:quick_animaker_v2/src/ui/storyboard_playhead_mapping.dart';
 import 'package:quick_animaker_v2/src/ui/storyboard_timeline_layout.dart';
 
-/// R14-① (was R10-⑤b): the editing playhead LANDS in cut gaps. A trailing
-/// gap is the preceding cut's over-end runway — seeks/scrubs into it keep
-/// that cut active with an over-end frame index, the exact grammar of the
-/// last cut's endless runway. Playback seeks land in gaps directly.
+/// R14-① (was R10-⑤b) + UI-R9 #3/#4: the editing playhead LANDS in cut
+/// gaps — and a gap landing means NO CUT IS SELECTED (activeCutId null,
+/// the parking carries the exact global). The timeline's over-end runway
+/// stays a clipped view of the CUT: the storyboard playhead clamps to the
+/// cut's last frame, never the trailing gap. Playback seeks land in gaps
+/// directly (follow keeps the last cut; STOP in a gap deselects).
 void main() {
   /// Two default-track cuts with a gap before the second:
   /// cut-a [0, aEnd), gap [aEnd, aEnd+4), cut-b [aEnd+4, ...).
@@ -41,26 +43,23 @@ void main() {
     );
   });
 
-  test('an editing seek into the gap LANDS there: preceding cut stays '
-      'active with an over-end frame, and the playhead maps back to the '
-      'same global frame', () {
+  test('an editing seek into the gap LANDS there with NO active cut '
+      '(UI-R9 #3), and the playhead maps back to the same global frame', () {
     final (s, first, _, aEnd) = gappedSession();
     s.selectCut(first);
 
     seekStoryboardGlobalFrame(s, aEnd + 1);
-    expect(s.activeCutId, first);
-    expect(s.currentFrameIndex, aEnd + 1, reason: 'over-end local frame');
+    expect(s.activeCutId, isNull, reason: 'a gap is a no-cut position');
+    expect(s.gapParkedGlobalFrame, aEnd + 1);
     expect(
       storyboardPlayheadFrame(s),
       aEnd + 1,
       reason: 'the ruler shows the gap landing, not a snapped edge',
     );
 
-    // Late in the gap: STILL the preceding cut (the whole gap is its
-    // runway — no nearest-edge handover).
+    // Late in the gap: still no cut, still the exact landing.
     seekStoryboardGlobalFrame(s, aEnd + 3);
-    expect(s.activeCutId, first);
-    expect(s.currentFrameIndex, aEnd + 3);
+    expect(s.activeCutId, isNull);
     expect(storyboardPlayheadFrame(s), aEnd + 3);
   });
 
@@ -159,23 +158,25 @@ void main() {
     expect(s.editingPlayheadInGap, isTrue);
   });
 
-  test('the mid-track playhead clamps to the END of the trailing gap, not '
-      'the cut end — and the tab-switch clamp agrees', () {
+  test('the mid-track over-end playhead clamps to the CUT end, never the '
+      'trailing gap (UI-R9 #4) — and the tab-switch clamp agrees', () {
     final (s, first, _, aEnd) = gappedSession();
     s.selectCut(first);
 
-    // Over-end BEYOND the gap can't paint on top of cut-b: the mapping
-    // clamps the displayed playhead to the gap's last frame.
+    // The timeline's runway is a clipped view of the CUT: the storyboard
+    // shows it at the cut's last frame, never inside the gap.
     s.selectFrameIndex(aEnd + 40);
-    expect(storyboardPlayheadFrame(s), aEnd + 3);
+    expect(storyboardPlayheadFrame(s), aEnd - 1);
 
     clampPlayheadForStoryboard(s);
-    expect(s.currentFrameIndex, aEnd + 3);
+    expect(s.currentFrameIndex, aEnd - 1);
 
-    // Within the gap the clamp leaves the landing alone.
+    // A runway index inside the gap clamps the same way (a gap landing is
+    // the PARKED no-cut state, never a raw cut-local runway index).
     s.selectFrameIndex(aEnd + 2);
+    expect(storyboardPlayheadFrame(s), aEnd - 1);
     clampPlayheadForStoryboard(s);
-    expect(s.currentFrameIndex, aEnd + 2);
+    expect(s.currentFrameIndex, aEnd - 1);
   });
 
   test('R15-①: the session speaks the axis natively — selectGlobalFrame '
@@ -193,9 +194,10 @@ void main() {
         reason: 'the storyboard reads the same axis at $global',
       );
     }
-    // Ownership: gap frames belong to cut-a, cut-b starts at aEnd+4.
+    // Ownership: gap frames select NO cut (UI-R9 #3); cut-b starts at
+    // aEnd+4.
     s.selectGlobalFrame(aEnd + 2);
-    expect(s.activeCutId, first);
+    expect(s.activeCutId, isNull);
     s.selectGlobalFrame(aEnd + 4);
     expect(s.activeCutId, second);
 

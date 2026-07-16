@@ -101,26 +101,26 @@ void main() {
       );
       addTearDown(session.dispose);
 
-      expect(session.activeCut.metadata.thumbnailFrameIndex, isNull);
+      expect(session.requireActiveCut.metadata.thumbnailFrameIndex, isNull);
       expect(session.isActiveCutThumbnailPinnedHere, isFalse);
 
       session.toggleActiveCutThumbnailFrame();
-      expect(session.activeCut.metadata.thumbnailFrameIndex, 0);
+      expect(session.requireActiveCut.metadata.thumbnailFrameIndex, 0);
       expect(session.isActiveCutThumbnailPinnedHere, isTrue);
 
       session.selectFrameIndex(5);
       expect(session.isActiveCutThumbnailPinnedHere, isFalse);
       session.toggleActiveCutThumbnailFrame();
-      expect(session.activeCut.metadata.thumbnailFrameIndex, 5);
+      expect(session.requireActiveCut.metadata.thumbnailFrameIndex, 5);
 
       // Pressing on the pinned frame releases the pin.
       session.toggleActiveCutThumbnailFrame();
-      expect(session.activeCut.metadata.thumbnailFrameIndex, isNull);
+      expect(session.requireActiveCut.metadata.thumbnailFrameIndex, isNull);
 
       session.undo();
-      expect(session.activeCut.metadata.thumbnailFrameIndex, 5);
+      expect(session.requireActiveCut.metadata.thumbnailFrameIndex, 5);
       session.undo();
-      expect(session.activeCut.metadata.thumbnailFrameIndex, 0);
+      expect(session.requireActiveCut.metadata.thumbnailFrameIndex, 0);
     });
   });
 

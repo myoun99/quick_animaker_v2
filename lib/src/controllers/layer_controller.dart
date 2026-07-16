@@ -15,7 +15,7 @@ class LayerController {
   LayerController({
     required ProjectRepository repository,
     required HistoryManager historyManager,
-    required CutId cutId,
+    required CutId? cutId,
     required FrameId frameId,
     LayerId? initialActiveLayerId,
     List<Layer> Function()? trackSeDisplayLayers,
@@ -33,7 +33,10 @@ class LayerController {
 
   final ProjectRepository _repository;
   final HistoryManager _historyManager;
-  final CutId _cutId;
+
+  /// NULL = no active cut (gap state, UI-R9 #3): [layers] is empty and
+  /// layer creation stands down.
+  final CutId? _cutId;
   final FrameId _defaultFrameId;
 
   /// The track's SE rows as cut-local DISPLAY clones (the session windows
@@ -45,7 +48,13 @@ class LayerController {
   LayerId? _activeLayerId;
 
   List<Layer> get layers {
-    final cutLayers = _findCut().layers;
+    final cut = _findCutOrNull();
+    if (cut == null) {
+      // Gap state: no rows at all — not even the track SE clones (the
+      // timeline shows its empty state).
+      return const <Layer>[];
+    }
+    final cutLayers = cut.layers;
     // Attach rows join as DISPLAY clones whose timeline mirrors the base
     // through the cell links (W5) — the same read-clone pattern as the
     // track SE rows below; writes address the real layers via commands.
@@ -109,10 +118,14 @@ class LayerController {
   }
 
   void addLayer({required Layer layer, int? insertionIndex}) {
+    final cutId = _cutId;
+    if (cutId == null) {
+      return; // Gap state: nowhere to add (the UI stands down too).
+    }
     _historyManager.execute(
       AddLayerCommand(
         repository: _repository,
-        cutId: _cutId,
+        cutId: cutId,
         layer: layer,
         insertionIndex: insertionIndex ?? _insertionIndexAboveActiveLayer(),
       ),
@@ -125,7 +138,10 @@ class LayerController {
     String? name,
     LayerKind kind = LayerKind.animation,
   }) {
-    final cut = _findCut();
+    final cut = _findCutOrNull();
+    if (cut == null) {
+      return;
+    }
     addLayer(
       layer: createDefaultAnimationLayer(
         layerId: layerId,
@@ -158,7 +174,10 @@ class LayerController {
     );
   }
 
-  Cut _findCut() {
+  Cut? _findCutOrNull() {
+    if (_cutId == null) {
+      return null;
+    }
     final project = _repository.requireProject();
     for (final track in project.tracks) {
       for (final cut in track.cuts) {
@@ -167,8 +186,7 @@ class LayerController {
         }
       }
     }
-
-    throw StateError('Cut not found: $_cutId');
+    return null;
   }
 
   bool _hasLayer(LayerId layerId) {
@@ -178,7 +196,7 @@ class LayerController {
   int _insertionIndexAboveActiveLayer() {
     // Insertion is into the CUT's layer list; a track-SE active layer is
     // not in it and appends like no-selection does.
-    final cutLayers = _findCut().layers;
+    final cutLayers = _findCutOrNull()?.layers ?? const <Layer>[];
     final id = _activeLayerId;
     if (id == null) {
       return cutLayers.length;

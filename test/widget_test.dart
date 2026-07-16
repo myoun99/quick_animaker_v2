@@ -169,7 +169,7 @@ Future<void> _expectActiveCutName(WidgetTester tester, String name) async {
   await _withStoryboardPanel(tester, (panel) async {
     // The block highlight carries the active state (no ACTIVE badge);
     // the panel's activeCutId is the oracle for WHICH cut that is.
-    final activeId = panel.activeCutId.value;
+    final activeId = panel.activeCutId!.value;
     expect(
       tester
           .widget<Text>(
@@ -461,7 +461,7 @@ Future<void> _expectCutOrder(WidgetTester tester, List<String> cutIds) async {
 }
 
 Future<CutId> _activeCutId(WidgetTester tester) {
-  return _withStoryboardPanel(tester, (panel) async => panel.activeCutId);
+  return _withStoryboardPanel(tester, (panel) async => panel.activeCutId!);
 }
 
 Future<void> _tapCutCommandButton(

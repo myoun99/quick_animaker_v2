@@ -31,7 +31,7 @@ void main() {
     // round-trip carries drawing content.
     final selection = s.activeBrushEditorSelection!;
     final drawnKey = s.brushFrameKeyForCut(
-      s.activeCut,
+      s.requireActiveCut,
       selection.layerId,
       selection.frameId,
     );
@@ -39,7 +39,7 @@ void main() {
       initialFrameKey: drawnKey,
       frameStore: s.brushFrameStore,
       sessionStore: BrushFrameEditSessionStore(
-        canvasSize: s.activeCut.canvasSize,
+        canvasSize: s.requireActiveCut.canvasSize,
         tileSize: 256,
       ),
       historyPolicy: const BrushHistoryPolicy(

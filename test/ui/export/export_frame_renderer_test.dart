@@ -33,7 +33,7 @@ void main() {
         initialProject: createDefaultProject(),
       );
       addTearDown(session.dispose);
-      final cut = session.activeCut;
+      final cut = session.requireActiveCut;
       final layer = cut.layers.firstWhere(
         (layer) => layer.kind == LayerKind.animation,
       );
@@ -136,7 +136,7 @@ void main() {
       addTearDown(session.dispose);
       // A real exposed frame at 0 carrying one BLACK stroke.
       session.createDrawingAtCurrentFrame();
-      var cut = session.activeCut;
+      var cut = session.requireActiveCut;
       final layer = cut.layers.firstWhere(
         (layer) => layer.kind == LayerKind.animation,
       );
@@ -172,7 +172,7 @@ void main() {
           opacity: PropertyTrack<double>().withKey(0, 0),
         ),
       );
-      cut = session.activeCut;
+      cut = session.requireActiveCut;
 
       Future<int> strokeRedChannel({required bool applyLayerFx}) async {
         final image =

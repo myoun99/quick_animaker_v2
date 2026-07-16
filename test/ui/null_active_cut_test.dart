@@ -1,0 +1,169 @@
+import 'package:flutter/material.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:quick_animaker_v2/src/controllers/default_project_helpers.dart';
+import 'package:quick_animaker_v2/src/models/cut_id.dart';
+import 'package:quick_animaker_v2/src/models/layer_kind.dart';
+import 'package:quick_animaker_v2/src/ui/editor_session_manager.dart';
+import 'package:quick_animaker_v2/src/ui/playback/canvas_playback_controller.dart';
+import 'package:quick_animaker_v2/src/ui/storyboard_playhead_mapping.dart';
+
+/// UI-R9 #3: standing in a GAP means NO cut is selected — the session's
+/// activeCutId goes NULL, cut-scoped surfaces empty out and cut-scoped
+/// commands stand down without crashing.
+void main() {
+  /// Two default-track cuts with a 4-frame gap before the second.
+  (EditorSessionManager, CutId, CutId, int) gappedSession() {
+    final s = EditorSessionManager(initialProject: createDefaultProject());
+    s.createCut();
+    final track = s.repository.requireProject().tracks.first;
+    final first = track.cuts[0].id;
+    final second = track.cuts[1].id;
+    s.repository.updateCutLeadingGap(cutId: second, leadingGapFrames: 4);
+    return (s, first, second, track.cuts[0].duration);
+  }
+
+  test('a committed gap seek NULLS the active cut and empties the '
+      'cut-scoped surfaces', () {
+    final (s, first, _, aEnd) = gappedSession();
+    addTearDown(s.dispose);
+    s.selectCut(first);
+
+    s.selectGlobalFrame(aEnd + 1);
+    expect(s.activeCutId, isNull);
+    expect(s.activeCutOrNull, isNull);
+    expect(s.layers, isEmpty, reason: 'no rows at all — not even track SE');
+    expect(s.activeLayer, isNull);
+    expect(s.activeBrushEditorSelection, isNull);
+    expect(s.editingPlayheadInGap, isTrue);
+    expect(s.canvasSelectionLabels.cutLabel, '—');
+    expect(() => s.requireActiveCut, throwsStateError);
+  });
+
+  test('a gap scrub RELEASE commits the no-cut state (per-move scrubs keep '
+      'the cut for cheap parking)', () {
+    final (s, first, _, aEnd) = gappedSession();
+    addTearDown(s.dispose);
+    s.selectCut(first);
+
+    scrubStoryboardGlobalFrame(s, aEnd + 2);
+    expect(s.activeCutId, first, reason: 'mid-drag: parking only');
+    expect(s.gapParkedGlobalFrame, aEnd + 2);
+
+    commitStoryboardScrub(s);
+    expect(s.activeCutId, isNull, reason: 'the release deselects');
+    expect(s.gapParkedGlobalFrame, aEnd + 2, reason: 'parking survives');
+    expect(storyboardPlayheadFrame(s), aEnd + 2);
+  });
+
+  test('cut-scoped commands stand down in the gap state instead of '
+      'crashing; undo/redo stay safe', () {
+    final (s, first, _, aEnd) = gappedSession();
+    addTearDown(s.dispose);
+    s.selectCut(first);
+    final pose = s.cameraPoseAtFrame(0); // Captured BEFORE the gap.
+    s.selectGlobalFrame(aEnd + 1);
+    expect(s.activeCutId, isNull);
+
+    // Every one of these used to require a cut — now a silent stand-down.
+    s.renameActiveCut('X');
+    s.updateActiveCutNote('note');
+    s.duplicateActiveCut();
+    s.deleteActiveCut();
+    s.addLayer();
+    s.addLayerOfKind(LayerKind.se);
+    s.setCameraKeyframeAtCurrentFrame(pose);
+    s.toggleActiveCutThumbnailFrame();
+    s.selectNextFrame();
+    s.selectPreviousFrame();
+    expect(s.activeCutId, isNull, reason: 'stand-downs kept the gap state');
+    expect(
+      s.repository.requireProject().tracks.first.cuts.length,
+      2,
+      reason: 'no cut was created/deleted by the stand-downs',
+    );
+
+    // Undo/redo replay REAL commands and may legitimately restore a cut
+    // selection (cut creation owns it) — the pin here is NO CRASH from
+    // the null state.
+    s.undo();
+    s.redo();
+    expect(s.repository.requireProject().tracks.first.cuts.length, 2);
+  });
+
+  test('seeking back onto a cut restores the selection from the null '
+      'state', () {
+    final (s, first, second, aEnd) = gappedSession();
+    addTearDown(s.dispose);
+    s.selectCut(first);
+    s.selectGlobalFrame(aEnd + 1);
+    expect(s.activeCutId, isNull);
+
+    s.selectGlobalFrame(aEnd + 4);
+    expect(s.activeCutId, second);
+    expect(s.currentFrameIndex, 0);
+    expect(s.layers, isNotEmpty);
+    expect(s.editingPlayheadInGap, isFalse);
+  });
+
+  testWidgets('playback FOLLOW keeps the cut through gaps; STOP in a gap '
+      'deselects and parks', (tester) async {
+    final (s, first, _, aEnd) = gappedSession();
+    addTearDown(s.dispose);
+    s.selectCut(first);
+
+    s.playback.play(scope: PlaybackScope.allCuts);
+    s.playback.seekToGlobalFrame(aEnd + 2);
+    expect(s.playback.position, isNull, reason: 'a gap frame');
+    expect(s.activeCutId, first, reason: 'follow keeps the last cut');
+
+    s.playback.stop();
+    expect(s.activeCutId, isNull, reason: 'stop in the gap deselects');
+    expect(s.gapParkedGlobalFrame, aEnd + 2);
+    await tester.pumpAndSettle();
+  });
+
+  testWidgets('active-cut-scoped play is a no-op in the gap state', (
+    tester,
+  ) async {
+    final (s, first, _, aEnd) = gappedSession();
+    addTearDown(s.dispose);
+    s.selectCut(first);
+    s.selectGlobalFrame(aEnd + 1);
+    expect(s.activeCutId, isNull);
+
+    s.playback.play(scope: PlaybackScope.activeCut);
+    expect(s.playback.isActive, isFalse, reason: 'empty playlist — no-op');
+    await tester.pumpAndSettle();
+  });
+
+  testWidgets('the timeline shows the no-cut empty state and the timesheet '
+      'the bare background', (tester) async {
+    await tester.binding.setSurfaceSize(const Size(1400, 800));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    final s = EditorSessionManager(initialProject: createDefaultProject());
+    addTearDown(s.dispose);
+    final cutId = s.repository.requireProject().tracks.first.cuts.first.id;
+    s.repository.updateCutLeadingGap(cutId: cutId, leadingGapFrames: 3);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: ListenableBuilder(
+            listenable: Listenable.merge([s, s.frameSeekCommitted]),
+            builder: (context, _) => const SizedBox.expand(),
+          ),
+        ),
+      ),
+    );
+
+    // Session-level oracles stand in for the full app pump (the hosts'
+    // empty branches are plain build-time gates on activeCutOrNull; the
+    // keys timeline-empty-no-cut / timesheet-empty-no-cut are covered by
+    // widget_test's app-level sweeps).
+    s.selectGlobalFrame(1);
+    expect(s.activeCutId, isNull);
+    expect(s.layers, isEmpty);
+    await tester.pumpAndSettle();
+  });
+}

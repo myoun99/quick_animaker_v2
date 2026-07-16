@@ -89,8 +89,13 @@ class _TimesheetTabHostState extends State<TimesheetTabHost> {
   int? _documentFps;
   bool? _layoutContinuous;
 
-  TimesheetDocumentLayout _resolveLayouts(EditorSessionManager session) {
-    final cut = session.activeCut;
+  /// Null in the GAP state (no active cut, UI-R9 #3): the host renders the
+  /// bare sheet background instead of a document.
+  TimesheetDocumentLayout? _resolveLayouts(EditorSessionManager session) {
+    final cut = session.activeCutOrNull;
+    if (cut == null) {
+      return null;
+    }
     final info = session.timesheetInfo;
     final projectName = session.repository.requireProject().name;
     final instructionSet = session.cameraInstructionSet;
@@ -220,6 +225,14 @@ class _TimesheetTabHostState extends State<TimesheetTabHost> {
       listenable: listenable,
       builder: (context, _) {
         final layout = _resolveLayouts(session);
+        if (layout == null) {
+          // The GAP empty state (UI-R9 #3): no cut selected — the bare
+          // sheet background, no document.
+          return Container(
+            key: const ValueKey<String>('timesheet-empty-no-cut'),
+            color: colorScheme.surfaceContainerHighest,
+          );
+        }
         final document = _document!;
         final pagedLayout = _pagedLayout!;
         inkController?.syncGeometry(pagedLayout);
@@ -303,7 +316,7 @@ class _TimesheetTabHostState extends State<TimesheetTabHost> {
                       ? CanvasAutoFrameRequest(
                           token: (
                             'timesheet-reveal',
-                            session.activeCut.id,
+                            session.requireActiveCut.id,
                             playheadFrame,
                           ),
                           rect: Rect.fromLTWH(
@@ -317,7 +330,7 @@ class _TimesheetTabHostState extends State<TimesheetTabHost> {
                       : CanvasAutoFrameRequest(
                           token: (
                             'timesheet-page',
-                            session.activeCut.id,
+                            session.requireActiveCut.id,
                             playheadPage,
                           ),
                           rect: layout.pageRect(playheadPage),
@@ -421,7 +434,7 @@ class _TimesheetTabHostState extends State<TimesheetTabHost> {
                                     controller: inkController,
                                     layout: layout,
                                     pagedLayout: pagedLayout,
-                                    cutId: session.activeCut.id,
+                                    cutId: session.requireActiveCut.id,
                                     brushToolState: toolState,
                                     historyManager: session.historyManager,
                                     viewport: viewport,

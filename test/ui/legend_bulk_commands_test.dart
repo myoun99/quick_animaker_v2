@@ -18,14 +18,14 @@ void main() {
 
   test('setAllLayersOnTimesheet flips every cut-owned layer in ONE undo', () {
     final s = session();
-    final before = [for (final layer in s.activeCut.layers) layer.onTimesheet];
+    final before = [for (final layer in s.requireActiveCut.layers) layer.onTimesheet];
     expect(before, contains(true), reason: 'fixture has sheet-on layers');
 
     s.setAllLayersOnTimesheet(false);
-    expect(s.activeCut.layers.every((layer) => !layer.onTimesheet), isTrue);
+    expect(s.requireActiveCut.layers.every((layer) => !layer.onTimesheet), isTrue);
 
     s.undo();
-    expect([for (final layer in s.activeCut.layers) layer.onTimesheet], before);
+    expect([for (final layer in s.requireActiveCut.layers) layer.onTimesheet], before);
   });
 
   test('flag commands reach track-owned SE rows (R3 #11: mark/sheet used '
@@ -60,7 +60,7 @@ void main() {
 
   test('clearAllLayerMarks clears in one undo and no-ops when markless', () {
     final s = session();
-    final markedId = s.activeCut.layers
+    final markedId = s.requireActiveCut.layers
         .firstWhere((layer) => layer.kind == LayerKind.animation)
         .id;
     s.setLayerMark(markedId, LayerMark.red);
@@ -134,7 +134,7 @@ void main() {
 
   test('switching cuts exits the visibility solo and restores eyes', () {
     final s = session();
-    final firstCutId = s.activeCut.id;
+    final firstCutId = s.requireActiveCut.id;
     s.createCut();
     s.selectCut(firstCutId);
     final activeId = s.activeLayerId!;

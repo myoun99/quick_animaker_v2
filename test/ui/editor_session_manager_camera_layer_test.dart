@@ -18,7 +18,7 @@ void main() {
   test('default cut carries one camera layer at the bottom row', () {
     final s = session();
 
-    final layers = s.activeCut.layers;
+    final layers = s.requireActiveCut.layers;
     expect(layers.last.kind, LayerKind.camera);
     expect(layers.last.name, 'Camera');
     expect(
@@ -36,14 +36,14 @@ void main() {
     s.createCut();
 
     expect(
-      s.activeCut.layers.where((layer) => layer.kind == LayerKind.camera),
+      s.requireActiveCut.layers.where((layer) => layer.kind == LayerKind.camera),
       hasLength(1),
     );
   });
 
   test('selecting the camera layer enters camera mode with guards', () {
     final s = session();
-    final cameraLayer = s.activeCut.layers.last;
+    final cameraLayer = s.requireActiveCut.layers.last;
 
     s.selectLayer(cameraLayer.id);
 
@@ -58,14 +58,14 @@ void main() {
     // Copy/duplicate quietly refuse the camera layer.
     s.copyActiveLayer();
     expect(s.hasLayerClipboard, isFalse);
-    final layerCount = s.activeCut.layers.length;
+    final layerCount = s.requireActiveCut.layers.length;
     s.duplicateActiveLayer();
-    expect(s.activeCut.layers.length, layerCount);
+    expect(s.requireActiveCut.layers.length, layerCount);
   });
 
   test('camera layer cells mirror camera keyframes', () {
     final s = session();
-    final cameraLayer = s.activeCut.layers.last;
+    final cameraLayer = s.requireActiveCut.layers.last;
     s.selectLayer(cameraLayer.id);
 
     s.selectFrameIndex(3);

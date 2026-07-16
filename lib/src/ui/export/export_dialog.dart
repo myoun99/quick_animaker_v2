@@ -100,7 +100,7 @@ class ExportDialogState extends State<ExportDialog> {
   late final TextEditingController _rangeStartController =
       TextEditingController(text: '1');
   late final TextEditingController _rangeEndController = TextEditingController(
-    text: '${math.max(1, widget.session.activeCut.duration)}',
+    text: '${math.max(1, widget.session.requireActiveCut.duration)}',
   );
   late final TextEditingController _celDigitsController = TextEditingController(
     text: '0',
@@ -142,7 +142,7 @@ class ExportDialogState extends State<ExportDialog> {
     }
     return buildExportFramePlan(
       project: widget.session.repository.requireProject(),
-      activeCutId: widget.session.activeCut.id,
+      activeCutId: widget.session.requireActiveCut.id,
       range: _range,
       rangeStartFrame: start,
       rangeEndFrame: end,
@@ -164,7 +164,7 @@ class ExportDialogState extends State<ExportDialog> {
 
   List<ExportCelTask> _celPlan() => buildExportCelPlan(
     project: widget.session.repository.requireProject(),
-    activeCutId: widget.session.activeCut.id,
+    activeCutId: widget.session.requireActiveCut.id,
     range: _range,
     naming: _celNaming,
     onTimesheetOnly: _celTimesheetOnly,
@@ -175,7 +175,7 @@ class ExportDialogState extends State<ExportDialog> {
   Set<CanvasSize> _rangeCanvasSizes() {
     return resolveExportCuts(
       project: widget.session.repository.requireProject(),
-      activeCutId: widget.session.activeCut.id,
+      activeCutId: widget.session.requireActiveCut.id,
       range: _range,
     ).map((cut) => cut.canvasSize).toSet();
   }
@@ -205,7 +205,7 @@ class ExportDialogState extends State<ExportDialog> {
     }
     final plan = _framePlan();
     if (plan == null) {
-      final duration = math.max(1, widget.session.activeCut.duration);
+      final duration = math.max(1, widget.session.requireActiveCut.duration);
       return 'Enter a valid frame range (1–$duration).';
     }
     final frames = '${plan.length} ${_plural(plan.length, 'frame')}';
@@ -261,7 +261,7 @@ class ExportDialogState extends State<ExportDialog> {
 
   List<Cut> _xdtsCuts() => resolveExportCuts(
     project: widget.session.repository.requireProject(),
-    activeCutId: widget.session.activeCut.id,
+    activeCutId: widget.session.requireActiveCut.id,
     // XDTS has no frame subrange — a sheet always covers its whole cut.
     range: _range == ExportRange.allCuts
         ? ExportRange.allCuts

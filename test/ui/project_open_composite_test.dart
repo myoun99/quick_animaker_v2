@@ -1,4 +1,4 @@
-﻿import 'dart:io';
+import 'dart:io';
 import 'dart:ui' as ui;
 
 import 'package:flutter_test/flutter_test.dart';
@@ -47,7 +47,7 @@ void main() {
     s.createDrawingAtCurrentFrame();
     final selection = s.activeBrushEditorSelection!;
     final drawnKey = s.brushFrameKeyForCut(
-      s.activeCut,
+      s.requireActiveCut,
       selection.layerId,
       selection.frameId,
     );
@@ -55,7 +55,7 @@ void main() {
       initialFrameKey: drawnKey,
       frameStore: s.brushFrameStore,
       sessionStore: BrushFrameEditSessionStore(
-        canvasSize: s.activeCut.canvasSize,
+        canvasSize: s.requireActiveCut.canvasSize,
         tileSize: 256,
       ),
       historyPolicy: const BrushHistoryPolicy(
@@ -89,7 +89,7 @@ void main() {
       'an open (brushSurfaceForLayerFrame)', () async {
     final (s, drawnKey) = await reopenedSession();
     addTearDown(s.dispose);
-    final layer = s.activeCut.layers.firstWhere(
+    final layer = s.requireActiveCut.layers.firstWhere(
       (layer) => layer.id == drawnKey.layerId,
     );
     final frame = Frame(id: drawnKey.frameId, duration: 1, strokes: const []);
@@ -115,7 +115,7 @@ void main() {
       addTearDown(cache.dispose);
       final image = await cache.prepare(
         key: drawnKey,
-        canvasSize: s.activeCut.canvasSize,
+        canvasSize: s.requireActiveCut.canvasSize,
         quality: PlaybackQuality.full,
       );
 
@@ -128,7 +128,7 @@ void main() {
     await tester.runAsync(() async {
       final (s, drawnKey) = await reopenedSession();
       addTearDown(s.dispose);
-      final cut = s.activeCut;
+      final cut = s.requireActiveCut;
       final layer = cut.layers.firstWhere(
         (layer) => layer.id == drawnKey.layerId,
       );

@@ -69,7 +69,7 @@ void main() {
       'everything', () {
     final (s, a, b) = twoLayerSession();
     final frameId = a.timeline[0]!.frameId!;
-    final cut = s.activeCut;
+    final cut = s.requireActiveCut;
     final fromKey = s.brushFrameKeyForCut(cut, a.id, frameId);
     final toKey = s.brushFrameKeyForCut(cut, b.id, frameId);
     // Seed a stored drawing under the source key.

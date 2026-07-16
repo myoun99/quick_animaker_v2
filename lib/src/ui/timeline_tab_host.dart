@@ -187,7 +187,8 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
     }
     switch (layer.kind) {
       case LayerKind.camera:
-        final cut = _session.activeCut;
+        // A camera row on screen implies an active cut.
+        final cut = _session.requireActiveCut;
         return _collapsibleTransformGroup(
           layer,
           transformPropertyLanes(
@@ -247,7 +248,7 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
   /// The track a layer's transform lanes edit: the camera rides the cut's
   /// camera track, every other kind its own layer track.
   TransformTrack _laneTrackOf(Layer layer) => layer.kind == LayerKind.camera
-      ? _session.activeCut.camera.track
+      ? _session.requireActiveCut.camera.track
       : layer.transformTrack;
 
   /// Commits an edited transform track as one undo step, dispatched by
@@ -450,7 +451,10 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
     if (frameIndex < 0) {
       return;
     }
-    final cut = _session.activeCut;
+    final cut = _session.activeCutOrNull;
+    if (cut == null) {
+      return;
+    }
     final before = cameraKeyLaneStatesAt(
       cut.camera.track,
       frameIndex: frameIndex,
@@ -470,8 +474,13 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
       return;
     }
 
+    // Re-read after the dialog: the track may have changed underneath.
+    final trackAfterDialog = _session.activeCutOrNull?.camera.track;
+    if (trackAfterDialog == null) {
+      return;
+    }
     final next = transformTrackWithKeyDialogApplied(
-      _session.activeCut.camera.track,
+      trackAfterDialog,
       frameIndex: frameIndex,
       before: before,
       after: after,
@@ -942,6 +951,25 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
               : (layer, lane) => widget.onToggleTransformGroup!(layer.id),
           timelineActionToolbar: timelineToolbar,
         );
+        // The GAP empty state (UI-R9 #3): no cut selected — no rows, no
+        // grid; the toolbar stays (its cut-scoped commands disable via
+        // their own enablement gates).
+        if (_session.activeCutOrNull == null) {
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              timelineToolbar,
+              const Expanded(
+                child: Center(
+                  child: Text(
+                    '선택된 컷 없음',
+                    key: ValueKey<String>('timeline-empty-no-cut'),
+                  ),
+                ),
+              ),
+            ],
+          );
+        }
         final zoom = widget.pixelsPerFrameListenable;
         if (zoom == null) {
           return buildPanel(context, widget.pixelsPerFrame, null);
