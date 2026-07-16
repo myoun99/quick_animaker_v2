@@ -8,7 +8,9 @@ import 'package:quick_animaker_v2/src/models/layer_id.dart';
 import 'package:quick_animaker_v2/src/models/timeline_coverage.dart';
 import 'package:quick_animaker_v2/src/models/timeline_exposure.dart';
 import 'package:quick_animaker_v2/src/models/timeline_repeat.dart';
+import 'package:quick_animaker_v2/src/models/timeline_run_edit.dart';
 import 'package:quick_animaker_v2/src/ui/timeline/layer_timeline_grid.dart';
+import 'package:quick_animaker_v2/src/ui/timeline/timeline_drag_preview.dart';
 import 'package:quick_animaker_v2/src/ui/timeline/timeline_cell_exposure_state.dart';
 import 'package:quick_animaker_v2/src/ui/timeline/timeline_exposure_comma_drag_handle.dart';
 import 'package:quick_animaker_v2/src/ui/timeline/timeline_exposure_comma_drag_policy.dart';
@@ -61,6 +63,7 @@ void main() {
   Widget harness({
     required List<Layer> layers,
     required TimelineRunEditCallbacks runEdit,
+    ValueNotifier<TimelineDragPreview?>? dragPreview,
   }) {
     final cursor = ValueNotifier<int>(0);
     addTearDown(cursor.dispose);
@@ -80,6 +83,7 @@ void main() {
           onToggleLayerTimesheet: (_) {},
           onLayerMarkSelected: (_, _) {},
           runEdit: runEdit,
+          dragPreview: dragPreview,
           // Classic geometry: drags below assume 48px cells.
           metrics: const TimelineGridMetrics(
             frameCellWidth: 48,
@@ -129,28 +133,89 @@ void main() {
       ),
     );
 
+    // Keys carry the run ANCHOR frameId, never an index (UI-R9 A1).
     expect(
-      find.byKey(const ValueKey<String>('timeline-run-add-end-layer-a-0')),
+      find.byKey(const ValueKey<String>('timeline-run-add-end-layer-a-f1')),
       findsOneWidget,
     );
     expect(
-      find.byKey(const ValueKey<String>('timeline-run-repeat-layer-a-0')),
+      find.byKey(const ValueKey<String>('timeline-run-repeat-layer-a-f1')),
       findsOneWidget,
     );
     // The second run (frame 6) has free space before it too.
     expect(
-      find.byKey(const ValueKey<String>('timeline-run-add-start-layer-a-6')),
+      find.byKey(const ValueKey<String>('timeline-run-add-start-layer-a-f2')),
       findsOneWidget,
     );
 
     await tester.drag(
-      find.byKey(const ValueKey<String>('timeline-run-add-end-layer-a-0')),
+      find.byKey(const ValueKey<String>('timeline-run-add-end-layer-a-f1')),
       const Offset(96, 0),
       kind: PointerDeviceKind.mouse,
     );
     expect(begins.single, (const LayerId('layer-a'), 0, true));
     expect(addCounts, isNotEmpty);
     expect(addCounts.last, 2);
+  });
+
+  testWidgets('start-side [+] keeps accumulating across preview steps '
+      '(UI-R9 A1 regression: the prepend preview shifts the run start, and '
+      'an index-keyed/preview-mounted handle remounted mid-gesture, '
+      'committing one frame)', (tester) async {
+    final layer = plainLayer();
+    final dragPreview = ValueNotifier<TimelineDragPreview?>(null);
+    addTearDown(dragPreview.dispose);
+    final addCounts = <int>[];
+    var ends = 0;
+    final callbacks = TimelineRunEditCallbacks(
+      onAddBegin: (_, _, {required atEnd}) => true,
+      onAddUpdate: (count) {
+        addCounts.add(count);
+        // The session's feedback loop: every step republishes a preview
+        // layer whose run start has shifted LEFT by the count.
+        final previewed = count == 0
+            ? null
+            : layerWithNewFramesAtRunEdge(
+                layer,
+                blockStartIndex: 6,
+                atEnd: false,
+                count: count,
+                frameIdAt: (ordinal) => FrameId('new-$ordinal'),
+              );
+        dragPreview.value = previewed == null
+            ? null
+            : ExposureEdgeDragPreview(previewLayer: previewed.layer);
+      },
+      onAddEnd: () {
+        ends += 1;
+        dragPreview.value = null;
+      },
+      onAddCancel: () => dragPreview.value = null,
+      onRepeatBegin: (_, _, _) => false,
+      onRepeatUpdate: (_) {},
+      onRepeatEnd: () {},
+      onRepeatCancel: () {},
+    );
+    await tester.pumpWidget(
+      harness(layers: [layer], runEdit: callbacks, dragPreview: dragPreview),
+    );
+
+    final handle = find.byKey(
+      const ValueKey<String>('timeline-run-add-start-layer-a-f2'),
+    );
+    final gesture = await tester.startGesture(
+      tester.getCenter(handle),
+      kind: PointerDeviceKind.mouse,
+    );
+    for (var step = 0; step < 3; step += 1) {
+      await gesture.moveBy(const Offset(-48, 0));
+      await tester.pump();
+    }
+    await gesture.up();
+    await tester.pumpAndSettle();
+
+    expect(addCounts.last, 3);
+    expect(ends, 1);
   });
 
   testWidgets('a run carrying a repeat shows the RESIZE handle at the ghost '
@@ -171,7 +236,7 @@ void main() {
     );
 
     expect(
-      find.byKey(const ValueKey<String>('timeline-run-add-end-layer-r-0')),
+      find.byKey(const ValueKey<String>('timeline-run-add-end-layer-r-rf')),
       findsNothing,
     );
     final resize = find.byKey(

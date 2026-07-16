@@ -156,10 +156,13 @@ List<Widget> timelineRowRunEndHandles({
         ),
       );
     } else if (freeAt(run.endIndexExclusive)) {
+      // Keys carry the run's ANCHOR identity, never an index: an add-start
+      // preview shifts every index left, and an index-keyed handle would
+      // remount mid-gesture (killing the pan and committing one frame).
       handles.add(
         _RunEndHandle(
           key: ValueKey<String>(
-            '$keyPrefix-run-add-end-${layer.id}-${run.startIndex}',
+            '$keyPrefix-run-add-end-${layer.id}-${run.anchorFrameId.value}',
           ),
           kind: _RunHandleKind.addEnd,
           layerId: layer.id,
@@ -175,7 +178,7 @@ List<Widget> timelineRowRunEndHandles({
       handles.add(
         _RunEndHandle(
           key: ValueKey<String>(
-            '$keyPrefix-run-repeat-${layer.id}-${run.startIndex}',
+            '$keyPrefix-run-repeat-${layer.id}-${run.anchorFrameId.value}',
           ),
           kind: _RunHandleKind.repeatNew,
           layerId: layer.id,
@@ -194,7 +197,7 @@ List<Widget> timelineRowRunEndHandles({
       handles.add(
         _RunEndHandle(
           key: ValueKey<String>(
-            '$keyPrefix-run-add-start-${layer.id}-${run.startIndex}',
+            '$keyPrefix-run-add-start-${layer.id}-${run.anchorFrameId.value}',
           ),
           kind: _RunHandleKind.addStart,
           layerId: layer.id,

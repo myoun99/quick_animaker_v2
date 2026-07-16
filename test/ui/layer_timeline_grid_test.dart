@@ -383,6 +383,48 @@ void main() {
   });
 
   testWidgets(
+    'shrinking the row content under a deep scroll re-anchors to the top '
+    '(UI-R9 #9: lane collapse used to leave a stale offset inflating the '
+    'leading spacer — sections rendered pushed down)',
+    (tester) async {
+      final manyLayers = List<Layer>.generate(
+        30,
+        (index) => _layer(id: 'layer-${index + 1}', name: 'Layer ${index + 1}'),
+      );
+      await tester.pumpWidget(
+        _grid(layers: manyLayers, playbackFrameCount: 48),
+      );
+
+      final firstLayerRow = find.byKey(
+        const ValueKey<String>('timeline-layer-row-layer-1'),
+      );
+      final initialTop = tester.getTopLeft(firstLayerRow).dy;
+
+      // Scroll deep into the tall content...
+      await tester.drag(
+        find.byKey(const ValueKey<String>('timeline-vertical-scroll-viewport')),
+        const Offset(0, -900),
+      );
+      await tester.pumpAndSettle();
+      expect(firstLayerRow, findsNothing, reason: 'scrolled out of window');
+
+      // ...then the content SHRINKS (the lane-collapse shape: fewer rows
+      // under an unchanged pixel offset).
+      await tester.pumpWidget(
+        _grid(layers: manyLayers.take(3).toList(), playbackFrameCount: 48),
+      );
+      await tester.pumpAndSettle();
+
+      expect(firstLayerRow, findsOneWidget);
+      expect(
+        tester.getTopLeft(firstLayerRow).dy,
+        moreOrLessEquals(initialTop),
+        reason: 'the window re-anchors to the top, no inflated spacer',
+      );
+    },
+  );
+
+  testWidgets(
     'keeps layer controls and frame rows vertically aligned for many layers',
     (tester) async {
       final manyLayers = List<Layer>.generate(

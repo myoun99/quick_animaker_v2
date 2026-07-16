@@ -267,12 +267,16 @@ class TimelineFrameCellsRow extends StatelessWidget {
             axis: Axis.horizontal,
           ),
         // The TVP run-edge handles (UI-R8): [+] add-frames + [↻] repeat,
-        // hugging each glued run's edges where space is free.
+        // hugging each glued run's edges where space is free. Mounted from
+        // the COMMITTED layer: the add-start preview shifts the run's
+        // start, and a preview-derived mount would remount the handle
+        // mid-gesture (R12-③ — the remount's dispose used to commit the
+        // drag at one frame).
         if (runEdit != null &&
             layerKindHoldsDrawings(layer.kind) &&
             !layerKindUsesSeSheetCells(layer.kind))
           ...timelineRowRunEndHandles(
-            layer: layer,
+            layer: baseLayer ?? layer,
             frameStartIndex: frameStartIndex,
             frameEndIndexExclusive: frameEndIndexExclusive,
             leadingFrameSpacerWidth: leadingFrameSpacerWidth,
