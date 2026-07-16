@@ -6,12 +6,12 @@ import '../models/canvas_viewport.dart';
 import '../models/timesheet_document.dart';
 import '../models/timesheet_info.dart';
 import 'brush/brush_canvas_panel.dart';
+import 'text/app_strings.dart';
 import 'brush/brush_edit_cache_invalidation_sink.dart';
 import 'brush/brush_tool_state.dart';
 import 'dialogs/timesheet_info_dialog.dart';
 import 'editor_session_manager.dart';
 import 'timesheet/timesheet_document_painter.dart';
-import 'timesheet/timesheet_drag_preview_painter.dart';
 import 'timesheet/timesheet_header_edit_layer.dart';
 import 'timesheet/timesheet_notation.dart';
 import 'timesheet/timesheet_ink_controller.dart';
@@ -206,6 +206,65 @@ class _TimesheetTabHostState extends State<TimesheetTabHost> {
     session.updateTimesheetInfo(nextInfo);
   }
 
+  /// The sheet commands living IN the panel's status strip (UI-R10 #18 —
+  /// the old toolbar row above the sheet retired): ink toggle / sheet
+  /// info / page-continuous toggle, right-aligned, always visible (the
+  /// strip's title text ellipsizes first when the panel narrows).
+  List<Widget> _statusStripActions() {
+    Widget action({
+      required String keyValue,
+      required String tooltip,
+      required IconData icon,
+      VoidCallback? onPressed,
+      bool selected = false,
+    }) {
+      final colorScheme = Theme.of(context).colorScheme;
+      return Tooltip(
+        message: tooltip,
+        child: InkWell(
+          key: ValueKey<String>(keyValue),
+          onTap: onPressed,
+          child: SizedBox(
+            width: 24,
+            height: 20,
+            child: Icon(
+              icon,
+              size: 14,
+              color: selected
+                  ? colorScheme.primary
+                  : colorScheme.onSurfaceVariant,
+            ),
+          ),
+        ),
+      );
+    }
+
+    return [
+      if (widget.onInkEnabledChanged != null)
+        action(
+          keyValue: 'timesheet-ink-toggle-button',
+          tooltip: widget.inkEnabled ? 'Block Sheet Ink' : 'Allow Sheet Ink',
+          icon: widget.inkEnabled ? Icons.draw : Icons.edit_off,
+          selected: widget.inkEnabled,
+          onPressed: () => widget.onInkEnabledChanged!(!widget.inkEnabled),
+        ),
+      action(
+        keyValue: 'timesheet-info-button',
+        tooltip: 'Sheet Info',
+        icon: Icons.edit_note,
+        onPressed: _editSheetInfo,
+      ),
+      action(
+        keyValue: 'timesheet-page-mode-toggle-button',
+        tooltip: widget.continuous ? 'Page View' : 'Continuous View',
+        icon: widget.continuous
+            ? Icons.auto_stories_outlined
+            : Icons.view_agenda_outlined,
+        onPressed: () => widget.onContinuousChanged(!widget.continuous),
+      ),
+    ];
+  }
+
   @override
   Widget build(BuildContext context) {
     final session = widget.session;
@@ -226,13 +285,40 @@ class _TimesheetTabHostState extends State<TimesheetTabHost> {
     return ListenableBuilder(
       listenable: listenable,
       builder: (context, _) {
+        final strings = AppStrings.of(
+          session.languageSettings.value.programLanguage,
+        );
         final layout = _resolveLayouts(session);
         if (layout == null) {
-          // The GAP empty state (UI-R9 #3): no cut selected — the bare
-          // sheet background, no document.
-          return Container(
-            key: const ValueKey<String>('timesheet-empty-no-cut'),
-            color: colorScheme.surfaceContainerHighest,
+          // The GAP state (UI-R9 #3 + UI-R10 #17): no cut selected, but
+          // the PANEL FRAME stays up like the canvas — only the content
+          // empties out.
+          return BrushCanvasPanel(
+            coordinator: null,
+            availableFrameKeys: const [],
+            cacheInvalidationSink: _cacheInvalidationSink,
+            canvasSize: const CanvasSize(width: 780, height: 1080),
+            viewport: widget.viewport,
+            onViewportChanged: widget.onViewportChanged,
+            selectionLabels: CanvasEditorSelectionLabels(
+              projectLabel: session.repository.requireProject().name,
+              cutLabel: '—',
+              layerLabel: widget.continuous
+                  ? strings.continuousLabel
+                  : strings.pageLabel,
+              frameLabel: '-',
+            ),
+            allowViewRotation: false,
+            statusStripActions: _statusStripActions(),
+            contentOverride: (context, viewport) => Container(
+              key: const ValueKey<String>('timesheet-empty-no-cut'),
+              color: colorScheme.surfaceContainerHighest,
+              alignment: Alignment.center,
+              child: Text(
+                strings.noCutSelected,
+                style: TextStyle(color: colorScheme.onSurfaceVariant),
+              ),
+            ),
           );
         }
         final document = _document!;
@@ -243,59 +329,6 @@ class _TimesheetTabHostState extends State<TimesheetTabHost> {
         return Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(8, 4, 8, 2),
-              child: Row(
-                children: [
-                  Text(
-                    '${document.cutName} · ${document.durationLabel}',
-                    key: const ValueKey<String>('timesheet-header-label'),
-                    style: TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600,
-                      color: colorScheme.onSurfaceVariant,
-                    ),
-                  ),
-                  const Spacer(),
-                  if (widget.onInkEnabledChanged != null)
-                    IconButton(
-                      key: const ValueKey<String>(
-                        'timesheet-ink-toggle-button',
-                      ),
-                      tooltip: widget.inkEnabled
-                          ? 'Block Sheet Ink'
-                          : 'Allow Sheet Ink',
-                      onPressed: () =>
-                          widget.onInkEnabledChanged!(!widget.inkEnabled),
-                      isSelected: widget.inkEnabled,
-                      icon: const Icon(Icons.edit_off, size: 18),
-                      selectedIcon: const Icon(Icons.draw, size: 18),
-                    ),
-                  IconButton(
-                    key: const ValueKey<String>('timesheet-info-button'),
-                    tooltip: 'Sheet Info',
-                    onPressed: _editSheetInfo,
-                    icon: const Icon(Icons.edit_note, size: 18),
-                  ),
-                  IconButton(
-                    key: const ValueKey<String>(
-                      'timesheet-page-mode-toggle-button',
-                    ),
-                    tooltip: widget.continuous
-                        ? 'Page View'
-                        : 'Continuous View',
-                    onPressed: () =>
-                        widget.onContinuousChanged(!widget.continuous),
-                    icon: Icon(
-                      widget.continuous
-                          ? Icons.auto_stories_outlined
-                          : Icons.view_agenda_outlined,
-                      size: 18,
-                    ),
-                  ),
-                ],
-              ),
-            ),
             Expanded(
               child: _TimesheetPlayheadScope(
                 session: session,
@@ -350,9 +383,15 @@ class _TimesheetTabHostState extends State<TimesheetTabHost> {
                     selectionLabels: CanvasEditorSelectionLabels(
                       projectLabel: document.title,
                       cutLabel: document.cutName,
-                      layerLabel: 'Timesheet',
+                      // The position label (UI-R10 #19): the page in page
+                      // view, the continuous marker otherwise — never a
+                      // redundant 'Timesheet'.
+                      layerLabel: widget.continuous
+                          ? strings.continuousLabel
+                          : '${strings.pageLabel} ${playheadPage + 1}',
                       frameLabel: '${playheadFrame + 1}',
                     ),
+                    statusStripActions: _statusStripActions(),
                     // Fit frames the page the playhead is on.
                     fitFocusRect: layout.pageRect(playheadPage),
                     autoFrame: autoFrame,
@@ -365,26 +404,56 @@ class _TimesheetTabHostState extends State<TimesheetTabHost> {
                         : _inkStrokeActive,
                     contentOverride: (context, viewport) => Stack(
                       children: [
+                        // The sheet paints in TWO strata (UI-R10 #9, the
+                        // PSD layering live): the printed FORM (paper,
+                        // grid, labels) below, the CONTENT (cell texts,
+                        // values) above — timeline drags re-print just
+                        // the content stratum through the drag channel.
                         Positioned.fill(
-                          child: CustomPaint(
-                            key: const ValueKey<String>(
-                              'timesheet-document-paint',
-                            ),
-                            painter: TimesheetDocumentPainter(
-                              document: document,
-                              layout: layout,
-                              viewport: viewport,
-                              // The sheet prints in the NOTATION language
-                              // (UI-R10 #7) — independent of the app
-                              // chrome's program language.
-                              notation: TimesheetNotation.of(
-                                session
-                                    .languageSettings
-                                    .value
-                                    .notationLanguage,
+                          child: RepaintBoundary(
+                            child: CustomPaint(
+                              key: const ValueKey<String>(
+                                'timesheet-form-paint',
                               ),
+                              painter: TimesheetDocumentPainter(
+                                document: document,
+                                layout: layout,
+                                viewport: viewport,
+                                paintLayer: TimesheetPaintLayer.form,
+                                // The sheet prints in the NOTATION
+                                // language (UI-R10 #7).
+                                notation: TimesheetNotation.of(
+                                  session
+                                      .languageSettings
+                                      .value
+                                      .notationLanguage,
+                                ),
+                              ),
+                              child: const SizedBox.expand(),
                             ),
-                            child: const SizedBox.expand(),
+                          ),
+                        ),
+                        Positioned.fill(
+                          child: RepaintBoundary(
+                            child: CustomPaint(
+                              key: const ValueKey<String>(
+                                'timesheet-document-paint',
+                              ),
+                              painter: TimesheetDocumentPainter(
+                                document: document,
+                                layout: layout,
+                                viewport: viewport,
+                                paintLayer: TimesheetPaintLayer.content,
+                                dragPreview: session.dragPreview,
+                                notation: TimesheetNotation.of(
+                                  session
+                                      .languageSettings
+                                      .value
+                                      .notationLanguage,
+                                ),
+                              ),
+                              child: const SizedBox.expand(),
+                            ),
                           ),
                         ),
                         // The playhead row highlight repaints ALONE (R13-2):
@@ -409,29 +478,6 @@ class _TimesheetTabHostState extends State<TimesheetTabHost> {
                                     session.frameSeekCommitted,
                                     session.playback.globalFrameIndexListenable,
                                   ]),
-                                ),
-                                child: const SizedBox.expand(),
-                              ),
-                            ),
-                          ),
-                        ),
-                        // The LIVE drag overlay (UI-R9 #7): timeline drags
-                        // re-print the affected ACTION columns from the
-                        // preview layers per step — repaint-only through
-                        // the drag channel; the sheet document above stays
-                        // stale until the release commits.
-                        Positioned.fill(
-                          child: IgnorePointer(
-                            child: RepaintBoundary(
-                              child: CustomPaint(
-                                key: const ValueKey<String>(
-                                  'timesheet-drag-preview-overlay',
-                                ),
-                                painter: TimesheetDragPreviewPainter(
-                                  document: document,
-                                  layout: layout,
-                                  viewport: viewport,
-                                  dragPreview: session.dragPreview,
                                 ),
                                 child: const SizedBox.expand(),
                               ),

@@ -4,6 +4,7 @@ import 'frame_id.dart';
 import 'layer.dart';
 import 'layer_id.dart';
 import 'layer_kind.dart';
+import 'timeline_repeat.dart';
 import 'timesheet_info.dart';
 import 'track_se_window.dart';
 
@@ -43,6 +44,15 @@ enum TimesheetCellKind {
 
   /// An inbetween mark (drawn as the sheet's ○).
   mark,
+
+  /// First row of a REPEAT ghost chain (UI-R10 #6): the painter prints
+  /// the notation-language repeat word here instead of re-listing cel
+  /// numbers. Display only — the underlying timeline keeps the expanded
+  /// 1,2,3,1,2,3 (XDTS/TDTS read that, never these cells).
+  repeatStart,
+
+  /// Inside a repeat ghost chain (the repeat guide line runs through).
+  repeatSpan,
 
   /// A camera keyframe row (camera column only).
   cameraKey,
@@ -301,12 +311,15 @@ class TimesheetDocument {
                 )
               : _blankCells(rowCount),
         ),
-      // The CELL block stays blank form space — no printed letters; its
-      // role is user-undecided (see plan backlog).
+      // The CELL block mirrors the ACTION layers' NAMES as its headers
+      // (UI-R10 #10) — the cel re-assignment content stays blank
+      // handwriting space.
       for (var slot = 0; slot < celColumnCount; slot += 1)
         TimesheetColumn(
           kind: TimesheetColumnKind.cel,
-          label: '',
+          label: slot < animationLayers.length
+              ? animationLayers[slot].name
+              : '',
           cells: _blankCells(rowCount),
         ),
       // CAM block: slot 0 keeps the camera transform keyframes; the
@@ -442,14 +455,63 @@ class TimesheetDocument {
     };
 
     // Drawing coverage straight from the timeline entries; the block's
-    // breakdown offsets overlay their held rows as ● cells.
+    // breakdown offsets overlay their held rows as ● cells. GHOST chains
+    // print simplified (UI-R10 #6/#11): repeat = the notation repeat word
+    // once + a guide line, END holds print nothing, FRONT holds print the
+    // held cel on their first row only — the timeline keeps the expanded
+    // data (XDTS/TDTS export reads that, never these display cells).
     final covered = List<bool>.filled(rowCount, false);
-    for (final entry in layer.timeline.entries) {
-      final start = entry.key;
+    final entries = layer.timeline.entries.toList(growable: false);
+    for (var index = 0; index < entries.length; index += 1) {
+      final start = entries[index].key;
       if (start >= rowCount) {
         continue;
       }
-      final exposure = entry.value;
+      final exposure = entries[index].value;
+
+      if (exposure.ghost) {
+        // The contiguous chain the same behavior owns.
+        final ownerId = exposure.ghostOwnerId;
+        var chainEndExclusive = start + exposure.length!;
+        var last = index;
+        while (last + 1 < entries.length &&
+            entries[last + 1].value.ghost &&
+            entries[last + 1].value.ghostOwnerId == ownerId &&
+            entries[last + 1].key == chainEndExclusive) {
+          last += 1;
+          chainEndExclusive = entries[last].key + entries[last].value.length!;
+        }
+        final rowsEnd = chainEndExclusive.clamp(0, rowCount);
+        for (var row = start; row < rowsEnd; row += 1) {
+          covered[row] = true; // Ghost coverage suppresses the X run.
+        }
+        final behavior = runBehaviorOwningGhostAt(layer, start);
+        if (behavior?.mode == TimelineRunEdgeMode.hold) {
+          if (behavior!.side == TimelineRunEdgeSide.start) {
+            // Front hold: the held cel prints on the FIRST row only.
+            cells[start] = TimesheetCell(
+              TimesheetCellKind.drawing,
+              label: labelsByFrameId[exposure.frameId] ?? '?',
+              spanLength: rowsEnd - start,
+            );
+          }
+        } else {
+          cells[start] = TimesheetCell(
+            TimesheetCellKind.repeatStart,
+            spanLength: rowsEnd - start,
+          );
+          for (var row = start + 1; row < rowsEnd; row += 1) {
+            cells[row] = TimesheetCell(
+              TimesheetCellKind.repeatSpan,
+              spanLength: rowsEnd - start,
+              spanOffset: row - start,
+            );
+          }
+        }
+        index = last;
+        continue;
+      }
+
       final endExclusive = (start + exposure.length!).clamp(0, rowCount);
       cells[start] = TimesheetCell(
         TimesheetCellKind.drawing,
