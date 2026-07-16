@@ -6,6 +6,7 @@ import 'package:quick_animaker_v2/src/models/layer.dart';
 import 'package:quick_animaker_v2/src/models/layer_kind.dart';
 import 'package:quick_animaker_v2/src/models/layer_id.dart';
 import 'package:quick_animaker_v2/src/ui/timeline/layer_timeline_grid.dart';
+import 'package:quick_animaker_v2/src/ui/timeline/timeline_horizontal_scrollbar_rail.dart';
 import 'package:quick_animaker_v2/src/ui/timeline/timeline_cell_exposure_state.dart';
 import 'package:quick_animaker_v2/src/ui/timeline/timeline_cell_style.dart';
 import 'package:quick_animaker_v2/src/ui/timeline/timeline_grid_metrics.dart';
@@ -381,6 +382,93 @@ void main() {
       lessThan(0.1),
     );
   });
+
+  testWidgets(
+    'a SUB-CELL frame scroll rebuilds no cells; a cell crossing re-windows '
+    '(UI-R9 #12a: pixels are free, buckets re-window)',
+    (tester) async {
+      await tester.pumpWidget(_grid(playbackFrameCount: 48));
+
+      ScrollPosition framePosition() => tester
+          .state<ScrollableState>(
+            find.descendant(
+              of: find.byKey(
+                const ValueKey<String>('timeline-frame-scroll-viewport'),
+              ),
+              matching: find.byType(Scrollable),
+            ),
+          )
+          .position;
+
+      Widget cell(int index) => tester.widget(
+        find.byKey(ValueKey<String>('timeline-cell-layer-1-$index')),
+      );
+
+      // Warm-up: the very first scroll event establishes the endless
+      // runway (a legitimate extent relayout) — settle it first.
+      framePosition().jumpTo(2);
+      await tester.pump();
+
+      final beforeSubCell = cell(4);
+      framePosition().jumpTo(10); // Sub-cell: 48px cells, same bucket.
+      await tester.pump();
+      expect(
+        identical(cell(4), beforeSubCell),
+        isTrue,
+        reason: 'sub-cell pixels rebuild nothing',
+      );
+
+      framePosition().jumpTo(4 * 48.0); // Crosses cell boundaries.
+      await tester.pump();
+      expect(
+        identical(cell(4), beforeSubCell),
+        isFalse,
+        reason: 'a bucket crossing re-windows the rows',
+      );
+    },
+  );
+
+  testWidgets(
+    'the endless frame extent grows on scroll and SHRINKS back after '
+    'returning home (UI-R9 #11)',
+    (tester) async {
+      await tester.pumpWidget(_grid(playbackFrameCount: 12));
+
+      double railContentWidth() => tester
+          .widget<TimelineHorizontalScrollbarRail>(
+            find.byKey(
+              const ValueKey<String>('timeline-horizontal-scrollbar'),
+            ),
+          )
+          .contentWidth;
+
+      ScrollPosition framePosition() => tester
+          .state<ScrollableState>(
+            find.descendant(
+              of: find.byKey(
+                const ValueKey<String>('timeline-frame-scroll-viewport'),
+              ),
+              matching: find.byType(Scrollable),
+            ),
+          )
+          .position;
+
+      final baseWidth = railContentWidth();
+      // Ride the growing runway rightward a few hops.
+      for (var hop = 0; hop < 4; hop += 1) {
+        framePosition().jumpTo(framePosition().maxScrollExtent);
+        await tester.pump();
+      }
+      final grownWidth = railContentWidth();
+      expect(grownWidth, greaterThan(baseWidth));
+
+      // Scrolling home releases the runway (discrete jump = immediate
+      // shrink; the hysteresis only holds sub-viewport releases).
+      framePosition().jumpTo(0);
+      await tester.pump();
+      expect(railContentWidth(), lessThan(grownWidth));
+    },
+  );
 
   testWidgets(
     'shrinking the row content under a deep scroll re-anchors to the top '
