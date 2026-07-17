@@ -479,10 +479,12 @@ class TimesheetDocument {
     final displaysFromRowZero =
         entries.isNotEmpty && entries.first.key == 0;
     final singleCelDisplay = authoredBlockCount == 1 && displaysFromRowZero;
-    // Front-hold label relocation (UI-R11 #6): the lead-in prints the
-    // held cel's name on row 1, so the block's OWN start row prints
-    // nothing — the name reads as moved, never duplicated.
-    final suppressedLabelStarts = <int>{};
+    // Front-hold relocation (UI-R11 #6 → UI-R12 #17): the sheet's DATA
+    // moves the cel to the chain's first row FOR REAL — chain + anchor
+    // block fuse into ONE run, and the block's own start stops being a
+    // drawing cell entirely (XDTS-style output reads these cells; the
+    // TIMELINE keeps the authored position untouched).
+    final mergedBlockStarts = <int>{};
     for (var index = 0; index < entries.length; index += 1) {
       final start = entries[index].key;
       if (start >= rowCount) {
@@ -509,13 +511,42 @@ class TimesheetDocument {
         final behavior = runBehaviorOwningGhostAt(layer, start);
         if (behavior?.mode == TimelineRunEdgeMode.hold) {
           if (behavior!.side == TimelineRunEdgeSide.start) {
-            // Front hold: the held cel's name MOVES to the first row.
+            // Front hold: the cel moves to the first row FOR REAL
+            // (UI-R12 #17) — one run from here through the anchor
+            // block's last frame, held straight across the authored
+            // position (breakdown ● keep their absolute rows).
+            final blockIndex = entries.indexWhere(
+              (entry) =>
+                  !entry.value.ghost && entry.key == chainEndExclusive,
+            );
+            final block = blockIndex == -1
+                ? null
+                : entries[blockIndex].value;
+            final mergedEndExclusive = block == null
+                ? rowsEnd
+                : (chainEndExclusive + block.length!).clamp(0, rowCount);
+            final runLength = mergedEndExclusive - start;
             cells[start] = TimesheetCell(
               TimesheetCellKind.drawing,
               label: labelsByFrameId[exposure.frameId] ?? '?',
-              spanLength: rowsEnd - start,
+              spanLength: runLength,
             );
-            suppressedLabelStarts.add(chainEndExclusive);
+            for (var row = start + 1; row < mergedEndExclusive; row += 1) {
+              final blockOffset = row - chainEndExclusive;
+              cells[row] = TimesheetCell(
+                block != null &&
+                        blockOffset >= 0 &&
+                        block.hasBreakdownAt(blockOffset)
+                    ? TimesheetCellKind.mark
+                    : TimesheetCellKind.held,
+                spanLength: runLength,
+                spanOffset: row - start,
+              );
+              covered[row] = true;
+            }
+            if (block != null) {
+              mergedBlockStarts.add(chainEndExclusive);
+            }
           } else if (singleCelDisplay) {
             // One cel held from row 1: the rear chain prints 止め.
             cells[start] = TimesheetCell(
@@ -540,14 +571,16 @@ class TimesheetDocument {
         continue;
       }
 
+      // A front-hold merge already wrote this block's rows as the tail of
+      // its relocated run (UI-R12 #17) — no second drawing start.
+      if (mergedBlockStarts.contains(start)) {
+        continue;
+      }
+
       final endExclusive = (start + exposure.length!).clamp(0, rowCount);
       cells[start] = TimesheetCell(
         TimesheetCellKind.drawing,
-        // A front-hold lead-in already printed this cel's name on row 1
-        // (UI-R11 #6) — the block's own start row stays blank.
-        label: suppressedLabelStarts.contains(start)
-            ? ''
-            : labelsByFrameId[exposure.frameId] ?? '?',
+        label: labelsByFrameId[exposure.frameId] ?? '?',
         spanLength: endExclusive - start,
         seName: seNamesByFrameId[exposure.frameId],
       );
