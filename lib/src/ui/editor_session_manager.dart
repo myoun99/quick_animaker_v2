@@ -1415,6 +1415,14 @@ class EditorSessionManager extends ChangeNotifier {
   void toggleCutPictureVisibility(CutId cutId) {
     if (!_hiddenPictureCutIds.remove(cutId)) {
       _hiddenPictureCutIds.add(cutId);
+      // UI-R13 #2: hiding the ACTIVE cut's picture is the no-cut state —
+      // nothing displays at this index anymore, exactly like a gap
+      // landing: park at the current global and deselect.
+      if (cutId == _editingSession.activeCutId) {
+        _gapGlobalFrame = editingGlobalFrame;
+        _deselectActiveCutForGap();
+        frameSeekCommitted.value += 1;
+      }
     }
     notifyListeners();
   }
@@ -3752,9 +3760,15 @@ class EditorSessionManager extends ChangeNotifier {
         ? null
         : BlockMoveDragPreview(
             previewLayers: {
-              plan.sourceAfter.id: rederiveRunBehaviors(plan.sourceAfter, cutFrameCount: _activeCutFrameCount),
+              plan.sourceAfter.id: rederiveRunBehaviors(
+                plan.sourceAfter,
+                cutFrameCount: _activeCutFrameCount,
+              ),
               if (plan.targetAfter != null)
-                plan.targetAfter!.id: rederiveRunBehaviors(plan.targetAfter!, cutFrameCount: _activeCutFrameCount),
+                plan.targetAfter!.id: rederiveRunBehaviors(
+                  plan.targetAfter!,
+                  cutFrameCount: _activeCutFrameCount,
+                ),
             },
           );
   }
@@ -3776,13 +3790,19 @@ class EditorSessionManager extends ChangeNotifier {
       UpdateLayerTimelineCommand(
         repository: _repository,
         before: source,
-        after: rederiveRunBehaviors(plan.sourceAfter, cutFrameCount: _activeCutFrameCount),
+        after: rederiveRunBehaviors(
+          plan.sourceAfter,
+          cutFrameCount: _activeCutFrameCount,
+        ),
       ),
       if (plan.targetBefore != null)
         UpdateLayerTimelineCommand(
           repository: _repository,
           before: plan.targetBefore!,
-          after: rederiveRunBehaviors(plan.targetAfter!, cutFrameCount: _activeCutFrameCount),
+          after: rederiveRunBehaviors(
+            plan.targetAfter!,
+            cutFrameCount: _activeCutFrameCount,
+          ),
         ),
     ];
     if (plan.isCrossLayer && plan.movedFrameIds.isNotEmpty) {
@@ -3895,9 +3915,15 @@ class EditorSessionManager extends ChangeNotifier {
         ? null
         : BlockMoveDragPreview(
             previewLayers: {
-              plan.sourceAfter.id: rederiveRunBehaviors(plan.sourceAfter, cutFrameCount: _activeCutFrameCount),
+              plan.sourceAfter.id: rederiveRunBehaviors(
+                plan.sourceAfter,
+                cutFrameCount: _activeCutFrameCount,
+              ),
               if (plan.targetAfter != null)
-                plan.targetAfter!.id: rederiveRunBehaviors(plan.targetAfter!, cutFrameCount: _activeCutFrameCount),
+                plan.targetAfter!.id: rederiveRunBehaviors(
+                  plan.targetAfter!,
+                  cutFrameCount: _activeCutFrameCount,
+                ),
             },
           );
     // The selection outline follows the previewed landing live.
@@ -3942,13 +3968,19 @@ class EditorSessionManager extends ChangeNotifier {
       UpdateLayerTimelineCommand(
         repository: _repository,
         before: source,
-        after: rederiveRunBehaviors(plan.sourceAfter, cutFrameCount: _activeCutFrameCount),
+        after: rederiveRunBehaviors(
+          plan.sourceAfter,
+          cutFrameCount: _activeCutFrameCount,
+        ),
       ),
       if (plan.targetBefore != null)
         UpdateLayerTimelineCommand(
           repository: _repository,
           before: plan.targetBefore!,
-          after: rederiveRunBehaviors(plan.targetAfter!, cutFrameCount: _activeCutFrameCount),
+          after: rederiveRunBehaviors(
+            plan.targetAfter!,
+            cutFrameCount: _activeCutFrameCount,
+          ),
         ),
     ];
     if (plan.isCrossLayer && plan.movedFrameIds.isNotEmpty) {
@@ -4009,9 +4041,7 @@ class EditorSessionManager extends ChangeNotifier {
   /// and the commit agree.
   FrameId _reservedNewFrameId(int ordinal) {
     while (_addFramesReservedIds.length <= ordinal) {
-      final used = <String>{
-        for (final id in _addFramesReservedIds) id.value,
-      };
+      final used = <String>{for (final id in _addFramesReservedIds) id.value};
       for (final track in _repository.requireProject().tracks) {
         for (final layer in track.seLayers) {
           for (final frame in layer.frames) {
@@ -4154,8 +4184,7 @@ class EditorSessionManager extends ChangeNotifier {
             entry.value.frameId != behavior.anchorFrameId) {
           continue;
         }
-        return entry.key >= run.startIndex &&
-            entry.key < run.endIndexExclusive;
+        return entry.key >= run.startIndex && entry.key < run.endIndexExclusive;
       }
       return false;
     }
