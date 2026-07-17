@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../theme/app_theme.dart';
 import 'timeline_cell_exposure_state.dart';
+import 'timeline_grid_metrics.dart';
 
 class TimelineCellStyleColors {
   const TimelineCellStyleColors({
@@ -31,20 +32,22 @@ const Color timelineDrawingInkColor = Color(0xFF26282B);
 /// the rhythm.
 const double timelineBaseGridAlpha = 0.25;
 
-/// How much of the plain grid survives at the current zoom (UI-R11 #7):
-/// 1 at comfortable cell widths, 0 at/below ~7px where the hairlines
-/// would smear into noise.
-double timelineBaseGridFade(double frameCellExtent) =>
-    ((frameCellExtent - 7) / 9).clamp(0.0, 1.0).toDouble();
+/// The base grid's line CADENCE at [frameCellExtent] (UI-R18 #8/#12, the
+/// storyboard recipe adopted everywhere): instead of alpha-fading away at
+/// small zooms, the per-cell lines THIN to every Nth frame (the label
+/// cadence) and never disappear — "the grid is always there".
+int timelineGridLineEveryFrames(double frameCellExtent) => frameCellExtent >= 16
+    ? 1
+    : TimelineGridMetrics(
+        frameCellWidth: frameCellExtent,
+      ).frameLabelEveryFrames;
 
-/// The plain grid's border ink at [frameCellExtent] — faint and fading;
-/// fully transparent lines are skipped by their painters.
+/// The plain grid's border ink — FLAT faint (UI-R18 #8: the zoom fade is
+/// gone; density is handled by [timelineGridLineEveryFrames]).
 Color timelineBaseGridInk(
   ColorScheme colorScheme, {
   required double frameCellExtent,
-}) => colorScheme.outlineVariant.withValues(
-  alpha: timelineBaseGridAlpha * timelineBaseGridFade(frameCellExtent),
-);
+}) => colorScheme.outlineVariant.withValues(alpha: timelineBaseGridAlpha);
 
 /// Whether [exposureState] renders on the light drawing-block background
 /// (and therefore needs [timelineDrawingInkColor] text).
@@ -68,12 +71,16 @@ TimelineCellStyleColors timelineCellStyleColors({
     TimelineCellExposureState.held ||
     TimelineCellExposureState.markHeld => timelineDrawingHeldColor,
   };
+  // UI-R18 #8: the GRID OVERLAY owns every plain per-cell line now —
+  // uncovered cells draw no border of their own, and the paper blocks'
+  // internal (held) seams drop to the shared faint alpha so only the
+  // block START edge keeps definition.
   final exposureBorderColor = switch (exposureState) {
     TimelineCellExposureState.uncovered ||
-    TimelineCellExposureState.markUncovered => colorScheme.outlineVariant,
+    TimelineCellExposureState.markUncovered => Colors.transparent,
     TimelineCellExposureState.drawingStart => timelineDrawingStartBorderColor,
     TimelineCellExposureState.held || TimelineCellExposureState.markHeld =>
-      colorScheme.outlineVariant.withValues(alpha: 0.65),
+      colorScheme.outlineVariant.withValues(alpha: timelineBaseGridAlpha),
   };
 
   if (!selected) {

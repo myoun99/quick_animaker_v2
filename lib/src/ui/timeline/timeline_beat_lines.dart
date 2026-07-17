@@ -1,10 +1,15 @@
 import 'package:flutter/material.dart';
 
-/// The 6f/24f beat-line system (UI-R10 #26 → UI-R13 #7): a medium line
-/// every 6 frames and a strong one on second boundaries, spanning the
-/// WHOLE frame grid — every row and column (SE, camera, lanes, the
-/// storyboard strip), not just the painterized drawing rows. One overlay
-/// per grid replaces the old per-row painting.
+import 'timeline_cell_style.dart';
+
+/// The frame grid's LINE system, one overlay per grid (UI-R10 #26 →
+/// UI-R13 #7 → UI-R18 #2/#8/#10/#12 — the storyboard recipe unified):
+/// - BASE per-cell lines: flat faint ink, cadence-THINNED at small zooms
+///   (never alpha-faded away) — the grid is always there, over every row
+///   and lane;
+/// - ROW seams across the cross axis: full-strength hairlines every row,
+///   zoom-independent (the storyboard's row borders, generalized);
+/// - 6f/24f BEAT lines on top.
 ///
 /// The painter lives in the scroll CONTENT's coordinate space (its size
 /// is the full built content), so lines land on absolute frame
@@ -16,6 +21,7 @@ class TimelineBeatLinesPainter extends CustomPainter {
     required this.framesPerSecond,
     required this.colorScheme,
     this.axis = Axis.horizontal,
+    this.crossCellExtent = 0,
   });
 
   final double frameCellExtent;
@@ -26,30 +32,19 @@ class TimelineBeatLinesPainter extends CustomPainter {
   /// vertical lines; vertical (X-sheet) draws horizontal ones.
   final Axis axis;
 
+  /// The uniform row height (timeline) / column width (X-sheet) for the
+  /// cross-axis ROW seam lines; 0 skips them (hosts that draw their own).
+  final double crossCellExtent;
+
   @override
   void paint(Canvas canvas, Size size) {
     if (frameCellExtent <= 0) {
       return;
     }
-    final sixPaint = Paint()
-      ..color = colorScheme.outline
-      ..strokeWidth = 1;
-    final secondPaint = Paint()
-      ..color = colorScheme.onSurfaceVariant
-      ..strokeWidth = 1.5;
     final mainExtent = axis == Axis.horizontal ? size.width : size.height;
     final crossExtent = axis == Axis.horizontal ? size.height : size.width;
-    // 6f is the sheet convention regardless of fps.
-    const beatPeriod = 6;
-    for (
-      var frame = beatPeriod;
-      frame * frameCellExtent <= mainExtent;
-      frame += beatPeriod
-    ) {
-      final position = frame * frameCellExtent;
-      final paint = framesPerSecond > 0 && frame % framesPerSecond == 0
-          ? secondPaint
-          : sixPaint;
+
+    void mainAxisLine(double position, Paint paint) {
       if (axis == Axis.horizontal) {
         canvas.drawLine(
           Offset(position, 0),
@@ -64,6 +59,63 @@ class TimelineBeatLinesPainter extends CustomPainter {
         );
       }
     }
+
+    // BASE grid: flat faint, cadence-thinned (UI-R18 #8 — the storyboard
+    // look; beat frames skip, the beat pass draws them stronger).
+    final basePaint = Paint()
+      ..color = colorScheme.outlineVariant.withValues(
+        alpha: timelineBaseGridAlpha,
+      )
+      ..strokeWidth = 1;
+    final cadence = timelineGridLineEveryFrames(frameCellExtent);
+    for (
+      var frame = cadence;
+      frame * frameCellExtent <= mainExtent;
+      frame += cadence
+    ) {
+      if (frame % 6 == 0) {
+        continue;
+      }
+      mainAxisLine(frame * frameCellExtent, basePaint);
+    }
+
+    // ROW seams (UI-R18 #10/#12): full-strength, zoom-independent — the
+    // rows' own hairline language extended into the cell area.
+    if (crossCellExtent > 0) {
+      final seamPaint = Paint()
+        ..color = colorScheme.outlineVariant
+        ..strokeWidth = 1;
+      for (
+        var seam = crossCellExtent;
+        seam < crossExtent;
+        seam += crossCellExtent
+      ) {
+        if (axis == Axis.horizontal) {
+          canvas.drawLine(Offset(0, seam), Offset(mainExtent, seam), seamPaint);
+        } else {
+          canvas.drawLine(Offset(seam, 0), Offset(seam, mainExtent), seamPaint);
+        }
+      }
+    }
+
+    final sixPaint = Paint()
+      ..color = colorScheme.outline
+      ..strokeWidth = 1;
+    final secondPaint = Paint()
+      ..color = colorScheme.onSurfaceVariant
+      ..strokeWidth = 1.5;
+    // 6f is the sheet convention regardless of fps.
+    const beatPeriod = 6;
+    for (
+      var frame = beatPeriod;
+      frame * frameCellExtent <= mainExtent;
+      frame += beatPeriod
+    ) {
+      final paint = framesPerSecond > 0 && frame % framesPerSecond == 0
+          ? secondPaint
+          : sixPaint;
+      mainAxisLine(frame * frameCellExtent, paint);
+    }
   }
 
   @override
@@ -71,5 +123,6 @@ class TimelineBeatLinesPainter extends CustomPainter {
       oldDelegate.frameCellExtent != frameCellExtent ||
       oldDelegate.framesPerSecond != framesPerSecond ||
       oldDelegate.colorScheme != colorScheme ||
-      oldDelegate.axis != axis;
+      oldDelegate.axis != axis ||
+      oldDelegate.crossCellExtent != crossCellExtent;
 }

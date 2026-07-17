@@ -1987,28 +1987,15 @@ class _StoryboardSeLabel extends StatelessWidget {
         padding: const EdgeInsets.only(right: 8),
         decoration: BoxDecoration(
           // The timeline row's active treatment verbatim (S-row selection,
-          // W4): secondaryContainer fill + secondary border. Side/bottom
-          // 1px borders only (UI-R10 #20): no doubled seams, no 2px
-          // content shift — selection speaks through color alone.
+          // W4): secondaryContainer fill; the accent border is GONE
+          // (UI-R18 #5 — selection speaks through the background alone).
           color: active
               ? colorScheme.secondaryContainer.withValues(alpha: 0.55)
               : colorScheme.surface,
           border: Border(
-            left: BorderSide(
-              color: active
-                  ? colorScheme.secondary
-                  : colorScheme.outlineVariant,
-            ),
-            right: BorderSide(
-              color: active
-                  ? colorScheme.secondary
-                  : colorScheme.outlineVariant,
-            ),
-            bottom: BorderSide(
-              color: active
-                  ? colorScheme.secondary
-                  : colorScheme.outlineVariant,
-            ),
+            left: BorderSide(color: colorScheme.outlineVariant),
+            right: BorderSide(color: colorScheme.outlineVariant),
+            bottom: BorderSide(color: colorScheme.outlineVariant),
           ),
         ),
         child: Semantics(

@@ -113,11 +113,13 @@ void main() {
       await tester.pumpWidget(_row(layer: layer, active: true));
       final activeBorder = borderOf();
       expect(activeBorder.top, BorderSide.none);
-      expect(activeBorder.bottom.width, 1, reason: 'color-only accent');
+      expect(activeBorder.bottom.width, 1);
+      // UI-R18 #5: selection speaks through the BACKGROUND alone — the
+      // border never changes with activation.
       expect(
         activeBorder.bottom.color,
-        isNot(restBorder.bottom.color),
-        reason: 'the accent still reads — through color',
+        restBorder.bottom.color,
+        reason: 'no accent border; the row fill carries the selection',
       );
     });
 

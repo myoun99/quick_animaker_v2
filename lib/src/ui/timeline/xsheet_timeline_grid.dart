@@ -1138,6 +1138,9 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
                                                               frameCellExtent:
                                                                   _metrics
                                                                       .frameCellWidth,
+                                                              crossCellExtent:
+                                                                  _metrics
+                                                                      .layerRowHeight,
                                                               framesPerSecond:
                                                                   widget
                                                                       .projectFps,

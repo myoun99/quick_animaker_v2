@@ -115,7 +115,9 @@ const double layerFillReferenceSlotWidth = 22;
 const double layerFxSlotWidth = 22;
 const double layerVisibilitySlotWidth = 22;
 const double layerMuteSlotWidth = 18;
-const double layerOpacitySlotWidth = 64;
+// 64 → 42 (UI-R18 #4): the opacity bar reads fine at two-thirds width
+// across all three panels' rails.
+const double layerOpacitySlotWidth = 42;
 
 /// The per-layer onion-skin toggle column (UI-R17 #5, TVPaint style).
 const double layerOnionSlotWidth = 22;

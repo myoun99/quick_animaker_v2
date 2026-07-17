@@ -84,15 +84,10 @@ class TimelineLayerControlsRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
     final activeColor = colorScheme.secondaryContainer.withValues(alpha: 0.55);
-    // CONSTANT 1px side/bottom borders (UI-R10 #20): Border.all doubled
-    // every row seam (2px against the cells' shared 1px grid) and the
-    // active row's 2px accent shifted its content a pixel — the rail read
-    // subtly skewed. The top line is the neighbor's bottom (the legend
-    // header closes the first row); selection speaks through COLOR alone
-    // (app-wide selection language).
-    final borderColor = active
-        ? colorScheme.secondary
-        : colorScheme.outlineVariant;
+    // CONSTANT 1px side/bottom borders (UI-R10 #20). Selection speaks
+    // through the BACKGROUND alone now (UI-R18 #5) — the accent border
+    // doubled the signal for nothing.
+    final borderColor = colorScheme.outlineVariant;
 
     final row = InkWell(
       key: ValueKey<String>('timeline-layer-row-${layer.id}'),
