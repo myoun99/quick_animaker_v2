@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:quick_animaker_v2/src/ui/timeline/timeline_frame_ruler_painter.dart';
+import 'package:quick_animaker_v2/src/ui/timeline/xsheet_timeline_grid.dart'
+    show XSheetFrameRailPainter;
 
 /// Probe surface for the PAINTERIZED frame ruler (UI-R13 #1): headers are
 /// paint, not widgets — labels, states and geometry live on
@@ -53,4 +55,34 @@ Rect timelineHeaderGlobalRect(
     tester,
     index: index,
   ).headerRectFor(frameIndex).shift(box.localToGlobal(Offset.zero));
+}
+
+// --- The X-sheet frame rail's painter probe (UI-R14 #1) ------------------
+
+Finder xsheetRailPaintFinder() =>
+    find.byKey(const ValueKey<String>('xsheet-frame-rail-paint'));
+
+XSheetFrameRailPainter xsheetRailPainter(WidgetTester tester) =>
+    tester.widget<CustomPaint>(xsheetRailPaintFinder()).painter!
+        as XSheetFrameRailPainter;
+
+/// Whether the rail's painted window contains [frameIndex].
+bool xsheetFrameRowInWindow(WidgetTester tester, int frameIndex) {
+  final painter = xsheetRailPainter(tester);
+  return frameIndex >= painter.frameStartIndex &&
+      frameIndex < painter.frameEndIndexExclusive;
+}
+
+/// The resolved rail-row model at [frameIndex].
+TimelineRulerHeaderModel xsheetFrameRowModel(
+  WidgetTester tester,
+  int frameIndex,
+) => xsheetRailPainter(tester).modelAt(frameIndex);
+
+/// The rail row's GLOBAL rect.
+Rect xsheetFrameRowGlobalRect(WidgetTester tester, int frameIndex) {
+  final box = tester.renderObject<RenderBox>(xsheetRailPaintFinder());
+  return xsheetRailPainter(
+    tester,
+  ).rowRectFor(frameIndex).shift(box.localToGlobal(Offset.zero));
 }

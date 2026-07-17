@@ -1,4 +1,4 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:quick_animaker_v2/src/models/frame.dart';
 import 'package:quick_animaker_v2/src/models/frame_id.dart';
@@ -10,6 +10,7 @@ import 'package:quick_animaker_v2/src/ui/timeline/timeline_cell_exposure_state.d
 import 'package:quick_animaker_v2/src/ui/timeline/timeline_cell_style.dart';
 
 import 'timeline/timeline_cell_probe.dart';
+import 'timeline/timeline_ruler_probe.dart';
 
 /// Painted-cell glyph probe, X-sheet prefix (UI-R9 #12b).
 String _xsheetGlyph(WidgetTester tester, String layerId, int frameIndex) =>
@@ -127,33 +128,20 @@ void main() {
       _grid(frameCount: 3, isFrameCached: (frameIndex) => frameIndex < 2),
     );
 
-    expect(
-      find.byKey(const ValueKey<String>('xsheet-frame-cached-0')),
-      findsOneWidget,
-    );
-    expect(
-      find.byKey(const ValueKey<String>('xsheet-frame-cached-1')),
-      findsOneWidget,
-    );
-    expect(
-      find.byKey(const ValueKey<String>('xsheet-frame-cached-2')),
-      findsNothing,
-    );
+    // The rail is painterized (UI-R14 #1): the cached flags probe as
+    // painter models.
+    expect(xsheetFrameRowModel(tester, 0).cached, isTrue);
+    expect(xsheetFrameRowModel(tester, 1).cached, isTrue);
+    expect(xsheetFrameRowModel(tester, 2).cached, isFalse);
     // Frames past the playback range never show the strip even when the
     // resolver claims them cached.
-    expect(
-      find.byKey(const ValueKey<String>('xsheet-frame-cached-3')),
-      findsNothing,
-    );
+    expect(xsheetFrameRowModel(tester, 3).cached, isFalse);
   });
 
   testWidgets('renders frame rows and cells', (tester) async {
     await tester.pumpWidget(_grid());
 
-    expect(
-      find.byKey(const ValueKey<String>('xsheet-frame-row-0')),
-      findsOneWidget,
-    );
+    expect(xsheetFrameRowInWindow(tester, 0), isTrue);
     expect(
       timelineCellInWindow(tester, 'layer-1', 0, prefix: 'xsheet'),
       isTrue,
@@ -219,12 +207,7 @@ void main() {
     );
 
     expect(
-      timelineCellModel(
-        tester,
-        'layer-2',
-        2,
-        prefix: 'xsheet',
-      ).semanticsLabel,
+      timelineCellModel(tester, 'layer-2', 2, prefix: 'xsheet').semanticsLabel,
       'held exposure',
     );
   });
@@ -252,12 +235,7 @@ void main() {
 
     expect(_xsheetGlyph(tester, 'layer-2', 2), '●');
     expect(
-      timelineCellModel(
-        tester,
-        'layer-2',
-        2,
-        prefix: 'xsheet',
-      ).semanticsLabel,
+      timelineCellModel(tester, 'layer-2', 2, prefix: 'xsheet').semanticsLabel,
       'inbetween mark',
     );
   });
@@ -280,12 +258,7 @@ void main() {
 
     expect(_xsheetGlyph(tester, 'layer-1', 2), isNot('○'));
     expect(
-      timelineCellModel(
-        tester,
-        'layer-1',
-        2,
-        prefix: 'xsheet',
-      ).semanticsLabel,
+      timelineCellModel(tester, 'layer-1', 2, prefix: 'xsheet').semanticsLabel,
       isNull,
     );
   });
@@ -294,11 +267,11 @@ void main() {
     await tester.pumpWidget(_grid(currentFrameIndex: 3));
 
     expect(
-      find.byKey(const ValueKey<String>('xsheet-frame-row-3')),
-      findsOneWidget,
+      xsheetFrameRowModel(tester, 3).label,
+      '4',
+      reason: 'the plain one-based number, no playhead glyph',
     );
-    expect(find.text('4'), findsOneWidget);
-    expect(find.text('▶ 4'), findsNothing);
+    expect(xsheetFrameRowModel(tester, 3).selected, isTrue);
   });
 
   testWidgets('named drawing start displays name and mark has priority', (
@@ -506,8 +479,9 @@ void main() {
       isFalse,
     );
     expect(
-      find.byKey(const ValueKey<String>('xsheet-frame-rail-trailing-spacer')),
-      findsOneWidget,
+      xsheetFrameRowInWindow(tester, 499),
+      isFalse,
+      reason: 'the painterized rail windows with the cells (UI-R14 #1)',
     );
   });
 
