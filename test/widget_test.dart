@@ -9,6 +9,7 @@ import 'package:quick_animaker_v2/src/ui/timeline/timeline_row_cells_painter.dar
 import 'package:quick_animaker_v2/src/ui/widgets/field_slider.dart';
 
 import 'ui/timeline/timeline_cell_probe.dart';
+import 'ui/timeline/timeline_ruler_probe.dart';
 
 import 'ui/flyout_test_helpers.dart' show readCommandEnabled;
 
@@ -651,10 +652,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(
-      find.byKey(const ValueKey<String>('timeline-frame-header-23')),
-      findsOneWidget,
-    );
+    expect(timelineHeaderInWindow(tester, 23), isTrue);
   });
 
   testWidgets('timeline frame axis: scrolling stays CLAMPED to the built '
@@ -663,17 +661,10 @@ void main() {
   ) async {
     await tester.pumpWidget(const QuickAnimakerApp());
 
-    Finder beyondBaseHeaders() => find.byWidgetPredicate((widget) {
-      final key = widget.key;
-      if (key is! ValueKey<String> ||
-          !key.value.startsWith('timeline-frame-header-')) {
-        return false;
-      }
-      final index = int.tryParse(
-        key.value.substring('timeline-frame-header-'.length),
-      );
-      return index != null && index >= 48;
-    });
+    // Painterized ruler (UI-R13 #1): headers past the base exist exactly
+    // when the painter's window reaches past 48.
+    bool beyondBaseHeaders() =>
+        timelineRulerPainter(tester).frameEndIndexExclusive > 48;
 
     // Scroll gestures wall at the built extent (base 48 cells): however
     // far the viewport is flung, nothing past the base materializes and
@@ -685,7 +676,7 @@ void main() {
       );
       await tester.pumpAndSettle();
     }
-    expect(beyondBaseHeaders(), findsNothing);
+    expect(beyondBaseHeaders(), isFalse);
 
     // The ruler edge-drag is THE way past the wall: a scrub held at the
     // right edge pans the axis (overshooting the built extent) and the
@@ -702,7 +693,7 @@ void main() {
     }
     await gesture.up();
     await tester.pumpAndSettle();
-    expect(beyondBaseHeaders(), findsWidgets);
+    expect(beyondBaseHeaders(), isTrue);
   });
 
   testWidgets('timeline zoom buttons rescale the frame axis', (
@@ -710,16 +701,12 @@ void main() {
   ) async {
     await tester.pumpWidget(const QuickAnimakerApp());
 
-    final header0 = find.byKey(
-      const ValueKey<String>('timeline-frame-header-0'),
-    );
-    // 24 at 100% — the slim default (R-toolbar round).
-    expect(tester.getSize(header0).width, 24);
+    // 24 at 100% — the slim default (R-toolbar round); the painterized
+    // ruler (UI-R13 #1) reports geometry/labels through its painter.
+    double headerWidth() => timelineHeaderGlobalRect(tester, 0).width;
+    expect(headerWidth(), 24);
     // Wide cells label every frame in-cell.
-    expect(
-      find.descendant(of: header0, matching: find.text('1')),
-      findsOneWidget,
-    );
+    expect(timelineHeaderModel(tester, 0).label, '1');
 
     Future<void> zoomTo(double pixelsPerFrame) async {
       tester
@@ -731,7 +718,7 @@ void main() {
     }
 
     await zoomTo(72);
-    expect(tester.getSize(header0).width, 72);
+    expect(headerWidth(), 72);
 
     // UI-R11 #11: the −/+ STEP buttons flanking the slider zoom without
     // dragging — multiplicative ×1.25 steps on the whole-px grid.
@@ -740,7 +727,7 @@ void main() {
       tester,
       const ValueKey<String>('timeline-zoom-in-button'),
     );
-    expect(tester.getSize(header0).width, 30, reason: '24 × 1.25');
+    expect(headerWidth(), 30, reason: '24 × 1.25');
     await _tapToolbarButton(
       tester,
       const ValueKey<String>('timeline-zoom-out-button'),
@@ -749,16 +736,14 @@ void main() {
       tester,
       const ValueKey<String>('timeline-zoom-out-button'),
     );
-    expect(tester.getSize(header0).width, 19, reason: '30 ÷ 1.25 ÷ 1.25');
+    expect(headerWidth(), 19, reason: '30 ÷ 1.25 ÷ 1.25');
 
     await zoomTo(12);
-    expect(tester.getSize(header0).width, 12);
-    // Narrow cells move their labels to the every-Nth overlay: no in-cell
-    // texts anywhere in the header cells.
-    expect(
-      find.descendant(of: header0, matching: find.byType(Text)),
-      findsNothing,
-    );
+    expect(headerWidth(), 12);
+    // Narrow cells move their labels to the every-Nth ladder: unlabeled
+    // headers read '' off the painter model (frame 1 stays the anchor).
+    expect(timelineHeaderModel(tester, 1).label, '');
+    expect(timelineHeaderModel(tester, 0).label, isNotEmpty);
   });
 
   testWidgets('xsheet zoom rescales the frame row height', (
