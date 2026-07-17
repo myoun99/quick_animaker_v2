@@ -1358,6 +1358,9 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
                                                         .withValues(
                                                           alpha: 0.35,
                                                         ),
+                                                    framesPerSecond:
+                                                        widget.projectFps,
+                                                    colorScheme: colorScheme,
                                                   ),
                                             ),
                                           ),
@@ -3316,10 +3319,14 @@ class _StoryboardFrameLinesPainter extends CustomPainter {
   const _StoryboardFrameLinesPainter({
     required this.pixelsPerFrame,
     required this.color,
+    required this.framesPerSecond,
+    required this.colorScheme,
   });
 
   final double pixelsPerFrame;
   final Color color;
+  final int framesPerSecond;
+  final ColorScheme colorScheme;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -3338,12 +3345,29 @@ class _StoryboardFrameLinesPainter extends CustomPainter {
     for (var x = 0.0; x <= size.width; x += step) {
       canvas.drawLine(Offset(x, 0), Offset(x, size.height), paint);
     }
+    // The 6f/24f beat lines over the base grid (UI-R13 #7 — every frame
+    // grid carries the sheet rhythm, the storyboard included).
+    final sixPaint = Paint()
+      ..color = colorScheme.outline
+      ..strokeWidth = 1;
+    final secondPaint = Paint()
+      ..color = colorScheme.onSurfaceVariant
+      ..strokeWidth = 1.5;
+    for (var frame = 6; frame * pixelsPerFrame <= size.width; frame += 6) {
+      final x = frame * pixelsPerFrame;
+      final beatPaint = framesPerSecond > 0 && frame % framesPerSecond == 0
+          ? secondPaint
+          : sixPaint;
+      canvas.drawLine(Offset(x, 0), Offset(x, size.height), beatPaint);
+    }
   }
 
   @override
   bool shouldRepaint(_StoryboardFrameLinesPainter oldDelegate) {
     return oldDelegate.pixelsPerFrame != pixelsPerFrame ||
-        oldDelegate.color != color;
+        oldDelegate.color != color ||
+        oldDelegate.framesPerSecond != framesPerSecond ||
+        oldDelegate.colorScheme != colorScheme;
   }
 }
 

@@ -17,6 +17,7 @@ import 'timeline_exposure_comma_drag_policy.dart';
 import 'timeline_frame_coordinate_policy.dart';
 import 'timeline_frame_cursor_layer.dart';
 import 'timeline_frame_grid_stack.dart';
+import 'timeline_beat_lines.dart';
 import 'timeline_frame_range_policy.dart';
 import 'timeline_frame_scroll_viewport.dart';
 import 'timeline_frame_ruler.dart';
@@ -1543,6 +1544,30 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                                                             widget.laneEdit,
                                                         seSpillInLayerIds: widget
                                                             .seSpillInLayerIds,
+                                                      ),
+                                                      // UI-R13 #7: the
+                                                      // beat lines span
+                                                      // EVERY row now, one
+                                                      // grid-wide overlay.
+                                                      beatLines: RepaintBoundary(
+                                                        child: CustomPaint(
+                                                          key:
+                                                              const ValueKey<
+                                                                String
+                                                              >(
+                                                                'timeline-beat-lines',
+                                                              ),
+                                                          painter: TimelineBeatLinesPainter(
+                                                            frameCellExtent:
+                                                                _metrics
+                                                                    .frameCellWidth,
+                                                            framesPerSecond:
+                                                                widget
+                                                                    .projectFps,
+                                                            colorScheme:
+                                                                colorScheme,
+                                                          ),
+                                                        ),
                                                       ),
                                                       cutEndBoundaryLeft:
                                                           timelineCutEndBoundaryX(

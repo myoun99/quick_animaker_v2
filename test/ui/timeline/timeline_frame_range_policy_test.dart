@@ -132,6 +132,36 @@ void main() {
       );
     });
 
+    test('the hysteresis caps at 24 frames (UI-R13 #6): wide viewports '
+        'still release their materialized tail', () {
+      expect(
+        endlessTrailingFrames(
+          baseFrameCount: 48,
+          currentTrailingFrames: 30,
+          scrollOffset: 0,
+          viewportExtent: 4800, // 100 cells — the old threshold never fired.
+          frameCellExtent: 48,
+          allowShrink: true,
+        ),
+        // Target 100-48=52... the view itself needs the fill; with the
+        // viewport wider than base the target EXCEEDS current — grow.
+        52,
+      );
+      expect(
+        endlessTrailingFrames(
+          baseFrameCount: 48,
+          currentTrailingFrames: 30,
+          scrollOffset: 0,
+          viewportExtent: 1200, // 25 cells < base: pure release territory.
+          frameCellExtent: 48,
+          allowShrink: true,
+        ),
+        // Target 0; release 30 ≥ capped hysteresis 24 → shrink (the old
+        // one-viewport threshold 25 would have held).
+        0,
+      );
+    });
+
     test('the shrunken extent always covers the current viewport edge', () {
       final trailing = endlessTrailingFrames(
         baseFrameCount: 48,

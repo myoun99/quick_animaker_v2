@@ -87,15 +87,12 @@ class TimelineRowCellsPainter extends CustomPainter {
     required this.colorScheme,
     required this.baseTextStyle,
     this.axis = Axis.horizontal,
-    this.framesPerSecond = 24,
   });
 
   final Layer layer;
   final bool active;
   final int playbackFrameCount;
 
-  /// The 24f strong line's period (UI-R10 #26).
-  final int framesPerSecond;
   final int frameStartIndex;
   final int frameEndIndexExclusive;
   final double leadingFrameSpacerWidth;
@@ -404,41 +401,10 @@ class TimelineRowCellsPainter extends CustomPainter {
       );
     }
 
-    // The 6f/24f line system (UI-R10 #26, KGB-sheet convention): a medium
-    // line every 6 frames, a strong one on second boundaries — drawn over
-    // the lightened cell grid, per row so they read continuous down the
-    // grid. UI-R11 #9 lifted both well above the base hairlines (they are
-    // the surviving structure once #7 fades the plain grid out).
-    final sixPaint = Paint()
-      ..color = colorScheme.outline
-      ..strokeWidth = 1;
-    final secondPaint = Paint()
-      ..color = colorScheme.onSurfaceVariant
-      ..strokeWidth = 1.5;
-    final firstBoundary = ((frameStartIndex + 5) ~/ 6) * 6;
-    for (
-      var frameIndex = firstBoundary;
-      frameIndex <= frameEndIndexExclusive;
-      frameIndex += 6
-    ) {
-      final rect = cellRectFor(frameIndex);
-      final paint = frameIndex % framesPerSecond == 0
-          ? secondPaint
-          : sixPaint;
-      if (axis == Axis.horizontal) {
-        canvas.drawLine(
-          Offset(rect.left, 0),
-          Offset(rect.left, crossAxisExtent),
-          paint,
-        );
-      } else {
-        canvas.drawLine(
-          Offset(0, rect.top),
-          Offset(crossAxisExtent, rect.top),
-          paint,
-        );
-      }
-    }
+    // The 6f/24f beat lines moved to ONE grid-wide overlay
+    // (TimelineBeatLinesPainter, UI-R13 #7) so they span every row —
+    // SE, camera and lane rows included — not just the painterized
+    // drawing rows.
   }
 
   BorderRadius? _cellRadius(TimelineExposureBlockVisualSegment segment) {
@@ -473,7 +439,6 @@ class TimelineRowCellsPainter extends CustomPainter {
       oldDelegate.frameCellExtent != frameCellExtent ||
       oldDelegate.crossAxisExtent != crossAxisExtent ||
       oldDelegate.axis != axis ||
-      oldDelegate.framesPerSecond != framesPerSecond ||
       !identical(oldDelegate.colorScheme, colorScheme) ||
       !identical(oldDelegate.exposureStateForLayer, exposureStateForLayer) ||
       !identical(oldDelegate.frameNameForLayer, frameNameForLayer);
@@ -535,7 +500,6 @@ Widget timelineRowCellsPaintArea({
   required double frameCellExtent,
   required double crossAxisExtent,
   required Axis axis,
-  int framesPerSecond = 24,
   required TimelineCellExposureState Function(Layer layer, int frameIndex)
   exposureStateForLayer,
   String? Function(Layer layer, int frameIndex)? frameNameForLayer,
@@ -558,7 +522,6 @@ Widget timelineRowCellsPaintArea({
     colorScheme: Theme.of(context).colorScheme,
     baseTextStyle: DefaultTextStyle.of(context).style,
     axis: axis,
-    framesPerSecond: framesPerSecond,
   );
   final totalMainExtent =
       leadingFrameSpacerWidth +
