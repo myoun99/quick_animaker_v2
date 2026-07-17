@@ -975,8 +975,7 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel> {
       shape: shape,
       surface: preLift,
       liftId: '${DateTime.now().microsecondsSinceEpoch}',
-      options:
-          widget.selectionMaskOptions?.value ?? SelectionMaskOptions.none,
+      options: widget.selectionMaskOptions?.value ?? SelectionMaskOptions.none,
     );
     if (lift == null) {
       return null;
@@ -1204,12 +1203,14 @@ class _CanvasEditorPanelShell extends StatelessWidget {
                 child: Row(
                   children: [
                     Expanded(
-                      child: DecoratedBox(
+                      // No inner frame (UI-R10 #16): the content box's
+                      // Border.all doubled every shell line — it read as
+                      // odd side padding + stray vertical lines beside the
+                      // canvas. The shell's outer frame and the strips'
+                      // own hairlines carry all the separation.
+                      child: KeyedSubtree(
                         key: const ValueKey<String>(
                           'canvas-editor-panel-content',
-                        ),
-                        decoration: BoxDecoration(
-                          border: Border.all(color: colorScheme.outlineVariant),
                         ),
                         child: child,
                       ),

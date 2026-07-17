@@ -22,7 +22,6 @@ import '../models/transform_track.dart';
 import '../services/audio/audio_peaks_extractor.dart';
 import '../services/cut_frame_composite_plan.dart' show layerIdentityPose;
 import 'audio/waveform_painter.dart';
-import 'panels/panel_scrollbar.dart';
 import 'storyboard_cut_fade_policy.dart';
 import 'storyboard_layer_policy.dart';
 import 'storyboard_timeline_layout.dart';
@@ -52,7 +51,9 @@ import 'timeline/timeline_frame_range_policy.dart'
 import '../models/layer_kind.dart';
 import 'timeline/timeline_frame_ruler.dart';
 import 'timeline/timeline_grid_metrics.dart';
+import 'timeline/timeline_horizontal_scrollbar_rail.dart';
 import 'timeline/timeline_layer_controls_header.dart';
+import 'timeline/timeline_vertical_scrollbar_rail.dart';
 import 'timeline/timeline_playhead.dart' show timelinePlayheadColor;
 import 'timeline/timeline_row_filter.dart';
 import 'timeline/timeline_scale.dart';
@@ -180,6 +181,15 @@ class StoryboardPanel extends StatefulWidget {
   static const double _trackLabelWidth = 372;
   static const double _trackLaneHeight = 64;
   static const double _rulerHeight = 24;
+
+  /// The vertical scrollbar's lane width — the TIMELINE's
+  /// [TimelineGridMetrics.verticalScrollbarWidth] by value (UI-R10 #15/#21
+  /// unification: same rail, same lane, same column geometry).
+  static const double _scrollbarLaneWidth = 14;
+
+  /// The bottom horizontal scrollbar row's height — the timeline grids'
+  /// value (UI-R10 #21 3-row unification).
+  static const double _bottomScrollbarRailHeight = 16;
 
   static const double _timelineTrailingPadding = 12;
 
@@ -1089,245 +1099,336 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
     // overlay subscribe below, nothing else in this build does.
     final playheadListenable = widget.playheadFrame;
 
-    return DecoratedBox(
+    // The panel-private frame (border + all-6 padding) is GONE (UI-R10
+    // #15): the timeline hosts its grid edge-to-edge under the command
+    // bar, and that inset was exactly the odd top-left padding that made
+    // the two rails read differently. The body is the timeline's 3-ROW
+    // structure (UI-R10 #21): [legend | lane | ruler] on top,
+    // [labels | scrollbar | strips] in the middle,
+    // [blank | blank | horizontal scrollbar] pinned on the bottom.
+    return ColoredBox(
       key: const ValueKey<String>('storyboard-panel'),
-      decoration: BoxDecoration(
-        color: colorScheme.surface,
-        border: Border.all(color: colorScheme.outlineVariant),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(6),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            // PINNED RULER: the frame ruler sits ABOVE the vertical scroll
-            // area (the timeline's sticky-header pattern) so it stays put
-            // while tracks and SE rows scroll under it; it follows the
-            // horizontal scroll by translation.
-            Padding(
-              padding: const EdgeInsets.only(right: panelScrollbarGutter),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // The timeline's legend header over the rail (UI-R5
-                  // storyboard unification): same slots, same flyouts.
-                  SizedBox(
-                    width: StoryboardPanel._trackLabelWidth,
-                    child: TimelineLayerControlsHeader(
-                      metrics: const TimelineGridMetrics(),
-                      legend: widget.legend,
-                      rowFilter: TimelineRowFilter.none,
-                      showRowSolos: false,
-                      marksInUse: _legendMarksInUse(),
-                      kindsInUse: _legendKindsInUse(),
-                      visibilitySoloEnabled: widget.visibilitySoloEnabled,
-                      allSeMuted: _legendAllSeMuted(),
-                      displayedLayerIds: widget.legend == null
-                          ? null
-                          : _legendDisplayedLayerIds,
-                      displayedOpacity: widget.legendOpacityValue,
-                    ),
-                  ),
-                  Expanded(
-                    child: LayoutBuilder(
-                      builder: (context, constraints) {
-                        final viewportWidth = constraints.hasBoundedWidth
-                            ? constraints.maxWidth
-                            : contentWidth;
-                        return SizedBox(
-                          height: StoryboardPanel._rulerHeight,
-                          child: ClipRect(
-                            child: OverflowBox(
-                              alignment: Alignment.topLeft,
-                              minWidth: contentWidth,
-                              maxWidth: contentWidth,
-                              minHeight: StoryboardPanel._rulerHeight,
-                              maxHeight: StoryboardPanel._rulerHeight,
-                              child: Transform.translate(
-                                offset: Offset(-_horizontalScrollOffset, 0),
-                                child: _StoryboardRuler(
-                                  width: contentWidth,
-                                  renderedFrames: renderedFrames,
-                                  contentFrames: totalFrames,
-                                  playhead: playheadListenable,
-                                  cacheProgress: widget.cacheProgress,
-                                  scrollOffset: _horizontalScrollOffset,
-                                  viewportWidth: viewportWidth,
-                                  timelineScale: scale,
-                                  onSeekGlobalFrame: widget.onSeekGlobalFrame,
-                                  onScrubGlobalFrame: widget.onScrubGlobalFrame,
-                                  onScrubEnd: widget.onScrubEnd,
-                                  isFrameCached: widget.isFrameCached,
-                                  framesPerSecond: widget.projectFps,
-                                  showSeconds: widget.showSeconds,
-                                ),
-                              ),
+      color: colorScheme.surface,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          // PINNED RULER: the frame ruler sits ABOVE the vertical scroll
+          // area (the timeline's sticky-header pattern) so it stays put
+          // while tracks and SE rows scroll under it; it follows the
+          // horizontal scroll by translation.
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // The timeline's legend header over the rail (UI-R5
+              // storyboard unification): same slots, same flyouts.
+              SizedBox(
+                width: StoryboardPanel._trackLabelWidth,
+                child: TimelineLayerControlsHeader(
+                  metrics: const TimelineGridMetrics(),
+                  legend: widget.legend,
+                  rowFilter: TimelineRowFilter.none,
+                  showRowSolos: false,
+                  marksInUse: _legendMarksInUse(),
+                  kindsInUse: _legendKindsInUse(),
+                  visibilitySoloEnabled: widget.visibilitySoloEnabled,
+                  allSeMuted: _legendAllSeMuted(),
+                  displayedLayerIds: widget.legend == null
+                      ? null
+                      : _legendDisplayedLayerIds,
+                  displayedOpacity: widget.legendOpacityValue,
+                ),
+              ),
+              // Blank corner over the scrollbar lane (the timeline's
+              // header-row slot).
+              const TimelineVerticalScrollbarSlot(
+                width: StoryboardPanel._scrollbarLaneWidth,
+                height: StoryboardPanel._rulerHeight,
+              ),
+              Expanded(
+                child: LayoutBuilder(
+                  builder: (context, constraints) {
+                    final viewportWidth = constraints.hasBoundedWidth
+                        ? constraints.maxWidth
+                        : contentWidth;
+                    return SizedBox(
+                      height: StoryboardPanel._rulerHeight,
+                      child: ClipRect(
+                        child: OverflowBox(
+                          alignment: Alignment.topLeft,
+                          minWidth: contentWidth,
+                          maxWidth: contentWidth,
+                          minHeight: StoryboardPanel._rulerHeight,
+                          maxHeight: StoryboardPanel._rulerHeight,
+                          child: Transform.translate(
+                            offset: Offset(-_horizontalScrollOffset, 0),
+                            child: _StoryboardRuler(
+                              width: contentWidth,
+                              renderedFrames: renderedFrames,
+                              contentFrames: totalFrames,
+                              playhead: playheadListenable,
+                              cacheProgress: widget.cacheProgress,
+                              scrollOffset: _horizontalScrollOffset,
+                              viewportWidth: viewportWidth,
+                              timelineScale: scale,
+                              onSeekGlobalFrame: widget.onSeekGlobalFrame,
+                              onScrubGlobalFrame: widget.onScrubGlobalFrame,
+                              onScrubEnd: widget.onScrubEnd,
+                              isFrameCached: widget.isFrameCached,
+                              framesPerSecond: widget.projectFps,
+                              showSeconds: widget.showSeconds,
                             ),
                           ),
-                        );
-                      },
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            Expanded(
-              child: PanelScrollbar(
-                controller: _verticalController,
-                child: SingleChildScrollView(
-                  key: const ValueKey<String>('storyboard-vertical-viewport'),
-                  controller: _verticalController,
-                  padding: const EdgeInsets.only(right: panelScrollbarGutter),
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      // Sections live INSIDE the rows now (UI-R5): the
-                      // first S row and the V row carry inline tags — no
-                      // bracket gutter beside the rail.
-                      SizedBox(
-                        key: const ValueKey<String>(
-                          'storyboard-track-label-rail',
-                        ),
-                        width: StoryboardPanel._trackLabelWidth,
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            // Track groups in TIMELINE order (R6 B3): the
-                            // S rows sit ABOVE their V track, slots
-                            // bottom-up like the timeline (top-down
-                            // S2, S1, V 窶・R7-竭｣).
-                            for (
-                              var index = 0;
-                              index < project.tracks.length;
-                              index++
-                            )
-                              ..._railRowsForTrack(
-                                project.tracks[index],
-                                index,
-                              ),
-                          ],
                         ),
                       ),
-                      Expanded(
-                        child: PanelScrollbar(
-                          controller: _horizontalController,
-                          child: SingleChildScrollView(
-                            key: const ValueKey<String>(
-                              'storyboard-timeline-horizontal-viewport',
+                    );
+                  },
+                ),
+              ),
+            ],
+          ),
+          Expanded(
+            child: LayoutBuilder(
+              builder: (context, middleConstraints) {
+                final middleViewportHeight = middleConstraints.hasBoundedHeight
+                    ? middleConstraints.maxHeight
+                    : 0.0;
+                return Stack(
+                  children: [
+                    ScrollConfiguration(
+                      // The pinned rail IS this area's scrollbar — the desktop
+                      // auto-overlay would double it (UI-R10 #22 unification).
+                      behavior: ScrollConfiguration.of(
+                        context,
+                      ).copyWith(scrollbars: false),
+                      child: SingleChildScrollView(
+                        key: const ValueKey<String>(
+                          'storyboard-vertical-viewport',
+                        ),
+                        controller: _verticalController,
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            // Sections live INSIDE the rows now (UI-R5): the
+                            // first S row and the V row carry inline tags — no
+                            // bracket gutter beside the rail.
+                            SizedBox(
+                              key: const ValueKey<String>(
+                                'storyboard-track-label-rail',
+                              ),
+                              width: StoryboardPanel._trackLabelWidth,
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  // Track groups in TIMELINE order (R6 B3): the
+                                  // S rows sit ABOVE their V track, slots
+                                  // bottom-up like the timeline (top-down
+                                  // S2, S1, V 窶・R7-竭｣).
+                                  for (
+                                    var index = 0;
+                                    index < project.tracks.length;
+                                    index++
+                                  )
+                                    ..._railRowsForTrack(
+                                      project.tracks[index],
+                                      index,
+                                    ),
+                                ],
+                              ),
                             ),
-                            controller: _horizontalController,
-                            scrollDirection: Axis.horizontal,
-                            padding: const EdgeInsets.only(
-                              bottom: panelScrollbarGutter,
+                            // The scrollbar lane: the scroll content reserves
+                            // the column, the pinned rail overlays it.
+                            const SizedBox(
+                              width: StoryboardPanel._scrollbarLaneWidth,
                             ),
-                            child: Stack(
-                              children: [
-                                // Frame grid lines under the blocks:
-                                // the runway reads as endless frame
-                                // cells, like the timeline's grid
-                                // (painted 窶・costs nothing per frame).
-                                Positioned.fill(
-                                  child: IgnorePointer(
-                                    child: RepaintBoundary(
-                                      child: CustomPaint(
-                                        key: const ValueKey<String>(
-                                          'storyboard-frame-lines',
-                                        ),
-                                        painter: _StoryboardFrameLinesPainter(
-                                          pixelsPerFrame: scale.pixelsPerFrame,
-                                          color: colorScheme.outlineVariant
-                                              .withValues(alpha: 0.35),
+                            Expanded(
+                              child: ScrollConfiguration(
+                                behavior: ScrollConfiguration.of(
+                                  context,
+                                ).copyWith(scrollbars: false),
+                                child: SingleChildScrollView(
+                                  key: const ValueKey<String>(
+                                    'storyboard-timeline-horizontal-viewport',
+                                  ),
+                                  controller: _horizontalController,
+                                  scrollDirection: Axis.horizontal,
+                                  child: Stack(
+                                    children: [
+                                      // Frame grid lines under the blocks:
+                                      // the runway reads as endless frame
+                                      // cells, like the timeline's grid
+                                      // (painted 窶・costs nothing per frame).
+                                      Positioned.fill(
+                                        child: IgnorePointer(
+                                          child: RepaintBoundary(
+                                            child: CustomPaint(
+                                              key: const ValueKey<String>(
+                                                'storyboard-frame-lines',
+                                              ),
+                                              painter:
+                                                  _StoryboardFrameLinesPainter(
+                                                    pixelsPerFrame:
+                                                        scale.pixelsPerFrame,
+                                                    color: colorScheme
+                                                        .outlineVariant
+                                                        .withValues(
+                                                          alpha: 0.35,
+                                                        ),
+                                                  ),
+                                            ),
+                                          ),
                                         ),
                                       ),
-                                    ),
-                                  ),
-                                ),
-                                // RepaintBoundary (R12-⑥): the playhead
-                                // overlay above moves every playback tick;
-                                // without the boundary each move re-
-                                // rasterizes every strip, thumbnail and
-                                // waveform in this column.
-                                RepaintBoundary(
-                                  child: Column(
-                                    key: const ValueKey<String>(
-                                      'storyboard-timeline-scroll-content',
-                                    ),
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    children: [
-                                      // Width driver: the scroll content spans
-                                      // the full frame runway even when every
-                                      // row is narrower (the pinned ruler used
-                                      // to do this from inside the content).
-                                      SizedBox(width: contentWidth),
-                                      // Track groups in TIMELINE order (R6
-                                      // B3), mirroring the rail exactly 窶・
-                                      // row for row, height for height.
-                                      for (
-                                        var index = 0;
-                                        index < project.tracks.length;
-                                        index++
-                                      )
-                                        ..._stripRowsForTrack(
-                                          project.tracks[index],
-                                          index,
-                                          layoutEntries
-                                              .where(
-                                                (entry) =>
-                                                    entry.trackIndex == index,
-                                              )
-                                              .toList(growable: false),
-                                          contentWidth,
-                                          scale,
-                                          index < seStripRowsByTrack.length
-                                              ? seStripRowsByTrack[index]
-                                              : const [],
+                                      // RepaintBoundary (R12-⑥): the playhead
+                                      // overlay above moves every playback tick;
+                                      // without the boundary each move re-
+                                      // rasterizes every strip, thumbnail and
+                                      // waveform in this column.
+                                      RepaintBoundary(
+                                        child: Column(
+                                          key: const ValueKey<String>(
+                                            'storyboard-timeline-scroll-content',
+                                          ),
+                                          crossAxisAlignment:
+                                              CrossAxisAlignment.start,
+                                          children: [
+                                            // Width driver: the scroll content spans
+                                            // the full frame runway even when every
+                                            // row is narrower (the pinned ruler used
+                                            // to do this from inside the content).
+                                            SizedBox(width: contentWidth),
+                                            // Track groups in TIMELINE order (R6
+                                            // B3), mirroring the rail exactly 窶・
+                                            // row for row, height for height.
+                                            for (
+                                              var index = 0;
+                                              index < project.tracks.length;
+                                              index++
+                                            )
+                                              ..._stripRowsForTrack(
+                                                project.tracks[index],
+                                                index,
+                                                layoutEntries
+                                                    .where(
+                                                      (entry) =>
+                                                          entry.trackIndex ==
+                                                          index,
+                                                    )
+                                                    .toList(growable: false),
+                                                contentWidth,
+                                                scale,
+                                                index <
+                                                        seStripRowsByTrack
+                                                            .length
+                                                    ? seStripRowsByTrack[index]
+                                                    : const [],
+                                              ),
+                                          ],
+                                        ),
+                                      ),
+                                      if (playheadListenable != null)
+                                        // Frame-wide accent tint only 窶・no solid
+                                        // edge line over the blocks (user
+                                        // direction); the ruler carries its own
+                                        // current-frame highlight. Subscribes to
+                                        // the cursor itself: a tick moves THIS
+                                        // overlay, the blocks never rebuild.
+                                        ValueListenableBuilder<int?>(
+                                          valueListenable: playheadListenable,
+                                          builder:
+                                              (
+                                                context,
+                                                playheadFrame,
+                                                _,
+                                              ) => playheadFrame == null
+                                              ? const SizedBox.shrink()
+                                              : Positioned(
+                                                  key: const ValueKey<String>(
+                                                    'storyboard-playhead',
+                                                  ),
+                                                  left: scale.leftForFrame(
+                                                    playheadFrame,
+                                                  ),
+                                                  top: 0,
+                                                  bottom: 0,
+                                                  width: scale.pixelsPerFrame,
+                                                  child: IgnorePointer(
+                                                    child: ColoredBox(
+                                                      color:
+                                                          timelinePlayheadColor
+                                                              .withValues(
+                                                                alpha: 0.18,
+                                                              ),
+                                                    ),
+                                                  ),
+                                                ),
                                         ),
                                     ],
                                   ),
                                 ),
-                                if (playheadListenable != null)
-                                  // Frame-wide accent tint only 窶・no solid
-                                  // edge line over the blocks (user
-                                  // direction); the ruler carries its own
-                                  // current-frame highlight. Subscribes to
-                                  // the cursor itself: a tick moves THIS
-                                  // overlay, the blocks never rebuild.
-                                  ValueListenableBuilder<int?>(
-                                    valueListenable: playheadListenable,
-                                    builder: (context, playheadFrame, _) =>
-                                        playheadFrame == null
-                                        ? const SizedBox.shrink()
-                                        : Positioned(
-                                            key: const ValueKey<String>(
-                                              'storyboard-playhead',
-                                            ),
-                                            left: scale.leftForFrame(
-                                              playheadFrame,
-                                            ),
-                                            top: 0,
-                                            bottom: 0,
-                                            width: scale.pixelsPerFrame,
-                                            child: IgnorePointer(
-                                              child: ColoredBox(
-                                                color: timelinePlayheadColor
-                                                    .withValues(alpha: 0.18),
-                                              ),
-                                            ),
-                                          ),
-                                  ),
-                              ],
+                              ),
                             ),
-                          ),
+                          ],
                         ),
                       ),
-                    ],
-                  ),
+                    ),
+                    Positioned(
+                      left: StoryboardPanel._trackLabelWidth,
+                      top: 0,
+                      bottom: 0,
+                      width: StoryboardPanel._scrollbarLaneWidth,
+                      child: TimelineVerticalScrollbarRail(
+                        key: const ValueKey<String>(
+                          'storyboard-vertical-scrollbar',
+                        ),
+                        controller: _verticalController,
+                        viewportHeight: middleViewportHeight,
+                        contentHeight: middleViewportHeight,
+                        width: StoryboardPanel._scrollbarLaneWidth,
+                      ),
+                    ),
+                  ],
+                );
+              },
+            ),
+          ),
+          // BOTTOM row of the 3-row structure (UI-R10 #21): blank
+          // corners under the rail and the scrollbar lane, then the
+          // PINNED horizontal scrollbar (it used to live inside the
+          // vertical scroll content and scrolled away with it).
+          Row(
+            children: [
+              const SizedBox(
+                key: ValueKey<String>(
+                  'storyboard-bottom-scrollbar-left-spacer',
+                ),
+                width: StoryboardPanel._trackLabelWidth,
+                height: StoryboardPanel._bottomScrollbarRailHeight,
+              ),
+              const SizedBox(
+                width: StoryboardPanel._scrollbarLaneWidth,
+                height: StoryboardPanel._bottomScrollbarRailHeight,
+              ),
+              Expanded(
+                child: LayoutBuilder(
+                  builder: (context, constraints) {
+                    final viewportWidth = constraints.hasBoundedWidth
+                        ? constraints.maxWidth
+                        : 0.0;
+                    return TimelineHorizontalScrollbarRail(
+                      key: const ValueKey<String>(
+                        'storyboard-horizontal-scrollbar',
+                      ),
+                      controller: _horizontalController,
+                      viewportWidth: viewportWidth,
+                      contentWidth: contentWidth,
+                      height: StoryboardPanel._bottomScrollbarRailHeight,
+                    );
+                  },
                 ),
               ),
-            ),
-          ],
-        ),
+            ],
+          ),
+        ],
       ),
     );
   }
@@ -1604,8 +1705,7 @@ Layer? _trackSeAt(Track track, int slot) =>
 /// cut) keeps the controls up (UI-R10 #12): the SE rows are TRACK-owned —
 /// standing in a gap merely means no cut is selected.
 Layer? _activeSlotLayerOf(Track track, CutId? activeCutId, int slot) {
-  if (activeCutId != null &&
-      !track.cuts.any((cut) => cut.id == activeCutId)) {
+  if (activeCutId != null && !track.cuts.any((cut) => cut.id == activeCutId)) {
     return null;
   }
   return _trackSeAt(track, slot);
@@ -1693,13 +1793,28 @@ class _StoryboardSeLabel extends StatelessWidget {
         padding: const EdgeInsets.only(right: 8),
         decoration: BoxDecoration(
           // The timeline row's active treatment verbatim (S-row selection,
-          // W4): secondaryContainer fill + 2px secondary border.
+          // W4): secondaryContainer fill + secondary border. Side/bottom
+          // 1px borders only (UI-R10 #20): no doubled seams, no 2px
+          // content shift — selection speaks through color alone.
           color: active
               ? colorScheme.secondaryContainer.withValues(alpha: 0.55)
               : colorScheme.surface,
-          border: Border.all(
-            color: active ? colorScheme.secondary : colorScheme.outlineVariant,
-            width: active ? 2 : 1,
+          border: Border(
+            left: BorderSide(
+              color: active
+                  ? colorScheme.secondary
+                  : colorScheme.outlineVariant,
+            ),
+            right: BorderSide(
+              color: active
+                  ? colorScheme.secondary
+                  : colorScheme.outlineVariant,
+            ),
+            bottom: BorderSide(
+              color: active
+                  ? colorScheme.secondary
+                  : colorScheme.outlineVariant,
+            ),
           ),
         ),
         child: Semantics(
@@ -1915,7 +2030,12 @@ class _StoryboardLaneLabel extends StatelessWidget {
       padding: const EdgeInsets.only(right: 8),
       decoration: BoxDecoration(
         color: colorScheme.surfaceContainerLow,
-        border: Border.all(color: colorScheme.outlineVariant),
+        // Side/bottom borders only (UI-R10 #20), like the timeline rail.
+        border: Border(
+          left: BorderSide(color: colorScheme.outlineVariant),
+          right: BorderSide(color: colorScheme.outlineVariant),
+          bottom: BorderSide(color: colorScheme.outlineVariant),
+        ),
       ),
       child: Row(
         children: [
@@ -2738,7 +2858,13 @@ class _StoryboardTrackLabel extends StatelessWidget {
       padding: const EdgeInsets.only(right: 8),
       decoration: BoxDecoration(
         color: colorScheme.surface,
-        border: Border.all(color: colorScheme.outlineVariant),
+        // Side/bottom borders only (UI-R10 #20): stacked rail rows keep
+        // single-pixel seams, like the timeline rail.
+        border: Border(
+          left: BorderSide(color: colorScheme.outlineVariant),
+          right: BorderSide(color: colorScheme.outlineVariant),
+          bottom: BorderSide(color: colorScheme.outlineVariant),
+        ),
       ),
       child: Row(
         children: [
@@ -2949,6 +3075,7 @@ class _StoryboardTrackRow extends StatelessWidget {
 
   final Track track;
   final List<StoryboardTimelineLayoutEntry> layoutEntries;
+
   /// Null = no cut selected (gap state, UI-R9 #3): no highlight,
   /// cut-scoped rail controls stand down.
   final CutId? activeCutId;

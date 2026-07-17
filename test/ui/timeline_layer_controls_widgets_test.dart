@@ -83,6 +83,44 @@ void main() {
       );
     });
 
+    testWidgets('the row border stays a constant 1px side/bottom set — the '
+        'ACTIVE accent is color only, never a 2px content shift '
+        '(UI-R10 #20)', (tester) async {
+      final layer = _layer();
+
+      Border borderOf() {
+        final container = tester.widget<Container>(
+          find
+              .descendant(
+                of: find.byKey(
+                  ValueKey<String>('timeline-layer-row-${layer.id}'),
+                ),
+                matching: find.byType(Container),
+              )
+              .first,
+        );
+        return (container.decoration! as BoxDecoration).border! as Border;
+      }
+
+      await tester.pumpWidget(_row(layer: layer));
+      final restBorder = borderOf();
+      expect(restBorder.top, BorderSide.none, reason: 'the neighbor above '
+          '(or the legend header) owns the seam');
+      expect(restBorder.bottom.width, 1);
+      expect(restBorder.left.width, 1);
+      expect(restBorder.right.width, 1);
+
+      await tester.pumpWidget(_row(layer: layer, active: true));
+      final activeBorder = borderOf();
+      expect(activeBorder.top, BorderSide.none);
+      expect(activeBorder.bottom.width, 1, reason: 'color-only accent');
+      expect(
+        activeBorder.bottom.color,
+        isNot(restBorder.bottom.color),
+        reason: 'the accent still reads — through color',
+      );
+    });
+
     testWidgets('tapping row selects layer', (tester) async {
       final layer = _layer();
       LayerId? selectedLayerId;
