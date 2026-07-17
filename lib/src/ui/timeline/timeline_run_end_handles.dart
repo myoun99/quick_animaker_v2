@@ -22,6 +22,7 @@ class TimelineRunEditCallbacks {
     required this.onAddEnd,
     required this.onAddCancel,
     required this.onEdgeModeSelected,
+    this.canScopeToSelection,
   });
 
   final bool Function(
@@ -34,14 +35,28 @@ class TimelineRunEditCallbacks {
   final VoidCallback onAddEnd;
   final VoidCallback onAddCancel;
 
-  /// The tag flyout picked a mode for the run edge; null clears it (None).
+  /// The tag flyout picked a mode for the run edge; null clears it
+  /// (None). [scopeToSelection] carries the flyout's EXPLICIT choice
+  /// (UI-R19 #2): "Repeat" = the whole run even while a selection is
+  /// live; "Repeat selection" = the selection scopes the pattern.
   final void Function(
     LayerId layerId,
     int blockStartIndex,
     TimelineRunEdgeSide side,
-    TimelineRunEdgeMode? mode,
-  )
+    TimelineRunEdgeMode? mode, {
+    bool scopeToSelection,
+  })
   onEdgeModeSelected;
+
+  /// Whether the LIVE frame-range selection can scope a repeat pattern
+  /// on this edge — gates the flyout's "Repeat selection" entry. Null =
+  /// the entry never shows (hosts without selection support).
+  final bool Function(
+    LayerId layerId,
+    int blockStartIndex,
+    TimelineRunEdgeSide side,
+  )?
+  canScopeToSelection;
 }
 
 /// Legacy main-axis extent constant (pre-UI-R11 fixed chips); the cluster
@@ -150,12 +165,16 @@ List<Widget> timelineRowRunEndHandles({
             );
       final left = edgeX(spanStart);
       final extent = edgeX(spanEnd) - left;
+      // The pattern span reads at a glance now (UI-R19 #2): a light wash
+      // over the repeated cels plus a firm outline — the old faint
+      // hairline was easy to miss entirely.
       final outline = IgnorePointer(
         child: DecoratedBox(
           decoration: BoxDecoration(
+            color: const Color(0xFFE57373).withValues(alpha: 0.10),
             border: Border.all(
-              color: const Color(0xFFE57373).withValues(alpha: 0.55),
-              width: 1.5,
+              color: const Color(0xFFE57373).withValues(alpha: 0.85),
+              width: 2,
             ),
             borderRadius: const BorderRadius.all(Radius.circular(6)),
           ),
@@ -203,6 +222,7 @@ List<Widget> timelineRowRunEndHandles({
         blockStartIndex: baseRun.startIndex,
         anchorValue: baseRun.anchorFrameId.value,
         mode: endBehavior?.mode,
+        hasPattern: endBehavior?.patternAnchorFrameId != null,
         edgeOffset: edgeX(run.endIndexExclusive),
         frameCellExtent: frameCellExtent,
         crossAxisExtent: crossAxisExtent,
@@ -225,6 +245,7 @@ List<Widget> timelineRowRunEndHandles({
           blockStartIndex: baseRun.startIndex,
           anchorValue: baseRun.anchorFrameId.value,
           mode: startBehavior?.mode,
+          hasPattern: startBehavior?.patternAnchorFrameId != null,
           edgeOffset: edgeX(run.startIndex),
           frameCellExtent: frameCellExtent,
           crossAxisExtent: crossAxisExtent,
@@ -248,6 +269,7 @@ class _RunEdgeCluster extends StatefulWidget {
     required this.blockStartIndex,
     required this.anchorValue,
     required this.mode,
+    required this.hasPattern,
     required this.edgeOffset,
     required this.frameCellExtent,
     required this.crossAxisExtent,
@@ -264,6 +286,10 @@ class _RunEdgeCluster extends StatefulWidget {
   /// The edge's current mode; null = None. Display stays quiet either
   /// way — the letter changes, never an accent (UI-R10 #1).
   final TimelineRunEdgeMode? mode;
+
+  /// A selection-scoped repeat pattern is live on this edge (UI-R19 #2):
+  /// the flyout's "Repeat selection" entry reads checked from it.
+  final bool hasPattern;
 
   /// Main-axis offset of the display run edge.
   final double edgeOffset;
@@ -358,12 +384,24 @@ class _RunEdgeClusterState extends State<_RunEdgeCluster> {
   }
 
   Future<void> _openModeFlyout(BuildContext anchorContext) async {
-    void pick(TimelineRunEdgeMode? mode) => widget.callbacks.onEdgeModeSelected(
-      widget.layerId,
-      widget.blockStartIndex,
-      widget.side,
-      mode,
-    );
+    void pick(TimelineRunEdgeMode? mode, {bool scopeToSelection = false}) =>
+        widget.callbacks.onEdgeModeSelected(
+          widget.layerId,
+          widget.blockStartIndex,
+          widget.side,
+          mode,
+          scopeToSelection: scopeToSelection,
+        );
+    // Whether the LIVE selection can scope a pattern right now (UI-R19
+    // #2): the explicit entry replaces the old silent capture — "Repeat"
+    // now ALWAYS means the whole run.
+    final selectionScopes =
+        widget.callbacks.canScopeToSelection?.call(
+          widget.layerId,
+          widget.blockStartIndex,
+          widget.side,
+        ) ??
+        false;
     setState(() => _menuOpen = true);
     await showPanelFlyout(
       anchorContext,
@@ -383,9 +421,22 @@ class _RunEdgeClusterState extends State<_RunEdgeCluster> {
         PanelFlyoutItem(
           keyValue: 'run-edge-mode-repeat',
           label: 'Repeat',
-          checked: widget.mode == TimelineRunEdgeMode.repeat,
+          checked:
+              widget.mode == TimelineRunEdgeMode.repeat && !widget.hasPattern,
           onSelected: () => pick(TimelineRunEdgeMode.repeat),
         ),
+        // Listed while a selection can scope it — or one already does
+        // (the checked row doubles as the "this edge repeats a
+        // SELECTION" status).
+        if (selectionScopes || widget.hasPattern)
+          PanelFlyoutItem(
+            keyValue: 'run-edge-mode-repeat-selection',
+            label: 'Repeat selection',
+            checked:
+                widget.mode == TimelineRunEdgeMode.repeat && widget.hasPattern,
+            onSelected: () =>
+                pick(TimelineRunEdgeMode.repeat, scopeToSelection: true),
+          ),
       ],
     );
     if (mounted) {

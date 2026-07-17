@@ -101,7 +101,7 @@ void main() {
     List<int>? addCounts,
     void Function(LayerId, int, bool)? onAddBegin,
     List<(LayerId, int, TimelineRunEdgeSide, TimelineRunEdgeMode?)>?
-        modeSelections,
+    modeSelections,
   }) {
     return TimelineRunEditCallbacks(
       onAddBegin: (layerId, blockStartIndex, {required atEnd}) {
@@ -111,8 +111,9 @@ void main() {
       onAddUpdate: (count) => addCounts?.add(count),
       onAddEnd: () {},
       onAddCancel: () {},
-      onEdgeModeSelected: (layerId, blockStartIndex, side, mode) =>
-          modeSelections?.add((layerId, blockStartIndex, side, mode)),
+      onEdgeModeSelected:
+          (layerId, blockStartIndex, side, mode, {scopeToSelection = false}) =>
+              modeSelections?.add((layerId, blockStartIndex, side, mode)),
     );
   }
 
@@ -185,7 +186,7 @@ void main() {
         dragPreview.value = null;
       },
       onAddCancel: () => dragPreview.value = null,
-      onEdgeModeSelected: (_, _, _, _) {},
+      onEdgeModeSelected: (_, _, _, _, {scopeToSelection = false}) {},
     );
     await tester.pumpWidget(
       harness(layers: [layer], runEdit: callbacks, dragPreview: dragPreview),
@@ -260,6 +261,56 @@ void main() {
     ));
   });
 
+  testWidgets('the flyout lists "Repeat selection" only when the live '
+      'selection can scope the edge, and picking it reports the scope '
+      '(UI-R19 #2)', (tester) async {
+    final scoped = <bool>[];
+    var canScope = false;
+    final callbacks = TimelineRunEditCallbacks(
+      onAddBegin: (_, _, {required atEnd}) => true,
+      onAddUpdate: (_) {},
+      onAddEnd: () {},
+      onAddCancel: () {},
+      onEdgeModeSelected:
+          (layerId, blockStartIndex, side, mode, {scopeToSelection = false}) =>
+              scoped.add(scopeToSelection),
+      canScopeToSelection: (_, _, _) => canScope,
+    );
+    await tester.pumpWidget(
+      harness(layers: [plainLayer()], runEdit: callbacks),
+    );
+
+    const tagKey = ValueKey<String>('timeline-run-edge-tag-layer-a-f1-end');
+    const selectionEntry = ValueKey<String>('run-edge-mode-repeat-selection');
+
+    // No scopable selection: the entry stays out.
+    var gesture = await tester.startGesture(
+      tester.getCenter(find.byKey(tagKey)),
+      kind: PointerDeviceKind.mouse,
+    );
+    await tester.pump();
+    expect(find.byKey(selectionEntry), findsNothing);
+    await gesture.up();
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey<String>('run-edge-mode-none')));
+    await tester.pumpAndSettle();
+
+    // A scopable selection: the entry shows; picking it scopes.
+    canScope = true;
+    gesture = await tester.startGesture(
+      tester.getCenter(find.byKey(tagKey)),
+      kind: PointerDeviceKind.mouse,
+    );
+    await tester.pump();
+    expect(find.byKey(selectionEntry), findsOneWidget);
+    await gesture.up();
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(selectionEntry));
+    await tester.pumpAndSettle();
+
+    expect(scoped, [false, true]);
+  });
+
   testWidgets('a repeat edge keeps its cluster ON the authored run edge '
       '(UI-R10 #3), ghosts notwithstanding', (tester) async {
     final modeSelections =
@@ -302,9 +353,7 @@ void main() {
   });
 
   testWidgets('ghosts render TEXT-ONLY (UI-R10 #11): repeat ghosts print '
-      'cel names on plain cells, hold ghosts string ㅡ dashes', (
-    tester,
-  ) async {
+      'cel names on plain cells, hold ghosts string ㅡ dashes', (tester) async {
     final holdLayer = rederiveRunBehaviors(
       Layer(
         id: const LayerId('layer-h'),
@@ -312,9 +361,7 @@ void main() {
         frames: [
           Frame(id: const FrameId('hf'), duration: 1, strokes: const []),
         ],
-        timeline: {
-          0: const TimelineExposure.drawing(FrameId('hf'), length: 2),
-        },
+        timeline: {0: const TimelineExposure.drawing(FrameId('hf'), length: 2)},
         runBehaviors: const [
           TimelineRunBehavior(
             anchorFrameId: FrameId('hf'),
@@ -354,10 +401,7 @@ void main() {
       );
       expect(timelineCellModel(tester, 'layer-h', frame).ghost, isTrue);
     }
-    expect(
-      timelineCellDecoration(tester, 'layer-h', 2).borderRadius,
-      isNull,
-    );
+    expect(timelineCellDecoration(tester, 'layer-h', 2).borderRadius, isNull);
   });
 
   testWidgets('a selection-scoped repeat pattern draws its span outline '
