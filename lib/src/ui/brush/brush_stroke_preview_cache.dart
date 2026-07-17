@@ -1,0 +1,241 @@
+import 'dart:async';
+import 'dart:collection';
+import 'dart:isolate';
+import 'dart:math' as math;
+import 'dart:ui' as ui;
+
+import 'package:flutter/foundation.dart';
+
+import '../../models/brush_dab.dart';
+import '../../models/brush_settings.dart';
+import '../../models/canvas_point.dart';
+import '../../services/brush_dab_coverage.dart';
+import '../../services/brush_tip_stamp_cache.dart';
+
+/// The APP-WIDE stroke-preview raster cache (UI-R18 R18-B).
+///
+/// The old per-row state cache died on unmount, so every list scroll
+/// re-rasterized every row SYNCHRONOUSLY in build — the brush list's
+/// fixed scroll jank. This cache is process-lived and keyed by
+/// (settings, raster size): a preset's sample rasterizes ONCE (in a
+/// background isolate, off the scroll frames), uploads as a
+/// [ui.Image], and every later mount — any list, any scroll, the
+/// coming group/preset trees — draws that image for the cost of one
+/// `drawImageRect`.
+///
+/// The raster itself is unchanged (R20-B honesty: the same
+/// tip-stamp-cache + coverage-oracle path the canvas draws with); the
+/// image bakes ALPHA only (premultiplied white) and rows tint it with
+/// their theme color at paint time, so one entry serves every theme.
+class BrushStrokePreviewCache {
+  BrushStrokePreviewCache._();
+
+  static final BrushStrokePreviewCache instance = BrushStrokePreviewCache._();
+
+  /// LRU: access re-inserts. ~25KB per entry at list-row sizes; the cap
+  /// covers several hundred presets before eviction starts.
+  static const int capacity = 512;
+
+  final LinkedHashMap<(BrushSettings, int, int), ui.Image> _images =
+      LinkedHashMap<(BrushSettings, int, int), ui.Image>();
+  final Map<(BrushSettings, int, int), Future<ui.Image>> _pending =
+      <(BrushSettings, int, int), Future<ui.Image>>{};
+
+  /// Isolate fan-out cap: a fast scroll requests dozens of rows at once;
+  /// two workers keep the UI isolate free without a spawn storm.
+  static const int _maxConcurrentRasters = 2;
+  int _activeRasters = 0;
+  final Queue<void Function()> _rasterQueue = Queue<void Function()>();
+
+  /// The cached image for the key, or null (LRU touch on hit). The
+  /// returned image stays OWNED BY THE CACHE — callers that hold it
+  /// across frames must [ui.Image.clone] it.
+  ui.Image? imageFor(BrushSettings settings, int width, int height) {
+    final key = (settings, width, height);
+    final image = _images.remove(key);
+    if (image == null) {
+      return null;
+    }
+    _images[key] = image;
+    return image;
+  }
+
+  /// Rasterizes (once) and caches the key's sample. Concurrent calls for
+  /// the same key share one raster.
+  Future<ui.Image> ensure(BrushSettings settings, int width, int height) {
+    final key = (settings, width, height);
+    final cached = imageFor(settings, width, height);
+    if (cached != null) {
+      return Future<ui.Image>.value(cached);
+    }
+    return _pending[key] ??= _rasterize(settings, width, height).then((image) {
+      _pending.remove(key);
+      _images[key] = image;
+      while (_images.length > capacity) {
+        // Callers hold clones (the contract above), so disposing the
+        // cache's own handle here is safe.
+        _images.remove(_images.keys.first)!.dispose();
+      }
+      return image;
+    });
+  }
+
+  Future<ui.Image> _rasterize(
+    BrushSettings settings,
+    int width,
+    int height,
+  ) async {
+    final Uint8List alpha;
+    if (kIsWeb) {
+      // No isolates on web: rasterize inline (still cached forever).
+      alpha = rasterizeBrushStrokeSample(settings, width, height);
+    } else {
+      await _acquireRasterSlot();
+      try {
+        alpha = await Isolate.run(
+          () => rasterizeBrushStrokeSample(settings, width, height),
+        );
+      } finally {
+        _releaseRasterSlot();
+      }
+    }
+
+    // Premultiplied WHITE: rgb = alpha — correct standalone, and the
+    // srcIn tint at paint time only reads the alpha anyway.
+    final rgba = Uint8List(alpha.length * 4);
+    for (var index = 0; index < alpha.length; index += 1) {
+      final value = alpha[index];
+      final base = index * 4;
+      rgba[base] = value;
+      rgba[base + 1] = value;
+      rgba[base + 2] = value;
+      rgba[base + 3] = value;
+    }
+    final buffer = await ui.ImmutableBuffer.fromUint8List(rgba);
+    final descriptor = ui.ImageDescriptor.raw(
+      buffer,
+      width: width,
+      height: height,
+      pixelFormat: ui.PixelFormat.rgba8888,
+    );
+    final codec = await descriptor.instantiateCodec();
+    final frame = await codec.getNextFrame();
+    codec.dispose();
+    descriptor.dispose();
+    buffer.dispose();
+    return frame.image;
+  }
+
+  Future<void> _acquireRasterSlot() {
+    if (_activeRasters < _maxConcurrentRasters) {
+      _activeRasters += 1;
+      return Future<void>.value();
+    }
+    final gate = Completer<void>();
+    _rasterQueue.add(() {
+      _activeRasters += 1;
+      gate.complete();
+    });
+    return gate.future;
+  }
+
+  void _releaseRasterSlot() {
+    _activeRasters -= 1;
+    if (_rasterQueue.isNotEmpty) {
+      _rasterQueue.removeFirst()();
+    }
+  }
+
+  /// Test hook: drops every cached image.
+  @visibleForTesting
+  void clear() {
+    for (final image in _images.values) {
+      image.dispose();
+    }
+    _images.clear();
+  }
+}
+
+/// The stroke-sample rasterizer (moved OUT of the widget so the isolate
+/// can run it): a synthetic S-curve with a 0-1-0 pressure arc, resolved
+/// through the SAME tip-stamp cache + pixel-coverage oracle the canvas
+/// draws with (R20-B: what the list shows is the quantized reality).
+/// Placement dynamics (scatter/jitter) stay intentionally off so the
+/// preview is deterministic.
+Uint8List rasterizeBrushStrokeSample(
+  BrushSettings settings,
+  int width,
+  int height,
+) {
+  final accumulated = Float64List(width * height);
+  final baseSize = height * 0.62;
+  final spacing = math.max(1.0, baseSize * settings.spacing.clamp(0.02, 4.0));
+  final margin = baseSize * 0.5 + 1;
+
+  const curveSteps = 512;
+  double? previousX;
+  double? previousY;
+  var pendingDistance = double.infinity;
+  var sequence = 0;
+  for (var step = 0; step <= curveSteps; step += 1) {
+    final t = step / curveSteps;
+    final x = margin + t * (width - margin * 2);
+    final y = height / 2 + math.sin(t * math.pi * 2) * height * 0.18;
+    if (previousX != null && previousY != null) {
+      final dx = x - previousX;
+      final dy = y - previousY;
+      pendingDistance += math.sqrt(dx * dx + dy * dy);
+    }
+    previousX = x;
+    previousY = y;
+    if (pendingDistance < spacing) {
+      continue;
+    }
+    pendingDistance = 0;
+
+    final pressure = math.sin(t * math.pi).clamp(0.08, 1.0);
+    final sizeRatio = settings.pressureSize
+        ? settings.minimumSizeRatio + (1 - settings.minimumSizeRatio) * pressure
+        : 1.0;
+    final opacity = settings.pressureOpacity
+        ? settings.opacity * pressure
+        : settings.opacity;
+    final dab = BrushTipStampCache.instance.resolveDab(
+      BrushDab(
+        center: CanvasPoint(x: x, y: y),
+        color: 0xFF000000,
+        size: math.max(1.0, baseSize * sizeRatio),
+        opacity: opacity.clamp(0.05, 1.0),
+        flow: settings.flow.clamp(0.05, 1.0),
+        hardness: settings.hardness,
+        tipShape: settings.tipShape,
+        pressure: pressure,
+        sequence: sequence,
+        roundness: settings.roundness,
+        angleDegrees: settings.angleDegrees,
+        tipMask: settings.tipMask,
+        dualMask: settings.dualMask,
+        dualMaskScale: settings.dualMaskScale,
+        textureMask: settings.textureMask,
+        textureScale: settings.textureScale,
+        textureDensity: settings.textureDensity,
+      ),
+    );
+    sequence += 1;
+
+    for (final pixel in brushPixelCoveragesForDab(dab)) {
+      if (pixel.x >= width || pixel.y >= height) {
+        continue;
+      }
+      final index = pixel.y * width + pixel.x;
+      final dabAlpha = pixel.coverage * dab.flow * dab.opacity;
+      accumulated[index] += dabAlpha * (1 - accumulated[index]);
+    }
+  }
+
+  final bytes = Uint8List(width * height);
+  for (var index = 0; index < bytes.length; index += 1) {
+    bytes[index] = (accumulated[index].clamp(0.0, 1.0) * 255).round();
+  }
+  return bytes;
+}
