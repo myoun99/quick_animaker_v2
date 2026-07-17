@@ -375,6 +375,9 @@ void main() {
       ),
     );
 
+    // Paper×3 runway (UI-R18 #16): content spans one canvas (600px
+    // scaled) each side, so the clamps land at −1100 (right end:
+    // −maxScroll 1700 + runway 600) and +600 (left end).
     await tester.drag(
       find.byKey(
         const ValueKey<String>('canvas-viewport-horizontal-scrollbar'),
@@ -382,7 +385,7 @@ void main() {
       const Offset(1000, 0),
     );
     await tester.pump();
-    expect(viewport.panX, -500);
+    expect(viewport.panX, -1100);
 
     await tester.drag(
       find.byKey(
@@ -391,21 +394,21 @@ void main() {
       const Offset(-1000, 0),
     );
     await tester.pump();
-    expect(viewport.panX, 0);
+    expect(viewport.panX, 600);
 
     await tester.drag(
       find.byKey(const ValueKey<String>('canvas-viewport-vertical-scrollbar')),
       const Offset(0, 1000),
     );
     await tester.pump();
-    expect(viewport.panY, -500);
+    expect(viewport.panY, -1100);
 
     await tester.drag(
       find.byKey(const ValueKey<String>('canvas-viewport-vertical-scrollbar')),
       const Offset(0, -1000),
     );
     await tester.pump();
-    expect(viewport.panY, 0);
+    expect(viewport.panY, 600);
   });
 
   testWidgets('panbar drag is ignored when there is no scroll range', (

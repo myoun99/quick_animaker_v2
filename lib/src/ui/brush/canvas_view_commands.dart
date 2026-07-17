@@ -8,18 +8,26 @@ import 'package:flutter/foundation.dart';
 class CanvasViewCommands {
   void Function(double degrees)? _rotateBy;
   VoidCallback? _toggleFlipHorizontal;
+  VoidCallback? _toggleFlipVertical;
+  VoidCallback? _resetRotation;
 
   void bind({
     required void Function(double degrees) rotateBy,
     required VoidCallback toggleFlipHorizontal,
+    VoidCallback? toggleFlipVertical,
+    VoidCallback? resetRotation,
   }) {
     _rotateBy = rotateBy;
     _toggleFlipHorizontal = toggleFlipHorizontal;
+    _toggleFlipVertical = toggleFlipVertical;
+    _resetRotation = resetRotation;
   }
 
   void unbind() {
     _rotateBy = null;
     _toggleFlipHorizontal = null;
+    _toggleFlipVertical = null;
+    _resetRotation = null;
   }
 
   /// Rotates the canvas VIEW by [degrees] (clockwise positive) around the
@@ -28,4 +36,12 @@ class CanvasViewCommands {
 
   /// Toggles the horizontal view mirror around the viewport center.
   void toggleFlipHorizontal() => _toggleFlipHorizontal?.call();
+
+  /// Toggles the vertical view mirror around the viewport center
+  /// (UI-R18 #19).
+  void toggleFlipVertical() => _toggleFlipVertical?.call();
+
+  /// Straightens the view rotation back to 0° (UI-R18 #20), keeping
+  /// zoom/pan/flips.
+  void resetRotation() => _resetRotation?.call();
 }

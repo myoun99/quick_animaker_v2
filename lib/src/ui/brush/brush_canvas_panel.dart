@@ -3,8 +3,7 @@ import 'dart:math' as math;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/gestures.dart' show kPrimaryButton;
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart'
-    show HardwareKeyboard, KeyDownEvent, KeyEvent, LogicalKeyboardKey;
+import 'package:flutter/services.dart' show HardwareKeyboard, KeyEvent;
 
 import '../../services/brush_stroke_commit_data.dart';
 import '../../models/bitmap_surface.dart';
@@ -32,6 +31,7 @@ import 'selection_shape_history_command.dart';
 import 'canvas_view_commands.dart';
 import 'canvas_viewport_pan_metrics.dart';
 import '../widgets/app_scrollbar.dart';
+import '../widgets/drag_value_label.dart';
 
 /// A playback-follow reframe request for [BrushCanvasPanel.autoFrame]:
 /// whenever [token] changes between widget updates the panel reframes the
@@ -292,6 +292,8 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel> {
     widget.viewCommands?.bind(
       rotateBy: _rotateAroundCenter,
       toggleFlipHorizontal: _toggleFlipHorizontal,
+      toggleFlipVertical: _toggleFlipVertical,
+      resetRotation: _resetRotation,
     );
   }
 
@@ -430,7 +432,10 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel> {
       onReset: _resetView,
       onRotateCcw: widget.allowViewRotation ? _rotateCcwFromBar : null,
       onRotateCw: widget.allowViewRotation ? _rotateCwFromBar : null,
+      onRotateReset: widget.allowViewRotation ? _resetRotation : null,
+      onRotateByDrag: widget.allowViewRotation ? _rotateByDrag : null,
       onFlipHorizontal: widget.allowViewRotation ? _toggleFlipHorizontal : null,
+      onFlipVertical: widget.allowViewRotation ? _toggleFlipVertical : null,
     );
   }
 
@@ -916,6 +921,29 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel> {
     _setViewport(_viewport.flippedAround(anchor: _viewportCenterAnchor));
   }
 
+  void _toggleFlipVertical() {
+    _setViewport(
+      _viewport.flippedVerticalAround(anchor: _viewportCenterAnchor),
+    );
+  }
+
+  /// Straightens the rotation to 0° around the viewport center, keeping
+  /// zoom/pan/flips (UI-R18 #20).
+  void _resetRotation() {
+    _setViewport(
+      _viewport.rotatedAround(
+        nextRotationDegrees: 0,
+        anchor: _viewportCenterAnchor,
+      ),
+    );
+  }
+
+  /// The angle-label drag (UI-R18 #21): one degree per pixel, anchored to
+  /// the viewport center.
+  void _rotateByDrag(double deltaDegrees) {
+    _rotateAroundCenter(deltaDegrees);
+  }
+
   /// The tap action for the active NON-PAINTING tool; null while a
   /// painting tool is active (no tap layer mounts then).
   void Function(CanvasPoint point)? _toolTapHandler() {
@@ -1291,7 +1319,10 @@ class _CanvasViewportBottomBar extends StatelessWidget {
     required this.onReset,
     required this.onRotateCcw,
     required this.onRotateCw,
+    required this.onRotateReset,
+    required this.onRotateByDrag,
     required this.onFlipHorizontal,
+    required this.onFlipVertical,
   });
 
   final CanvasViewport viewport;
@@ -1308,7 +1339,10 @@ class _CanvasViewportBottomBar extends StatelessWidget {
   /// Null hides the rotate/flip controls (rotation-disabled hosts).
   final VoidCallback? onRotateCcw;
   final VoidCallback? onRotateCw;
+  final VoidCallback? onRotateReset;
+  final ValueChanged<double>? onRotateByDrag;
   final VoidCallback? onFlipHorizontal;
+  final VoidCallback? onFlipVertical;
 
   @override
   Widget build(BuildContext context) {
@@ -1325,7 +1359,70 @@ class _CanvasViewportBottomBar extends StatelessWidget {
       color: colorScheme.outlineVariant,
     );
 
-    final essentialViewControls = <Widget>[
+    // ROTATION/FLIP cluster (UI-R18 #20, left→right): rotate-left, the
+    // ALWAYS-ON angle readout (drag = 1°/px, double-tap = type), rotate-
+    // right, straighten, flip-H, flip-V. Rotate buttons accent by the
+    // rotation SIGN (#18); flips accent while active (#19).
+    final viewControls = <Widget>[
+      if (onRotateCcw != null)
+        _barIconButton(
+          keyValue: 'canvas-viewport-rotate-ccw',
+          tooltip: 'Rotate View Left',
+          icon: const Icon(Icons.rotate_left),
+          onPressed: onRotateCcw,
+          isSelected: rotationDegrees < 0,
+        ),
+      if (onRotateByDrag != null)
+        DragValueLabel(
+          keyValue: 'canvas-viewport-rotation-label',
+          text: '$rotationDegrees°',
+          tooltip: 'View angle (drag / double-tap)',
+          width: 40,
+          textStyle: const TextStyle(fontSize: 11),
+          onDragDelta: onRotateByDrag!,
+          onEditSubmit: (text) {
+            final parsed = double.tryParse(text);
+            if (parsed != null && onRotateByDrag != null) {
+              onRotateByDrag!(parsed - viewport.rotationDegrees);
+            }
+          },
+        ),
+      if (onRotateCw != null)
+        _barIconButton(
+          keyValue: 'canvas-viewport-rotate-cw',
+          tooltip: 'Rotate View Right',
+          icon: const Icon(Icons.rotate_right),
+          onPressed: onRotateCw,
+          isSelected: rotationDegrees > 0,
+        ),
+      if (onRotateReset != null)
+        _barIconButton(
+          keyValue: 'canvas-viewport-rotate-reset',
+          tooltip: 'Straighten View (0°)',
+          icon: const Icon(Icons.refresh),
+          onPressed: onRotateReset,
+        ),
+      if (onFlipHorizontal != null)
+        _barIconButton(
+          keyValue: 'canvas-viewport-flip',
+          tooltip: 'Flip View Horizontal',
+          icon: const Icon(Icons.flip),
+          onPressed: onFlipHorizontal,
+          isSelected: viewport.flipHorizontal,
+        ),
+      if (onFlipVertical != null)
+        _barIconButton(
+          keyValue: 'canvas-viewport-flip-vertical',
+          tooltip: 'Flip View Vertical',
+          icon: const RotatedBox(quarterTurns: 1, child: Icon(Icons.flip)),
+          onPressed: onFlipVertical,
+          isSelected: viewport.flipVertical,
+        ),
+    ];
+
+    // ZOOM cluster (UI-R18 #17/#20, left→right): fit, 1:1, −, the zoom
+    // readout (drag = 1%/px, double-tap = type), +.
+    final zoomCluster = <Widget>[
       _barIconButton(
         keyValue: 'canvas-viewport-fit',
         tooltip: 'Fit to View',
@@ -1345,51 +1442,29 @@ class _CanvasViewportBottomBar extends StatelessWidget {
         ),
         onPressed: onReset,
       ),
-    ];
-
-    final viewControls = <Widget>[
-      ...essentialViewControls,
-      if (onRotateCcw != null)
-        _barIconButton(
-          keyValue: 'canvas-viewport-rotate-ccw',
-          tooltip: 'Rotate View Left',
-          icon: const Icon(Icons.rotate_left),
-          onPressed: onRotateCcw,
-        ),
-      if (onRotateCw != null)
-        _barIconButton(
-          keyValue: 'canvas-viewport-rotate-cw',
-          tooltip: 'Rotate View Right',
-          icon: const Icon(Icons.rotate_right),
-          onPressed: onRotateCw,
-        ),
-      if (onFlipHorizontal != null)
-        _barIconButton(
-          keyValue: 'canvas-viewport-flip',
-          tooltip: 'Flip View Horizontal',
-          icon: const Icon(Icons.flip),
-          onPressed: onFlipHorizontal,
-          isSelected: viewport.flipHorizontal,
-        ),
-      if (rotationDegrees != 0)
-        Padding(
-          padding: const EdgeInsets.only(left: 4),
-          child: Text(
-            '$rotationDegrees°',
-            key: const ValueKey<String>('canvas-viewport-rotation-label'),
-            style: const TextStyle(fontSize: 11),
-          ),
-        ),
-    ];
-
-    final zoomCluster = <Widget>[
       _barIconButton(
         keyValue: 'canvas-viewport-zoom-out',
         tooltip: 'Zoom Out',
         icon: const Icon(Icons.zoom_out),
         onPressed: onZoomOut,
       ),
-      _ZoomPercentLabel(zoom: viewport.zoom, onZoomSet: onZoomSet),
+      DragValueLabel(
+        keyValue: 'canvas-viewport-zoom-label',
+        inputKeyValue: 'canvas-viewport-zoom-input',
+        text: '${(viewport.zoom * 100).round()}%',
+        tooltip: 'Zoom (drag / double-tap)',
+        width: 44,
+        textStyle: const TextStyle(fontSize: 12),
+        onDragDelta: (units) => onZoomSet(
+          ((viewport.zoom * 100 + units).clamp(10.0, 1600.0)) / 100,
+        ),
+        onEditSubmit: (text) {
+          final parsed = double.tryParse(text.replaceAll('%', '').trim());
+          if (parsed != null) {
+            onZoomSet(parsed.clamp(10.0, 1600.0) / 100);
+          }
+        },
+      ),
       _barIconButton(
         keyValue: 'canvas-viewport-zoom-in',
         tooltip: 'Zoom In',
@@ -1419,7 +1494,7 @@ class _CanvasViewportBottomBar extends StatelessWidget {
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   const SizedBox(width: 4),
-                  ...essentialViewControls,
+                  ...viewControls,
                   divider(),
                   SizedBox(width: 80, child: scrollbar()),
                   divider(),
@@ -1433,10 +1508,10 @@ class _CanvasViewportBottomBar extends StatelessWidget {
           return Row(
             children: [
               const SizedBox(width: 4),
-              // Narrow panels keep only the essentials; rotate/flip return
-              // once there is room (still reachable via shortcuts).
-              ...(wide ? viewControls : essentialViewControls),
-              divider(),
+              // Narrow panels drop the rotation cluster; the ZOOM cluster
+              // (fit/1:1/−/%/+, UI-R18 #17/#20) always shows on the right.
+              if (wide) ...viewControls,
+              if (wide) divider(),
               Expanded(child: scrollbar()),
               divider(),
               ...zoomCluster,
@@ -1468,106 +1543,6 @@ class _CanvasViewportBottomBar extends StatelessWidget {
         tapTargetSize: MaterialTapTargetSize.shrinkWrap,
       ),
       icon: icon,
-    );
-  }
-}
-
-/// The zoom readout: double-tap swaps to an inline numeric percent entry
-/// (Enter/tap-out commits, Escape cancels) — the FieldSlider editor
-/// vocabulary, without the drag machinery a plain label doesn't need.
-class _ZoomPercentLabel extends StatefulWidget {
-  const _ZoomPercentLabel({required this.zoom, required this.onZoomSet});
-
-  final double zoom;
-  final ValueChanged<double> onZoomSet;
-
-  @override
-  State<_ZoomPercentLabel> createState() => _ZoomPercentLabelState();
-}
-
-class _ZoomPercentLabelState extends State<_ZoomPercentLabel> {
-  final TextEditingController _editController = TextEditingController();
-  bool _editing = false;
-
-  @override
-  void dispose() {
-    _editController.dispose();
-    super.dispose();
-  }
-
-  void _beginEdit() {
-    _editController.text = (widget.zoom * 100).round().toString();
-    _editController.selection = TextSelection(
-      baseOffset: 0,
-      extentOffset: _editController.text.length,
-    );
-    setState(() => _editing = true);
-  }
-
-  void _commitEdit() {
-    if (!_editing) {
-      return;
-    }
-    final parsed = double.tryParse(
-      _editController.text.replaceAll('%', '').trim(),
-    );
-    setState(() => _editing = false);
-    if (parsed == null) {
-      return;
-    }
-    // Percent bounds mirror CanvasViewport.minZoom/maxZoom (0.1..16).
-    widget.onZoomSet(parsed.clamp(10.0, 1600.0) / 100);
-  }
-
-  void _cancelEdit() {
-    setState(() => _editing = false);
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    if (_editing) {
-      return SizedBox(
-        width: 56,
-        child: Focus(
-          onKeyEvent: (node, event) {
-            if (event is KeyDownEvent &&
-                event.logicalKey == LogicalKeyboardKey.escape) {
-              _cancelEdit();
-              return KeyEventResult.handled;
-            }
-            return KeyEventResult.ignored;
-          },
-          child: TextField(
-            key: const ValueKey<String>('canvas-viewport-zoom-input'),
-            controller: _editController,
-            autofocus: true,
-            textAlign: TextAlign.center,
-            keyboardType: const TextInputType.numberWithOptions(decimal: true),
-            style: const TextStyle(fontSize: 12),
-            decoration: const InputDecoration(
-              isDense: true,
-              isCollapsed: true,
-              border: InputBorder.none,
-            ),
-            onSubmitted: (_) => _commitEdit(),
-            onTapOutside: (_) => _commitEdit(),
-          ),
-        ),
-      );
-    }
-    final zoomPercent = (widget.zoom * 100).round();
-    return GestureDetector(
-      key: const ValueKey<String>('canvas-viewport-zoom-entry'),
-      behavior: HitTestBehavior.opaque,
-      onDoubleTap: _beginEdit,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 6),
-        child: Text(
-          '$zoomPercent%',
-          key: const ValueKey<String>('canvas-viewport-zoom-label'),
-          style: const TextStyle(fontSize: 11),
-        ),
-      ),
     );
   }
 }

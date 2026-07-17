@@ -17,10 +17,14 @@ class CanvasViewportPanMetrics {
        visibleExtent = _visibleExtent(axis, editorViewportSize) {
     // The canvas content's viewport-space AABB (pan excluded): under
     // rotation/flip the panbar tracks the rotated silhouette, not the raw
-    // canvas rect.
+    // canvas rect. The scrollable CONTENT then spans paper×3 (UI-R18
+    // #16, the pro-canvas convention): one full canvas of runway on each
+    // side, so zoom-anchored pans stay inside the model (no snap on
+    // thumb grab) and a canvas smaller than the panel still pans.
     final bounds = _contentBounds(axis, viewport, canvasSize);
-    scaledContentExtent = _finiteNonNegative(bounds.extent);
-    _contentOffset = bounds.start;
+    final runway = _finiteNonNegative(bounds.extent);
+    scaledContentExtent = _finiteNonNegative(bounds.extent + 2 * runway);
+    _contentOffset = bounds.start - runway;
     maxScroll = (scaledContentExtent - visibleExtent)
         .clamp(0.0, double.infinity)
         .toDouble();

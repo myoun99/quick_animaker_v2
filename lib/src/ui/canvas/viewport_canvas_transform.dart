@@ -14,8 +14,11 @@ void applyViewportTransform(Canvas canvas, CanvasViewport viewport) {
   if (viewport.rotationDegrees != 0) {
     canvas.rotate(viewport.rotationRadians);
   }
-  if (viewport.flipHorizontal) {
-    canvas.scale(-1, 1);
+  if (viewport.flipHorizontal || viewport.flipVertical) {
+    canvas.scale(
+      viewport.flipHorizontal ? -1 : 1,
+      viewport.flipVertical ? -1 : 1,
+    );
   }
 }
 
@@ -27,8 +30,14 @@ Matrix4 viewportTransformMatrix(CanvasViewport viewport) {
   if (viewport.rotationDegrees != 0) {
     matrix.multiply(Matrix4.rotationZ(viewport.rotationRadians));
   }
-  if (viewport.flipHorizontal) {
-    matrix.multiply(Matrix4.diagonal3Values(-1, 1, 1));
+  if (viewport.flipHorizontal || viewport.flipVertical) {
+    matrix.multiply(
+      Matrix4.diagonal3Values(
+        viewport.flipHorizontal ? -1 : 1,
+        viewport.flipVertical ? -1 : 1,
+        1,
+      ),
+    );
   }
   return matrix;
 }
@@ -38,8 +47,14 @@ Matrix4 viewportTransformMatrix(CanvasViewport viewport) {
 /// inversion.
 Matrix4 viewportInverseTransformMatrix(CanvasViewport viewport) {
   final matrix = Matrix4.identity();
-  if (viewport.flipHorizontal) {
-    matrix.multiply(Matrix4.diagonal3Values(-1, 1, 1));
+  if (viewport.flipHorizontal || viewport.flipVertical) {
+    matrix.multiply(
+      Matrix4.diagonal3Values(
+        viewport.flipHorizontal ? -1 : 1,
+        viewport.flipVertical ? -1 : 1,
+        1,
+      ),
+    );
   }
   if (viewport.rotationDegrees != 0) {
     matrix.multiply(Matrix4.rotationZ(-viewport.rotationRadians));

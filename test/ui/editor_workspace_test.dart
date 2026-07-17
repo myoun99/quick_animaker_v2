@@ -586,15 +586,22 @@ void main() {
         matching: find.byKey(key),
       );
 
+      // The zoom readout is a DragValueLabel now (UI-R18 #21): the key
+      // sits on its gesture shell, the Text lives inside.
+      String? zoomLabelText() => tester
+          .widget<Text>(
+            find.descendant(
+              of: inHost(const ValueKey<String>('canvas-viewport-zoom-label')),
+              matching: find.byType(Text),
+            ),
+          )
+          .data;
+
       await tester.tap(
         inHost(const ValueKey<String>('canvas-viewport-zoom-in')),
       );
       await tester.pumpAndSettle();
-      final zoomLabel = tester
-          .widget<Text>(
-            inHost(const ValueKey<String>('canvas-viewport-zoom-label')),
-          )
-          .data;
+      final zoomLabel = zoomLabelText();
       expect(zoomLabel, isNot('100%'));
 
       await tester.tap(find.byKey(_timelineTabKey));
@@ -602,14 +609,7 @@ void main() {
       await tester.tap(find.byKey(_timesheetTabKey));
       await tester.pumpAndSettle();
 
-      expect(
-        tester
-            .widget<Text>(
-              inHost(const ValueKey<String>('canvas-viewport-zoom-label')),
-            )
-            .data,
-        zoomLabel,
-      );
+      expect(zoomLabelText(), zoomLabel);
     });
   });
 }
