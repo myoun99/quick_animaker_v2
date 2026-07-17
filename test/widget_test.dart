@@ -657,22 +657,13 @@ void main() {
     );
   });
 
-  testWidgets('timeline frame axis extends endlessly while scrolling', (
+  testWidgets('timeline frame axis: scrolling stays CLAMPED to the built '
+      'cells; the ruler edge-drag alone extends it (UI-R12 #16)', (
     WidgetTester tester,
   ) async {
     await tester.pumpWidget(const QuickAnimakerApp());
 
-    // Base extent = 24-frame cut + safety/minimum cells (48 frames). Keep
-    // dragging right: the endless runway must materialize headers beyond it.
-    for (var i = 0; i < 5; i += 1) {
-      await tester.drag(
-        find.byKey(const ValueKey<String>('timeline-frame-scroll-viewport')),
-        const Offset(-1200, 0),
-      );
-      await tester.pumpAndSettle();
-    }
-
-    final beyondBaseHeaders = find.byWidgetPredicate((widget) {
+    Finder beyondBaseHeaders() => find.byWidgetPredicate((widget) {
       final key = widget.key;
       if (key is! ValueKey<String> ||
           !key.value.startsWith('timeline-frame-header-')) {
@@ -683,7 +674,35 @@ void main() {
       );
       return index != null && index >= 48;
     });
-    expect(beyondBaseHeaders, findsWidgets);
+
+    // Scroll gestures wall at the built extent (base 48 cells): however
+    // far the viewport is flung, nothing past the base materializes and
+    // the scrollbar range never grows from scrolling.
+    for (var i = 0; i < 3; i += 1) {
+      await tester.drag(
+        find.byKey(const ValueKey<String>('timeline-frame-scroll-viewport')),
+        const Offset(-1200, 0),
+      );
+      await tester.pumpAndSettle();
+    }
+    expect(beyondBaseHeaders(), findsNothing);
+
+    // The ruler edge-drag is THE way past the wall: a scrub held at the
+    // right edge pans the axis (overshooting the built extent) and the
+    // growth listener materializes the frames the view needs.
+    final rulerRect = tester.getRect(
+      find.byKey(const ValueKey<String>('timeline-frame-ruler-scrub-area')),
+    );
+    final gesture = await tester.startGesture(
+      Offset(rulerRect.right - 30, rulerRect.center.dy),
+    );
+    for (var i = 0; i < 12; i += 1) {
+      await gesture.moveBy(const Offset(40, 0));
+      await tester.pump();
+    }
+    await gesture.up();
+    await tester.pumpAndSettle();
+    expect(beyondBaseHeaders(), findsWidgets);
   });
 
   testWidgets('timeline zoom buttons rescale the frame axis', (
@@ -791,7 +810,8 @@ void main() {
     expect(counterText(), '1');
   });
 
-  testWidgets('xsheet frame axis extends endlessly while scrolling', (
+  testWidgets('xsheet frame axis: scrolling stays CLAMPED to the built '
+      'cells; the frame-rail edge-drag alone extends it (UI-R12 #16)', (
     WidgetTester tester,
   ) async {
     await tester.pumpWidget(const QuickAnimakerApp());
@@ -800,15 +820,7 @@ void main() {
       const ValueKey<String>('timeline-orientation-toggle-button'),
     );
 
-    for (var i = 0; i < 5; i += 1) {
-      await tester.drag(
-        find.byKey(const ValueKey<String>('xsheet-frame-vertical-viewport')),
-        const Offset(0, -1200),
-      );
-      await tester.pumpAndSettle();
-    }
-
-    final beyondBaseRows = find.byWidgetPredicate((widget) {
+    Finder beyondBaseRows() => find.byWidgetPredicate((widget) {
       final key = widget.key;
       if (key is! ValueKey<String> ||
           !key.value.startsWith('xsheet-frame-row-')) {
@@ -819,7 +831,31 @@ void main() {
       );
       return index != null && index >= 48;
     });
-    expect(beyondBaseRows, findsWidgets);
+
+    // Scroll gestures wall at the built extent (base 48 rows).
+    for (var i = 0; i < 3; i += 1) {
+      await tester.drag(
+        find.byKey(const ValueKey<String>('xsheet-frame-vertical-viewport')),
+        const Offset(0, -1200),
+      );
+      await tester.pumpAndSettle();
+    }
+    expect(beyondBaseRows(), findsNothing);
+
+    // The frame-rail edge-drag is THE way past the wall (UI-R12 #16).
+    final railRect = tester.getRect(
+      find.byKey(const ValueKey<String>('xsheet-frame-rail-scrub-area')),
+    );
+    final gesture = await tester.startGesture(
+      Offset(railRect.center.dx, railRect.bottom - 30),
+    );
+    for (var i = 0; i < 12; i += 1) {
+      await gesture.moveBy(const Offset(0, 40));
+      await tester.pump();
+    }
+    await gesture.up();
+    await tester.pumpAndSettle();
+    expect(beyondBaseRows(), findsWidgets);
   });
 
   testWidgets('top row keeps cut switching and undo redo reachable', (

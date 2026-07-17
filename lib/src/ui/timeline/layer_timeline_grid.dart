@@ -536,9 +536,20 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
 
   int get _visibleFrameCount => _frameRangePolicy.visibleFrameCount;
 
-  /// Render extent: the endless-axis runway extends past the base count as
-  /// the user scrolls. Interaction clamps stay on [_visibleFrameCount].
-  int get _renderedFrameCount => _visibleFrameCount + _endlessTrailingFrames;
+  /// Frame cells the current viewport needs to be fully papered (UI-R12
+  /// #16) — recorded by build's outer LayoutBuilder, like the effective
+  /// offsets. Zero until the first layout.
+  int _viewportFillFrameCells = 0;
+
+  /// Render extent (UI-R12 #16 contract): the cells the user has scrolled
+  /// into existence PLUS whatever the viewport needs to read as one
+  /// continuous sheet — never a runway beyond that. The scrollbar and
+  /// scroll physics clamp here; only the ruler edge-drag overshoots (and
+  /// the growth listener then materializes what the view needs).
+  int get _renderedFrameCount => math.max(
+    _visibleFrameCount + _endlessTrailingFrames,
+    _viewportFillFrameCells,
+  );
 
   double _effectiveHorizontalScrollOffset({
     required double requestedOffset,
@@ -680,10 +691,11 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
   }
 
   /// Edge auto-pan (UI-R10 #24, the pro-standard ruler drag): a scrub
-  /// pointer past the viewport edge scrolls the frame axis under it —
-  /// the endless growth keeps feeding frames ahead, so the ruler drag
-  /// alone reaches ANY distance (the scrollbar clamps at the built
-  /// extent by design).
+  /// pointer past the viewport edge scrolls the frame axis under it.
+  /// Rightward it deliberately OVERSHOOTS the built extent (UI-R12 #16):
+  /// the ruler drag is THE way past the last built cell — the growth
+  /// listener materializes the frames the overshot view needs, while the
+  /// scrollbar and scroll physics stay clamped at the built cells.
   void _autoPanRulerEdge(double localX) {
     if (!_horizontalScrollController.hasClients) {
       return;
@@ -704,10 +716,7 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
       return;
     }
     final position = _horizontalScrollController.position;
-    final target = (position.pixels + delta).clamp(
-      0.0,
-      position.maxScrollExtent,
-    );
+    final target = math.max(0.0, position.pixels + delta);
     if (target != position.pixels) {
       _horizontalScrollController.jumpTo(target);
     }
@@ -1006,6 +1015,20 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                   .clamp(0.0, double.infinity)
                   .toDouble()
             : 0.0;
+        // Viewport paper fill (UI-R12 #16): however wide the cell area
+        // is, cells run to its edge — recorded here so every consumer of
+        // [_renderedFrameCount] below sees it (build-recorded like the
+        // effective offsets).
+        _viewportFillFrameCells = endlessViewportFillFrames(
+          viewportExtent: constraints.hasBoundedWidth
+              ? (constraints.maxWidth -
+                        _metrics.layerControlsWidth -
+                        _metrics.verticalScrollbarWidth)
+                    .clamp(0.0, double.infinity)
+                    .toDouble()
+              : 0.0,
+          frameCellExtent: _metrics.frameCellWidth,
+        );
 
         return KeyedSubtree(
           key: const ValueKey<String>('timeline-scrollbar-area'),

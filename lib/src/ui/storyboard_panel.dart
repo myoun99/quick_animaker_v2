@@ -44,10 +44,7 @@ import 'timeline/timeline_exposure_comma_drag_handle.dart'
 import 'timeline/timeline_exposure_comma_drag_policy.dart'
     show TimelineCommaDragCallbacks, commaDragFrameDelta;
 import 'timeline/timeline_frame_range_policy.dart'
-    show
-        defaultEndlessRunwayFrames,
-        endlessTrailingFrames,
-        timelineSecondsLabel;
+    show endlessTrailingFrames, endlessViewportFillFrames, timelineSecondsLabel;
 import '../models/layer_kind.dart';
 import 'timeline/timeline_frame_ruler.dart';
 import 'timeline/timeline_grid_metrics.dart';
@@ -426,15 +423,21 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
     if (!_horizontalController.hasClients) {
       return;
     }
+    _watchHorizontalScrollActivity();
     final offset = _horizontalController.offset;
+    final position = _horizontalController.position;
     final next = endlessTrailingFrames(
       baseFrameCount: _totalFrames(
         buildStoryboardTimelineLayout(widget.project),
       ),
       currentTrailingFrames: _endlessTrailingFrames,
       scrollOffset: offset,
-      viewportExtent: _horizontalController.position.viewportDimension,
+      viewportExtent: position.viewportDimension,
       frameCellExtent: _scale.pixelsPerFrame,
+      // Past-content cells vanish once scrolled out of view (UI-R12 #16,
+      // the timeline's shrink rule): discrete moves may shrink right
+      // away, gesture pixels wait for the settle listener.
+      allowShrink: !position.isScrollingNotifier.value,
     );
     if (next != _endlessTrailingFrames || offset != _horizontalScrollOffset) {
       setState(() {
@@ -442,6 +445,59 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
         // The shared frame ruler windows itself to the viewport.
         _horizontalScrollOffset = offset;
       });
+    }
+  }
+
+  ScrollPosition? _watchedHorizontalPosition;
+
+  void _watchHorizontalScrollActivity() {
+    final position = _horizontalController.position;
+    if (identical(position, _watchedHorizontalPosition)) {
+      return;
+    }
+    _watchedHorizontalPosition?.isScrollingNotifier.removeListener(
+      _handleHorizontalScrollActivity,
+    );
+    _watchedHorizontalPosition = position;
+    position.isScrollingNotifier.addListener(_handleHorizontalScrollActivity);
+  }
+
+  /// Scroll settled: apply the lazy endless SHRINK (UI-R12 #16 — the
+  /// timeline's rule, unified): the extent contracts back toward the
+  /// cuts' end so the scrollbar thumb recovers, never mid-gesture.
+  void _handleHorizontalScrollActivity() {
+    final position = _watchedHorizontalPosition;
+    if (position == null || position.isScrollingNotifier.value) {
+      return;
+    }
+    final next = endlessTrailingFrames(
+      baseFrameCount: _totalFrames(
+        buildStoryboardTimelineLayout(widget.project),
+      ),
+      currentTrailingFrames: _endlessTrailingFrames,
+      scrollOffset: position.pixels,
+      viewportExtent: position.viewportDimension,
+      frameCellExtent: _scale.pixelsPerFrame,
+      allowShrink: true,
+    );
+    if (next != _endlessTrailingFrames && mounted) {
+      setState(() => _endlessTrailingFrames = next);
+    }
+  }
+
+  /// Ruler edge auto-pan (UI-R12 #16, the timeline's rule unified): a
+  /// scrub past the viewport edge pans the strip — rightward it
+  /// deliberately OVERSHOOTS the built extent, and the growth listener
+  /// materializes the frames the overshot view needs. The scrollbar and
+  /// scroll physics stay clamped at the built cells.
+  void _autoPanRulerEdge(double delta) {
+    if (!_horizontalController.hasClients) {
+      return;
+    }
+    final position = _horizontalController.position;
+    final target = math.max(0.0, position.pixels + delta);
+    if (target != position.pixels) {
+      _horizontalController.jumpTo(target);
     }
   }
 
@@ -453,6 +509,9 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
   @override
   void dispose() {
     _horizontalController.removeListener(_handleHorizontalScroll);
+    _watchedHorizontalPosition?.isScrollingNotifier.removeListener(
+      _handleHorizontalScrollActivity,
+    );
     _verticalController.dispose();
     _horizontalController.dispose();
     super.dispose();
@@ -1017,25 +1076,42 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
 
   @override
   Widget build(BuildContext context) {
-    // SE rows are built OUTSIDE the drag-preview builder from the RAW
-    // project (R10-③): their content is track-global, so a cut trim never
-    // changes them — handing the per-step rebuild IDENTICAL row instances
-    // lets Flutter skip their whole subtrees (waveform painters included).
-    // The trade: an in-flight trim doesn't slide their cut-boundary marks
-    // until release. SE comma drags edit the ACTIVE layer through the
-    // timeline gates, unaffected here.
-    final seStripRowsByTrack = _seStripRowsByTrack();
-    final dragPreview = widget.dragPreview;
-    if (dragPreview == null) {
-      return _buildBody(context, widget.project, seStripRowsByTrack);
-    }
-    return ValueListenableBuilder<TimelineDragPreview?>(
-      valueListenable: dragPreview,
-      builder: (context, preview, _) => _buildBody(
-        context,
-        projectWithTimelineDragPreview(widget.project, preview),
-        seStripRowsByTrack,
-      ),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        // Viewport paper fill (UI-R12 #16): the strips run to the
+        // viewport's right edge — recorded FIRST so the SE strip rows and
+        // the body agree on the rendered extent within one build.
+        _viewportFillFrameCells = endlessViewportFillFrames(
+          viewportExtent: constraints.hasBoundedWidth
+              ? (constraints.maxWidth -
+                        StoryboardPanel._trackLabelWidth -
+                        StoryboardPanel._scrollbarLaneWidth)
+                    .clamp(0.0, double.infinity)
+                    .toDouble()
+              : 0.0,
+          frameCellExtent: _scale.pixelsPerFrame,
+        );
+        // SE rows are built OUTSIDE the drag-preview builder from the RAW
+        // project (R10-③): their content is track-global, so a cut trim
+        // never changes them — handing the per-step rebuild IDENTICAL row
+        // instances lets Flutter skip their whole subtrees (waveform
+        // painters included). The trade: an in-flight trim doesn't slide
+        // their cut-boundary marks until release. SE comma drags edit the
+        // ACTIVE layer through the timeline gates, unaffected here.
+        final seStripRowsByTrack = _seStripRowsByTrack();
+        final dragPreview = widget.dragPreview;
+        if (dragPreview == null) {
+          return _buildBody(context, widget.project, seStripRowsByTrack);
+        }
+        return ValueListenableBuilder<TimelineDragPreview?>(
+          valueListenable: dragPreview,
+          builder: (context, preview, _) => _buildBody(
+            context,
+            projectWithTimelineDragPreview(widget.project, preview),
+            seStripRowsByTrack,
+          ),
+        );
+      },
     );
   }
 
@@ -1060,20 +1136,31 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
     ];
   }
 
+  /// Frame cells the strips viewport needs to be fully papered (UI-R12
+  /// #16) — recorded by [_buildBody]'s LayoutBuilder. Zero until layout.
+  int _viewportFillFrameCells = 0;
+
+  /// Render extent (UI-R12 #16 contract, unified with the timeline
+  /// grids): the cells scrolled/panned into existence PLUS the viewport
+  /// fill — the old always-120 resting runway is gone, so past-content
+  /// cells vanish once out of view and the scrollbar stops at the built
+  /// cells. Only the ruler edge-drag overshoots and grows the extent.
+  int _renderedFramesFor(int totalFrames) =>
+      math.max(totalFrames + _endlessTrailingFrames, _viewportFillFrameCells);
+
   /// The scroll content's full width for [layoutEntries] (cuts + the
-  /// endless runway).
+  /// endless runway). The rendered-cell term is EXACT (UI-R12 #16): any
+  /// padding past the built cells would be a phantom scroll zone the
+  /// growth listener keeps chasing (the block term keeps its grip
+  /// overhang; cells simply materialize under it once).
   double _contentWidthFor(
     List<StoryboardTimelineLayoutEntry> layoutEntries,
     TimelineScale scale,
   ) {
-    final totalFrames = _totalFrames(layoutEntries);
-    final renderedFrames =
-        totalFrames +
-        math.max<int>(_endlessTrailingFrames, defaultEndlessRunwayFrames);
+    final renderedFrames = _renderedFramesFor(_totalFrames(layoutEntries));
     return math.max(
       _timelineContentWidth(layoutEntries, scale),
-      scale.leftForFrame(renderedFrames) +
-          StoryboardPanel._timelineTrailingPadding,
+      scale.leftForFrame(renderedFrames),
     );
   }
 
@@ -1086,13 +1173,10 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
     final layoutEntries = buildStoryboardTimelineLayout(project);
     final scale = _scale;
     final totalFrames = _totalFrames(layoutEntries);
-    // Endless frame axis: the ruler (and scrollable area) always shows a
-    // runway past the cuts, growing with how far the user has scrolled
-    // (short content could never scroll into a grow-on-approach runway
-    // otherwise); seeks stay content-bound.
-    final renderedFrames =
-        totalFrames +
-        math.max<int>(_endlessTrailingFrames, defaultEndlessRunwayFrames);
+    // Endless frame axis (UI-R12 #16): cells cover the view — the cuts,
+    // whatever the viewport needs to read papered, and whatever the ruler
+    // edge-drag has materialized. No resting runway beyond that.
+    final renderedFrames = _renderedFramesFor(totalFrames);
     final contentWidth = _contentWidthFor(layoutEntries, scale);
     // The playhead + green bar repaint through their own listenables (the
     // cursor-layer pattern) — the ruler's overlay PAINTER and the playhead
@@ -1174,6 +1258,7 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
                               onScrubGlobalFrame: widget.onScrubGlobalFrame,
                               onScrubEnd: widget.onScrubEnd,
                               isFrameCached: widget.isFrameCached,
+                              onEdgeAutoPan: _autoPanRulerEdge,
                               framesPerSecond: widget.projectFps,
                               showSeconds: widget.showSeconds,
                             ),
@@ -1460,6 +1545,7 @@ class _StoryboardRuler extends StatelessWidget {
     required this.onScrubGlobalFrame,
     required this.onScrubEnd,
     required this.isFrameCached,
+    this.onEdgeAutoPan,
     this.framesPerSecond = 24,
     this.showSeconds = false,
   });
@@ -1494,6 +1580,12 @@ class _StoryboardRuler extends StatelessWidget {
 
   final bool Function(int globalFrame)? isFrameCached;
 
+  /// Edge auto-pan sink (UI-R12 #16, unified with the timeline ruler): a
+  /// scrub within 24px of the viewport edge reports a pan delta; the
+  /// panel jumps the horizontal axis (overshooting rightward so growth
+  /// materializes frames past the built extent).
+  final ValueChanged<double>? onEdgeAutoPan;
+
   /// The two-line ruler's parameters (UI-R10 #27, unified: the seconds
   /// display cycles 1..fps here exactly like the timeline — UI-R11 #10).
   final int framesPerSecond;
@@ -1509,10 +1601,31 @@ class _StoryboardRuler extends StatelessWidget {
   void _seekFrame(int frame) => _reportFrame(onSeekGlobalFrame, frame);
 
   void _scrubAt(double dx) {
+    _autoPanAt(dx);
     _reportFrame(
       onScrubGlobalFrame ?? onSeekGlobalFrame,
       (dx / timelineScale.pixelsPerFrame).floor(),
     );
+  }
+
+  /// [dx] is content-strip local (the gesture rides the translated
+  /// full-width strip); the edge test needs the VIEWPORT-relative x.
+  void _autoPanAt(double dx) {
+    final onEdgeAutoPan = this.onEdgeAutoPan;
+    if (onEdgeAutoPan == null || viewportWidth <= 0) {
+      return;
+    }
+    const edge = 24.0;
+    final viewportX = dx - scrollOffset;
+    double delta = 0;
+    if (viewportX > viewportWidth - edge) {
+      delta = viewportX - (viewportWidth - edge);
+    } else if (viewportX < edge) {
+      delta = viewportX - edge;
+    }
+    if (delta != 0) {
+      onEdgeAutoPan(delta);
+    }
   }
 
   @override

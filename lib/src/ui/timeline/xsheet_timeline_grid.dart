@@ -409,9 +409,18 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
 
   int get _visibleFrameCount => _frameRangePolicy.visibleFrameCount;
 
-  /// Render extent: the endless-axis runway extends past the base count as
-  /// the user scrolls. Interaction clamps stay on [_visibleFrameCount].
-  int get _renderedFrameCount => _visibleFrameCount + _endlessTrailingFrames;
+  /// Frame cells the current viewport needs to be fully papered (UI-R12
+  /// #16) — recorded by build's outer LayoutBuilder. Zero until layout.
+  int _viewportFillFrameCells = 0;
+
+  /// Render extent (UI-R12 #16 contract): the cells scrolled into
+  /// existence PLUS the viewport fill — no runway beyond. Scroll physics
+  /// and the rail clamp here; the frame-rail edge-drag overshoots and the
+  /// growth listener materializes what the overshot view needs.
+  int get _renderedFrameCount => math.max(
+    _visibleFrameCount + _endlessTrailingFrames,
+    _viewportFillFrameCells,
+  );
 
   double get _totalFrameContentHeight =>
       _renderedFrameCount * _metrics.frameCellWidth;
@@ -524,10 +533,10 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
       return;
     }
     final position = _frameScrollController.position;
-    final target = (position.pixels + delta).clamp(
-      0.0,
-      position.maxScrollExtent,
-    );
+    // Downward the pan OVERSHOOTS the built extent (UI-R12 #16): the rail
+    // drag is THE way past the last built cell — growth materializes the
+    // frames the overshot view needs; scroll/scrollbar stay clamped.
+    final target = math.max(0.0, position.pixels + delta);
     if (target != position.pixels) {
       _frameScrollController.jumpTo(target);
     }
@@ -657,6 +666,13 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
                   .clamp(0.0, double.infinity)
                   .toDouble()
             : 0.0;
+        // Viewport paper fill (UI-R12 #16): the frame column runs to the
+        // body's bottom edge — recorded before every consumer of
+        // [_renderedFrameCount] below.
+        _viewportFillFrameCells = endlessViewportFillFrames(
+          viewportExtent: bodyViewportHeight,
+          frameCellExtent: _metrics.frameCellWidth,
+        );
         final effectiveFrameScrollOffset = _effectiveFrameScrollOffset(
           requestedOffset: _frameAxisOffset.value,
           viewportExtent: bodyViewportHeight,
