@@ -44,24 +44,27 @@ class TimelineRunEditCallbacks {
   onEdgeModeSelected;
 }
 
-/// Main-axis extent of one run-edge affordance ([+] chip or property tag).
+/// Legacy main-axis extent constant (pre-UI-R11 fixed chips); the cluster
+/// now scales with the zoom (half a frame cell, [_clusterMainExtent]).
 const double timelineRunHandleExtent = 14;
 
-/// The run-edge clusters hugging each glued run (UI-R10 #1/#3):
+double _clusterMainExtent(double frameCellExtent) =>
+    (frameCellExtent / 2).clamp(7.0, 24.0);
+
+/// The run-edge clusters hugging each glued run (UI-R11 #13): a slim
+/// TWO-STACK of text glyphs — [+] over the N/H/R property letter — half a
+/// frame cell wide (zoom-scaled), no chrome at all; rest = dim text,
+/// hover = white text, operating = accent text.
 ///
-/// - run END: `[블록][+][태그]` — the [+] chip drags new frames onto the
-///   run; the property tag (N/H/R, ALWAYS visible) opens the mode flyout.
-/// - run START: the mirror, `[태그][+][블록]`.
-///
-/// The cluster sits on the AUTHORED run edge always — hold/repeat ghost
-/// tails render past it, never displace it (#3) — and both chips share
-/// the quiet 3-state visual: translucent gray at rest, white on hover,
-/// accent only WHILE operating (#1). A selection-scoped repeat pattern
-/// additionally draws a soft outline around its pattern span (#5).
+/// Identity vs display (UI-R11 #1/#2): the clusters key and call back on
+/// the COMMITTED [baseLayer] runs (stable across drags — R12-③), but
+/// POSITION on the display [layer] (the drag-preview substitution), so
+/// they ride block moves and [+] adds live.
 ///
 /// Ghost runs themselves get no clusters (their timing is derived).
 List<Widget> timelineRowRunEndHandles({
   required Layer layer,
+  Layer? baseLayer,
   required int frameStartIndex,
   required int frameEndIndexExclusive,
   required double leadingFrameSpacerWidth,
@@ -71,6 +74,7 @@ List<Widget> timelineRowRunEndHandles({
   required Axis axis,
   String keyPrefix = 'timeline',
 }) {
+  final identity = baseLayer ?? layer;
   final handles = <Widget>[];
   final seenRunStarts = <int>{};
 
@@ -81,55 +85,35 @@ List<Widget> timelineRowRunEndHandles({
     leadingFrameSpacerWidth: leadingFrameSpacerWidth,
   );
 
-  /// Free of AUTHORED coverage — ghosts are derived and never block the
-  /// [+] (adding frames pushes them out on rederive).
-  bool freeAt(int index) {
-    if (index < 0) {
-      return false;
-    }
-    final entry = layer.timeline[index];
-    if (entry != null && !entry.ghost) {
-      return false;
-    }
-    var key = layer.timeline.lastKeyBefore(index);
-    while (key != null && layer.timeline[key]!.ghost) {
-      key = layer.timeline.lastKeyBefore(key);
-    }
-    if (key == null) {
-      return true;
-    }
-    final covering = layer.timeline[key]!;
-    return index >= key + covering.length!;
-  }
-
-  /// Lowest non-ghost block start carrying [frameId] inside the run.
-  int? blockStartOf(
-    FrameId frameId,
-    ({int startIndex, int endIndexExclusive, FrameId anchorFrameId}) run,
-  ) {
+  /// Lowest non-ghost display start carrying [frameId]; null when the
+  /// block left this layer (e.g. a cross-layer move preview).
+  int? displayStartOf(FrameId frameId) {
     for (final entry in layer.timeline.entries) {
-      if (entry.value.ghost || entry.value.frameId != frameId) {
-        continue;
-      }
-      if (entry.key >= run.startIndex && entry.key < run.endIndexExclusive) {
+      if (!entry.value.ghost && entry.value.frameId == frameId) {
         return entry.key;
       }
-      return null;
     }
     return null;
   }
 
-  for (final key in layer.timeline.keys) {
-    final entry = layer.timeline[key]!;
+  for (final key in identity.timeline.keys) {
+    final entry = identity.timeline[key]!;
     if (!entry.isDrawing || entry.ghost) {
       continue;
     }
-    final run = gluedRunAt(layer, key);
-    if (run == null || seenRunStarts.contains(run.startIndex)) {
+    final baseRun = gluedRunAt(identity, key);
+    if (baseRun == null || !seenRunStarts.add(baseRun.startIndex)) {
       continue;
     }
-    seenRunStarts.add(run.startIndex);
-    if (run.endIndexExclusive < frameStartIndex ||
+    // Resolve the LIVE display run for positions/modes: previews shift
+    // the anchor block, the glued run containing it is the visual unit.
+    final displayAnchorStart = displayStartOf(baseRun.anchorFrameId);
+    if (displayAnchorStart == null) {
+      continue;
+    }
+    final run = gluedRunAt(layer, displayAnchorStart);
+    if (run == null ||
+        run.endIndexExclusive < frameStartIndex ||
         run.startIndex > frameEndIndexExclusive) {
       continue;
     }
@@ -152,8 +136,10 @@ List<Widget> timelineRowRunEndHandles({
           behavior.patternAnchorFrameId == null) {
         continue;
       }
-      final anchorStart = blockStartOf(behavior.patternAnchorFrameId!, run);
-      if (anchorStart == null) {
+      final anchorStart = displayStartOf(behavior.patternAnchorFrameId!);
+      if (anchorStart == null ||
+          anchorStart < run.startIndex ||
+          anchorStart >= run.endIndexExclusive) {
         continue;
       }
       final (spanStart, spanEnd) = behavior.side == TimelineRunEdgeSide.end
@@ -202,23 +188,21 @@ List<Widget> timelineRowRunEndHandles({
       );
     }
 
-    // END cluster on the authored edge (#3): [블록][+][태그].
+    // END cluster on the display run edge.
     handles.add(
       _RunEdgeCluster(
-        // Keys carry the run's ANCHOR identity, never an index: an
-        // add-start preview shifts every index left, and an index-keyed
-        // handle would remount mid-gesture (killing the pan and
-        // committing one frame) — R12-③.
+        // Keys carry the BASE run's ANCHOR identity, never an index: a
+        // preview shift would remount an index-keyed handle mid-gesture
+        // (killing the pan and committing one frame) — R12-③.
         key: ValueKey<String>(
-          '$keyPrefix-run-edge-end-${layer.id}-${run.anchorFrameId.value}',
+          '$keyPrefix-run-edge-end-${layer.id}-${baseRun.anchorFrameId.value}',
         ),
         keyPrefix: keyPrefix,
         side: TimelineRunEdgeSide.end,
         layerId: layer.id,
-        blockStartIndex: run.startIndex,
-        anchorValue: run.anchorFrameId.value,
+        blockStartIndex: baseRun.startIndex,
+        anchorValue: baseRun.anchorFrameId.value,
         mode: endBehavior?.mode,
-        showAdd: freeAt(run.endIndexExclusive),
         edgeOffset: edgeX(run.endIndexExclusive),
         frameCellExtent: frameCellExtent,
         crossAxisExtent: crossAxisExtent,
@@ -227,20 +211,20 @@ List<Widget> timelineRowRunEndHandles({
       ),
     );
 
-    // START cluster mirror: [태그][+][블록].
+    // START cluster mirror.
     if (run.startIndex > 0) {
       handles.add(
         _RunEdgeCluster(
           key: ValueKey<String>(
-            '$keyPrefix-run-edge-start-${layer.id}-${run.anchorFrameId.value}',
+            '$keyPrefix-run-edge-start-${layer.id}-'
+            '${baseRun.anchorFrameId.value}',
           ),
           keyPrefix: keyPrefix,
           side: TimelineRunEdgeSide.start,
           layerId: layer.id,
-          blockStartIndex: run.startIndex,
-          anchorValue: run.anchorFrameId.value,
+          blockStartIndex: baseRun.startIndex,
+          anchorValue: baseRun.anchorFrameId.value,
           mode: startBehavior?.mode,
-          showAdd: freeAt(run.startIndex - 1),
           edgeOffset: edgeX(run.startIndex),
           frameCellExtent: frameCellExtent,
           crossAxisExtent: crossAxisExtent,
@@ -253,9 +237,8 @@ List<Widget> timelineRowRunEndHandles({
   return handles;
 }
 
-/// One run edge's affordance cluster: the [+] add chip plus the N/H/R
-/// property tag, laid main-axis in block-outward order. Both chips share
-/// the 3-state visual (rest/hover/operating — UI-R10 #1).
+/// One run edge's affordance cluster (UI-R11 #13): [+] stacked over the
+/// property letter, text-only, half a frame cell wide.
 class _RunEdgeCluster extends StatefulWidget {
   const _RunEdgeCluster({
     super.key,
@@ -265,7 +248,6 @@ class _RunEdgeCluster extends StatefulWidget {
     required this.blockStartIndex,
     required this.anchorValue,
     required this.mode,
-    required this.showAdd,
     required this.edgeOffset,
     required this.frameCellExtent,
     required this.crossAxisExtent,
@@ -280,11 +262,10 @@ class _RunEdgeCluster extends StatefulWidget {
   final String anchorValue;
 
   /// The edge's current mode; null = None. Display stays quiet either
-  /// way — the letter changes, never the accent (#1).
+  /// way — the letter changes, never an accent (UI-R10 #1).
   final TimelineRunEdgeMode? mode;
-  final bool showAdd;
 
-  /// Main-axis offset of the authored run edge.
+  /// Main-axis offset of the display run edge.
   final double edgeOffset;
   final double frameCellExtent;
   final double crossAxisExtent;
@@ -397,41 +378,26 @@ class _RunEdgeClusterState extends State<_RunEdgeCluster> {
     }
   }
 
-  /// The shared 3-state chip look (UI-R10 #1): rest = translucent gray
-  /// (the cells read through), hover = solid white, operating = accent.
-  ({Color background, Color border, Color ink}) _chipColors(
+  /// The 3-state TEXT color (UI-R11 #13: no chrome — the glyph carries
+  /// every state): rest dim, hover white, operating accent.
+  Color _glyphColor(
     ColorScheme colorScheme, {
     required bool hovered,
     required bool operating,
   }) {
     if (operating) {
-      return (
-        background: colorScheme.primary.withValues(alpha: 0.45),
-        border: colorScheme.primary,
-        ink: colorScheme.onSurface,
-      );
+      return colorScheme.primary;
     }
     if (hovered) {
-      return (
-        background: Colors.white,
-        border: colorScheme.outline,
-        ink: Colors.black87,
-      );
+      return Colors.white;
     }
-    return (
-      background: colorScheme.surfaceContainerHigh.withValues(alpha: 0.45),
-      border: colorScheme.outlineVariant.withValues(alpha: 0.6),
-      ink: colorScheme.onSurfaceVariant.withValues(alpha: 0.75),
-    );
+    return colorScheme.onSurfaceVariant.withValues(alpha: 0.65);
   }
 
-  Widget _addChip(ColorScheme colorScheme) {
+  double get _glyphSize => (widget.frameCellExtent * 0.5).clamp(7.0, 12.0);
+
+  Widget _addGlyph(ColorScheme colorScheme) {
     final horizontal = widget.axis == Axis.horizontal;
-    final colors = _chipColors(
-      colorScheme,
-      hovered: _addHovered,
-      operating: _dragging,
-    );
     return MouseRegion(
       cursor: horizontal
           ? SystemMouseCursors.resizeColumn
@@ -455,14 +421,20 @@ class _RunEdgeClusterState extends State<_RunEdgeCluster> {
         onPanUpdate: (details) => _updateAdd(details.delta),
         onPanEnd: (_) => _endAdd(),
         onPanCancel: _cancelAdd,
-        child: Container(
-          margin: const EdgeInsets.all(1),
-          decoration: BoxDecoration(
-            color: colors.background,
-            border: Border.all(color: colors.border),
-            borderRadius: const BorderRadius.all(Radius.circular(3)),
+        child: Center(
+          child: Text(
+            '+',
+            style: TextStyle(
+              fontSize: _glyphSize + 2,
+              height: 1,
+              fontWeight: FontWeight.w700,
+              color: _glyphColor(
+                colorScheme,
+                hovered: _addHovered,
+                operating: _dragging,
+              ),
+            ),
           ),
-          child: Icon(Icons.add, size: 10, color: colors.ink),
         ),
       ),
     );
@@ -474,20 +446,13 @@ class _RunEdgeClusterState extends State<_RunEdgeCluster> {
       TimelineRunEdgeMode.repeat => 'R',
       null => 'N',
     };
-    final colors = _chipColors(
-      colorScheme,
-      hovered: _tagHovered,
-      operating: _menuOpen,
-    );
     return Builder(
       builder: (anchorContext) => MouseRegion(
         cursor: SystemMouseCursors.click,
         opaque: false,
         onEnter: (_) => setState(() => _tagHovered = true),
         onExit: (_) => setState(() => _tagHovered = false),
-        // The flyout opens on POINTER DOWN (UI-R10 #2): a tap-up (or an
-        // arena-delayed tap) reads as lag next to the pointer-down cell
-        // select the grid trained users on.
+        // The flyout opens on POINTER DOWN (UI-R10 #2).
         child: Listener(
           key: ValueKey<String>(
             '${widget.keyPrefix}-run-edge-tag-${widget.layerId}-'
@@ -495,21 +460,18 @@ class _RunEdgeClusterState extends State<_RunEdgeCluster> {
           ),
           behavior: HitTestBehavior.opaque,
           onPointerDown: (_) => _openModeFlyout(anchorContext),
-          child: Container(
-            margin: const EdgeInsets.all(1),
-            alignment: Alignment.center,
-            decoration: BoxDecoration(
-              color: colors.background,
-              border: Border.all(color: colors.border),
-              borderRadius: const BorderRadius.all(Radius.circular(3)),
-            ),
+          child: Center(
             child: Text(
               label,
               style: TextStyle(
-                fontSize: 8,
+                fontSize: _glyphSize,
                 height: 1,
                 fontWeight: FontWeight.w700,
-                color: colors.ink,
+                color: _glyphColor(
+                  colorScheme,
+                  hovered: _tagHovered,
+                  operating: _menuOpen,
+                ),
               ),
             ),
           ),
@@ -522,57 +484,39 @@ class _RunEdgeClusterState extends State<_RunEdgeCluster> {
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
     final horizontal = widget.axis == Axis.horizontal;
+    final mainExtent = _clusterMainExtent(widget.frameCellExtent);
 
-    // Block-outward order: end = [+] then tag; start = tag then [+]. The
-    // tag is ALWAYS visible (#1); slot keys keep the [+] ELEMENT alive
-    // across slot shifts so a mid-pan rebuild never remounts it (R12-③
-    // one layer up).
-    final slots = <Widget>[
-      if (widget.showAdd)
-        SizedBox(
-          key: const ValueKey<String>('run-edge-slot-add'),
-          width: horizontal ? timelineRunHandleExtent : null,
-          height: horizontal ? null : timelineRunHandleExtent,
-          child: _addChip(colorScheme),
-        ),
-      SizedBox(
-        key: const ValueKey<String>('run-edge-slot-tag'),
-        width: horizontal ? timelineRunHandleExtent : null,
-        height: horizontal ? null : timelineRunHandleExtent,
-        child: _propertyTag(colorScheme),
-      ),
-    ];
-    final children = _atEnd ? slots : slots.reversed.toList();
-
-    final cluster = Align(
-      alignment: horizontal
-          ? (_atEnd ? Alignment.centerLeft : Alignment.centerRight)
-          : (_atEnd ? Alignment.topCenter : Alignment.bottomCenter),
+    // [+] over the property letter (UI-R11 #13): the two slots split the
+    // CROSS axis so the very next frame stays visible beside them. The
+    // whole zone swallows pointer-downs (UI-R10 #12 — a near-miss must
+    // not seek the playhead through the cells below).
+    final cluster = Listener(
+      behavior: HitTestBehavior.opaque,
+      onPointerDown: (_) {},
       child: horizontal
-          ? Row(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: children,
+          ? Column(
+              children: [
+                Expanded(child: _addGlyph(colorScheme)),
+                Expanded(child: _propertyTag(colorScheme)),
+              ],
             )
-          : Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: children,
+          : Row(
+              children: [
+                Expanded(child: _addGlyph(colorScheme)),
+                Expanded(child: _propertyTag(colorScheme)),
+              ],
             ),
     );
 
-    // Reserve both slots' extent; the start side grows leftward (upward)
-    // from the edge.
-    const clusterExtent = timelineRunHandleExtent * 2;
     final mainStart = _atEnd
         ? widget.edgeOffset
-        : widget.edgeOffset - clusterExtent;
+        : widget.edgeOffset - mainExtent;
 
     if (horizontal) {
       return Positioned(
         left: mainStart,
         top: 0,
-        width: clusterExtent,
+        width: mainExtent,
         height: widget.crossAxisExtent,
         child: cluster,
       );
@@ -580,7 +524,7 @@ class _RunEdgeClusterState extends State<_RunEdgeCluster> {
     return Positioned(
       top: mainStart,
       left: 0,
-      height: clusterExtent,
+      height: mainExtent,
       width: widget.crossAxisExtent,
       child: cluster,
     );
