@@ -5,6 +5,7 @@ import '../../models/layer.dart';
 import '../../models/layer_id.dart';
 import '../../models/layer_kind.dart';
 import '../../models/timeline_frame_range.dart';
+import '../../models/timeline_repeat.dart';
 import 'property_lane_model.dart';
 import 'selected_exposure_display_range_policy.dart';
 import 'timeline_cell_exposure_state.dart';
@@ -192,8 +193,13 @@ class TimelineCursorLayer extends StatelessWidget {
               activeLayer;
           // Display rows are uniformly tall (timelineDisplayRowExtent).
           final rowOffset = activeRowIndex * metrics.layerRowHeight;
+          // Ghost cells read as EMPTY here (UI-R11 #5): the selection
+          // block outline never wraps derived exposures — they show text
+          // only, no block UI of any kind.
           TimelineCellExposureState stateAt(int frameIndex) =>
-              layer.kind == LayerKind.instruction
+              timelineIndexIsGhost(layer, frameIndex)
+              ? TimelineCellExposureState.uncovered
+              : layer.kind == LayerKind.instruction
               ? instructionCellExposureState(layer, frameIndex)
               : exposureStateForLayer(layer, frameIndex);
           final displayRange = resolveSelectedExposureDisplayRange(

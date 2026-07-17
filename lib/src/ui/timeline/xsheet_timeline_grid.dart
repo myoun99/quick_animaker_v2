@@ -1416,6 +1416,14 @@ class _XSheetFrameCellsColumn extends StatelessWidget {
               onSelectLayer: onSelectLayer,
               onSelectFrame: onSelectFrame,
               onActivateCell: onActivateCell,
+              suppressPointerDownSelect: rangeGesture == null
+                  ? null
+                  : (frameIndex) {
+                      final selection = rangeGesture.selection.value;
+                      return selection != null &&
+                          selection.layerId == layer.id &&
+                          selection.contains(frameIndex);
+                    },
             )
           else
             Column(
@@ -1562,7 +1570,10 @@ class _XSheetFrameCellsColumn extends StatelessWidget {
               layerKindHoldsDrawings(layer.kind) &&
               !layerKindUsesSeSheetCells(layer.kind))
             ...timelineRowRunEndHandles(
-              layer: baseLayer ?? layer,
+              // Display layer positions the clusters (they ride previews,
+              // UI-R11 #1/#2); the committed base keeps their identity.
+              layer: layer,
+              baseLayer: baseLayer,
               frameStartIndex: frameStartIndex,
               frameEndIndexExclusive: frameEndIndexExclusive,
               leadingFrameSpacerWidth: leadingFrameSpacerHeight,

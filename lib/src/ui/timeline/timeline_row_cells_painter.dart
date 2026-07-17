@@ -321,11 +321,11 @@ class TimelineRowCellsPainter extends CustomPainter {
       }
       final isEmptyX =
           model.exposureState == TimelineCellExposureState.uncovered;
-      final holdDash = model.ghost && model.glyph == 'ㅡ';
-      final ink = holdDash
-          // Hold ghost dashes read as one continuous dim string — no
-          // start-cell emphasis (UI-R10 #11).
-          ? colorScheme.onSurfaceVariant.withValues(alpha: 0.55)
+      // Ghost glyphs (repeat names, hold dashes, dots) read as ONE quiet
+      // near-white string over the empty cells (UI-R11 #5) — dark drawing
+      // ink belongs to real paper blocks only.
+      final ink = model.ghost
+          ? colorScheme.onSurface.withValues(alpha: 0.85)
           : timelineCellUsesDrawingInk(model.exposureState)
           ? (model.dimmed
                 ? timelineDrawingInkColor.withValues(alpha: 0.55)
@@ -338,7 +338,7 @@ class TimelineRowCellsPainter extends CustomPainter {
       final glyphStyle = baseTextStyle.copyWith(
         color: ink,
         fontWeight:
-            !holdDash &&
+            !model.ghost &&
                 !isEmptyX &&
                 model.exposureState != TimelineCellExposureState.held
             ? FontWeight.bold
@@ -488,6 +488,7 @@ Widget timelineRowCellsPaintArea({
   required ValueChanged<LayerId> onSelectLayer,
   required ValueChanged<int> onSelectFrame,
   void Function(LayerId layerId, int frameIndex)? onActivateCell,
+  bool Function(int frameIndex)? suppressPointerDownSelect,
 }) {
   final painter = TimelineRowCellsPainter(
     layer: layer,
@@ -522,7 +523,10 @@ Widget timelineRowCellsPaintArea({
     onPointerDown: (event) {
       if (event.buttons == 0 || (event.buttons & kPrimaryButton) != 0) {
         final frameIndex = painter.frameIndexAt(event.localPosition);
-        if (inWindow(frameIndex)) {
+        // A press INSIDE the frame-range selection initiates a MOVE — it
+        // must not re-seek the playhead first (UI-R10 #12).
+        if (inWindow(frameIndex) &&
+            !(suppressPointerDownSelect?.call(frameIndex) ?? false)) {
           select(frameIndex);
         }
       }
