@@ -551,9 +551,34 @@ class TimesheetDocument {
             );
           }
         } else if (behavior?.side == TimelineRunEdgeSide.start) {
-          // FRONT repeats print NOTHING on the sheet (UI-R13 #5 — the
-          // user has never seen one notated); the chain only counts as
-          // coverage. The timeline still shows it.
+          // FRONT repeats write their GHOST FRAMES verbatim (UI-R14 #3):
+          // the repeat word never notates a front repeat — the lead-in
+          // prints its expanded cel numbers exactly like authored cells.
+          for (var chainIndex = index; chainIndex <= last; chainIndex += 1) {
+            final ghostStart = entries[chainIndex].key;
+            if (ghostStart >= rowCount) {
+              continue;
+            }
+            final ghostExposure = entries[chainIndex].value;
+            final ghostEnd = (ghostStart + ghostExposure.length!).clamp(
+              0,
+              rowCount,
+            );
+            cells[ghostStart] = TimesheetCell(
+              TimesheetCellKind.drawing,
+              label: labelsByFrameId[ghostExposure.frameId] ?? '?',
+              spanLength: ghostEnd - ghostStart,
+            );
+            for (var row = ghostStart + 1; row < ghostEnd; row += 1) {
+              cells[row] = TimesheetCell(
+                ghostExposure.hasBreakdownAt(row - ghostStart)
+                    ? TimesheetCellKind.mark
+                    : TimesheetCellKind.held,
+                spanLength: ghostEnd - ghostStart,
+                spanOffset: row - ghostStart,
+              );
+            }
+          }
         } else {
           cells[start] = TimesheetCell(
             TimesheetCellKind.repeatStart,

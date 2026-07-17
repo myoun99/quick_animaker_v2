@@ -39,7 +39,6 @@ class TimelineFrameRowsScrollBody extends StatefulWidget {
     this.instructionDefById,
     this.audioPeaksFor,
     this.projectFps = 24,
-    this.repeatWord = 'REPEAT',
     this.onRemoveAudioClip,
     this.onDropMediaAsset,
     this.onSetAudioClipOffset,
@@ -82,9 +81,6 @@ class TimelineFrameRowsScrollBody extends StatefulWidget {
   instructionDefById;
   final AudioPeaks? Function(String filePath)? audioPeaksFor;
   final int projectFps;
-
-  /// The notation-language repeat word for ghost chains (UI-R13 #4).
-  final String repeatWord;
   final void Function(LayerId layerId, int clipIndex)? onRemoveAudioClip;
   final void Function(LayerId layerId, int blockStartFrame, String path)?
   onDropMediaAsset;
@@ -232,7 +228,6 @@ class _TimelineFrameRowsScrollBodyState
       instructionDefById: widget.instructionDefById,
       audioPeaksFor: widget.audioPeaksFor,
       projectFps: widget.projectFps,
-      repeatWord: widget.repeatWord,
       onRemoveAudioClip: widget.onRemoveAudioClip,
       onDropMediaAsset: widget.onDropMediaAsset,
       commaDrag: widget.commaDrag,

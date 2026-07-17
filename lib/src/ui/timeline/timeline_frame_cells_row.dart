@@ -46,7 +46,6 @@ class TimelineFrameCellsRow extends StatelessWidget {
     this.instructionDefById,
     this.audioPeaksFor,
     this.projectFps = 24,
-    this.repeatWord = 'REPEAT',
     this.onRemoveAudioClip,
     this.onDropMediaAsset,
     this.commaDrag,
@@ -82,9 +81,6 @@ class TimelineFrameCellsRow extends StatelessWidget {
   /// Waveform peaks resolver for SE rows' audio clips; null hides them.
   final AudioPeaks? Function(String filePath)? audioPeaksFor;
   final int projectFps;
-
-  /// The notation-language repeat word for ghost chains (UI-R13 #4).
-  final String repeatWord;
 
   /// Removes an audio clip by index (the waveform's context menu).
   final void Function(LayerId layerId, int clipIndex)? onRemoveAudioClip;
@@ -147,7 +143,6 @@ class TimelineFrameCellsRow extends StatelessWidget {
             frameCellExtent: metrics.frameCellWidth,
             crossAxisExtent: metrics.layerRowHeight,
             axis: Axis.horizontal,
-            repeatWord: repeatWord,
             exposureStateForLayer: exposureStateForLayer,
             frameNameForLayer: frameNameForLayer,
             onSelectLayer: onSelectLayer,

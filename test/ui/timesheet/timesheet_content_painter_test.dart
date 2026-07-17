@@ -118,14 +118,19 @@ void main() {
         reason: 'past the chain the X run restarts');
   });
 
-  test('a FRONT repeat prints NOTHING on the sheet (UI-R13 #5): coverage '
-      'only — the timeline still shows it', () {
+  test('a FRONT repeat writes its ghost frames VERBATIM on the sheet '
+      '(UI-R14 #3): expanded cel numbers, never the repeat word', () {
     final frontRepeat = rederiveRunBehaviors(
       Layer(
         id: const LayerId('fr'),
         name: 'FR',
         frames: [
-          Frame(id: const FrameId('fr-f1'), duration: 1, strokes: const []),
+          Frame(
+            id: const FrameId('fr-f1'),
+            duration: 1,
+            name: '7',
+            strokes: const [],
+          ),
         ],
         timeline: {
           4: const TimelineExposure.drawing(FrameId('fr-f1'), length: 2),
@@ -142,11 +147,17 @@ void main() {
     );
     final cells = documentFor([frontRepeat]).columns[0].cells;
 
-    for (var row = 0; row < 4; row += 1) {
-      expect(cells[row].kind, TimesheetCellKind.empty,
-          reason: 'row $row — silent lead-in, no repeat notation');
-    }
-    expect(cells[4].kind, TimesheetCellKind.drawing);
+    // The lead-in [0,4) cycles the 2f pattern: ghost starts at 0 and 2,
+    // each printing its cel number with a held row under it — exactly
+    // like authored cells, no repeat notation anywhere.
+    expect(cells[0].kind, TimesheetCellKind.drawing);
+    expect(cells[0].label, '7');
+    expect(cells[1].kind, TimesheetCellKind.held);
+    expect(cells[2].kind, TimesheetCellKind.drawing);
+    expect(cells[2].label, '7');
+    expect(cells[3].kind, TimesheetCellKind.held);
+    expect(cells[4].kind, TimesheetCellKind.drawing,
+        reason: 'the authored block');
   });
 
 

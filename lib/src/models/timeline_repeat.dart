@@ -539,46 +539,6 @@ TimelineRunBehavior? runBehaviorOwningGhostAt(Layer layer, int frameIndex) {
   return found;
 }
 
-/// The offset of [index] inside its contiguous same-owner ghost CHAIN
-/// (0 = the chain's first frame); null when the index is not
-/// ghost-covered. The timeline cells print the repeat convention off
-/// this (UI-R13 #4): the chain's first cell writes the cel it restarts
-/// on, the following cells spell the notation repeat word.
-int? timelineGhostChainOffsetAt(Layer layer, int index) {
-  int? coveringKey;
-  final direct = layer.timeline[index];
-  if (direct != null && direct.ghost) {
-    coveringKey = index;
-  } else if (direct == null) {
-    final before = layer.timeline.lastKeyBefore(index);
-    if (before != null) {
-      final covering = layer.timeline[before]!;
-      if (covering.ghost && index < before + covering.length!) {
-        coveringKey = before;
-      }
-    }
-  }
-  if (coveringKey == null) {
-    return null;
-  }
-  final ownerId = layer.timeline[coveringKey]!.ghostOwnerId;
-  var chainStart = coveringKey;
-  while (true) {
-    final before = layer.timeline.lastKeyBefore(chainStart);
-    if (before == null) {
-      break;
-    }
-    final previous = layer.timeline[before]!;
-    if (!previous.ghost ||
-        previous.ghostOwnerId != ownerId ||
-        before + previous.length! != chainStart) {
-      break;
-    }
-    chainStart = before;
-  }
-  return index - chainStart;
-}
-
 /// Whether [index] on [layer] falls inside a GHOST exposure (a derived
 /// repeat instance) — the timeline cells dim these and the editing
 /// affordances (grips, move, run-end handles) stand down on them.

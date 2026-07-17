@@ -332,14 +332,13 @@ void main() {
       ),
     );
 
-    // Repeat ghosts print the sheet CONVENTION (UI-R13 #4): the chain's
-    // first cell writes the cel it restarts on, the following cells spell
-    // the notation repeat word — and NO block chrome anywhere (no radius,
-    // the cell paints as empty paper). The harness default word is
-    // 'REPEAT'.
+    // Repeat ghosts: name glyph at ghost block starts, nothing between,
+    // and NO block chrome (no radius — the cell paints as empty paper).
+    // UI-R14 #3 rolled the timeline back to plain ghost frames — the
+    // SHEET alone carries the repeat-word convention.
     expect(timelineCellModel(tester, 'layer-r', 2).glyph, '○');
-    expect(timelineCellModel(tester, 'layer-r', 3).glyph, 'R');
-    expect(timelineCellModel(tester, 'layer-r', 4).glyph, 'E');
+    expect(timelineCellModel(tester, 'layer-r', 3).glyph, '');
+    expect(timelineCellModel(tester, 'layer-r', 4).glyph, '○');
     expect(
       timelineCellDecoration(tester, 'layer-r', 2).borderRadius,
       isNull,
