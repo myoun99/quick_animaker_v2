@@ -13,6 +13,7 @@ class CanvasViewport {
     this.panY = 0.0,
     this.rotationDegrees = 0.0,
     this.flipHorizontal = false,
+    this.flipVertical = false,
   }) {
     _validateZoom(zoom);
     _validateFinitePan(panX, 'panX');
@@ -25,7 +26,7 @@ class CanvasViewport {
   final double panY;
 
   /// View-only canvas rotation (P8), clockwise degrees in y-down screen
-  /// space. Applied AFTER the horizontal flip, before zoom/pan: viewport =
+  /// space. Applied AFTER the flips, before zoom/pan: viewport =
   /// translate · scale · rotate · flip · canvas. Never touches artwork or
   /// export — pure navigation state like zoom/pan.
   final double rotationDegrees;
@@ -35,11 +36,16 @@ class CanvasViewport {
   /// invisible to the user).
   final bool flipHorizontal;
 
+  /// View-only vertical mirror (UI-R18 #19), the y-axis sibling of
+  /// [flipHorizontal].
+  final bool flipVertical;
+
   double get rotationRadians => rotationDegrees * math.pi / 180;
 
   /// Whether the view transform is more than zoom/pan (rotation or flip
   /// active) — the panbar/reframe AABB paths key off this.
-  bool get hasRotationOrFlip => rotationDegrees != 0 || flipHorizontal;
+  bool get hasRotationOrFlip =>
+      rotationDegrees != 0 || flipHorizontal || flipVertical;
 
   CanvasViewport copyWith({
     double? zoom,
@@ -47,6 +53,7 @@ class CanvasViewport {
     double? panY,
     double? rotationDegrees,
     bool? flipHorizontal,
+    bool? flipVertical,
   }) {
     return CanvasViewport(
       zoom: zoom ?? this.zoom,
@@ -54,6 +61,7 @@ class CanvasViewport {
       panY: panY ?? this.panY,
       rotationDegrees: rotationDegrees ?? this.rotationDegrees,
       flipHorizontal: flipHorizontal ?? this.flipHorizontal,
+      flipVertical: flipVertical ?? this.flipVertical,
     );
   }
 
@@ -73,6 +81,7 @@ class CanvasViewport {
       zoom: nextZoom.clamp(minZoom, maxZoom).toDouble(),
       rotationDegrees: rotationDegrees,
       flipHorizontal: flipHorizontal,
+      flipVertical: flipVertical,
       anchor: anchor,
     );
   }
@@ -88,6 +97,7 @@ class CanvasViewport {
       zoom: zoom,
       rotationDegrees: nextRotationDegrees,
       flipHorizontal: flipHorizontal,
+      flipVertical: flipVertical,
       anchor: anchor,
     );
   }
@@ -100,6 +110,18 @@ class CanvasViewport {
       zoom: zoom,
       rotationDegrees: rotationDegrees,
       flipHorizontal: !flipHorizontal,
+      flipVertical: flipVertical,
+      anchor: anchor,
+    );
+  }
+
+  /// Toggles the vertical mirror around [anchor] (UI-R18 #19).
+  CanvasViewport flippedVerticalAround({required ViewportPoint anchor}) {
+    return _withAnchorPreserved(
+      zoom: zoom,
+      rotationDegrees: rotationDegrees,
+      flipHorizontal: flipHorizontal,
+      flipVertical: !flipVertical,
       anchor: anchor,
     );
   }
@@ -110,6 +132,7 @@ class CanvasViewport {
     required double zoom,
     required double rotationDegrees,
     required bool flipHorizontal,
+    required bool flipVertical,
     required ViewportPoint anchor,
   }) {
     final canvasAnchor = viewportToCanvas(anchor);
@@ -117,6 +140,7 @@ class CanvasViewport {
       zoom: zoom,
       rotationDegrees: rotationDegrees,
       flipHorizontal: flipHorizontal,
+      flipVertical: flipVertical,
     );
     final mapped = unpanned.canvasToViewport(canvasAnchor);
     return CanvasViewport(
@@ -125,6 +149,7 @@ class CanvasViewport {
       panY: anchor.y - mapped.y,
       rotationDegrees: rotationDegrees,
       flipHorizontal: flipHorizontal,
+      flipVertical: flipVertical,
     );
   }
 
@@ -195,12 +220,13 @@ class CanvasViewport {
       return ViewportPoint(x: point.x * zoom + panX, y: point.y * zoom + panY);
     }
     final x = flipHorizontal ? -point.x : point.x;
+    final y = flipVertical ? -point.y : point.y;
     final radians = rotationRadians;
     final cos = math.cos(radians);
     final sin = math.sin(radians);
     return ViewportPoint(
-      x: (x * cos - point.y * sin) * zoom + panX,
-      y: (x * sin + point.y * cos) * zoom + panY,
+      x: (x * cos - y * sin) * zoom + panX,
+      y: (x * sin + y * cos) * zoom + panY,
     );
   }
 
@@ -218,7 +244,10 @@ class CanvasViewport {
     final sin = math.sin(radians);
     final rx = ux * cos + uy * sin;
     final ry = -ux * sin + uy * cos;
-    return CanvasPoint(x: flipHorizontal ? -rx : rx, y: ry);
+    return CanvasPoint(
+      x: flipHorizontal ? -rx : rx,
+      y: flipVertical ? -ry : ry,
+    );
   }
 
   /// Maps a viewport-space pointer DELTA into canvas space (the linear
@@ -239,7 +268,10 @@ class CanvasViewport {
     final sin = math.sin(radians);
     final rx = ux * cos + uy * sin;
     final ry = -ux * sin + uy * cos;
-    return CanvasPoint(x: flipHorizontal ? -rx : rx, y: ry);
+    return CanvasPoint(
+      x: flipHorizontal ? -rx : rx,
+      y: flipVertical ? -ry : ry,
+    );
   }
 
   Map<String, dynamic> toJson() => {
@@ -248,6 +280,7 @@ class CanvasViewport {
     'panY': panY,
     if (rotationDegrees != 0) 'rotation': rotationDegrees,
     if (flipHorizontal) 'flipH': flipHorizontal,
+    if (flipVertical) 'flipV': flipVertical,
   };
 
   factory CanvasViewport.fromJson(Map<String, dynamic> json) {
@@ -257,6 +290,7 @@ class CanvasViewport {
       panY: (json['panY'] as num?)?.toDouble() ?? 0.0,
       rotationDegrees: (json['rotation'] as num?)?.toDouble() ?? 0.0,
       flipHorizontal: json['flipH'] as bool? ?? false,
+      flipVertical: json['flipV'] as bool? ?? false,
     );
   }
 
@@ -268,16 +302,24 @@ class CanvasViewport {
           other.panX == panX &&
           other.panY == panY &&
           other.rotationDegrees == rotationDegrees &&
-          other.flipHorizontal == flipHorizontal;
+          other.flipHorizontal == flipHorizontal &&
+          other.flipVertical == flipVertical;
 
   @override
-  int get hashCode =>
-      Object.hash(zoom, panX, panY, rotationDegrees, flipHorizontal);
+  int get hashCode => Object.hash(
+    zoom,
+    panX,
+    panY,
+    rotationDegrees,
+    flipHorizontal,
+    flipVertical,
+  );
 
   @override
   String toString() =>
       'CanvasViewport(zoom: $zoom, panX: $panX, panY: $panY, '
-      'rotationDegrees: $rotationDegrees, flipHorizontal: $flipHorizontal)';
+      'rotationDegrees: $rotationDegrees, flipHorizontal: $flipHorizontal, '
+      'flipVertical: $flipVertical)';
 }
 
 void _validateZoom(double value) {

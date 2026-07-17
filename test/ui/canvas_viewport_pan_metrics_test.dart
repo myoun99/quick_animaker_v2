@@ -36,8 +36,12 @@ void main() {
           trackExtent: 200,
         );
 
+        // Paper×3 runway (UI-R18 #16) still loses to a much larger
+        // viewport here (150px span vs 300px panel) — no scroll, and
+        // drags keep the centered fit pan untouched.
         expect(metrics.canScroll, isFalse);
         expect(metrics.maxScroll, 0);
+        expect(metrics.scaledContentExtent, closeTo(150, 1e-6));
         expect(metrics.thumbDeltaToPanDelta(100), viewport);
         expect(metrics.panToThumb(50), viewport);
       },
@@ -54,7 +58,8 @@ void main() {
 
       final next = metrics.thumbDeltaToPanDelta(20);
 
-      expect(metrics.maxScroll, 500);
+      // Content = paper×3 (UI-R18 #16): 600·3 − 100 viewport.
+      expect(metrics.maxScroll, 1700);
       expect(next.panX, lessThan(-100));
       expect(next.panY, 0);
     });
@@ -70,15 +75,15 @@ void main() {
 
       final next = metrics.thumbDeltaToPanDelta(20);
 
-      expect(metrics.maxScroll, 500);
+      expect(metrics.maxScroll, 1700);
       expect(next.panY, lessThan(-100));
       expect(next.panX, 0);
     });
 
     test('a 90° rotated view tracks the rotated AABB (P8)', () {
       // 300×100 canvas rotated 90°: the horizontal footprint becomes the
-      // canvas HEIGHT (100·zoom = 200), so a 150-wide viewport can still
-      // scroll it, just over the swapped extent.
+      // canvas HEIGHT (100·zoom = 200); the paper×3 runway (UI-R18 #16)
+      // triples the scrollable span around it.
       final metrics = CanvasViewportPanMetrics(
         axis: Axis.horizontal,
         viewport: CanvasViewport(zoom: 2, rotationDegrees: 90),
@@ -87,8 +92,8 @@ void main() {
         trackExtent: 100,
       );
 
-      expect(metrics.scaledContentExtent, closeTo(200, 1e-6));
-      expect(metrics.maxScroll, closeTo(50, 1e-6));
+      expect(metrics.scaledContentExtent, closeTo(600, 1e-6));
+      expect(metrics.maxScroll, closeTo(450, 1e-6));
     });
 
     test('panToThumb round-trips under rotation/flip', () {

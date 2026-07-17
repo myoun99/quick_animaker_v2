@@ -75,10 +75,12 @@ void main() {
 
     await tapToolbarButton(tester, 'canvas-viewport-rotate-ccw');
     expect(viewportOf(tester).rotationDegrees, 0);
+    // The angle readout is ALWAYS on now (UI-R18 #20) — it reads 0°.
     expect(
       find.byKey(const ValueKey<String>('canvas-viewport-rotation-label')),
-      findsNothing,
+      findsOneWidget,
     );
+    expect(find.text('0°'), findsOneWidget);
 
     await tapToolbarButton(tester, 'canvas-viewport-flip');
     expect(viewportOf(tester).flipHorizontal, isTrue);
