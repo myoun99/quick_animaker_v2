@@ -54,6 +54,11 @@ enum TimesheetCellKind {
   /// Inside a repeat ghost chain (the repeat guide line runs through).
   repeatSpan,
 
+  /// First row of an END-hold ghost chain on a layer whose display is ONE
+  /// cel held from row 1 (UI-R11 #15): prints the notation hold word
+  /// (止め) vertically, like [repeatStart].
+  holdStart,
+
   /// A camera keyframe row (camera column only).
   cameraKey,
 
@@ -462,6 +467,22 @@ class TimesheetDocument {
     // data (XDTS/TDTS export reads that, never these display cells).
     final covered = List<bool>.filled(rowCount, false);
     final entries = layer.timeline.entries.toList(growable: false);
+    // The 止め condition (UI-R11 #15): the layer DISPLAYS as one cel held
+    // from row 1 — a single authored block whose visual start is frame 0
+    // (its own start, or a front-hold lead-in reaching 0).
+    var authoredBlockCount = 0;
+    for (final entry in entries) {
+      if (!entry.value.ghost) {
+        authoredBlockCount += 1;
+      }
+    }
+    final displaysFromRowZero =
+        entries.isNotEmpty && entries.first.key == 0;
+    final singleCelDisplay = authoredBlockCount == 1 && displaysFromRowZero;
+    // Front-hold label relocation (UI-R11 #6): the lead-in prints the
+    // held cel's name on row 1, so the block's OWN start row prints
+    // nothing — the name reads as moved, never duplicated.
+    final suppressedLabelStarts = <int>{};
     for (var index = 0; index < entries.length; index += 1) {
       final start = entries[index].key;
       if (start >= rowCount) {
@@ -488,10 +509,17 @@ class TimesheetDocument {
         final behavior = runBehaviorOwningGhostAt(layer, start);
         if (behavior?.mode == TimelineRunEdgeMode.hold) {
           if (behavior!.side == TimelineRunEdgeSide.start) {
-            // Front hold: the held cel prints on the FIRST row only.
+            // Front hold: the held cel's name MOVES to the first row.
             cells[start] = TimesheetCell(
               TimesheetCellKind.drawing,
               label: labelsByFrameId[exposure.frameId] ?? '?',
+              spanLength: rowsEnd - start,
+            );
+            suppressedLabelStarts.add(chainEndExclusive);
+          } else if (singleCelDisplay) {
+            // One cel held from row 1: the rear chain prints 止め.
+            cells[start] = TimesheetCell(
+              TimesheetCellKind.holdStart,
               spanLength: rowsEnd - start,
             );
           }
@@ -515,7 +543,11 @@ class TimesheetDocument {
       final endExclusive = (start + exposure.length!).clamp(0, rowCount);
       cells[start] = TimesheetCell(
         TimesheetCellKind.drawing,
-        label: labelsByFrameId[exposure.frameId] ?? '?',
+        // A front-hold lead-in already printed this cel's name on row 1
+        // (UI-R11 #6) — the block's own start row stays blank.
+        label: suppressedLabelStarts.contains(start)
+            ? ''
+            : labelsByFrameId[exposure.frameId] ?? '?',
         spanLength: endExclusive - start,
         seName: seNamesByFrameId[exposure.frameId],
       );

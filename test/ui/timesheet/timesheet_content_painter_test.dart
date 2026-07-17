@@ -115,27 +115,9 @@ void main() {
         reason: 'past the chain the X run restarts');
   });
 
-  test('an END hold ghost prints NOTHING; a FRONT hold prints the held '
-      'cel on its first row only (UI-R10 #11)', () {
-    final endHold = rederiveRunBehaviors(
-      animationLayer('a').copyWith(
-        runBehaviors: const [
-          TimelineRunBehavior(
-            anchorFrameId: FrameId('a-f1'),
-            side: TimelineRunEdgeSide.end,
-            mode: TimelineRunEdgeMode.hold,
-          ),
-        ],
-      ),
-      cutFrameCount: 8,
-    );
-    final endCells = documentFor([endHold]).columns[0].cells;
-    for (var row = 2; row < 8; row += 1) {
-      expect(endCells[row].kind, TimesheetCellKind.empty, reason: '$row');
-    }
-    expect(endCells[8].kind, TimesheetCellKind.emptyRunStart,
-        reason: 'the ghost coverage suppressed X inside [2,8) only');
 
+  test('a FRONT hold MOVES the cel name to row 1: the block\'s own start '
+      'row prints nothing (UI-R11 #6)', () {
     final frontHold = rederiveRunBehaviors(
       Layer(
         id: const LayerId('b'),
@@ -161,13 +143,60 @@ void main() {
       ),
       cutFrameCount: 12,
     );
-    final frontCells = documentFor([frontHold]).columns[0].cells;
-    expect(frontCells[0].kind, TimesheetCellKind.drawing);
-    expect(frontCells[0].label, '5', reason: 'the held cel prints at row 1');
-    for (var row = 1; row < 4; row += 1) {
-      expect(frontCells[row].kind, TimesheetCellKind.empty, reason: '$row');
+    final cells = documentFor([frontHold]).columns[0].cells;
+
+    expect(cells[0].kind, TimesheetCellKind.drawing);
+    expect(cells[0].label, '5', reason: 'the name lives on row 1');
+    expect(cells[4].kind, TimesheetCellKind.drawing);
+    expect(cells[4].label, isEmpty, reason: 'moved, never duplicated');
+  });
+
+  test('one cel held from row 1 prints the hold word chain (止め, '
+      'UI-R11 #15); multi-block layers do not', () {
+    final single = rederiveRunBehaviors(
+      animationLayer('a').copyWith(
+        runBehaviors: const [
+          TimelineRunBehavior(
+            anchorFrameId: FrameId('a-f1'),
+            side: TimelineRunEdgeSide.end,
+            mode: TimelineRunEdgeMode.hold,
+          ),
+        ],
+      ),
+      cutFrameCount: 8,
+    );
+    final cells = documentFor([single]).columns[0].cells;
+    expect(cells[2].kind, TimesheetCellKind.holdStart);
+    expect(cells[2].spanLength, 6);
+    for (var row = 3; row < 8; row += 1) {
+      expect(cells[row].kind, TimesheetCellKind.empty, reason: '$row');
     }
-    expect(frontCells[4].kind, TimesheetCellKind.drawing);
+
+    // Two blocks: the rear hold stays silent (no 止め).
+    final multi = rederiveRunBehaviors(
+      Layer(
+        id: const LayerId('m'),
+        name: 'M',
+        frames: [
+          Frame(id: const FrameId('m-1'), duration: 1, strokes: const []),
+          Frame(id: const FrameId('m-2'), duration: 1, strokes: const []),
+        ],
+        timeline: {
+          0: const TimelineExposure.drawing(FrameId('m-1'), length: 1),
+          1: const TimelineExposure.drawing(FrameId('m-2'), length: 1),
+        },
+        runBehaviors: const [
+          TimelineRunBehavior(
+            anchorFrameId: FrameId('m-2'),
+            side: TimelineRunEdgeSide.end,
+            mode: TimelineRunEdgeMode.hold,
+          ),
+        ],
+      ),
+      cutFrameCount: 8,
+    );
+    final multiCells = documentFor([multi]).columns[0].cells;
+    expect(multiCells[2].kind, TimesheetCellKind.empty);
   });
 
   test('the CELL block mirrors the ACTION layer names as headers '
