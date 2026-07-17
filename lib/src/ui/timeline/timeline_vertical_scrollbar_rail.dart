@@ -42,13 +42,9 @@ class TimelineVerticalScrollbarRail extends StatelessWidget {
     final colorScheme = Theme.of(context).colorScheme;
 
     return Container(
-      decoration: BoxDecoration(
-        color: colorScheme.surfaceContainerHighest,
-        border: Border(
-          left: BorderSide(color: colorScheme.outlineVariant),
-          right: BorderSide(color: colorScheme.outlineVariant),
-        ),
-      ),
+      // The rail's side hairlines are GONE (UI-R18 #3) — the lane color
+      // alone separates it from the rows.
+      decoration: BoxDecoration(color: colorScheme.surfaceContainerHighest),
       child: AppControllerScrollbar(
         controller: controller,
         axis: Axis.vertical,

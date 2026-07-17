@@ -1,4 +1,4 @@
-﻿import 'dart:math' as math;
+import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -1546,17 +1546,18 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                                                       key: const ValueKey<String>(
                                                         'timeline-beat-lines',
                                                       ),
-                                                      painter:
-                                                          TimelineBeatLinesPainter(
-                                                            frameCellExtent:
-                                                                _metrics
-                                                                    .frameCellWidth,
-                                                            framesPerSecond:
-                                                                widget
-                                                                    .projectFps,
-                                                            colorScheme:
-                                                                colorScheme,
-                                                          ),
+                                                      painter: TimelineBeatLinesPainter(
+                                                        frameCellExtent:
+                                                            _metrics
+                                                                .frameCellWidth,
+                                                        framesPerSecond:
+                                                            widget.projectFps,
+                                                        colorScheme:
+                                                            colorScheme,
+                                                        crossCellExtent:
+                                                            _metrics
+                                                                .layerRowHeight,
+                                                      ),
                                                     ),
                                                   ),
                                                   cutEndBoundaryLeft:

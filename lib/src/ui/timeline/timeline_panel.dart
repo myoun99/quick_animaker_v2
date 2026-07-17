@@ -214,7 +214,9 @@ class TimelinePanel extends StatefulWidget {
   /// and the timeline's classic cell width alike. The X-sheet's frame row
   /// height scales proportionally so its classic geometry sits at the
   /// same default.
-  static const double minPixelsPerFrame = 4;
+  // 4 → 2.4 (UI-R18 #11): the shared zoom floor drops to 10% of the
+  // default density across all three frame panels.
+  static const double minPixelsPerFrame = 2.4;
   static const double maxPixelsPerFrame = 96;
   // 48 → 24 (R-toolbar slim round): the zoom slider's 100% now reads the
   // CSP/TVPaint-density default.

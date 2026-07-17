@@ -281,10 +281,10 @@ class TimelineRowCellsPainter extends CustomPainter {
     final washDim = model.ghost
         ? frameIndex >= playbackFrameCount
         : model.dimmed;
-    // Blocks keep full chrome; the PLAIN grid draws the shared faint ink
-    // (UI-R14 #4 — one value across drawing rows, sparse rows and the
-    // ruler, fading out as cells shrink per UI-R11 #7) so the 6f/24f
-    // beat lines alone carry the rhythm.
+    // Blocks keep their chrome (start edge strong, held seams faint per
+    // UI-R18 #8); the PLAIN grid draws NOTHING here — the grid-wide
+    // overlay owns every per-cell line now (UI-R18 #2: the grid is
+    // always there, lanes and all).
     final blockBorder = washDim
         ? Color.alphaBlend(
             colorScheme.outlineVariant.withValues(alpha: 0.55),
@@ -298,9 +298,7 @@ class TimelineRowCellsPainter extends CustomPainter {
               styleColors.background,
             )
           : styleColors.background,
-      border: model.segment.isBlock
-          ? blockBorder
-          : timelineBaseGridInk(colorScheme, frameCellExtent: frameCellExtent),
+      border: model.segment.isBlock ? blockBorder : Colors.transparent,
       radius: _cellRadius(model.segment),
     );
   }

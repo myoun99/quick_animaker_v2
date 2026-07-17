@@ -138,13 +138,14 @@ class TimelineFrameRulerPainter extends CustomPainter {
       cached:
           frameIndex < playbackFrameCount &&
           (isFrameCached?.call(frameIndex) ?? false),
+      // No past-playback graying on the RULER (UI-R18 #9): small zooms
+      // made the strip read broken from the right; the cut-end boundary
+      // line marks the end, the BODY cells keep their own dim wash.
       background: selected
           ? Color.alphaBlend(
               timelineSelectedFrameBorderColor.withValues(alpha: 0.12),
               colorScheme.surface,
             )
-          : outside
-          ? colorScheme.surfaceContainerHighest.withValues(alpha: 0.72)
           : colorScheme.surface,
     );
   }
@@ -198,13 +199,9 @@ class TimelineFrameRulerPainter extends CustomPainter {
       // Bottom line: in-cell centered when every cell labels itself, the
       // every-Nth overlay style (left-anchored) otherwise (UI-R10 #27).
       if (model.label.isNotEmpty) {
+        // Labels keep one ink whatever the playhead range (UI-R18 #9).
         final style = labelEveryFrames == 1
-            ? TextStyle(
-                fontSize: 11,
-                color: model.outsidePlaybackRange
-                    ? colorScheme.onSurfaceVariant.withValues(alpha: 0.55)
-                    : colorScheme.onSurface,
-              )
+            ? TextStyle(fontSize: 11, color: colorScheme.onSurface)
             : TextStyle(fontSize: 10, color: colorScheme.onSurfaceVariant);
         final painter = _label(model.label, style);
         if (labelEveryFrames == 1) {
