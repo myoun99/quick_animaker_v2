@@ -20,8 +20,10 @@ import 'playback/playback_transport_controls.dart';
 import '../models/transform_track.dart';
 import '../services/camera_pose_resolver.dart';
 import 'text/app_strings.dart';
+import '../models/timeline_coverage.dart' show TimelineBlockEdge;
 import 'timeline/camera_key_edit.dart';
 import 'timeline/property_lane_model.dart';
+import 'timeline/timeline_cut_end_handle.dart';
 import 'timeline/se_audio_lane.dart';
 import 'timeline/timeline_action_toolbar.dart';
 import 'timeline/timeline_frame_range_gesture.dart';
@@ -660,6 +662,24 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
     _session.linkSelectedFrame(conflictingFrameId);
   }
 
+  /// The end-line drag's session hooks (UI-R18 #14): the boundary grip
+  /// end-trims the ACTIVE cut through the storyboard's trim channel.
+  /// Null while no cut is active (gap parking) — the line stays static.
+  TimelineCutEndDragCallbacks? _cutEndDragCallbacks() {
+    final cutId = _session.activeCutId;
+    if (cutId == null) {
+      return null;
+    }
+    return TimelineCutEndDragCallbacks(
+      cutId: cutId,
+      onBegin: () =>
+          _session.beginCutEdgeDrag(cutId: cutId, edge: TimelineBlockEdge.end),
+      onUpdate: _session.updateCutEdgeDrag,
+      onEnd: _session.endCutEdgeDrag,
+      onCancel: _session.cancelCutEdgeDrag,
+    );
+  }
+
   /// Layers as DISPLAYED (unified layer controls): the camera row mirrors
   /// the camera-view overlay state on its visibility icon and opacity
   /// slider — the same notifiers the canvas and the camera panel share.
@@ -781,6 +801,10 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
               _session.commitFrameScrub();
             }
           },
+          // End-line drag = cut length (UI-R18 #14): the boundary grip
+          // end-trims the ACTIVE cut through the storyboard's trim
+          // channel — live preview, ONE undo on release.
+          cutEndDrag: _cutEndDragCallbacks(),
           onActivateCell: _activateCellEditor,
           instructionDefById: (instructionId) =>
               _session.cameraInstructionSet.defById(instructionId),

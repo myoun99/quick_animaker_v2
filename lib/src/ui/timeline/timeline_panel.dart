@@ -11,6 +11,7 @@ import 'layer_timeline_grid.dart';
 import 'property_lane_model.dart';
 import 'se_audio_lane.dart' show AudioOffsetDragCallbacks;
 import 'timeline_cell_exposure_state.dart';
+import 'timeline_cut_end_handle.dart';
 import 'timeline_drag_preview.dart';
 import 'timeline_exposure_comma_drag_policy.dart';
 import 'timeline_frame_range_gesture.dart';
@@ -88,6 +89,7 @@ class TimelinePanel extends StatefulWidget {
     this.masterOpacityValue = 1.0,
     this.dragPreview,
     this.seSpillInLayerIds = const {},
+    this.cutEndDrag,
   });
 
   final List<Layer> layers;
@@ -96,6 +98,11 @@ class TimelinePanel extends StatefulWidget {
   /// The session's edit-drag preview channel (comma/trim drags), consumed
   /// by both grids' row gates and cursor overlays.
   final ValueListenable<TimelineDragPreview?>? dragPreview;
+
+  /// End-line drag hooks (UI-R18 #14), threaded to both grids: the red
+  /// cut-end boundary grows a grip that end-trims the ACTIVE cut and the
+  /// line follows the live trim preview. Null = display-only.
+  final TimelineCutEndDragCallbacks? cutEndDrag;
 
   /// Track-SE rows whose display clone starts with a spill-in block
   /// (UI-R7 #6: `~` at the cut start, start grip stands down).
@@ -399,6 +406,7 @@ class _TimelinePanelState extends State<TimelinePanel> {
                     opacityDragPreview: widget.opacityDragPreview,
                     masterOpacityValue: widget.masterOpacityValue,
                     seSpillInLayerIds: widget.seSpillInLayerIds,
+                    cutEndDrag: widget.cutEndDrag,
                   )
                 : XSheetTimelineGrid(
                     layers: xsheetLayerDisplayOrder(widget.layers),
@@ -448,6 +456,7 @@ class _TimelinePanelState extends State<TimelinePanel> {
                     onToggleLaneGroup: widget.onToggleLaneGroup,
                     hiddenSections: widget.hiddenSections,
                     rowFilter: widget.rowFilter,
+                    cutEndDrag: widget.cutEndDrag,
                   ),
           ),
         ],

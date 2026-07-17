@@ -516,6 +516,96 @@ void main() {
       expect(selectedCuts, [const CutId('cut-a')]);
     });
 
+    testWidgets('the ruler PRESS itself scrubs and the release commits '
+        'once — the timeline scheme (UI-R18 #13)', (tester) async {
+      final scrubbed = <int>[];
+      var ends = 0;
+
+      await _pumpStoryboardPanel(
+        tester,
+        _singleTrackProject([
+          _cut('cut-a', name: 'Cut A'),
+          _cut('cut-b', name: 'Cut B'),
+        ]),
+        activeCutId: const CutId('cut-a'),
+        onCutSelected: (_) {},
+        onScrubGlobalFrame: scrubbed.add,
+        onScrubEnd: () => ends += 1,
+      );
+
+      final ruler = find.byKey(const ValueKey<String>('storyboard-ruler'));
+      // Press on frame 4 (8 px/frame): the DOWN scrubs immediately.
+      final gesture = await tester.startGesture(
+        tester.getTopLeft(ruler) + const Offset(8 * 4 + 4, 10),
+      );
+      await tester.pump();
+      expect(scrubbed, [4], reason: 'the press itself scrubs');
+      expect(ends, 0);
+
+      await gesture.moveBy(const Offset(8 * 3, 0));
+      await tester.pump();
+      expect(scrubbed.last, 7);
+      expect(ends, 0, reason: 'moves never commit');
+
+      await gesture.up();
+      await tester.pumpAndSettle();
+      expect(ends, 1, reason: 'the raw release commits exactly once');
+
+      // A plain TAP scrubs + commits too (the timeline behavior).
+      await tester.tapAt(
+        tester.getTopLeft(ruler) + const Offset(8 * 9 + 4, 10),
+      );
+      await tester.pumpAndSettle();
+      expect(scrubbed.last, 9);
+      expect(ends, 2);
+    });
+
+    testWidgets('the strips carry a draggable cut-end line (UI-R18 #15): '
+        'dragging it end-trims the boundary cut', (tester) async {
+      final begins = <(CutId, TimelineBlockEdge)>[];
+      final updates = <int>[];
+      var ends = 0;
+
+      await _pumpStoryboardPanel(
+        tester,
+        _singleTrackProject([
+          _cut('cut-a', name: 'Cut A'),
+          _cut('cut-b', name: 'Cut B'),
+        ]),
+        activeCutId: const CutId('cut-a'),
+        onCutSelected: (_) {},
+        cutTrim: StoryboardCutTrimCallbacks(
+          onBegin: (cutId, edge) {
+            begins.add((cutId, edge));
+            return true;
+          },
+          onUpdate: updates.add,
+          onEnd: () => ends += 1,
+          onCancel: () {},
+        ),
+      );
+
+      expect(
+        find.byKey(const ValueKey<String>('storyboard-cut-end-line')),
+        findsOneWidget,
+      );
+      final handle = find.byKey(
+        const ValueKey<String>('storyboard-cut-end-handle'),
+      );
+      final gesture = await tester.startGesture(tester.getCenter(handle));
+      await tester.pump();
+      await gesture.moveBy(const Offset(32, 0));
+      await tester.pump();
+      await gesture.up();
+      await tester.pumpAndSettle();
+
+      // The boundary-defining LAST cut end-trims: +32px at 8 px/frame.
+      expect(begins, [(const CutId('cut-b'), TimelineBlockEdge.end)]);
+      expect(updates, isNotEmpty);
+      expect(updates.last, 4);
+      expect(ends, 1);
+    });
+
     testWidgets('dropping a block onto itself does not reorder', (
       tester,
     ) async {
@@ -1142,6 +1232,8 @@ Future<void> _pumpStoryboardPanel(
   ValueChanged<TrackId>? onSelectTrack,
   int? playheadGlobalFrame,
   ValueChanged<int>? onSeekGlobalFrame,
+  ValueChanged<int>? onScrubGlobalFrame,
+  VoidCallback? onScrubEnd,
   ui.Image? Function(Cut cut)? thumbnailFor,
   double pixelsPerFrame = 8,
   bool showSeconds = false,
@@ -1168,6 +1260,8 @@ Future<void> _pumpStoryboardPanel(
               ? null
               : ValueNotifier<int?>(playheadGlobalFrame),
           onSeekGlobalFrame: onSeekGlobalFrame,
+          onScrubGlobalFrame: onScrubGlobalFrame,
+          onScrubEnd: onScrubEnd,
           thumbnailFor: thumbnailFor,
           pixelsPerFrame: pixelsPerFrame,
           showSeconds: showSeconds,

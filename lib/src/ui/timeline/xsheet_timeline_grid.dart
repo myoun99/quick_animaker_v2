@@ -16,6 +16,7 @@ import 'package:flutter/semantics.dart' show SemanticsProperties;
 
 import 'timeline_cell_style.dart';
 import 'timeline_frame_ruler_painter.dart' show TimelineRulerHeaderModel;
+import 'timeline_cut_end_handle.dart';
 import 'timeline_drag_preview.dart';
 import 'timeline_exposure_block_visual.dart';
 import 'timeline_exposure_comma_drag_policy.dart';
@@ -110,6 +111,7 @@ class XSheetTimelineGrid extends StatefulWidget {
     this.hiddenSections = const {},
     this.rowFilter = TimelineRowFilter.none,
     this.dragPreview,
+    this.cutEndDrag,
   });
 
   final List<Layer> layers;
@@ -119,6 +121,11 @@ class XSheetTimelineGrid extends StatefulWidget {
   /// only the dragged layer's column (its gate) and the cursor overlay —
   /// never this grid.
   final ValueListenable<TimelineDragPreview?>? dragPreview;
+
+  /// End-line drag hooks (UI-R18 #14): the red cut-end boundary grows a
+  /// grip that end-trims the ACTIVE cut; the line follows the live trim
+  /// preview. Null = display-only.
+  final TimelineCutEndDragCallbacks? cutEndDrag;
 
   /// The frame cursor (editing playhead / playback position). Only the
   /// cursor layer, the frame-number rail and the lane headers subscribe —
@@ -876,10 +883,39 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
                                                           bodyViewportHeight,
                                                     ),
                                               ),
-                                              TimelineRulerCutEndBoundary(
-                                                axis: Axis.vertical,
-                                                left: cutEndBoundaryOffset,
-                                              ),
+                                              // UI-R18 #14: the rail's
+                                              // line follows the live
+                                              // trim preview so it never
+                                              // splits from the body's.
+                                              if (widget.cutEndDrag != null &&
+                                                  widget.dragPreview != null)
+                                                ValueListenableBuilder<
+                                                  TimelineDragPreview?
+                                                >(
+                                                  valueListenable:
+                                                      widget.dragPreview!,
+                                                  builder: (context, preview, _) =>
+                                                      TimelineRulerCutEndBoundary(
+                                                        axis: Axis.vertical,
+                                                        left:
+                                                            timelineCutEndPreviewFrameCount(
+                                                              preview: preview,
+                                                              cutId: widget
+                                                                  .cutEndDrag!
+                                                                  .cutId,
+                                                              playbackFrameCount:
+                                                                  widget
+                                                                      .frameCount,
+                                                            ) *
+                                                            _metrics
+                                                                .frameCellWidth,
+                                                      ),
+                                                )
+                                              else
+                                                TimelineRulerCutEndBoundary(
+                                                  axis: Axis.vertical,
+                                                  left: cutEndBoundaryOffset,
+                                                ),
                                             ],
                                           ),
                                         );
@@ -1193,11 +1229,61 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
                                                                 .layerRowHeight,
                                                       ),
                                                     ),
-                                                    TimelineBodyCutEndBoundary(
-                                                      axis: Axis.vertical,
-                                                      left:
-                                                          cutEndBoundaryOffset,
-                                                    ),
+                                                    // UI-R18 #14: live
+                                                    // line + trim grip
+                                                    // on the frame axis
+                                                    // (vertical here).
+                                                    if (widget.cutEndDrag !=
+                                                            null &&
+                                                        widget.dragPreview !=
+                                                            null)
+                                                      ValueListenableBuilder<
+                                                        TimelineDragPreview?
+                                                      >(
+                                                        valueListenable:
+                                                            widget.dragPreview!,
+                                                        builder:
+                                                            (
+                                                              context,
+                                                              preview,
+                                                              _,
+                                                            ) => TimelineBodyCutEndBoundary(
+                                                              axis:
+                                                                  Axis.vertical,
+                                                              left:
+                                                                  timelineCutEndPreviewFrameCount(
+                                                                    preview:
+                                                                        preview,
+                                                                    cutId: widget
+                                                                        .cutEndDrag!
+                                                                        .cutId,
+                                                                    playbackFrameCount:
+                                                                        widget
+                                                                            .frameCount,
+                                                                  ) *
+                                                                  _metrics
+                                                                      .frameCellWidth,
+                                                            ),
+                                                      )
+                                                    else
+                                                      TimelineBodyCutEndBoundary(
+                                                        axis: Axis.vertical,
+                                                        left:
+                                                            cutEndBoundaryOffset,
+                                                      ),
+                                                    if (widget.cutEndDrag !=
+                                                        null)
+                                                      TimelineCutEndDragHandle(
+                                                        axis: Axis.vertical,
+                                                        cellExtent: _metrics
+                                                            .frameCellWidth,
+                                                        playbackFrameCount:
+                                                            widget.frameCount,
+                                                        callbacks:
+                                                            widget.cutEndDrag!,
+                                                        dragPreview:
+                                                            widget.dragPreview,
+                                                      ),
                                                   ],
                                                 );
                                               },
