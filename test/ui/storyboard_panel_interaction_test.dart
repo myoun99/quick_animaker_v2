@@ -690,7 +690,8 @@ void main() {
       );
     });
 
-    testWidgets('frame axis extends endlessly while scrolling right', (
+    testWidgets('frame axis: scrolling stays CLAMPED to the built cells; '
+        'the ruler edge-drag alone extends it (UI-R12 #16)', (
       tester,
     ) async {
       await _pumpStoryboardPanel(
@@ -706,6 +707,8 @@ void main() {
       final ruler = find.byKey(const ValueKey<String>('storyboard-ruler'));
       final initialWidth = tester.getSize(ruler).width;
 
+      // Scroll gestures wall at the built extent: the strip never grows
+      // from scrolling (the scrollbar range = the existing cells).
       for (var i = 0; i < 3; i += 1) {
         await tester.drag(
           find.byKey(
@@ -715,7 +718,21 @@ void main() {
         );
         await tester.pumpAndSettle();
       }
+      expect(tester.getSize(ruler).width, initialWidth,
+          reason: 'scroll cannot extend the axis (UI-R12 #16)');
 
+      // The ruler edge-drag is THE way past the wall — each move pans the
+      // axis (overshooting the built extent) and growth materializes the
+      // frames the view needs. The pointer sits inside the 24px edge zone
+      // of the 1400px surface's ruler viewport.
+      final rulerTop = tester.getTopLeft(ruler).dy;
+      final gesture = await tester.startGesture(Offset(1390, rulerTop + 12));
+      for (var i = 0; i < 12; i += 1) {
+        await gesture.moveBy(const Offset(30, 0));
+        await tester.pump();
+      }
+      await gesture.up();
+      await tester.pumpAndSettle();
       expect(tester.getSize(ruler).width, greaterThan(initialWidth));
     });
 

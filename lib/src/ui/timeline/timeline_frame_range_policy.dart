@@ -55,20 +55,20 @@ String timelineSecondsLabel(int frames, int fps) {
   return '$seconds+${leftover.toString().padLeft(2, '0')}';
 }
 
-/// Frames of runway kept ahead of the scrolled position on the endless
-/// frame axis.
-const int defaultEndlessRunwayFrames = 120;
-
-/// Premiere-style endless frame axis, shared by the timeline, the X-sheet
-/// and the storyboard: the rendered frame extent grows with how far the
-/// user has scrolled, always keeping [runwayFrames] of empty frames ahead,
-/// so the axis never runs out.
+/// The endless frame axis' contract (UI-R12 #16, unifying the timeline,
+/// the X-sheet and the storyboard): cells exist exactly because they are
+/// (or were) VISIBLE — the rendered extent covers the scrolled view end
+/// with zero runway ahead. Scroll gestures and the scrollbar are bounded
+/// by the built cells (physics/rail clamps at the extent); only a RULER
+/// edge-drag overshoots the extent, and this function then materializes
+/// the frames the overshot view needs ("if it must show, make the cell").
 ///
-/// UI-R9 #11: the extent SHRINKS back too — scrolling home releases the
-/// runway so the scrollbar thumb recovers. Growth applies immediately;
-/// shrink applies lazily ([allowShrink], the caller passes true only when
-/// the axis is NOT actively scrolling) and only when the release is at
-/// least one viewport-worth of frames (thumb-rescale hysteresis).
+/// UI-R9 #11: the extent SHRINKS back too — past-content cells vanish
+/// once scrolled out of view, so the scrollbar thumb recovers. Growth
+/// applies immediately; shrink applies lazily ([allowShrink], the caller
+/// passes true only when the axis is NOT actively scrolling) and only
+/// when the release is at least one viewport-worth of frames
+/// (thumb-rescale hysteresis).
 ///
 /// Call from the frame-axis scroll listener and add the result to the
 /// policy's base frame count for RENDER extents only; interaction clamps
@@ -79,7 +79,6 @@ int endlessTrailingFrames({
   required double scrollOffset,
   required double viewportExtent,
   required double frameCellExtent,
-  int runwayFrames = defaultEndlessRunwayFrames,
   bool allowShrink = false,
 }) {
   if (frameCellExtent <= 0) {
@@ -87,9 +86,7 @@ int endlessTrailingFrames({
   }
   final targetFrames = math.max(
     0,
-    ((scrollOffset + viewportExtent) / frameCellExtent).ceil() +
-        runwayFrames -
-        baseFrameCount,
+    ((scrollOffset + viewportExtent) / frameCellExtent).ceil() - baseFrameCount,
   );
   if (targetFrames >= currentTrailingFrames) {
     return targetFrames;
@@ -106,4 +103,18 @@ int endlessTrailingFrames({
   return currentTrailingFrames - targetFrames >= hysteresisFrames
       ? targetFrames
       : currentTrailingFrames;
+}
+
+/// Frame cells a viewport needs to be FULLY papered (UI-R12 #16: cells in
+/// the visible region never stop mid-view). Render extents take
+/// max(base + trailing, this) so a wide viewport at rest still reads as
+/// one continuous sheet; the scroll range stays clamped elsewhere.
+int endlessViewportFillFrames({
+  required double viewportExtent,
+  required double frameCellExtent,
+}) {
+  if (frameCellExtent <= 0 || viewportExtent <= 0) {
+    return 0;
+  }
+  return (viewportExtent / frameCellExtent).ceil();
 }

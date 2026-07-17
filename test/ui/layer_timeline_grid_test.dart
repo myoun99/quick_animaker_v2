@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:quick_animaker_v2/src/models/frame.dart';
@@ -54,7 +56,15 @@ Future<void> _scrollFrameGridUntilKeyVisible(
       }
     }
 
-    await tester.drag(viewport, const Offset(-240, 0));
+    // Scroll gestures WALL at the built extent (UI-R12 #16) — step past
+    // it the contract's way: the ruler edge-pan's overshoot jump, which
+    // materializes the frames the view needs.
+    final position = tester
+        .state<ScrollableState>(
+          find.descendant(of: viewport, matching: find.byType(Scrollable)),
+        )
+        .position;
+    position.jumpTo(position.maxScrollExtent + 240);
     await tester.pump();
   }
 
@@ -439,8 +449,8 @@ void main() {
   );
 
   testWidgets(
-    'the endless frame extent grows on scroll and SHRINKS back after '
-    'returning home (UI-R9 #11)',
+    'the endless frame extent walls in-range scrolls, grows on the ruler '
+    'pan OVERSHOOT, and SHRINKS back home (UI-R12 #16 contract)',
     (tester) async {
       await tester.pumpWidget(_grid(playbackFrameCount: 12));
 
@@ -464,16 +474,27 @@ void main() {
           .position;
 
       final baseWidth = railContentWidth();
-      // Ride the growing runway rightward a few hops.
+      // IN-RANGE scrolling (what the scrollbar and wheel can reach) never
+      // grows the axis: the built cells are the wall.
       for (var hop = 0; hop < 4; hop += 1) {
         framePosition().jumpTo(framePosition().maxScrollExtent);
+        await tester.pump();
+      }
+      expect(railContentWidth(), baseWidth,
+          reason: 'scroll cannot extend the axis (UI-R12 #16)');
+
+      // The ruler edge-pan OVERSHOOTS the built extent (the one growth
+      // path) — the growth listener materializes what the view needs.
+      for (var hop = 0; hop < 3; hop += 1) {
+        framePosition().jumpTo(framePosition().maxScrollExtent + 200);
         await tester.pump();
       }
       final grownWidth = railContentWidth();
       expect(grownWidth, greaterThan(baseWidth));
 
-      // Scrolling home releases the runway (discrete jump = immediate
-      // shrink; the hysteresis only holds sub-viewport releases).
+      // Scrolling home releases the materialized tail (discrete jump =
+      // immediate shrink; the hysteresis only holds sub-viewport
+      // releases): past-content cells vanish once out of view.
       framePosition().jumpTo(0);
       await tester.pump();
       expect(railContentWidth(), lessThan(grownWidth));
@@ -835,7 +856,8 @@ void main() {
     expect(selectedFrameIndex, 3);
   });
 
-  testWidgets('displays playback frames plus safety work-area frames', (
+  testWidgets('the resting extent IS the cut: no runway headers exist past '
+      'it, however far scrolling reaches (UI-R12 #16)', (
     tester,
   ) async {
     // Same frame-viewport width as when the rail was 220px wide, so the
@@ -858,10 +880,13 @@ void main() {
     expect(
       find.byKey(const ValueKey<String>('timeline-frame-header-23')),
       findsOneWidget,
+      reason: 'the cut\'s last cell',
     );
     expect(
       find.byKey(const ValueKey<String>('timeline-frame-header-24')),
-      findsOneWidget,
+      findsNothing,
+      reason: 'past-cut cells exist only while visible/materialized '
+          '(UI-R12 #16) — scrolling never creates them',
     );
 
     await tester.drag(
@@ -871,7 +896,8 @@ void main() {
     await tester.pumpAndSettle();
     expect(
       find.byKey(const ValueKey<String>('timeline-frame-header-47')),
-      findsOneWidget,
+      findsNothing,
+      reason: 'the scroll walls at the built extent',
     );
   });
 
@@ -1086,12 +1112,10 @@ void main() {
         ),
       );
 
-      await tester.drag(
-        find.byKey(const ValueKey<String>('timeline-frame-scroll-viewport')),
-        const Offset(-2400, 0),
-      );
-      await tester.pumpAndSettle();
-
+      // At rest the window covers the first ~9 cells only — frame 45 sits
+      // outside it (the -2400 scroll-away is gone: scrolls WALL at the
+      // built extent now, UI-R12 #16, so far-off cells hide by simply not
+      // being in the window).
       expect(timelineCellInWindow(tester, 'layer-1', 45), isFalse);
       expect(find.text('A45'), findsNothing);
 
@@ -1121,16 +1145,25 @@ void main() {
         _grid(onSelectFrame: selectedFrameIndices.add, playbackFrameCount: 24),
       );
 
-      // The endless axis grows per scroll (no safety tail anymore,
-      // UI-R10 #23) — step the drags so growth keeps feeding frames and
-      // the target cells land INSIDE the test root.
-      for (final step in const [-500.0, -400.0]) {
-        await tester.drag(
-          find.byKey(const ValueKey<String>('timeline-frame-scroll-viewport')),
-          Offset(step, 0),
-        );
+      // Past-cut cells materialize through the ruler pan's overshoot
+      // (UI-R12 #16: scroll gestures wall at the built extent) — step the
+      // extent out until the target cells land INSIDE the test root.
+      ScrollPosition framePosition() => tester
+          .state<ScrollableState>(
+            find.descendant(
+              of: find.byKey(
+                const ValueKey<String>('timeline-frame-scroll-viewport'),
+              ),
+              matching: find.byType(Scrollable),
+            ),
+          )
+          .position;
+      Future<void> materializeBy(double overshoot) async {
+        framePosition().jumpTo(framePosition().maxScrollExtent + overshoot);
         await tester.pumpAndSettle();
       }
+
+      await materializeBy(200);
 
       expect(timelineCellInWindow(tester, 'layer-1', 24), isTrue);
       expect(
@@ -1139,13 +1172,8 @@ void main() {
       );
       await tapTimelineCell(tester, 'layer-1', 24);
 
-      for (final step in const [-400.0, -400.0]) {
-        await tester.drag(
-          find.byKey(const ValueKey<String>('timeline-frame-scroll-viewport')),
-          Offset(step, 0),
-        );
-        await tester.pumpAndSettle();
-      }
+      await materializeBy(400);
+      await materializeBy(400);
 
       final outsidePlaybackHeader = find.byKey(
         const ValueKey<String>('timeline-frame-header-40'),
@@ -2206,8 +2234,18 @@ void main() {
       minimumVisibleFrameCells: _testMetrics.minimumVisibleFrameCells,
     );
 
+    // UI-R12 #16: the viewport papers itself — with the 1600px surface
+    // wider than the base cells, the rendered extent is the FILL count.
+    final fillFrames = endlessViewportFillFrames(
+      viewportExtent:
+          1600 -
+          _testMetrics.layerControlsWidth -
+          _testMetrics.verticalScrollbarWidth,
+      frameCellExtent: _testMetrics.frameCellWidth,
+    );
     final expectedContentWidth =
-        expectedFrameRange.visibleFrameCount * _testMetrics.frameCellWidth;
+        math.max(expectedFrameRange.visibleFrameCount, fillFrames) *
+        _testMetrics.frameCellWidth;
     final content = find.byKey(
       const ValueKey<String>('timeline-frame-scroll-content'),
     );
