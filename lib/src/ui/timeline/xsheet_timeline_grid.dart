@@ -887,210 +887,240 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
                               ),
                             ),
                           )
-                        : SingleChildScrollView(
-                            key: const ValueKey<String>(
-                              'xsheet-layer-horizontal-viewport',
-                            ),
-                            controller: _layerScrollController,
-                            scrollDirection: Axis.horizontal,
-                            child: SizedBox(
-                              width: columnsContentWidth,
-                              child: Column(
-                                children: [
-                                  // The paper sheet's group headings: one
-                                  // bracket cell per section run, wrapping
-                                  // its columns.
-                                  Row(
-                                    children: [
-                                      for (final run in sectionRuns)
-                                        _XSheetSectionBandCell(
-                                          run: run,
-                                          extent: timelineSectionRunExtent(
-                                            run,
-                                            entries,
-                                            _metrics,
+                        : ScrollConfiguration(
+                            // The custom rails ARE the scrollbars — the
+                            // desktop auto-overlay doubled the vertical one
+                            // (UI-R10 #22).
+                            behavior: ScrollConfiguration.of(
+                              context,
+                            ).copyWith(scrollbars: false),
+                            child: SingleChildScrollView(
+                              key: const ValueKey<String>(
+                                'xsheet-layer-horizontal-viewport',
+                              ),
+                              controller: _layerScrollController,
+                              scrollDirection: Axis.horizontal,
+                              child: SizedBox(
+                                width: columnsContentWidth,
+                                child: Column(
+                                  children: [
+                                    // The paper sheet's group headings: one
+                                    // bracket cell per section run, wrapping
+                                    // its columns.
+                                    Row(
+                                      children: [
+                                        for (final run in sectionRuns)
+                                          _XSheetSectionBandCell(
+                                            run: run,
+                                            extent: timelineSectionRunExtent(
+                                              run,
+                                              entries,
+                                              _metrics,
+                                            ),
                                           ),
-                                        ),
-                                    ],
-                                  ),
-                                  Row(
-                                    children: [
-                                      for (
-                                        var index = 0;
-                                        index < entries.length;
-                                        index += 1
-                                      )
-                                        entries[index].isLane
-                                            // Lane headers show the value AT
-                                            // the cursor: subscribe here so
-                                            // ticks rebuild only these cells.
-                                            ? ValueListenableBuilder<int>(
-                                                valueListenable:
-                                                    widget.frameCursor,
-                                                builder:
-                                                    (
-                                                      context,
-                                                      cursorFrame,
-                                                      _,
-                                                    ) => TimelineLaneControlsRow(
-                                                      axis: Axis.vertical,
-                                                      keyPrefix: 'xsheet',
-                                                      layer:
-                                                          entries[index].layer,
-                                                      lane:
-                                                          entries[index].lane!,
-                                                      metrics: _metrics,
-                                                      width: _metrics
-                                                          .layerRowHeight,
-                                                      height: XSheetTimelineGrid
-                                                          ._headerHeight,
-                                                      currentFrameIndex:
-                                                          cursorFrame,
-                                                      onSelectFrame:
-                                                          widget.onSelectFrame,
-                                                      laneEdit: widget.laneEdit,
-                                                      onToggleLaneGroup: widget
-                                                          .onToggleLaneGroup,
-                                                    ),
-                                              )
-                                            : _LayerHeader(
-                                                layer: entries[index].layer,
-                                                active:
-                                                    entries[index].layer.id ==
-                                                    widget.activeLayerId,
-                                                metrics: _metrics,
-                                                onSelectLayer:
-                                                    widget.onSelectLayer,
-                                                onToggleLayerVisibility: widget
-                                                    .onToggleLayerVisibility,
-                                                onLayerOpacityChanged: widget
-                                                    .onLayerOpacityChanged,
-                                                onLayerOpacityChangeEnd: widget
-                                                    .onLayerOpacityChangeEnd,
-                                                opacityDragPreview:
-                                                    widget.opacityDragPreview,
-                                                onToggleLayerTimesheet: widget
-                                                    .onToggleLayerTimesheet,
-                                                fxEnabled:
-                                                    widget.layerFxEnabledOf
-                                                        ?.call(
-                                                          entries[index]
-                                                              .layer
-                                                              .id,
-                                                        ) ??
-                                                    true,
-                                                onToggleLayerFx:
-                                                    widget.onToggleLayerFx,
-                                                onLayerMarkSelected:
-                                                    widget.onLayerMarkSelected,
-                                                onToggleLayerFillReference: widget
-                                                    .onToggleLayerFillReference,
-                                                onToggleLayerMuted:
-                                                    widget.onToggleLayerMuted,
-                                                hasLanes: _lanesFor(
-                                                  entries[index].layer,
-                                                ).isNotEmpty,
-                                                lanesExpanded: widget
-                                                    .expandedLaneLayerIds
-                                                    .contains(
-                                                      entries[index].layer.id,
-                                                    ),
-                                                onToggleLanes:
-                                                    widget.onToggleLayerLanes,
-                                              ),
-                                    ],
-                                  ),
-                                  Expanded(
-                                    child: SingleChildScrollView(
-                                      key: const ValueKey<String>(
-                                        'xsheet-frame-vertical-viewport',
-                                      ),
-                                      controller: _frameScrollController,
-                                      child: SizedBox(
-                                        height: totalFrameContentHeight,
-                                        // Pixels scroll the real viewport;
-                                        // only cell crossings re-window the
-                                        // columns (UI-R9 #12a).
-                                        child: ValueListenableBuilder<int>(
-                                          valueListenable: _frameWindowBucket,
-                                          builder: (context, _, _) {
-                                            final plan = framePlan();
-                                            final frameRange = plan.frameRange;
-                                            return Stack(
-                                              children: [
-                                                Row(
-                                                  crossAxisAlignment:
-                                                      CrossAxisAlignment.start,
-                                                  children: [
-                                                    // RepaintBoundary per
-                                                    // column (mirrors the
-                                                    // horizontal rows): the
-                                                    // cursor layer repaints
-                                                    // alone on ticks. The
-                                                    // gate inside makes an
-                                                    // edge-drag step rebuild
-                                                    // exactly the dragged
-                                                    // layer's column.
-                                                    for (
-                                                      var index = 0;
-                                                      index < entries.length;
-                                                      index += 1
-                                                    )
-                                                      _gatedColumn(
-                                                        entries[index],
-                                                        frameRange,
-                                                        plan,
+                                      ],
+                                    ),
+                                    Row(
+                                      children: [
+                                        for (
+                                          var index = 0;
+                                          index < entries.length;
+                                          index += 1
+                                        )
+                                          entries[index].isLane
+                                              // Lane headers show the value AT
+                                              // the cursor: subscribe here so
+                                              // ticks rebuild only these cells.
+                                              ? ValueListenableBuilder<int>(
+                                                  valueListenable:
+                                                      widget.frameCursor,
+                                                  builder:
+                                                      (
+                                                        context,
+                                                        cursorFrame,
+                                                        _,
+                                                      ) => TimelineLaneControlsRow(
+                                                        axis: Axis.vertical,
+                                                        keyPrefix: 'xsheet',
+                                                        layer: entries[index]
+                                                            .layer,
+                                                        lane: entries[index]
+                                                            .lane!,
+                                                        metrics: _metrics,
+                                                        width: _metrics
+                                                            .layerRowHeight,
+                                                        height:
+                                                            XSheetTimelineGrid
+                                                                ._headerHeight,
+                                                        currentFrameIndex:
+                                                            cursorFrame,
+                                                        onSelectFrame: widget
+                                                            .onSelectFrame,
+                                                        laneEdit:
+                                                            widget.laneEdit,
+                                                        onToggleLaneGroup: widget
+                                                            .onToggleLaneGroup,
                                                       ),
+                                                )
+                                              : _LayerHeader(
+                                                  layer: entries[index].layer,
+                                                  active:
+                                                      entries[index].layer.id ==
+                                                      widget.activeLayerId,
+                                                  metrics: _metrics,
+                                                  onSelectLayer:
+                                                      widget.onSelectLayer,
+                                                  onToggleLayerVisibility: widget
+                                                      .onToggleLayerVisibility,
+                                                  onLayerOpacityChanged: widget
+                                                      .onLayerOpacityChanged,
+                                                  onLayerOpacityChangeEnd: widget
+                                                      .onLayerOpacityChangeEnd,
+                                                  opacityDragPreview:
+                                                      widget.opacityDragPreview,
+                                                  onToggleLayerTimesheet: widget
+                                                      .onToggleLayerTimesheet,
+                                                  fxEnabled:
+                                                      widget.layerFxEnabledOf
+                                                          ?.call(
+                                                            entries[index]
+                                                                .layer
+                                                                .id,
+                                                          ) ??
+                                                      true,
+                                                  onToggleLayerFx:
+                                                      widget.onToggleLayerFx,
+                                                  onLayerMarkSelected: widget
+                                                      .onLayerMarkSelected,
+                                                  onToggleLayerFillReference: widget
+                                                      .onToggleLayerFillReference,
+                                                  onToggleLayerMuted:
+                                                      widget.onToggleLayerMuted,
+                                                  hasLanes: _lanesFor(
+                                                    entries[index].layer,
+                                                  ).isNotEmpty,
+                                                  lanesExpanded: widget
+                                                      .expandedLaneLayerIds
+                                                      .contains(
+                                                        entries[index].layer.id,
+                                                      ),
+                                                  onToggleLanes:
+                                                      widget.onToggleLayerLanes,
+                                                ),
+                                      ],
+                                    ),
+                                    Expanded(
+                                      child: ScrollConfiguration(
+                                        // The rail between the frame numbers
+                                        // and the cells is THE scrollbar; the
+                                        // desktop auto-overlay was the
+                                        // duplicate (UI-R10 #22).
+                                        behavior: ScrollConfiguration.of(
+                                          context,
+                                        ).copyWith(scrollbars: false),
+                                        child: SingleChildScrollView(
+                                          key: const ValueKey<String>(
+                                            'xsheet-frame-vertical-viewport',
+                                          ),
+                                          controller: _frameScrollController,
+                                          child: SizedBox(
+                                            height: totalFrameContentHeight,
+                                            // Pixels scroll the real viewport;
+                                            // only cell crossings re-window the
+                                            // columns (UI-R9 #12a).
+                                            child: ValueListenableBuilder<int>(
+                                              valueListenable:
+                                                  _frameWindowBucket,
+                                              builder: (context, _, _) {
+                                                final plan = framePlan();
+                                                final frameRange =
+                                                    plan.frameRange;
+                                                return Stack(
+                                                  children: [
+                                                    Row(
+                                                      crossAxisAlignment:
+                                                          CrossAxisAlignment
+                                                              .start,
+                                                      children: [
+                                                        // RepaintBoundary per
+                                                        // column (mirrors the
+                                                        // horizontal rows): the
+                                                        // cursor layer repaints
+                                                        // alone on ticks. The
+                                                        // gate inside makes an
+                                                        // edge-drag step rebuild
+                                                        // exactly the dragged
+                                                        // layer's column.
+                                                        for (
+                                                          var index = 0;
+                                                          index <
+                                                              entries.length;
+                                                          index += 1
+                                                        )
+                                                          _gatedColumn(
+                                                            entries[index],
+                                                            frameRange,
+                                                            plan,
+                                                          ),
+                                                      ],
+                                                    ),
+                                                    // The cursor layer carries
+                                                    // the playhead + selection
+                                                    // visuals; ticks repaint it
+                                                    // alone.
+                                                    Positioned.fill(
+                                                      child: TimelineCursorLayer(
+                                                        axis: Axis.vertical,
+                                                        selectedSemanticsKey:
+                                                            const ValueKey<
+                                                              String
+                                                            >(
+                                                              'xsheet-selected-cell',
+                                                            ),
+                                                        frameRangeSelection:
+                                                            widget
+                                                                .rangeHooks
+                                                                ?.selection,
+                                                        frameCursor:
+                                                            widget.frameCursor,
+                                                        dragPreview:
+                                                            widget.dragPreview,
+                                                        rows: entries,
+                                                        activeLayerId: widget
+                                                            .activeLayerId,
+                                                        frameStartIndex:
+                                                            frameRange
+                                                                .startIndex,
+                                                        frameEndIndexExclusive:
+                                                            frameRange
+                                                                .endIndexExclusive,
+                                                        leadingFrameSpacerWidth:
+                                                            plan.leadingFrameSpacerWidth,
+                                                        metrics: _metrics,
+                                                        exposureStateForLayer:
+                                                            widget
+                                                                .exposureStateForLayer,
+                                                        crossAxisExtent:
+                                                            entries.length *
+                                                            _metrics
+                                                                .layerRowHeight,
+                                                      ),
+                                                    ),
+                                                    TimelineBodyCutEndBoundary(
+                                                      axis: Axis.vertical,
+                                                      left:
+                                                          cutEndBoundaryOffset,
+                                                    ),
                                                   ],
-                                                ),
-                                                // The cursor layer carries
-                                                // the playhead + selection
-                                                // visuals; ticks repaint it
-                                                // alone.
-                                                Positioned.fill(
-                                                  child: TimelineCursorLayer(
-                                                    axis: Axis.vertical,
-                                                    selectedSemanticsKey:
-                                                        const ValueKey<String>(
-                                                          'xsheet-selected-cell',
-                                                        ),
-                                                    frameRangeSelection: widget
-                                                        .rangeHooks
-                                                        ?.selection,
-                                                    frameCursor:
-                                                        widget.frameCursor,
-                                                    dragPreview:
-                                                        widget.dragPreview,
-                                                    rows: entries,
-                                                    activeLayerId:
-                                                        widget.activeLayerId,
-                                                    frameStartIndex:
-                                                        frameRange.startIndex,
-                                                    frameEndIndexExclusive:
-                                                        frameRange
-                                                            .endIndexExclusive,
-                                                    leadingFrameSpacerWidth: plan
-                                                        .leadingFrameSpacerWidth,
-                                                    metrics: _metrics,
-                                                    exposureStateForLayer: widget
-                                                        .exposureStateForLayer,
-                                                    crossAxisExtent:
-                                                        entries.length *
-                                                        _metrics.layerRowHeight,
-                                                  ),
-                                                ),
-                                                TimelineBodyCutEndBoundary(
-                                                  axis: Axis.vertical,
-                                                  left: cutEndBoundaryOffset,
-                                                ),
-                                              ],
-                                            );
-                                          },
+                                                );
+                                              },
+                                            ),
+                                          ),
                                         ),
                                       ),
                                     ),
-                                  ),
-                                ],
+                                  ],
+                                ),
                               ),
                             ),
                           ),
@@ -1723,9 +1753,28 @@ class _LayerHeader extends StatelessWidget {
           color: active
               ? colorScheme.secondaryContainer
               : colorScheme.surfaceContainerHighest,
-          border: Border.all(
-            color: active ? colorScheme.secondary : colorScheme.outlineVariant,
-            width: active ? 2 : 1,
+          // CONSTANT 1px borders, right/top/bottom only (UI-R10 #20):
+          // side-by-side headers kept doubling their shared seam and the
+          // active column's 2px accent shifted its content — selection
+          // reads by COLOR alone (app-wide selection language). The left
+          // line is the neighbor's right (the frame rail closes the
+          // first column).
+          border: Border(
+            right: BorderSide(
+              color: active
+                  ? colorScheme.secondary
+                  : colorScheme.outlineVariant,
+            ),
+            top: BorderSide(
+              color: active
+                  ? colorScheme.secondary
+                  : colorScheme.outlineVariant,
+            ),
+            bottom: BorderSide(
+              color: active
+                  ? colorScheme.secondary
+                  : colorScheme.outlineVariant,
+            ),
           ),
         ),
         child: Semantics(

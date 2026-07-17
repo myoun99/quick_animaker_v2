@@ -213,6 +213,48 @@ void main() {
         findsOneWidget,
       );
     });
+
+    testWidgets('carries the timeline 3-row scrollbar structure '
+        '(UI-R10 #15/#21)', (tester) async {
+      await _pumpStoryboardPanel(tester, _projectWithStoryboardLayer());
+
+      // TOP: blank slot over the scrollbar lane, beside the ruler.
+      expect(
+        find.byKey(const ValueKey<String>('timeline-vertical-scrollbar-slot')),
+        findsOneWidget,
+      );
+      // MIDDLE: the timeline's pinned rail between labels and strips.
+      final verticalRail = find.byKey(
+        const ValueKey<String>('storyboard-vertical-scrollbar'),
+      );
+      expect(verticalRail, findsOneWidget);
+      expect(
+        tester.getTopLeft(verticalRail).dx,
+        372,
+        reason: 'the rail sits right after the 372px label rail',
+      );
+      // BOTTOM: the pinned horizontal scrollbar row (it must NOT live
+      // inside the vertical scroll content anymore).
+      final horizontalRail = find.byKey(
+        const ValueKey<String>('storyboard-horizontal-scrollbar'),
+      );
+      expect(horizontalRail, findsOneWidget);
+      expect(
+        find.ancestor(
+          of: horizontalRail,
+          matching: find.byKey(
+            const ValueKey<String>('storyboard-vertical-viewport'),
+          ),
+        ),
+        findsNothing,
+      );
+      expect(
+        find.byKey(
+          const ValueKey<String>('storyboard-bottom-scrollbar-left-spacer'),
+        ),
+        findsOneWidget,
+      );
+    });
   });
 }
 
