@@ -817,6 +817,36 @@ class CutCommandCoordinator {
     );
   }
 
+  /// Deletes a batch of cuts as ONE undo step. Callers must leave at least
+  /// one cut in the project (no last-cut replacement plan here).
+  void deleteCuts({required List<CutId> cutIds}) {
+    if (cutIds.isEmpty) {
+      return;
+    }
+    if (cutIds.length == 1) {
+      deleteCut(cutId: cutIds.single);
+      return;
+    }
+    final project = repository.requireProject();
+    if (_cutCount(project) <= cutIds.length) {
+      throw StateError('deleteCuts would remove every cut');
+    }
+
+    historyManager.execute(
+      CompositeCommand(
+        description: 'Delete cuts',
+        commands: [
+          for (final cutId in cutIds)
+            DeleteCutCommand(
+              repository: repository,
+              editingSession: editingSession,
+              cutId: cutId,
+            ),
+        ],
+      ),
+    );
+  }
+
   void duplicateCut({
     required CutId sourceCutId,
     required TrackId targetTrackId,

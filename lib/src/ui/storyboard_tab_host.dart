@@ -375,6 +375,14 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
                 onEnd: _session.endCutMoveDrag,
                 onCancel: _session.cancelCutMoveDrag,
               ),
+              // Cut range selection (UI-R18 #1): drag = select a run,
+              // drag inside the selection = slide the whole run, tap =
+              // clear; the delete command batches the selection.
+              cutSelect: StoryboardCutSelectCallbacks(
+                selectedCutIds: _session.storyboardCutSelection,
+                onDrag: _session.updateStoryboardCutSelectionDrag,
+                onClear: _session.clearStoryboardCutSelection,
+              ),
               playheadFrame: _playheadGlobalFrame,
               cacheProgress: _session.prerenderScheduler.progress,
               onSeekGlobalFrame: (frame) =>

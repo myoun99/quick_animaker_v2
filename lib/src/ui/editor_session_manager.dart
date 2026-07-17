@@ -581,6 +581,7 @@ class EditorSessionManager extends ChangeNotifier {
     opacityDragPreview.dispose();
     onionSkinSettings.dispose();
     onionSkinLayerIds.dispose();
+    storyboardCutSelection.dispose();
     _historyManager.dispose();
     super.dispose();
   }
@@ -651,6 +652,12 @@ class EditorSessionManager extends ChangeNotifier {
   }
 
   void deleteActiveCut() {
+    // With a cut RANGE selection live, the delete command acts on the
+    // whole run instead of the active cut (UI-R18 #1).
+    if (storyboardCutSelection.value?.isNotEmpty ?? false) {
+      deleteSelectedCuts();
+      return;
+    }
     final cutId = _editingSession.activeCutId;
     if (cutId == null) {
       return;
@@ -3635,11 +3642,99 @@ class EditorSessionManager extends ChangeNotifier {
     dragPreview.value = null;
   }
 
+  // --- Storyboard cut RANGE selection (UI-R18 #1, O2c) ----------------------
+
+  /// The storyboard's selected cut RUN — one track, contiguous, in track
+  /// order (the timeline range-selection model applied to cuts). Value-
+  /// only view state; a plain tap clears it.
+  final ValueNotifier<List<CutId>?> storyboardCutSelection =
+      ValueNotifier<List<CutId>?>(null);
+
+  /// A cut-select drag step: anchor/head are CUT ORDINALS on [trackId].
+  void updateStoryboardCutSelectionDrag({
+    required TrackId trackId,
+    required int anchorCutIndex,
+    required int headCutIndex,
+  }) {
+    for (final track in _repository.requireProject().tracks) {
+      if (track.id != trackId) {
+        continue;
+      }
+      if (track.cuts.isEmpty) {
+        storyboardCutSelection.value = null;
+        return;
+      }
+      final low = math
+          .min(anchorCutIndex, headCutIndex)
+          .clamp(0, track.cuts.length - 1);
+      final high = math
+          .max(anchorCutIndex, headCutIndex)
+          .clamp(0, track.cuts.length - 1);
+      storyboardCutSelection.value = [
+        for (var i = low; i <= high; i += 1) track.cuts[i].id,
+      ];
+      return;
+    }
+  }
+
+  void clearStoryboardCutSelection() {
+    if (storyboardCutSelection.value != null) {
+      storyboardCutSelection.value = null;
+    }
+  }
+
+  /// The selection filtered to cuts that still EXIST (other commands may
+  /// have deleted/reordered members since the drag painted it).
+  List<CutId> get _liveSelectedCutIds {
+    final selection = storyboardCutSelection.value;
+    if (selection == null || selection.isEmpty) {
+      return const [];
+    }
+    final existing = <CutId>{
+      for (final track in _repository.requireProject().tracks)
+        for (final cut in track.cuts) cut.id,
+    };
+    return [
+      for (final id in selection)
+        if (existing.contains(id)) id,
+    ];
+  }
+
+  /// Whether the selection can delete: cuts selected AND at least one
+  /// cut survives (the project never empties).
+  bool get canDeleteSelectedCuts {
+    final selection = _liveSelectedCutIds;
+    if (selection.isEmpty) {
+      return false;
+    }
+    var total = 0;
+    for (final track in _repository.requireProject().tracks) {
+      total += track.cuts.length;
+    }
+    return total > selection.length;
+  }
+
+  /// Deletes every selected cut as ONE undo step (UI-R18 #1: the cut
+  /// delete button acts on the selection).
+  void deleteSelectedCuts() {
+    if (!canDeleteSelectedCuts) {
+      return;
+    }
+    _cutCommandCoordinator.deleteCuts(cutIds: _liveSelectedCutIds);
+    clearStoryboardCutSelection();
+    _refreshAfterCutCommand();
+    notifyListeners();
+  }
+
   // --- Storyboard cut-block MOVE drags (R10-④) ----------------------------
 
   List<CutId>? _cutMoveOrder;
   Map<CutId, int>? _cutMoveBeforeGaps;
   int? _cutMoveIndex;
+
+  /// The selected run's LAST index while a group slide is live (UI-R18
+  /// #1: dragging inside the cut selection moves the whole run).
+  int? _cutMoveGroupEndIndex;
 
   /// Starts a whole-block move drag on [cutId]: the cut SLIDES along the
   /// frame axis by adjusting gaps, and pushes neighbors edge-style on
@@ -3658,6 +3753,19 @@ class EditorSessionManager extends ChangeNotifier {
         for (final cut in track.cuts) cut.id: cut.leadingGapFrames,
       };
       _cutMoveIndex = index;
+      _cutMoveGroupEndIndex = null;
+      // Dragging inside the cut SELECTION slides the whole run (UI-R18
+      // #1): anchor at the run's first cut, compensate past its last.
+      final selection = storyboardCutSelection.value;
+      if (selection != null && selection.contains(cutId)) {
+        final indexes = [for (final id in selection) _cutMoveOrder!.indexOf(id)]
+          ..removeWhere((value) => value < 0);
+        if (indexes.length > 1) {
+          indexes.sort();
+          _cutMoveIndex = indexes.first;
+          _cutMoveGroupEndIndex = indexes.last;
+        }
+      }
       return true;
     }
     return false;
@@ -3677,6 +3785,7 @@ class EditorSessionManager extends ChangeNotifier {
       beforeGaps: beforeGaps,
       index: index,
       delta: cumulativeDelta,
+      groupEndIndex: _cutMoveGroupEndIndex,
     );
     final changed = gaps.entries.any(
       (entry) => beforeGaps[entry.key] != entry.value,
@@ -3698,12 +3807,17 @@ class EditorSessionManager extends ChangeNotifier {
     required Map<CutId, int> beforeGaps,
     required int index,
     required int delta,
+    int? groupEndIndex,
   }) {
     final gaps = <CutId, int>{};
+    // A selected RUN slides as one unit (UI-R18 #1): the first cut's gap
+    // carries the delta (the run follows for free — positions are
+    // cumulative), the compensation lands past the run's LAST cut.
+    final end = groupEndIndex ?? index;
     if (delta > 0) {
       gaps[order[index]] = beforeGaps[order[index]]! + delta;
-      if (index + 1 < order.length) {
-        final nextId = order[index + 1];
+      if (end + 1 < order.length) {
+        final nextId = order[end + 1];
         gaps[nextId] = math.max(0, beforeGaps[nextId]! - delta);
       }
     } else if (delta < 0) {
@@ -3717,8 +3831,8 @@ class EditorSessionManager extends ChangeNotifier {
         }
       }
       final applied = (-delta) - remaining;
-      if (index + 1 < order.length && applied > 0) {
-        final nextId = order[index + 1];
+      if (end + 1 < order.length && applied > 0) {
+        final nextId = order[end + 1];
         gaps[nextId] = beforeGaps[nextId]! + applied;
       }
     }
@@ -3733,6 +3847,7 @@ class EditorSessionManager extends ChangeNotifier {
     _cutMoveOrder = null;
     _cutMoveBeforeGaps = null;
     _cutMoveIndex = null;
+    _cutMoveGroupEndIndex = null;
     dragPreview.value = null;
     if (beforeGaps == null) {
       return;
@@ -3766,6 +3881,7 @@ class EditorSessionManager extends ChangeNotifier {
     _cutMoveOrder = null;
     _cutMoveBeforeGaps = null;
     _cutMoveIndex = null;
+    _cutMoveGroupEndIndex = null;
     dragPreview.value = null;
   }
 

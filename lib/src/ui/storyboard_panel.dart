@@ -111,6 +111,32 @@ class StoryboardCutMoveCallbacks {
   final VoidCallback onCancel;
 }
 
+/// Cut RANGE-selection hooks (UI-R18 #1): a horizontal drag on an
+/// UNSELECTED cut paints a contiguous run selection (anchor = the pressed
+/// cut's ordinal, head follows the pointer across the track); a drag that
+/// starts INSIDE the selection routes to [StoryboardCutMoveCallbacks]
+/// instead and slides the whole run; a plain tap clears. The timeline's
+/// frame-range selection model applied to cuts.
+class StoryboardCutSelectCallbacks {
+  const StoryboardCutSelectCallbacks({
+    required this.selectedCutIds,
+    required this.onDrag,
+    required this.onClear,
+  });
+
+  /// The live selected run (null = none) — blocks tint from it directly,
+  /// color-only per the selection language.
+  final ValueListenable<List<CutId>?> selectedCutIds;
+
+  final void Function({
+    required TrackId trackId,
+    required int anchorCutIndex,
+    required int headCutIndex,
+  })
+  onDrag;
+  final VoidCallback onClear;
+}
+
 class StoryboardPanel extends StatefulWidget {
   const StoryboardPanel({
     super.key,
@@ -122,6 +148,7 @@ class StoryboardPanel extends StatefulWidget {
     this.onCutReordered,
     this.cutTrim,
     this.cutMove,
+    this.cutSelect,
     this.pixelsPerFrame = 8,
     this.showSeconds = false,
     this.projectFps = 24,
@@ -230,6 +257,12 @@ class StoryboardPanel extends StatefulWidget {
   /// slides the cut (gap authoring + edge-style pushes). Null disables
   /// the slide (blocks then only tap-select / long-press reorder).
   final StoryboardCutMoveCallbacks? cutMove;
+
+  /// Cut range-selection hooks (UI-R18 #1). With these set, a body drag
+  /// on an unselected cut SELECTS a run and only drags starting inside
+  /// the selection slide (through [cutMove]); null keeps every body drag
+  /// a direct slide.
+  final StoryboardCutSelectCallbacks? cutSelect;
 
   /// Frame-axis zoom, owned by the host (the panel header's shared zoom
   /// slider drives it).
@@ -934,6 +967,7 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
           onCutReordered: widget.onCutReordered,
           cutTrim: widget.cutTrim,
           cutMove: widget.cutMove,
+          cutSelect: widget.cutSelect,
           thumbnailFor: widget.thumbnailFor,
           timelineScale: scale,
           showSeconds: widget.showSeconds,
@@ -3221,6 +3255,7 @@ class _StoryboardTrackRow extends StatelessWidget {
     required this.onCutReordered,
     required this.cutTrim,
     required this.cutMove,
+    required this.cutSelect,
     required this.thumbnailFor,
     required this.timelineScale,
     required this.showSeconds,
@@ -3237,6 +3272,7 @@ class _StoryboardTrackRow extends StatelessWidget {
   final CutReorderedCallback? onCutReordered;
   final StoryboardCutTrimCallbacks? cutTrim;
   final StoryboardCutMoveCallbacks? cutMove;
+  final StoryboardCutSelectCallbacks? cutSelect;
   final ui.Image? Function(Cut cut)? thumbnailFor;
   final TimelineScale timelineScale;
   final bool showSeconds;
@@ -3246,6 +3282,20 @@ class _StoryboardTrackRow extends StatelessWidget {
     return showSeconds
         ? timelineSecondsLabel(entry.endFrame, projectFps)
         : '${entry.endFrame}f';
+  }
+
+  /// The cut ordinal a selection-drag head at track-local [trackX] lands
+  /// on: the LAST cut whose left edge sits at or before the pointer (a
+  /// pointer in a leading gap keeps the previous cut — sweeping right
+  /// only grows the run when the next block is actually reached).
+  int _cutOrdinalAt(double trackX) {
+    var ordinal = layoutEntries.isEmpty ? 0 : layoutEntries.first.cutIndex;
+    for (final entry in layoutEntries) {
+      if (timelineScale.leftForFrame(entry.startFrame) <= trackX) {
+        ordinal = entry.cutIndex;
+      }
+    }
+    return ordinal;
   }
 
   @override
@@ -3280,6 +3330,9 @@ class _StoryboardTrackRow extends StatelessWidget {
                       onCutReordered != null && layoutEntries.length > 1,
                   onCutReordered: onCutReordered,
                   cutMove: cutMove,
+                  cutSelect: cutSelect,
+                  blockLeft: timelineScale.leftForFrame(entry.startFrame),
+                  cutOrdinalAt: _cutOrdinalAt,
                   pixelsPerFrame: timelineScale.pixelsPerFrame,
                   totalLabel: _totalLabelFor(entry),
                   thumbnail: thumbnailFor?.call(entry.cut),
@@ -3569,6 +3622,9 @@ class _ReorderableStoryboardCutBlock extends StatefulWidget {
     required this.canReorder,
     required this.onCutReordered,
     required this.cutMove,
+    required this.cutSelect,
+    required this.blockLeft,
+    required this.cutOrdinalAt,
     required this.pixelsPerFrame,
     required this.totalLabel,
     required this.thumbnail,
@@ -3582,6 +3638,13 @@ class _ReorderableStoryboardCutBlock extends StatefulWidget {
   final bool canReorder;
   final CutReorderedCallback? onCutReordered;
   final StoryboardCutMoveCallbacks? cutMove;
+  final StoryboardCutSelectCallbacks? cutSelect;
+
+  /// The block's left edge in track-strip space — selection drags add the
+  /// pointer's block-local x to it so the row's ordinal resolver sees
+  /// track coordinates.
+  final double blockLeft;
+  final int Function(double trackX) cutOrdinalAt;
   final double pixelsPerFrame;
   final String totalLabel;
   final ui.Image? thumbnail;
@@ -3598,9 +3661,30 @@ class _ReorderableStoryboardCutBlockState
   double _moveDx = 0;
   bool _moving = false;
 
+  // Range-selection drag (UI-R18 #1): the head follows the pointer's
+  // track-space x through the row's ordinal resolver.
+  bool _selecting = false;
+
   StoryboardTimelineLayoutEntry get layoutEntry => widget.layoutEntry;
 
+  bool get _isInSelection {
+    final selected = widget.cutSelect?.selectedCutIds.value;
+    return selected != null && selected.contains(layoutEntry.cutId);
+  }
+
   void _handleMoveStart(DragStartDetails details) {
+    final cutSelect = widget.cutSelect;
+    // UI-R18 #1 mode split: dragging an UNSELECTED cut paints a run
+    // selection; only a drag starting inside the selection slides.
+    if (cutSelect != null && !_isInSelection) {
+      _selecting = true;
+      cutSelect.onDrag(
+        trackId: layoutEntry.trackId,
+        anchorCutIndex: layoutEntry.cutIndex,
+        headCutIndex: layoutEntry.cutIndex,
+      );
+      return;
+    }
     final cutMove = widget.cutMove;
     if (cutMove == null || !cutMove.onBegin(layoutEntry.cutId)) {
       return;
@@ -3610,6 +3694,16 @@ class _ReorderableStoryboardCutBlockState
   }
 
   void _handleMoveUpdate(DragUpdateDetails details) {
+    if (_selecting) {
+      widget.cutSelect!.onDrag(
+        trackId: layoutEntry.trackId,
+        anchorCutIndex: layoutEntry.cutIndex,
+        headCutIndex: widget.cutOrdinalAt(
+          widget.blockLeft + details.localPosition.dx,
+        ),
+      );
+      return;
+    }
     if (!_moving) {
       return;
     }
@@ -3618,6 +3712,10 @@ class _ReorderableStoryboardCutBlockState
   }
 
   void _handleMoveEnd(DragEndDetails details) {
+    if (_selecting) {
+      _selecting = false; // The selection itself stays live.
+      return;
+    }
     if (!_moving) {
       return;
     }
@@ -3626,6 +3724,10 @@ class _ReorderableStoryboardCutBlockState
   }
 
   void _handleMoveCancel() {
+    if (_selecting) {
+      _selecting = false;
+      return;
+    }
     if (!_moving) {
       return;
     }
@@ -3633,22 +3735,48 @@ class _ReorderableStoryboardCutBlockState
     widget.cutMove!.onCancel();
   }
 
+  /// Taps activate the cut AND clear the range selection (the timeline
+  /// cell-tap contract).
+  void _handleSelected(CutId cutId) {
+    widget.cutSelect?.onClear();
+    widget.onSelected(cutId);
+  }
+
   @override
   Widget build(BuildContext context) {
-    Widget block = _StoryboardCutBlock(
-      layoutEntry: layoutEntry,
-      width: widget.width,
-      isActive: widget.isActive,
-      onSelected: widget.onSelected,
-      totalLabel: widget.totalLabel,
-      thumbnail: widget.thumbnail,
-      showThumbnail: widget.showThumbnail,
-    );
-    // A horizontal drag on the block's BODY slides the cut along the
-    // frame axis (timeline block language, R10-④): live preview through
-    // the session channel, one undo on release. Taps still select; the
-    // long-press lift below owns reordering.
-    if (widget.cutMove != null) {
+    final cutSelect = widget.cutSelect;
+    Widget block = cutSelect == null
+        ? _StoryboardCutBlock(
+            layoutEntry: layoutEntry,
+            width: widget.width,
+            isActive: widget.isActive,
+            onSelected: widget.onSelected,
+            totalLabel: widget.totalLabel,
+            thumbnail: widget.thumbnail,
+            showThumbnail: widget.showThumbnail,
+          )
+        // The selection listenable drives the tint directly (UI-R18 #1):
+        // only the touched blocks rebuild per selection change.
+        : ValueListenableBuilder<List<CutId>?>(
+            valueListenable: cutSelect.selectedCutIds,
+            builder: (context, selected, _) => _StoryboardCutBlock(
+              layoutEntry: layoutEntry,
+              width: widget.width,
+              isActive: widget.isActive,
+              onSelected: _handleSelected,
+              totalLabel: widget.totalLabel,
+              thumbnail: widget.thumbnail,
+              showThumbnail: widget.showThumbnail,
+              isRangeSelected: selected?.contains(layoutEntry.cutId) ?? false,
+              selectionActive: selected != null,
+            ),
+          );
+    // A horizontal drag on the block's BODY selects a cut run, or slides
+    // the cut(s) when it starts inside the selection (timeline block
+    // language, R10-④/UI-R18 #1): live preview through the session
+    // channel, one undo on release. Taps still select; the long-press
+    // lift below owns reordering.
+    if (widget.cutMove != null || cutSelect != null) {
       block = GestureDetector(
         key: ValueKey<String>('storyboard-cut-move-${layoutEntry.cutId.value}'),
         behavior: HitTestBehavior.translucent,
@@ -3735,12 +3863,22 @@ class _StoryboardCutBlock extends StatelessWidget {
     required this.totalLabel,
     this.thumbnail,
     this.showThumbnail = false,
+    this.isRangeSelected = false,
+    this.selectionActive = false,
   });
 
   final StoryboardTimelineLayoutEntry layoutEntry;
   final double width;
   final bool isActive;
   final ValueChanged<CutId> onSelected;
+
+  /// This cut sits inside the live range selection — tint only (the
+  /// color-only selection language).
+  final bool isRangeSelected;
+
+  /// ANY cut selection is live: taps stay wired even on the active cut
+  /// so they can clear it (the timeline cell-tap contract).
+  final bool selectionActive;
 
   /// Cumulative time at this cut's end (conte-sheet TIME column), rendered
   /// bottom-right; frames or seconds per the shared display toggle.
@@ -3773,9 +3911,10 @@ class _StoryboardCutBlock extends StatelessWidget {
       key: ValueKey<String>('storyboard-cut-block-${cut.id.value}'),
       width: width,
       isActive: isActive,
+      isRangeSelected: isRangeSelected,
       minHeight: 0,
       padding: const EdgeInsets.all(4),
-      onTap: isActive ? null : () => onSelected(cut.id),
+      onTap: isActive && !selectionActive ? null : () => onSelected(cut.id),
       // Conte-sheet cell turned sideways: the camera-view picture fills the
       // block center, texts stack on top of it.
       child: Stack(
