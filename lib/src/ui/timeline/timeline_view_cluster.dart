@@ -51,6 +51,54 @@ class TimelineViewCluster extends StatelessWidget {
       ? timelineSecondsLabel(oneBasedFrame, projectFps)
       : '$oneBasedFrame';
 
+  /// One −/+ button step (UI-R11 #11): multiplicative (×1.25) like editor
+  /// zooms so a step feels equal at 4px and 96px, rounded to the whole-px
+  /// grid the slider already quantizes to, and never a no-op inside the
+  /// range.
+  double _steppedZoom({required bool zoomIn}) {
+    final scaled = zoomIn ? pixelsPerFrame * 1.25 : pixelsPerFrame / 1.25;
+    var next = scaled.roundToDouble();
+    if (next == pixelsPerFrame) {
+      next = zoomIn ? pixelsPerFrame + 1 : pixelsPerFrame - 1;
+    }
+    return next.clamp(
+      TimelinePanel.minPixelsPerFrame,
+      TimelinePanel.maxPixelsPerFrame,
+    );
+  }
+
+  Widget _zoomStepButton({
+    required bool zoomIn,
+    required ColorScheme colorScheme,
+  }) {
+    final atBound = zoomIn
+        ? pixelsPerFrame >= TimelinePanel.maxPixelsPerFrame
+        : pixelsPerFrame <= TimelinePanel.minPixelsPerFrame;
+    final enabled = onPixelsPerFrameChanged != null && !atBound;
+    return SizedBox(
+      width: 22,
+      height: 22,
+      child: IconButton(
+        key: ValueKey<String>(
+          zoomIn ? 'timeline-zoom-in-button' : 'timeline-zoom-out-button',
+        ),
+        tooltip: zoomIn ? 'Zoom In' : 'Zoom Out',
+        padding: EdgeInsets.zero,
+        constraints: const BoxConstraints.tightFor(width: 22, height: 22),
+        icon: Icon(
+          zoomIn ? Icons.zoom_in : Icons.zoom_out,
+          size: 16,
+          color: enabled
+              ? colorScheme.onSurfaceVariant
+              : colorScheme.onSurfaceVariant.withValues(alpha: 0.4),
+        ),
+        onPressed: enabled
+            ? () => onPixelsPerFrameChanged!(_steppedZoom(zoomIn: zoomIn))
+            : null,
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
@@ -89,7 +137,9 @@ class TimelineViewCluster extends StatelessWidget {
             size: 18,
           ),
         ),
-        Icon(Icons.zoom_out, size: 16, color: colorScheme.onSurfaceVariant),
+        // UI-R11 #11: the flanking glyphs are real STEP buttons now, not
+        // decorations — click-to-zoom without the slider's drag precision.
+        _zoomStepButton(zoomIn: false, colorScheme: colorScheme),
         SizedBox(
           width: 140,
           child: FieldSlider(
@@ -121,7 +171,7 @@ class TimelineViewCluster extends StatelessWidget {
                   },
           ),
         ),
-        Icon(Icons.zoom_in, size: 16, color: colorScheme.onSurfaceVariant),
+        _zoomStepButton(zoomIn: true, colorScheme: colorScheme),
         ...trailing,
       ],
     );

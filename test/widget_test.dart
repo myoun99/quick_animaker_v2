@@ -714,6 +714,24 @@ void main() {
     await zoomTo(72);
     expect(tester.getSize(header0).width, 72);
 
+    // UI-R11 #11: the −/+ STEP buttons flanking the slider zoom without
+    // dragging — multiplicative ×1.25 steps on the whole-px grid.
+    await zoomTo(24);
+    await _tapToolbarButton(
+      tester,
+      const ValueKey<String>('timeline-zoom-in-button'),
+    );
+    expect(tester.getSize(header0).width, 30, reason: '24 × 1.25');
+    await _tapToolbarButton(
+      tester,
+      const ValueKey<String>('timeline-zoom-out-button'),
+    );
+    await _tapToolbarButton(
+      tester,
+      const ValueKey<String>('timeline-zoom-out-button'),
+    );
+    expect(tester.getSize(header0).width, 19, reason: '30 ÷ 1.25 ÷ 1.25');
+
     await zoomTo(12);
     expect(tester.getSize(header0).width, 12);
     // Narrow cells move their labels to the every-Nth overlay: no in-cell
