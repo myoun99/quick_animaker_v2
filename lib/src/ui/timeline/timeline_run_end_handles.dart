@@ -330,25 +330,40 @@ class _RunEdgeClusterState extends State<_RunEdgeCluster> {
     widget.callbacks.onAddCancel();
   }
 
+  /// A plain tap adds exactly ONE cel beside the run (UI-R17 #4) — the
+  /// drag flow with a fixed count of 1, committed immediately.
+  void _tapAdd() {
+    if (_dragging) {
+      return;
+    }
+    final accepted = widget.callbacks.onAddBegin(
+      widget.layerId,
+      widget.blockStartIndex,
+      atEnd: _atEnd,
+    );
+    if (!accepted) {
+      return;
+    }
+    widget.callbacks.onAddUpdate(1);
+    widget.callbacks.onAddEnd();
+  }
+
   @override
   void dispose() {
     if (_dragging) {
       final callbacks = widget.callbacks;
-      WidgetsBinding.instance.addPostFrameCallback(
-        (_) => callbacks.onAddEnd(),
-      );
+      WidgetsBinding.instance.addPostFrameCallback((_) => callbacks.onAddEnd());
     }
     super.dispose();
   }
 
   Future<void> _openModeFlyout(BuildContext anchorContext) async {
-    void pick(TimelineRunEdgeMode? mode) => widget.callbacks
-        .onEdgeModeSelected(
-          widget.layerId,
-          widget.blockStartIndex,
-          widget.side,
-          mode,
-        );
+    void pick(TimelineRunEdgeMode? mode) => widget.callbacks.onEdgeModeSelected(
+      widget.layerId,
+      widget.blockStartIndex,
+      widget.side,
+      mode,
+    );
     setState(() => _menuOpen = true);
     await showPanelFlyout(
       anchorContext,
@@ -411,12 +426,20 @@ class _RunEdgeClusterState extends State<_RunEdgeCluster> {
           '${widget.layerId}-${widget.anchorValue}',
         ),
         behavior: HitTestBehavior.opaque,
+        // Every pointer kind operates the handle (UI-R17 #6): stylus pens
+        // report as TOUCH on some Windows/tablet drivers, so the old
+        // mouse+stylus allowlist read as "pen dead" there.
         supportedDevices: const {
           PointerDeviceKind.mouse,
           PointerDeviceKind.stylus,
           PointerDeviceKind.invertedStylus,
+          PointerDeviceKind.touch,
+          PointerDeviceKind.unknown,
         },
         dragStartBehavior: DragStartBehavior.down,
+        // Tap = add ONE cel (UI-R17 #4); a drag keeps the count-preview
+        // flow.
+        onTap: _tapAdd,
         onPanStart: (_) => _startAdd(),
         onPanUpdate: (details) => _updateAdd(details.delta),
         onPanEnd: (_) => _endAdd(),

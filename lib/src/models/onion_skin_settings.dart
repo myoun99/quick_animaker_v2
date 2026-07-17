@@ -30,9 +30,12 @@ enum OnionSkinMode { colors, images }
 /// The editor's onion-skin state (session view state, not project data) —
 /// Callipeg's peg model: up to [maxPegs] pegs per side, each toggleable
 /// with its own opacity, side tint colors and a Colors/Images mode.
+///
+/// UI-R17 #5: there is NO master enable anymore — onion application is
+/// PER LAYER (TVPaint style: the session's onion layer-id set), these
+/// settings only shape HOW the ghosts render.
 class OnionSkinSettings {
   const OnionSkinSettings({
-    this.enabled = false,
     this.beforePegs = defaultBeforePegs,
     this.afterPegs = defaultAfterPegs,
     this.tintBefore = 0xFFE53935,
@@ -56,9 +59,6 @@ class OnionSkinSettings {
     OnionPeg(enabled: false, opacity: 0.1),
   ];
 
-  /// The master toggle (the `O` shortcut / toolbar button).
-  final bool enabled;
-
   /// Peg k = the (k+1)-th unique drawing before/after the current one.
   final List<OnionPeg> beforePegs;
   final List<OnionPeg> afterPegs;
@@ -70,7 +70,6 @@ class OnionSkinSettings {
   final OnionSkinMode mode;
 
   OnionSkinSettings copyWith({
-    bool? enabled,
     List<OnionPeg>? beforePegs,
     List<OnionPeg>? afterPegs,
     int? tintBefore,
@@ -78,7 +77,6 @@ class OnionSkinSettings {
     OnionSkinMode? mode,
   }) {
     return OnionSkinSettings(
-      enabled: enabled ?? this.enabled,
       beforePegs: beforePegs ?? this.beforePegs,
       afterPegs: afterPegs ?? this.afterPegs,
       tintBefore: tintBefore ?? this.tintBefore,
@@ -91,7 +89,6 @@ class OnionSkinSettings {
   bool operator ==(Object other) =>
       identical(this, other) ||
       other is OnionSkinSettings &&
-          other.enabled == enabled &&
           listEquals(other.beforePegs, beforePegs) &&
           listEquals(other.afterPegs, afterPegs) &&
           other.tintBefore == tintBefore &&
@@ -100,7 +97,6 @@ class OnionSkinSettings {
 
   @override
   int get hashCode => Object.hash(
-    enabled,
     Object.hashAll(beforePegs),
     Object.hashAll(afterPegs),
     tintBefore,

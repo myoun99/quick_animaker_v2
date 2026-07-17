@@ -22,6 +22,8 @@ import 'playback/canvas_playback_controller.dart';
 import 'shortcuts/editor_action_registry.dart';
 import 'shortcuts/editor_shortcut_bindings.dart';
 import 'shortcuts/shortcut_settings_store.dart';
+import 'timeline/timeline_action_toolbar.dart'
+    show showTimelineCommaCountDialog;
 
 /// The editor shell: a slim top menu strip (menu bar + quick actions —
 /// the AppBar retired so the editor keeps the vertical space) plus the
@@ -206,6 +208,19 @@ class _HomePageState extends State<HomePage> {
         _canvasSelectionCommands.commitTransform();
       case EditorActionIds.selectionTransformCancel:
         _canvasSelectionCommands.cancelTransform();
+      // The comma set row (UI-R17 #7): current block or whole selection.
+      case EditorActionIds.timelineComma1:
+        _session.setCommaForSelectionOrCurrent(1);
+      case EditorActionIds.timelineComma2:
+        _session.setCommaForSelectionOrCurrent(2);
+      case EditorActionIds.timelineComma3:
+        _session.setCommaForSelectionOrCurrent(3);
+      case EditorActionIds.timelineComma4:
+        _session.setCommaForSelectionOrCurrent(4);
+      case EditorActionIds.timelineCommaN:
+        if (_session.canSetCommaForSelectionOrCurrent) {
+          showTimelineCommaCountDialog(context, _session);
+        }
     }
   }
 

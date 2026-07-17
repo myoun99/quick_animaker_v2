@@ -29,19 +29,9 @@ class OnionSkinPanel extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            children: [
-              Expanded(
-                child: Text('Onion Skin', style: theme.textTheme.titleSmall),
-              ),
-              Switch(
-                key: const ValueKey<String>('onion-skin-master-toggle'),
-                value: settings.enabled,
-                onChanged: (enabled) =>
-                    onChanged(settings.copyWith(enabled: enabled)),
-              ),
-            ],
-          ),
+          // NO master switch (UI-R17 #5): onion applies PER LAYER via the
+          // timeline rows' toggles — this panel only shapes the ghosts.
+          Text('Onion Skin', style: theme.textTheme.titleSmall),
           const SizedBox(height: 4),
           SegmentedButton<OnionSkinMode>(
             key: const ValueKey<String>('onion-skin-mode-toggle'),

@@ -1,4 +1,5 @@
 import 'dart:collection';
+import 'dart:math' as math;
 
 import '../models/cut.dart';
 import '../models/cut_id.dart';
@@ -9,6 +10,7 @@ import '../models/layer_id.dart';
 import '../models/timeline_coverage.dart';
 import '../models/timeline_exposure.dart';
 import '../models/timeline_repeat.dart';
+import '../services/command.dart';
 import '../services/commands/update_layer_timeline_command.dart';
 import '../services/history_manager.dart';
 import '../services/project_repository.dart';
@@ -300,9 +302,7 @@ class TimelineController {
       return false;
     }
     final block = coveringDrawingBlockAt(layer.timeline, frameIndex);
-    return block != null &&
-        !block.entry.ghost &&
-        frameIndex > block.startIndex;
+    return block != null && !block.entry.ghost && frameIndex > block.startIndex;
   }
 
   void toggleMarkForLayer({required LayerId layerId}) {
@@ -334,8 +334,11 @@ class TimelineController {
 
   // --- Cell deletion ----------------------------------------------------------
 
+  /// Standing ANYWHERE inside a real drawing block deletes it (UI-R17 #1)
+  /// — the old head-only rule made held cells feel dead.
   bool canDeleteCellAt({required Layer layer, required int frameIndex}) {
-    return isDrawingStartForLayer(layer: layer, frameIndex: frameIndex);
+    final block = coveringDrawingBlockAt(layer.timeline, frameIndex);
+    return block != null && !block.entry.ghost;
   }
 
   void deleteCellForLayer({required LayerId layerId}) {
@@ -344,23 +347,183 @@ class TimelineController {
     if (!canDeleteCellAt(layer: before, frameIndex: frameIndex)) {
       return;
     }
+    deleteBlocksForLayer(
+      layerId: layerId,
+      blockStartIndexes: [
+        coveringDrawingBlockAt(before.timeline, frameIndex)!.startIndex,
+      ],
+    );
+  }
 
-    final entry = before.timeline[frameIndex]!;
+  /// Deletes every block starting at [blockStartIndexes] in ONE undo step
+  /// (UI-R17 #2 — multi-selection delete). Ghost instances are skipped
+  /// (derived); frames no longer referenced anywhere are GC'd with them.
+  void deleteBlocksForLayer({
+    required LayerId layerId,
+    required List<int> blockStartIndexes,
+  }) {
+    deleteBlocksForLayers({layerId: blockStartIndexes});
+  }
+
+  /// The cross-layer form (UI-R17 #8): every layer's deletions compose
+  /// into ONE undo step.
+  void deleteBlocksForLayers(Map<LayerId, List<int>> blockStartsByLayer) {
+    final commands = <Command>[];
+    for (final entry in blockStartsByLayer.entries) {
+      final before = _requireLayer(entry.key);
+      final after = _deletedBlocksLayer(before, entry.value);
+      if (after != null) {
+        commands.add(_layerEditCommand(before: before, after: after));
+      }
+    }
+    _executeCommands(commands, description: 'Delete selected cells');
+  }
+
+  Layer? _deletedBlocksLayer(Layer before, List<int> blockStartIndexes) {
     final nextTimeline = SplayTreeMap<int, TimelineExposure>.from(
       before.timeline,
-    )..remove(frameIndex);
+    );
+    final removedFrameIds = <FrameId>{};
+    for (final startIndex in blockStartIndexes) {
+      final entry = before.timeline[startIndex];
+      if (entry == null || !entry.isDrawing || entry.ghost) {
+        continue;
+      }
+      nextTimeline.remove(startIndex);
+      final frameId = entry.frameId;
+      if (frameId != null) {
+        removedFrameIds.add(frameId);
+      }
+    }
+    if (nextTimeline.length == before.timeline.length) {
+      return null;
+    }
     var nextFrames = before.frames;
-    final frameId = entry.frameId;
-    if (frameId != null && !_timelineReferencesFrame(nextTimeline, frameId)) {
+    final unreferenced = removedFrameIds
+        .where((frameId) => !_timelineReferencesFrame(nextTimeline, frameId))
+        .toSet();
+    if (unreferenced.isNotEmpty) {
       nextFrames = before.frames
-          .where((frame) => frame.id != frameId)
+          .where((frame) => !unreferenced.contains(frame.id))
           .toList(growable: false);
     }
+    return before.copyWith(frames: nextFrames, timeline: nextTimeline);
+  }
 
-    _applyLayerEdit(
-      before: before,
-      after: before.copyWith(frames: nextFrames, timeline: nextTimeline),
+  // --- Bulk retime (UI-R17 #3/#7) --------------------------------------------
+
+  /// The layer with each block in [newLengthByStart] resized to its new
+  /// exposure length, everything downstream rippling with the edge-shift
+  /// contact rules: glued blocks STAY glued (so shrinking a selected run
+  /// packs it — 1--2--3-- set to 1콤마 reads 123, the TVP compaction),
+  /// separated blocks keep their own start unless overlapped. Blocks
+  /// before the first retimed one never move. Ghost entries cannot be
+  /// retimed (derived); returns null when nothing changes.
+  Layer? retimedLayerForBlocks({
+    required Layer layer,
+    required Map<int, int> newLengthByStart,
+  }) {
+    final blocks = drawingBlocks(layer.timeline);
+    final newStarts = List<int>.generate(
+      blocks.length,
+      (i) => blocks[i].startIndex,
+      growable: false,
     );
+    final newLengths = List<int>.generate(
+      blocks.length,
+      (i) => blocks[i].length,
+      growable: false,
+    );
+    var firstRetimed = -1;
+    for (var i = 0; i < blocks.length; i += 1) {
+      final requested = newLengthByStart[blocks[i].startIndex];
+      if (requested == null || blocks[i].entry.ghost) {
+        continue;
+      }
+      newLengths[i] = math.max(1, requested);
+      if (firstRetimed == -1) {
+        firstRetimed = i;
+      }
+    }
+    if (firstRetimed == -1) {
+      return null;
+    }
+
+    var prevOldEnd = blocks[firstRetimed].endIndexExclusive;
+    var prevNewEnd = newStarts[firstRetimed] + newLengths[firstRetimed];
+    for (var i = firstRetimed + 1; i < blocks.length; i += 1) {
+      final block = blocks[i];
+      final glued = block.startIndex == prevOldEnd;
+      var start = glued ? prevNewEnd : block.startIndex;
+      if (start < prevNewEnd) {
+        start = prevNewEnd;
+      }
+      newStarts[i] = start;
+      prevOldEnd = block.endIndexExclusive;
+      prevNewEnd = start + newLengths[i];
+    }
+
+    final next = SplayTreeMap<int, TimelineExposure>();
+    for (var i = 0; i < blocks.length; i += 1) {
+      next[newStarts[i]] = blocks[i].entry.copyWith(length: newLengths[i]);
+    }
+    final after = rederiveRunBehaviors(
+      layer.copyWith(timeline: next),
+      cutFrameCount: _cutFrameCount(),
+    );
+    return after == layer ? null : after;
+  }
+
+  /// Commits [retimedLayerForBlocks] as one undo step (the 1/2/3/4/N
+  /// comma buttons' path).
+  void retimeBlocksForLayer({
+    required LayerId layerId,
+    required Map<int, int> newLengthByStart,
+  }) {
+    retimeBlocksForLayers({layerId: newLengthByStart});
+  }
+
+  /// The cross-layer form (UI-R17 #8): every layer's retime composes into
+  /// ONE undo step.
+  void retimeBlocksForLayers(Map<LayerId, Map<int, int>> newLengthsByLayer) {
+    final commands = <Command>[];
+    for (final entry in newLengthsByLayer.entries) {
+      final before = _requireLayer(entry.key);
+      final after = retimedLayerForBlocks(
+        layer: before,
+        newLengthByStart: entry.value,
+      );
+      if (after != null) {
+        commands.add(_layerEditCommand(before: before, after: after));
+      }
+    }
+    _executeCommands(commands, description: 'Set comma exposure');
+  }
+
+  /// Commits several layers' already-previewed drags as ONE undo step
+  /// (the cross-layer bulk edge drag's release).
+  void commitLayerTimelineDrags(List<({Layer before, Layer after})> edits) {
+    final commands = <Command>[
+      for (final edit in edits)
+        if (edit.before != edit.after)
+          _layerEditCommand(before: edit.before, after: edit.after),
+    ];
+    _executeCommands(commands, description: 'Adjust selected exposures');
+  }
+
+  void _executeCommands(List<Command> commands, {required String description}) {
+    if (commands.isEmpty) {
+      return;
+    }
+    final command = commands.length == 1
+        ? commands.single
+        : CompositeCommand(description: description, commands: commands);
+    final historyManager = _historyManager;
+    if (historyManager == null) {
+      command.execute();
+    } else {
+      historyManager.execute(command);
+    }
   }
 
   // --- Linked paste ------------------------------------------------------------
@@ -801,16 +964,23 @@ class TimelineController {
     throw StateError('Frame not found in layer ${layer.id}: $frameId');
   }
 
-  void _applyLayerEdit({required Layer before, required Layer after}) {
-    // THE run-behavior normalize choke point (UI-R8/R9): every timeline
-    // edit lands here, so the derived ghost entries re-arrange with
-    // whatever the edit did to their source run (live sync). Layers
-    // without behaviors/ghosts pass through untouched (identity).
-    final command = UpdateLayerTimelineCommand(
+  /// THE run-behavior normalize choke point (UI-R8/R9): every timeline
+  /// edit builds through here, so the derived ghost entries re-arrange
+  /// with whatever the edit did to their source run (live sync). Layers
+  /// without behaviors/ghosts pass through untouched (identity).
+  UpdateLayerTimelineCommand _layerEditCommand({
+    required Layer before,
+    required Layer after,
+  }) {
+    return UpdateLayerTimelineCommand(
       repository: _repository,
       before: before,
       after: rederiveRunBehaviors(after, cutFrameCount: _cutFrameCount()),
     );
+  }
+
+  void _applyLayerEdit({required Layer before, required Layer after}) {
+    final command = _layerEditCommand(before: before, after: after);
     final historyManager = _historyManager;
     if (historyManager == null) {
       command.execute();

@@ -63,6 +63,11 @@ abstract final class EditorActionIds {
   static const canvasRotateCcw = 'canvas-rotate-ccw';
   static const canvasRotateCw = 'canvas-rotate-cw';
   static const canvasFlipHorizontal = 'canvas-flip-horizontal';
+  static const timelineComma1 = 'timeline-comma-1';
+  static const timelineComma2 = 'timeline-comma-2';
+  static const timelineComma3 = 'timeline-comma-3';
+  static const timelineComma4 = 'timeline-comma-4';
+  static const timelineCommaN = 'timeline-comma-n';
 }
 
 /// The default action set. Frame flipping on `,`/`.` (with arrow aliases)
@@ -246,5 +251,38 @@ final List<EditorActionDefinition> editorActionDefinitions = [
     label: 'Flip Canvas View Horizontal',
     category: 'View',
     defaultActivators: [SingleActivator(LogicalKeyboardKey.keyH)],
+  ),
+  // The comma set row (UI-R17 #7, TVP-style): 1-4 set the exposure of the
+  // current block — or every selected block, packed — outright; 5 opens
+  // the N input. Bare digits stand down while text fields have focus.
+  const EditorActionDefinition(
+    id: EditorActionIds.timelineComma1,
+    label: 'Set 1 Comma',
+    category: 'Timeline',
+    defaultActivators: [SingleActivator(LogicalKeyboardKey.digit1)],
+  ),
+  const EditorActionDefinition(
+    id: EditorActionIds.timelineComma2,
+    label: 'Set 2 Commas',
+    category: 'Timeline',
+    defaultActivators: [SingleActivator(LogicalKeyboardKey.digit2)],
+  ),
+  const EditorActionDefinition(
+    id: EditorActionIds.timelineComma3,
+    label: 'Set 3 Commas',
+    category: 'Timeline',
+    defaultActivators: [SingleActivator(LogicalKeyboardKey.digit3)],
+  ),
+  const EditorActionDefinition(
+    id: EditorActionIds.timelineComma4,
+    label: 'Set 4 Commas',
+    category: 'Timeline',
+    defaultActivators: [SingleActivator(LogicalKeyboardKey.digit4)],
+  ),
+  const EditorActionDefinition(
+    id: EditorActionIds.timelineCommaN,
+    label: 'Set N Commas…',
+    category: 'Timeline',
+    defaultActivators: [SingleActivator(LogicalKeyboardKey.digit5)],
   ),
 ];

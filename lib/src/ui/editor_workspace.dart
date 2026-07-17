@@ -31,6 +31,7 @@ import 'media/media_browser_panel.dart';
 import 'panels/editor_dock_host.dart';
 import 'panels/editor_panel_dock.dart';
 import 'panels/editor_panel_layout.dart';
+import 'panels/panel_flash.dart';
 import 'panels/panel_visibility_scope.dart';
 import 'panels/editor_panel_tabs.dart';
 import 'panels/workspace_layout_store.dart';
@@ -192,6 +193,10 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
   late final EditorPanelLayoutModel _layout = EditorPanelLayoutModel(
     docks: _defaultDocks(),
   );
+
+  /// The reveal-flash channel (UI-R17 #5) every dock's panel shell
+  /// listens to.
+  final PanelFlashController _panelFlash = PanelFlashController();
 
   /// The tab in flight (null = none) — docks reveal their drop zones for
   /// an eligible tab only while this is set.
@@ -445,6 +450,24 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
     }
   }
 
+  /// The COMMON "open or locate" entry (UI-R17 #5): hidden panels open
+  /// into their default dock; an already-open panel fronts its tab and
+  /// FLASHES so the user sees where it lives. Every non-Window "open
+  /// panel" affordance should route here.
+  void _revealPanel(String tabId) {
+    final location = _layout.locateTab(tabId);
+    if (location == null) {
+      _mutatingLayout(() {
+        _layout.addTab(tabId, toDockId: _defaultDockOf(tabId));
+      });
+      return;
+    }
+    _mutatingLayout(() {
+      _layout.selectTab(location.dockId, location.sectionIndex, tabId);
+    });
+    _panelFlash.flash(tabId);
+  }
+
   Future<void> _restoreLayout() async {
     final store = _layoutStore;
     if (store == null) {
@@ -518,6 +541,7 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
     _expandedTransformGroupLayerIds.dispose();
     _hiddenTimelineSections.dispose();
     _timelineRowFilter.dispose();
+    _panelFlash.dispose();
     _timesheetContinuous.dispose();
     _timesheetViewport.dispose();
     _timesheetInkEnabled.dispose();
@@ -912,6 +936,10 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
               // the camera panel.
               cameraViewEnabled: _cameraViewEnabled,
               cameraDimOpacity: _cameraDimOpacity,
+              // The legend's "open onion panel" (UI-R17 #5): already open
+              // = the panel flashes in place (the common reveal logic).
+              onRevealOnionSkinPanel: () =>
+                  _revealPanel(EditorWorkspace.onionSkinTabId),
             ),
           ),
         );
@@ -1040,6 +1068,7 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
       onTabDragChanged: (data) => _draggingTab.value = data,
       onToggleLock: _toggleTabLock,
       onCloseTab: _closeTab,
+      flash: _panelFlash,
     );
   }
 

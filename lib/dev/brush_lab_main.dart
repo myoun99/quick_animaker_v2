@@ -301,8 +301,12 @@ class _BrushLabDriverState extends State<_BrushLabDriver> {
 
     var strokeIndex = 0;
     for (final phase in phases) {
-      session.onionSkinSettings.value = session.onionSkinSettings.value
-          .copyWith(enabled: phase.onion);
+      // Per-layer onion (UI-R17 #5): the lab toggles the active layer.
+      final onionLayer = session.activeLayer;
+      if (onionLayer != null &&
+          session.isLayerOnionSkinEnabled(onionLayer.id) != phase.onion) {
+        session.toggleLayerOnionSkin(onionLayer.id);
+      }
       if (phase.fillTaps) {
         await _runFillTaps(session, brushTool);
         // R27 repro: fill -> cut round trip -> decode coverage samples.

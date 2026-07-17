@@ -244,16 +244,26 @@ void main() {
       );
     });
 
-    test('only drawing starts are deletable', () {
+    test('anywhere inside the covering block is deletable (UI-R17 #1); '
+        'empty cells are not', () {
       final fixture = _fixture();
 
       expect(
         fixture.controller.canDeleteCellAt(layer: fixture.layer, frameIndex: 1),
-        isFalse,
+        isTrue,
+        reason: 'held cell — deletes the covering block',
       );
       expect(
         fixture.controller.canDeleteCellAt(layer: fixture.layer, frameIndex: 0),
         isTrue,
+      );
+      expect(
+        fixture.controller.canDeleteCellAt(
+          layer: fixture.layer,
+          frameIndex: 999,
+        ),
+        isFalse,
+        reason: 'empty cell',
       );
     });
   });

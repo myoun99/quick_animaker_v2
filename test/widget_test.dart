@@ -564,10 +564,14 @@ Future<void> _expectTimelineActionKeys(WidgetTester tester) async {
     find.byKey(const ValueKey<String>('toggle-mark-button')),
     findsOneWidget,
   );
-  // The frame commands live inside the Frame ▾ flyout now.
-  await tester.tap(
-    find.byKey(const ValueKey<String>('timeline-frame-menu-button')),
+  // The frame commands live inside the Frame ▾ flyout now. The comma row
+  // (UI-R17 #7) widened the toolbar, so scroll the menu button into view.
+  final frameMenuButton = find.byKey(
+    const ValueKey<String>('timeline-frame-menu-button'),
   );
+  await tester.ensureVisible(frameMenuButton);
+  await tester.pumpAndSettle();
+  await tester.tap(frameMenuButton);
   await tester.pumpAndSettle();
   expect(
     find.byKey(const ValueKey<String>('copy-frame-button')),
@@ -2260,12 +2264,14 @@ Line 8''';
       const ValueKey<String>('timeline-cell-default-layer-1-1'),
     );
     expect(_selectedCellStateLabel(tester), 'held exposure');
+    // UI-R17 #1: held cells delete their COVERING block — the head-only
+    // rule is gone.
     expect(
       await _isActionButtonEnabled(
         tester,
         const ValueKey<String>('delete-cell-button'),
       ),
-      isFalse,
+      isTrue,
     );
     expect(
       await _isActionButtonEnabled(

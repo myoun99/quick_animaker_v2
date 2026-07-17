@@ -2,6 +2,7 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
+import 'panel_flash.dart';
 import 'panel_visibility_scope.dart';
 
 /// One tab in an [EditorPanelTabs] group.
@@ -88,6 +89,7 @@ class EditorPanelTabs extends StatefulWidget {
     this.onTabDragChanged,
     this.onToggleLock,
     this.onCloseTab,
+    this.flash,
   }) : assert(tabs.length > 0),
        assert(
          onTabMoved == null || groupId != null,
@@ -125,6 +127,11 @@ class EditorPanelTabs extends StatefulWidget {
   /// Closes (hides) a panel via the X on its tab. Null hides the button;
   /// locked tabs never show it (lock = pinned).
   final ValueChanged<String>? onCloseTab;
+
+  /// The workspace's reveal channel (UI-R17 #5): when a flash request
+  /// names a tab THIS group hosts, the panel body blinks to show where
+  /// the already-open panel lives.
+  final PanelFlashController? flash;
 
   static const double stripHeight = 30;
 
@@ -244,6 +251,27 @@ class _EditorPanelTabsState extends State<EditorPanelTabs> {
                         ),
                       ),
                     ),
+                // The reveal blink (UI-R17 #5): fires when the flash
+                // channel names a tab this group hosts.
+                if (widget.flash != null)
+                  Positioned.fill(
+                    child: IgnorePointer(
+                      child: ValueListenableBuilder<PanelFlashRequest?>(
+                        valueListenable: widget.flash!.requests,
+                        builder: (context, request, _) {
+                          if (request == null ||
+                              !tabs.any((tab) => tab.id == request.tabId)) {
+                            return const SizedBox.shrink();
+                          }
+                          return PanelFlashOverlay(
+                            key: ValueKey<String>(
+                              'panel-flash-${request.tabId}-${request.seq}',
+                            ),
+                          );
+                        },
+                      ),
+                    ),
+                  ),
               ],
             ),
           ),

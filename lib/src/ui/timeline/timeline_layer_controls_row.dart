@@ -28,6 +28,8 @@ class TimelineLayerControlsRow extends StatelessWidget {
     this.onToggleLanes,
     this.fxEnabled = true,
     this.onToggleLayerFx,
+    this.onionSkinEnabled = false,
+    this.onToggleLayerOnionSkin,
     this.opacityDragPreview,
   });
 
@@ -65,6 +67,12 @@ class TimelineLayerControlsRow extends StatelessWidget {
   /// transform/FX on every composite route while off. Null hides it.
   final bool fxEnabled;
   final ValueChanged<LayerId>? onToggleLayerFx;
+
+  /// Per-layer onion skin (UI-R17 #5, TVPaint style): whether THIS
+  /// layer's ghosts composite, and the row toggle. Null hides the slot's
+  /// button (non-drawing rows keep the empty slot for column alignment).
+  final bool onionSkinEnabled;
+  final ValueChanged<LayerId>? onToggleLayerOnionSkin;
 
   /// The session's live opacity-drag preview (UI-R6 #2): while the master
   /// bar (or another surface) drags THIS layer's opacity, the row's slider
@@ -249,6 +257,37 @@ class TimelineLayerControlsRow extends StatelessWidget {
                 )
               else
                 const SizedBox(width: layerFxSlotWidth),
+              // Per-layer onion toggle (UI-R17 #5) beside the eye — only
+              // brush-holding rows get the button; rows keep the slot so
+              // the control columns stay aligned; hosts without the
+              // callback (no header cell either) skip the column whole.
+              if (onToggleLayerOnionSkin != null &&
+                  layerKindAcceptsBrushInput(layer.kind))
+                SizedBox(
+                  width: layerOnionSlotWidth,
+                  height: 26,
+                  child: IconButton(
+                    key: ValueKey<String>('timeline-layer-onion-${layer.id}'),
+                    tooltip: onionSkinEnabled
+                        ? 'Onion skin (on)'
+                        : 'Onion skin',
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints.tightFor(
+                      width: layerOnionSlotWidth,
+                      height: 26,
+                    ),
+                    icon: Icon(
+                      Icons.filter_none,
+                      size: 15,
+                      color: onionSkinEnabled
+                          ? colorScheme.primary
+                          : colorScheme.outline.withValues(alpha: 0.45),
+                    ),
+                    onPressed: () => onToggleLayerOnionSkin!(layer.id),
+                  ),
+                )
+              else if (onToggleLayerOnionSkin != null)
+                const SizedBox(width: layerOnionSlotWidth),
               SizedBox(
                 width: layerVisibilitySlotWidth,
                 height: 26,

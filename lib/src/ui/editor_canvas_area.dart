@@ -100,8 +100,10 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
       // host — and only when the playhead actually changed frames (R13-3).
       listenable: Listenable.merge([
         session,
-        // Onion-skin toggles/pegs re-plan the underlay ghosts (P2).
+        // Onion-skin pegs + the per-layer set re-plan the underlay
+        // ghosts (P2 → UI-R17 #5).
         session.onionSkinSettings,
+        session.onionSkinLayerIds,
         // Opacity drags preview through the editing stack per move (R4 #4)
         // — the canvas is the ONLY session-notify consumer that follows
         // live; everything else waits for the release commit.

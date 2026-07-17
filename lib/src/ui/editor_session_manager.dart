@@ -580,6 +580,7 @@ class EditorSessionManager extends ChangeNotifier {
     dragPreview.dispose();
     opacityDragPreview.dispose();
     onionSkinSettings.dispose();
+    onionSkinLayerIds.dispose();
     _historyManager.dispose();
     super.dispose();
   }
@@ -3104,6 +3105,13 @@ class EditorSessionManager extends ChangeNotifier {
   TimelineBlockEdge? _edgeDragEdge;
   int? _edgeDragBlockStart;
 
+  /// UI-R17 #3/#8: when the dragged edge belongs to a block INSIDE the
+  /// frame range selection, the drag retimes EVERY selected block on
+  /// EVERY spanned layer together (null = single-block drag).
+  Map<LayerId, List<int>>? _edgeDragBulkStartsByLayer;
+  Map<LayerId, Layer>? _edgeDragBulkBefore;
+  List<({Layer before, Layer after})>? _edgeDragBulkEdits;
+
   /// The drag's current result (GLOBAL layer for track SE): [dragPreview]
   /// carries the DISPLAY form, so the commit reads this instead.
   Layer? _edgeDragAfter;
@@ -3175,8 +3183,52 @@ class EditorSessionManager extends ChangeNotifier {
     _edgeDragBefore = layer;
     _edgeDragEdge = edge;
     _edgeDragBlockStart = blockStartIndex;
+    // Dragging an edge inside the selection retimes the WHOLE selection
+    // (UI-R17 #3/#8) — every selected block on every spanned layer
+    // follows the delta live, one undo step on release.
+    _edgeDragBulkStartsByLayer = null;
+    _edgeDragBulkBefore = null;
+    final selection = frameRangeSelection.value;
+    if (isDrawingBlock &&
+        selection != null &&
+        selection.coversLayer(layerId) &&
+        selection.contains(blockStartIndex)) {
+      final startsByLayer = <LayerId, List<int>>{};
+      final beforeByLayer = <LayerId, Layer>{};
+      for (final id in selection.spanLayerIds) {
+        final spanned = _layerById(id);
+        if (spanned == null) {
+          continue;
+        }
+        final starts = _selectionBlockStarts(spanned, selection);
+        if (starts.isEmpty) {
+          continue;
+        }
+        startsByLayer[id] = starts;
+        beforeByLayer[id] = spanned;
+      }
+      final multiBlock =
+          startsByLayer.length > 1 || (startsByLayer[layerId]?.length ?? 0) > 1;
+      if (multiBlock) {
+        _edgeDragBulkStartsByLayer = startsByLayer;
+        _edgeDragBulkBefore = beforeByLayer;
+      }
+    }
     return true;
   }
+
+  /// The selection's real (non-ghost) drawing-block start keys, in order.
+  List<int> _selectionBlockStarts(
+    Layer layer,
+    TimelineFrameRangeSelection selection,
+  ) => [
+    for (final entry in layer.timeline.entries)
+      if (entry.key >= selection.startIndex &&
+          entry.key < selection.endIndexExclusive &&
+          entry.value.isDrawing &&
+          !entry.value.ghost)
+        entry.key,
+  ];
 
   Layer _edgeDraggedLayer({
     required Layer before,
@@ -3212,6 +3264,45 @@ class EditorSessionManager extends ChangeNotifier {
       return;
     }
 
+    // Bulk selection retime (UI-R17 #3/#8): the edge delta becomes a
+    // LENGTH delta on every selected block of every spanned layer (end
+    // edge: +delta, start edge: dragging right shrinks); the ripple
+    // packs/pushes downstream per layer. One composite undo on release.
+    final bulkStarts = _edgeDragBulkStartsByLayer;
+    final bulkBefore = _edgeDragBulkBefore;
+    if (bulkStarts != null && bulkBefore != null) {
+      final lengthDelta = edge == TimelineBlockEdge.end
+          ? cumulativeDelta
+          : -cumulativeDelta;
+      final edits = <({Layer before, Layer after})>[];
+      final previews = <LayerId, Layer>{};
+      for (final entry in bulkStarts.entries) {
+        final beforeLayer = bulkBefore[entry.key];
+        if (beforeLayer == null) {
+          continue;
+        }
+        final after = _timelineController.retimedLayerForBlocks(
+          layer: beforeLayer,
+          newLengthByStart: {
+            for (final start in entry.value)
+              if (beforeLayer.timeline[start]?.isDrawing ?? false)
+                start: beforeLayer.timeline[start]!.length! + lengthDelta,
+          },
+        );
+        if (after != null && after != beforeLayer) {
+          edits.add((before: beforeLayer, after: after));
+          previews[entry.key] = after;
+        }
+      }
+      _edgeDragBulkEdits = edits.isEmpty ? null : edits;
+      dragPreview.value = previews.isEmpty
+          ? null
+          : previews.length == 1
+          ? ExposureEdgeDragPreview(previewLayer: previews.values.single)
+          : BlockMoveDragPreview(previewLayers: previews);
+      return;
+    }
+
     final after = _edgeDraggedLayer(
       before: before,
       blockStart: blockStart,
@@ -3241,12 +3332,23 @@ class EditorSessionManager extends ChangeNotifier {
   void endExposureEdgeDrag() {
     final before = _edgeDragBefore;
     final after = _edgeDragAfter;
+    final bulkEdits = _edgeDragBulkEdits;
     _edgeDragBefore = null;
     _edgeDragEdge = null;
     _edgeDragBlockStart = null;
+    _edgeDragBulkStartsByLayer = null;
+    _edgeDragBulkBefore = null;
+    _edgeDragBulkEdits = null;
     _edgeDragAfter = null;
     _edgeDragWindow = null;
     dragPreview.value = null;
+    if (bulkEdits != null) {
+      // The selection covers the same cels after the retime (starts kept).
+      _timelineController.commitLayerTimelineDrags(bulkEdits);
+      _warmActiveCut();
+      notifyListeners();
+      return;
+    }
     if (before == null) {
       return;
     }
@@ -3649,6 +3751,9 @@ class EditorSessionManager extends ChangeNotifier {
     _edgeDragBefore = null;
     _edgeDragEdge = null;
     _edgeDragBlockStart = null;
+    _edgeDragBulkStartsByLayer = null;
+    _edgeDragBulkBefore = null;
+    _edgeDragBulkEdits = null;
     _edgeDragAfter = null;
     _edgeDragWindow = null;
     dragPreview.value = null;
@@ -3692,10 +3797,16 @@ class EditorSessionManager extends ChangeNotifier {
   /// A range-select drag step: [anchorIndex] is where the drag started,
   /// [headIndex] where the pointer is now (both cut-local cell indices).
   /// Rows that cannot range-edit (attach/SE/track rows) stay unselectable.
+  ///
+  /// [headLayerId] (UI-R17 #8, Excel-style): the row under the pointer —
+  /// the selection spans every ELIGIBLE layer between anchor and head in
+  /// display order, and the frame range grows until it covers whole
+  /// blocks on every spanned layer.
   void updateFrameRangeSelectionDrag({
     required LayerId layerId,
     required int anchorIndex,
     required int headIndex,
+    LayerId? headLayerId,
   }) {
     if (!_blockMoveEligible(layerId)) {
       return;
@@ -3704,11 +3815,72 @@ class EditorSessionManager extends ChangeNotifier {
     if (layer == null) {
       return;
     }
-    frameRangeSelection.value = snapFrameRangeToBlocks(
+    final base = snapFrameRangeToBlocks(
       layer: layer,
       anchorIndex: anchorIndex,
       headIndex: headIndex,
     );
+    if (base == null) {
+      frameRangeSelection.value = null;
+      return;
+    }
+    final spanIds = _selectionSpanLayerIds(layerId, headLayerId ?? layerId);
+    if (spanIds.length <= 1) {
+      frameRangeSelection.value = base;
+      return;
+    }
+    // Union-snap: expand until no spanned layer's block is cut. Each pass
+    // can only grow the range, so the loop terminates.
+    var start = base.startIndex;
+    var end = base.endIndexExclusive;
+    var changed = true;
+    while (changed) {
+      changed = false;
+      for (final id in spanIds) {
+        final spanned = _layerById(id);
+        if (spanned == null) {
+          continue;
+        }
+        final snapped = snapFrameRangeToBlocks(
+          layer: spanned,
+          anchorIndex: start,
+          headIndex: end - 1,
+        );
+        if (snapped == null) {
+          continue;
+        }
+        if (snapped.startIndex < start || snapped.endIndexExclusive > end) {
+          start = math.min(start, snapped.startIndex);
+          end = math.max(end, snapped.endIndexExclusive);
+          changed = true;
+        }
+      }
+    }
+    frameRangeSelection.value = TimelineFrameRangeSelection(
+      layerId: layerId,
+      startIndex: start,
+      endIndexExclusive: end,
+      layerIds: spanIds,
+    );
+  }
+
+  /// The display-ordered ELIGIBLE layers between [anchor] and [head]
+  /// (inclusive). Ineligible rows inside the span are skipped — the
+  /// anim→SE safety (UI-R17 #8) holds because SE/attach rows are never
+  /// selectable to begin with.
+  List<LayerId> _selectionSpanLayerIds(LayerId anchor, LayerId head) {
+    final eligible = [
+      for (final layer in activeCutOrNull?.layers ?? const <Layer>[])
+        if (_blockMoveEligible(layer.id)) layer.id,
+    ];
+    final anchorIndex = eligible.indexOf(anchor);
+    final headIndex = eligible.indexOf(head);
+    if (anchorIndex == -1 || headIndex == -1) {
+      return [anchor];
+    }
+    final low = math.min(anchorIndex, headIndex);
+    final high = math.max(anchorIndex, headIndex);
+    return eligible.sublist(low, high + 1);
   }
 
   void clearFrameRangeSelection() {
@@ -3868,9 +4040,16 @@ class EditorSessionManager extends ChangeNotifier {
 
   /// Starts moving the CURRENT frame-range selection; returns false when
   /// there is none (or its row stands down).
+  ///
+  /// Cross-layer selections (UI-R17 #8) refuse the MOVE for now — the
+  /// drag falls back to re-selecting. Bulk delete/comma/edge ops cover
+  /// the span; a multi-layer move (with its per-layer push planning and
+  /// cross-kind safety) is a follow-up.
   bool beginFrameRangeMoveDrag() {
     final selection = frameRangeSelection.value;
-    if (selection == null || !_blockMoveEligible(selection.layerId)) {
+    if (selection == null ||
+        selection.spanLayerIds.length > 1 ||
+        !_blockMoveEligible(selection.layerId)) {
       return false;
     }
     final layer = _layerById(selection.layerId);
@@ -4333,6 +4512,11 @@ class EditorSessionManager extends ChangeNotifier {
   }
 
   bool get canDeleteCellAtCurrentFrame {
+    // A live selection is deletable wherever the playhead stands (UI-R17
+    // #2).
+    if (_selectionBlockStartsByLayer() != null) {
+      return true;
+    }
     final layer = activeLayer;
     // Attach rows: cel removal is out of v1 scope (delete the row or undo
     // the creation) — cells are display material here.
@@ -4459,6 +4643,16 @@ class EditorSessionManager extends ChangeNotifier {
   }
 
   void deleteCellAtCurrentFrame() {
+    // A live selection routes the delete to EVERY selected block on
+    // EVERY spanned layer (UI-R17 #2/#8, one composite undo); the
+    // leftover selection covers empty cells so it clears with the delete.
+    final selectionTargets = _selectionBlockStartsByLayer();
+    if (selectionTargets != null) {
+      _timelineController.deleteBlocksForLayers(selectionTargets);
+      clearFrameRangeSelection();
+      notifyListeners();
+      return;
+    }
     final layer = activeLayer;
     if (layer == null || !canDeleteCellAtCurrentFrame) {
       return;
@@ -4466,6 +4660,113 @@ class EditorSessionManager extends ChangeNotifier {
 
     _timelineController.deleteCellForLayer(layerId: layer.id);
     notifyListeners();
+  }
+
+  /// The selection resolved to real block starts per spanned layer; null
+  /// when there is no selection (or it holds no real blocks anywhere).
+  Map<LayerId, List<int>>? _selectionBlockStartsByLayer() {
+    final selection = frameRangeSelection.value;
+    if (selection == null) {
+      return null;
+    }
+    final byLayer = <LayerId, List<int>>{};
+    for (final id in selection.spanLayerIds) {
+      final layer = _layerById(id);
+      if (layer == null) {
+        continue;
+      }
+      final starts = _selectionBlockStarts(layer, selection);
+      if (starts.isNotEmpty) {
+        byLayer[id] = starts;
+      }
+    }
+    return byLayer.isEmpty ? null : byLayer;
+  }
+
+  // --- Comma set (UI-R17 #7: the 1/2/3/4/N buttons) -------------------------
+
+  /// Whether a comma set has a target: the selection's blocks, else the
+  /// active layer's block covering the playhead.
+  bool get canSetCommaForSelectionOrCurrent =>
+      _selectionBlockStartsByLayer() != null || canDeleteCellAtCurrentFrame;
+
+  /// Sets the exposure length of every selected block — or the covering
+  /// block at the playhead without a selection — to [comma], packing each
+  /// layer's run with the retime ripple (1--2--3-- set to 1 reads 123;
+  /// TVP). One composite undo across spanned layers; the selection
+  /// follows the retimed span so repeated comma presses keep operating on
+  /// the same cels.
+  void setCommaForSelectionOrCurrent(int comma) {
+    if (comma < 1) {
+      return;
+    }
+    final selection = frameRangeSelection.value;
+    final selectionTargets = _selectionBlockStartsByLayer();
+    if (selection != null && selectionTargets != null) {
+      _timelineController.retimeBlocksForLayers({
+        for (final entry in selectionTargets.entries)
+          entry.key: {for (final start in entry.value) start: comma},
+      });
+      _reselectRetimedSelection(selection, selectionTargets);
+      _warmActiveCut();
+      notifyListeners();
+      return;
+    }
+    final layer = activeLayer;
+    if (layer == null || isAttachedLayer(layer)) {
+      return;
+    }
+    final block = coveringDrawingBlockAt(
+      layer.timeline,
+      _timelineController.currentFrameIndex,
+    );
+    if (block == null || block.entry.ghost) {
+      return;
+    }
+    _timelineController.retimeBlocksForLayer(
+      layerId: layer.id,
+      newLengthByStart: {block.startIndex: comma},
+    );
+    _warmActiveCut();
+    notifyListeners();
+  }
+
+  /// Re-snaps the selection to the SAME cels after a retime: each layer's
+  /// first retimed block kept its start; the span now ends where the last
+  /// of its retimed blocks ends (max across layers).
+  void _reselectRetimedSelection(
+    TimelineFrameRangeSelection selection,
+    Map<LayerId, List<int>> startsByLayer,
+  ) {
+    int? end;
+    for (final entry in startsByLayer.entries) {
+      final layer = _layerById(entry.key);
+      if (layer == null) {
+        continue;
+      }
+      var remaining = entry.value.length;
+      for (final timelineEntry in layer.timeline.entries) {
+        if (timelineEntry.key < entry.value.first ||
+            !timelineEntry.value.isDrawing ||
+            timelineEntry.value.ghost) {
+          continue;
+        }
+        final blockEnd = timelineEntry.key + timelineEntry.value.length!;
+        end = end == null ? blockEnd : math.max(end, blockEnd);
+        remaining -= 1;
+        if (remaining == 0) {
+          break;
+        }
+      }
+    }
+    frameRangeSelection.value = end == null
+        ? null
+        : TimelineFrameRangeSelection(
+            layerId: selection.layerId,
+            startIndex: selection.startIndex,
+            endIndexExclusive: end,
+            layerIds: selection.layerIds,
+          );
   }
 
   int get currentFrameIndex => _timelineController.currentFrameIndex;
@@ -4704,38 +5005,91 @@ class EditorSessionManager extends ChangeNotifier {
   final ValueNotifier<OnionSkinSettings> onionSkinSettings =
       ValueNotifier<OnionSkinSettings>(const OnionSkinSettings());
 
-  /// The `O` shortcut / toolbar toggle.
-  void toggleOnionSkin() {
-    onionSkinSettings.value = onionSkinSettings.value.copyWith(
-      enabled: !onionSkinSettings.value.enabled,
-    );
+  /// PER-LAYER onion application (UI-R17 #5, TVPaint's light table): the
+  /// layers whose ghosts composite. The panel's master switch is GONE —
+  /// row/legend toggles drive this set.
+  final ValueNotifier<Set<LayerId>> onionSkinLayerIds =
+      ValueNotifier<Set<LayerId>>(<LayerId>{});
+
+  bool isLayerOnionSkinEnabled(LayerId layerId) =>
+      onionSkinLayerIds.value.contains(layerId);
+
+  void toggleLayerOnionSkin(LayerId layerId) {
+    final next = Set<LayerId>.from(onionSkinLayerIds.value);
+    if (!next.remove(layerId)) {
+      next.add(layerId);
+    }
+    onionSkinLayerIds.value = next;
+    // Row/legend toggle glyphs read through the session listenable.
+    notifyListeners();
   }
 
-  /// The ghost frames to composite under the ACTIVE layer at the playhead:
-  /// the onion plan (unique drawings, peg opacities, side tints) as canvas
-  /// stack requests. Empty while disabled, on brush-banned rows, or with
-  /// no active layer.
+  /// The drawing layers the legend's bulk onion sweep addresses: the
+  /// active cut's VISIBLE brush-holding rows.
+  List<Layer> get _onionSweepLayers => [
+    for (final layer in activeCutOrNull?.layers ?? const <Layer>[])
+      if (layer.isVisible && layerKindAcceptsBrushInput(layer.kind)) layer,
+  ];
+
+  /// Whether the legend's bulk button reads ON (every displayed layer
+  /// currently ghosting).
+  bool get displayedLayersOnionSkinEnabled {
+    final targets = _onionSweepLayers;
+    return targets.isNotEmpty &&
+        targets.every((layer) => isLayerOnionSkinEnabled(layer.id));
+  }
+
+  /// Legend bulk sweep (UI-R17 #5): all displayed layers on — or, when
+  /// they all are already, all off.
+  void toggleOnionSkinForDisplayedLayers() {
+    final targets = _onionSweepLayers;
+    if (targets.isEmpty) {
+      return;
+    }
+    final enable = !displayedLayersOnionSkinEnabled;
+    final next = Set<LayerId>.from(onionSkinLayerIds.value);
+    for (final layer in targets) {
+      enable ? next.add(layer.id) : next.remove(layer.id);
+    }
+    onionSkinLayerIds.value = next;
+    notifyListeners();
+  }
+
+  /// The `O` shortcut: toggles the ACTIVE layer's onion (the per-layer
+  /// model's successor of the old master toggle).
+  void toggleOnionSkin() {
+    final layer = activeLayer;
+    if (layer == null) {
+      return;
+    }
+    toggleLayerOnionSkin(layer.id);
+  }
+
+  /// The ghost frames to composite at the playhead: every onion-enabled
+  /// VISIBLE drawing layer contributes its plan (unique drawings, peg
+  /// opacities, side tints) in layer-stack order.
   List<CanvasLayerImageRequest> onionSkinCanvasRequests() {
     final settings = onionSkinSettings.value;
-    final layer = activeLayer;
     final cut = activeCutOrNull;
-    if (!settings.enabled ||
-        layer == null ||
-        cut == null ||
-        !layerKindAcceptsBrushInput(layer.kind)) {
+    final enabledIds = onionSkinLayerIds.value;
+    if (cut == null || enabledIds.isEmpty) {
       return const [];
     }
     return [
-      for (final plan in planOnionSkin(
-        layer: layer,
-        frameIndex: _timelineController.currentFrameIndex,
-        settings: settings,
-      ))
-        CanvasLayerImageRequest(
-          frameKey: brushFrameKeyForCut(cut, layer.id, plan.frameId),
-          opacity: plan.opacity,
-          tint: plan.tint,
-        ),
+      for (final layer in cut.layers)
+        if (enabledIds.contains(layer.id) &&
+            layer.isVisible &&
+            layerKindAcceptsBrushInput(layer.kind))
+          for (final plan in planOnionSkin(
+            layer: layer,
+            frameIndex: _timelineController.currentFrameIndex,
+            settings: settings,
+          ))
+            CanvasLayerImageRequest(
+              frameKey: brushFrameKeyForCut(cut, layer.id, plan.frameId),
+              opacity: plan.opacity,
+              tint: plan.tint,
+            ),
     ];
   }
 

@@ -116,6 +116,9 @@ const double layerFxSlotWidth = 22;
 const double layerVisibilitySlotWidth = 22;
 const double layerMuteSlotWidth = 18;
 const double layerOpacitySlotWidth = 64;
+
+/// The per-layer onion-skin toggle column (UI-R17 #5, TVPaint style).
+const double layerOnionSlotWidth = 22;
 const double layerControlChipGap = 4;
 
 /// Every layer kind carries the timesheet-output toggle — one entrance for

@@ -32,7 +32,7 @@ List<OnionSkinFramePlan> planOnionSkin({
   required int frameIndex,
   required OnionSkinSettings settings,
 }) {
-  if (!settings.enabled || frameIndex < 0) {
+  if (frameIndex < 0) {
     return const [];
   }
   final timeline = SplayTreeMap<int, TimelineExposure>.of(layer.timeline);
