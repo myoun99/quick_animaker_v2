@@ -78,7 +78,7 @@ void main() {
         // past-extent): clipping must agree exactly.
         final x = random.nextInt(tileWidth + 24) - 12;
         final y = random.nextInt(tileHeight + 24) - 12;
-        switch (random.nextInt(4)) {
+        switch (random.nextInt(6)) {
           case 0:
             writer.fillRect(
               x,
@@ -111,6 +111,29 @@ void main() {
               random.nextInt(atlasHeight + 8) - 4,
               random.nextInt(16),
               random.nextInt(16),
+              randomRgba(random),
+            );
+          case 4:
+            // Fractional geometry + random corner masks: the AA corner
+            // math must agree to the byte.
+            writer.rrectFill(
+              x + random.nextDouble(),
+              y + random.nextDouble(),
+              1 + random.nextInt(40) + random.nextDouble(),
+              1 + random.nextInt(24) + random.nextDouble(),
+              random.nextDouble() * 8,
+              random.nextInt(16),
+              randomRgba(random),
+            );
+          case 5:
+            writer.rrectStroke(
+              x + random.nextDouble(),
+              y + random.nextDouble(),
+              1 + random.nextInt(40) + random.nextDouble(),
+              1 + random.nextInt(24) + random.nextDouble(),
+              random.nextDouble() * 8,
+              random.nextInt(16),
+              0.5 + random.nextDouble() * 2,
               randomRgba(random),
             );
         }
@@ -149,11 +172,50 @@ void main() {
         equals(referencePixels),
         reason: 'round $round ($tileWidth x $tileHeight, $opCount ops)',
       );
-      // A finished tile is OPAQUE by contract.
-      for (var i = 3; i < nativePixels.length; i += 4) {
-        expect(nativePixels[i], 255, reason: 'round $round alpha at $i');
-      }
     }
+  });
+
+  test('a TRANSPARENT background accumulates premultiplied bytes '
+      '(native == reference; the raw-upload contract)', () {
+    if (!available) {
+      markTestSkipped('qa_engine.dll not built');
+      return;
+    }
+    final engine = QaNativeEngine.instance!;
+    final writer = TimelineGridTileOpWriter()
+      // 50%-alpha white over transparent: premultiplied = rgb 128.
+      ..fillRect(2, 2, 4, 4, 0x80FFFFFF);
+    final ops = writer.build();
+
+    final nativePixels = Uint8List(8 * 8 * 4);
+    expect(
+      engine.gridRasterTileBytes(
+        pixels: nativePixels,
+        tileWidth: 8,
+        tileHeight: 8,
+        backgroundRgba: 0,
+        ops: ops,
+      ),
+      0,
+    );
+    final referencePixels = Uint8List(8 * 8 * 4);
+    expect(
+      timelineGridRasterTileReference(
+        pixels: referencePixels,
+        tileWidth: 8,
+        tileHeight: 8,
+        backgroundRgba: 0,
+        ops: ops,
+      ),
+      0,
+    );
+    expect(nativePixels, equals(referencePixels));
+
+    final inside = (3 * 8 + 3) * 4;
+    expect(nativePixels[inside], 128, reason: 'premultiplied red');
+    expect(nativePixels[inside + 3], 128, reason: 'alpha');
+    expect(nativePixels[0], 0, reason: 'untouched pixels stay transparent');
+    expect(nativePixels[3], 0);
   });
 
   test('the error contract matches: truncated stream / glyph without an '
