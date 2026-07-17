@@ -1423,6 +1423,20 @@ class EditorSessionManager extends ChangeNotifier {
         _deselectActiveCutForGap();
         frameSeekCommitted.value += 1;
       }
+      notifyListeners();
+      return;
+    }
+    // Re-showing (UI-R14 #2): the symmetric restore — when the playhead
+    // is parked ON the re-shown cut (the eye-off gap state), turning the
+    // eye back on lands there again, exactly as if the position were
+    // clicked. Without this the picture only returned in playback while
+    // the editing view stayed in the void.
+    final parked = _gapGlobalFrame;
+    if (parked != null &&
+        _editingSession.activeCutId == null &&
+        trackFrameAxis().ownerOf(parked)?.cutId == cutId) {
+      selectGlobalFrame(parked);
+      return; // selectGlobalFrame notifies.
     }
     notifyListeners();
   }

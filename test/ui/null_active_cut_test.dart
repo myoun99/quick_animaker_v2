@@ -40,8 +40,8 @@ void main() {
   });
 
   test('hiding the ACTIVE cut\'s picture enters the no-cut state exactly '
-      'like a gap landing (UI-R13 #2): park at the current global, '
-      'deselect; other cuts and re-showing do not', () {
+      'like a gap landing (UI-R13 #2); re-showing RESTORES the parked '
+      'position (UI-R14 #2, the symmetric inverse)', () {
     final (s, first, second, aEnd) = gappedSession();
     addTearDown(s.dispose);
     s.selectCut(first);
@@ -60,10 +60,23 @@ void main() {
     expect(s.gapParkedGlobalFrame, 2, reason: 'parked where it stood');
     expect(s.editingPlayheadInGap, isTrue);
 
-    // Re-showing does NOT auto-select — the user picks the cut back up.
+    // Re-showing while parked ON the cut lands there again — as if the
+    // position were clicked (without this the eye-on read as a no-op:
+    // the editing view stayed in the void).
     s.toggleCutPictureVisibility(first);
     expect(s.isCutPictureVisible(first), isTrue);
+    expect(s.activeCutId, first, reason: 'the parked position restores');
+    expect(s.currentFrameIndex, 2);
+    expect(s.editingPlayheadInGap, isFalse);
+
+    // Parked in a REAL axis gap: re-showing a nearby cut keeps the
+    // parking (nothing to land on at that index).
+    s.selectGlobalFrame(aEnd + 1);
     expect(s.activeCutId, isNull);
+    s.toggleCutPictureVisibility(first);
+    s.toggleCutPictureVisibility(first);
+    expect(s.activeCutId, isNull, reason: 'the gap parking survives');
+    expect(s.gapParkedGlobalFrame, aEnd + 1);
   });
 
   test('a gap scrub deselects the cut IMMEDIATELY (UI-R10 #13): the empty '

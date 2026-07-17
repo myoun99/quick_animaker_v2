@@ -87,20 +87,11 @@ class TimelineRowCellsPainter extends CustomPainter {
     required this.colorScheme,
     required this.baseTextStyle,
     this.axis = Axis.horizontal,
-    this.repeatWord = 'REPEAT',
   });
 
   final Layer layer;
   final bool active;
   final int playbackFrameCount;
-
-  /// The NOTATION-language repeat word (UI-R13 #4): repeat ghost chains
-  /// print the sheet convention — the chain's first cell writes the cel
-  /// it restarts on, the following cells spell this word one character
-  /// per cell. Display only; the expanded entries stay for exporters.
-  final String repeatWord;
-
-  late final List<String> _repeatWordChars = repeatWord.split('');
 
   final int frameStartIndex;
   final int frameEndIndexExclusive;
@@ -119,13 +110,6 @@ class TimelineRowCellsPainter extends CustomPainter {
 
   TimelineCellExposureState _stateAt(int frameIndex) =>
       exposureStateForLayer(layer, frameIndex);
-
-  /// UI-R11 #7: how much of the plain (non-block) cell grid survives at
-  /// the current zoom — 1 at comfortable cell widths, 0 at/below ~7px
-  /// where the hairlines would smear into noise. paint() skips the border
-  /// draw entirely at 0, so far-out zooms also draw fewer primitives.
-  double get _baseGridFade =>
-      ((frameCellExtent - 7) / 9).clamp(0.0, 1.0).toDouble();
 
   /// The cell's rect in the ROW's local coordinates — the probe geometry
   /// tests and the row's hit-testing share (single source of truth).
@@ -180,19 +164,16 @@ class TimelineRowCellsPainter extends CustomPainter {
     } else if (frameCellExtent < 14) {
       glyph = '';
     } else if (ghost) {
-      // Ghosts are TEXT-ONLY (UI-R10 #11). A repeat ghost chain prints
-      // the sheet CONVENTION (UI-R13 #4): its first cell writes the cel
-      // it restarts on, the following cells spell the notation repeat
-      // word one character per cell — never the re-listed numbers.
-      final chainOffset =
-          timelineGhostChainOffsetAt(layer, frameIndex) ?? frameIndex;
-      if (chainOffset == 0) {
-        glyph = frameName == null || frameName.isEmpty ? '○' : frameName;
-      } else {
-        glyph = chainOffset - 1 < _repeatWordChars.length
-            ? _repeatWordChars[chainOffset - 1]
-            : '';
-      }
+      // Ghosts are TEXT-ONLY (UI-R10 #11): a repeat ghost prints just the
+      // cel names, exactly like before — the SHEET alone carries the
+      // repeat-word convention (UI-R14 #3 rolled the timeline back).
+      glyph = switch (exposureState) {
+        TimelineCellExposureState.drawingStart =>
+          frameName == null || frameName.isEmpty ? '○' : frameName,
+        TimelineCellExposureState.markHeld ||
+        TimelineCellExposureState.markUncovered => '●',
+        _ => '',
+      };
     } else {
       glyph = _marker(
         exposureState: exposureState,
@@ -274,18 +255,16 @@ class TimelineRowCellsPainter extends CustomPainter {
     final washDim = model.ghost
         ? frameIndex >= playbackFrameCount
         : model.dimmed;
-    // The base cell grid draws LIGHTER than the blocks (UI-R10 #26 — the
-    // 6f/24f line system carries the rhythm instead of the old band
-    // tint); block cells keep their full border.
-    final baseBorder = model.segment.isBlock
-        ? styleColors.border
-        : styleColors.border.withValues(alpha: 0.45);
-    final border = washDim
+    // Blocks keep full chrome; the PLAIN grid draws the shared faint ink
+    // (UI-R14 #4 — one value across drawing rows, sparse rows and the
+    // ruler, fading out as cells shrink per UI-R11 #7) so the 6f/24f
+    // beat lines alone carry the rhythm.
+    final blockBorder = washDim
         ? Color.alphaBlend(
             colorScheme.outlineVariant.withValues(alpha: 0.55),
-            baseBorder,
+            styleColors.border,
           )
-        : baseBorder;
+        : styleColors.border;
     return (
       background: washDim
           ? Color.alphaBlend(
@@ -293,12 +272,9 @@ class TimelineRowCellsPainter extends CustomPainter {
               styleColors.background,
             )
           : styleColors.background,
-      // UI-R11 #7: the plain grid FADES OUT as the cells shrink (the
-      // storyboard's adaptive-detail convention) until only the 6f/24f
-      // line system carries the structure. Blocks keep full chrome.
       border: model.segment.isBlock
-          ? border
-          : border.withValues(alpha: border.a * _baseGridFade),
+          ? blockBorder
+          : timelineBaseGridInk(colorScheme, frameCellExtent: frameCellExtent),
       radius: _cellRadius(model.segment),
     );
   }
@@ -452,7 +428,6 @@ class TimelineRowCellsPainter extends CustomPainter {
       oldDelegate.frameCellExtent != frameCellExtent ||
       oldDelegate.crossAxisExtent != crossAxisExtent ||
       oldDelegate.axis != axis ||
-      oldDelegate.repeatWord != repeatWord ||
       !identical(oldDelegate.colorScheme, colorScheme) ||
       !identical(oldDelegate.exposureStateForLayer, exposureStateForLayer) ||
       !identical(oldDelegate.frameNameForLayer, frameNameForLayer);
@@ -514,7 +489,6 @@ Widget timelineRowCellsPaintArea({
   required double frameCellExtent,
   required double crossAxisExtent,
   required Axis axis,
-  String repeatWord = 'REPEAT',
   required TimelineCellExposureState Function(Layer layer, int frameIndex)
   exposureStateForLayer,
   String? Function(Layer layer, int frameIndex)? frameNameForLayer,
@@ -537,7 +511,6 @@ Widget timelineRowCellsPaintArea({
     colorScheme: Theme.of(context).colorScheme,
     baseTextStyle: DefaultTextStyle.of(context).style,
     axis: axis,
-    repeatWord: repeatWord,
   );
   final totalMainExtent =
       leadingFrameSpacerWidth +

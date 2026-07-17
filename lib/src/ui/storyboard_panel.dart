@@ -38,7 +38,10 @@ import 'timeline/transform_lane_policy.dart'
 import 'timeline/timeline_block.dart';
 import 'timeline/timeline_drag_preview.dart';
 import 'timeline/timeline_cell_style.dart'
-    show timelineDrawingInkColor, timelineSelectedFrameBorderColor;
+    show
+        timelineBaseGridAlpha,
+        timelineDrawingInkColor,
+        timelineSelectedFrameBorderColor;
 import 'timeline/timeline_exposure_comma_drag_handle.dart'
     show TimelineBlockEdgeGrip;
 import 'timeline/timeline_exposure_comma_drag_policy.dart'
@@ -1369,19 +1372,24 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
                                               key: const ValueKey<String>(
                                                 'storyboard-frame-lines',
                                               ),
-                                              painter:
-                                                  _StoryboardFrameLinesPainter(
-                                                    pixelsPerFrame:
-                                                        scale.pixelsPerFrame,
-                                                    color: colorScheme
-                                                        .outlineVariant
-                                                        .withValues(
-                                                          alpha: 0.35,
-                                                        ),
-                                                    framesPerSecond:
-                                                        widget.projectFps,
-                                                    colorScheme: colorScheme,
-                                                  ),
+                                              painter: _StoryboardFrameLinesPainter(
+                                                pixelsPerFrame:
+                                                    scale.pixelsPerFrame,
+                                                // The shared faint
+                                                // grid ink (UI-R14
+                                                // #4) — one value
+                                                // across all three
+                                                // panels.
+                                                color: colorScheme
+                                                    .outlineVariant
+                                                    .withValues(
+                                                      alpha:
+                                                          timelineBaseGridAlpha,
+                                                    ),
+                                                framesPerSecond:
+                                                    widget.projectFps,
+                                                colorScheme: colorScheme,
+                                              ),
                                             ),
                                           ),
                                         ),

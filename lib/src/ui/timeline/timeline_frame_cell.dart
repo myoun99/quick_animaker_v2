@@ -101,7 +101,16 @@ class TimelineFrameCell extends StatelessWidget {
             styleColors.background,
           )
         : styleColors.background;
-    final borderColor = dimmed
+    // Blocks keep full chrome; the PLAIN grid draws the shared faint ink
+    // (UI-R14 #4) — the sparse widget rows (SE/camera/instruction) read
+    // as the same grid as the painterized drawing rows and the ruler.
+    final plainGridCell = cameraSummaryCell || !exposureBlockSegment.isBlock;
+    final borderColor = plainGridCell
+        ? timelineBaseGridInk(
+            colorScheme,
+            frameCellExtent: width ?? _metrics.frameCellWidth,
+          )
+        : dimmed
         ? Color.alphaBlend(
             colorScheme.outlineVariant.withValues(alpha: 0.55),
             styleColors.border,

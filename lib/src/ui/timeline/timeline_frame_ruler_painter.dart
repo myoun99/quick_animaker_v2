@@ -129,27 +129,28 @@ class TimelineFrameRulerPainter extends CustomPainter {
       final rect = headerRectFor(frameIndex);
       canvas.drawRect(rect, fillPaint..color = model.background);
 
-      final borderColor = model.outsidePlaybackRange
-          ? colorScheme.outlineVariant.withValues(alpha: 0.55)
-          : colorScheme.outlineVariant;
+      // Per-cell borders draw the shared FAINT grid ink (UI-R14 #4 —
+      // the ruler reads as the same quiet grid as the rows; the strip's
+      // structural baseline paints once after the loop).
+      final borderColor = timelineBaseGridInk(
+        colorScheme,
+        frameCellExtent: metrics.frameCellWidth,
+      );
       final labeled = frameIndex % labelEveryFrames == 0;
-      if (narrow) {
-        // Zoomed-out cells drop the per-cell border noise: the baseline
-        // always draws, labeled cells keep a left tick (G8 contract).
-        canvas.drawLine(
-          Offset(rect.left, rect.bottom - 0.5),
-          Offset(rect.right, rect.bottom - 0.5),
-          linePaint..color = borderColor,
-        );
-        if (labeled) {
-          canvas.drawLine(
-            Offset(rect.left + 0.5, rect.top),
-            Offset(rect.left + 0.5, rect.bottom),
-            linePaint..color = borderColor,
-          );
+      if (borderColor.a > 0) {
+        if (narrow) {
+          // Zoomed-out cells drop the per-cell border noise: labeled
+          // cells keep a left tick (G8 contract).
+          if (labeled) {
+            canvas.drawLine(
+              Offset(rect.left + 0.5, rect.top),
+              Offset(rect.left + 0.5, rect.bottom),
+              linePaint..color = borderColor,
+            );
+          }
+        } else {
+          canvas.drawRect(rect.deflate(0.5), borderPaint..color = borderColor);
         }
-      } else {
-        canvas.drawRect(rect.deflate(0.5), borderPaint..color = borderColor);
       }
 
       // Bottom line: in-cell centered when every cell labels itself, the
@@ -201,6 +202,15 @@ class TimelineFrameRulerPainter extends CustomPainter {
         );
       }
     }
+
+    // The strip's structural BASELINE (the ruler/body divider) — full
+    // strength, once, whatever the zoom; per-cell borders above stay
+    // faint (UI-R14 #4).
+    canvas.drawLine(
+      Offset(0, size.height - 0.5),
+      Offset(size.width, size.height - 0.5),
+      linePaint..color = colorScheme.outlineVariant,
+    );
   }
 
   TextPainter _label(String text, TextStyle style) => TextPainter(
