@@ -638,6 +638,20 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
     return null;
   }
 
+  /// The cut whose end DEFINES the content end (max endFrame across all
+  /// tracks; first on tie) — the end-line drag's subject (UI-R18 #15).
+  CutId? _endBoundaryCutId(List<StoryboardTimelineLayoutEntry> layoutEntries) {
+    CutId? cutId;
+    var best = -1;
+    for (final entry in layoutEntries) {
+      if (entry.endFrame > best) {
+        best = entry.endFrame;
+        cutId = entry.cutId;
+      }
+    }
+    return cutId;
+  }
+
   /// The shared lane substrate speaks Layer; the V track's cut-level lanes
   /// ride a synthetic carrier 窶・its id only feeds the widget keys, the
   /// edit closures capture their cut ([StoryboardPanel.cutLaneEditFor]).
@@ -1554,6 +1568,42 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
                                                   ),
                                                 ),
                                         ),
+                                      // The cut-end boundary through the
+                                      // STRIPS (UI-R18 #15): the ruler's
+                                      // red line extended vertically, and
+                                      // draggable — the end line IS the
+                                      // content end, so the drag end-trims
+                                      // the boundary-defining LAST cut
+                                      // (the panel's internal preview
+                                      // substitution makes the line and
+                                      // the blocks follow live).
+                                      if (totalFrames > 0)
+                                        Positioned(
+                                          key: const ValueKey<String>(
+                                            'storyboard-cut-end-line',
+                                          ),
+                                          left: scale.leftForFrame(totalFrames),
+                                          top: 0,
+                                          bottom: 0,
+                                          width: 2,
+                                          child: const IgnorePointer(
+                                            child: ColoredBox(
+                                              color: AppColors.danger,
+                                            ),
+                                          ),
+                                        ),
+                                      if (totalFrames > 0 &&
+                                          widget.cutTrim != null)
+                                        _StoryboardEndLineHandle(
+                                          left:
+                                              scale.leftForFrame(totalFrames) -
+                                              5,
+                                          cutId: _endBoundaryCutId(
+                                            layoutEntries,
+                                          ),
+                                          pixelsPerFrame: scale.pixelsPerFrame,
+                                          cutTrim: widget.cutTrim!,
+                                        ),
                                     ],
                                   ),
                                 ),
@@ -1638,7 +1688,7 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
 /// adaptive labels, runway dimming and the cut-end boundary line. The row is
 /// windowed to the scrolled viewport because the storyboard's scroll content
 /// is not otherwise virtualized.
-class _StoryboardRuler extends StatelessWidget {
+class _StoryboardRuler extends StatefulWidget {
   const _StoryboardRuler({
     required this.width,
     required this.renderedFrames,
@@ -1704,35 +1754,45 @@ class _StoryboardRuler extends StatelessWidget {
   final int framesPerSecond;
   final bool showSeconds;
 
-  void _reportFrame(ValueChanged<int>? sink, int frame) {
-    if (sink == null || contentFrames <= 0 || renderedFrames <= 0) {
-      return;
-    }
-    sink(frame.clamp(0, renderedFrames - 1));
-  }
+  @override
+  State<_StoryboardRuler> createState() => _StoryboardRulerState();
+}
 
-  void _seekFrame(int frame) => _reportFrame(onSeekGlobalFrame, frame);
+class _StoryboardRulerState extends State<_StoryboardRuler> {
+  /// Per-gesture dedupe (the timeline's `_lastRulerScrubbedFrameIndex`):
+  /// same-frame moves report once.
+  int? _lastScrubbedFrame;
+
+  void _resetScrubTracking() => _lastScrubbedFrame = null;
 
   void _scrubAt(double dx) {
+    if (widget.contentFrames <= 0 || widget.renderedFrames <= 0) {
+      return;
+    }
     _autoPanAt(dx);
-    _reportFrame(
-      onScrubGlobalFrame ?? onSeekGlobalFrame,
-      (dx / timelineScale.pixelsPerFrame).floor(),
+    final frame = (dx / widget.timelineScale.pixelsPerFrame).floor().clamp(
+      0,
+      widget.renderedFrames - 1,
     );
+    if (frame == _lastScrubbedFrame) {
+      return;
+    }
+    _lastScrubbedFrame = frame;
+    (widget.onScrubGlobalFrame ?? widget.onSeekGlobalFrame)?.call(frame);
   }
 
   /// [dx] is content-strip local (the gesture rides the translated
   /// full-width strip); the edge test needs the VIEWPORT-relative x.
   void _autoPanAt(double dx) {
-    final onEdgeAutoPan = this.onEdgeAutoPan;
-    if (onEdgeAutoPan == null || viewportWidth <= 0) {
+    final onEdgeAutoPan = widget.onEdgeAutoPan;
+    if (onEdgeAutoPan == null || widget.viewportWidth <= 0) {
       return;
     }
     const edge = 24.0;
-    final viewportX = dx - viewportOffset.value;
+    final viewportX = dx - widget.viewportOffset.value;
     double delta = 0;
-    if (viewportX > viewportWidth - edge) {
-      delta = viewportX - (viewportWidth - edge);
+    if (viewportX > widget.viewportWidth - edge) {
+      delta = viewportX - (widget.viewportWidth - edge);
     } else if (viewportX < edge) {
       delta = viewportX - edge;
     }
@@ -1743,7 +1803,7 @@ class _StoryboardRuler extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final cellWidth = timelineScale.pixelsPerFrame;
+    final cellWidth = widget.timelineScale.pixelsPerFrame;
     final metrics = TimelineGridMetrics(
       frameCellWidth: cellWidth,
       layerRowHeight: StoryboardPanel._rulerHeight,
@@ -1751,68 +1811,77 @@ class _StoryboardRuler extends StatelessWidget {
       verticalScrollbarWidth: 0,
     );
 
-    return GestureDetector(
+    // The TIMELINE ruler's scrub scheme verbatim (UI-R18 #13): the RAW
+    // pointer layer scrubs on the press itself (the cursor comes to the
+    // finger immediately — taps included) and commits on the raw
+    // up/cancel, wherever the pointer ends up; the gesture layer below
+    // only claims the horizontal drag from the pan arena and feeds the
+    // moves. The old drag-only GestureDetector waited for arena
+    // recognition, so presses did nothing and taps never committed.
+    return Listener(
       key: const ValueKey<String>('storyboard-ruler'),
       behavior: HitTestBehavior.translucent,
-      // .down reports the true pointer-down position, so a scrub seeks the
-      // pressed frame first instead of the post-slop position. Plain taps
-      // are the header cells' own InkWells.
-      dragStartBehavior: DragStartBehavior.down,
-      // Scrubbing claims horizontal drags on the ruler strip only; the
-      // track rows below still pan the panel. Moves ride the cursor path
-      // (no commit); the release commits once. Header-cell taps stay full
-      // seeks through their own InkWells.
-      onHorizontalDragStart: (details) => _scrubAt(details.localPosition.dx),
-      onHorizontalDragUpdate: (details) => _scrubAt(details.localPosition.dx),
-      onHorizontalDragEnd: (_) => onScrubEnd?.call(),
-      onHorizontalDragCancel: () => onScrubEnd?.call(),
-      child: SizedBox(
-        width: width,
-        height: StoryboardPanel._rulerHeight,
-        child: Stack(
-          children: [
-            // STATIC header cells: cursor- and cache-independent — ticks
-            // and warming frames never rebuild them. Full bounds (UI-R15):
-            // the shared painter self-windows off the live offset.
-            TimelineFrameRuler(
-              key: const ValueKey<String>('storyboard-frame-ruler'),
-              frameStartIndex: 0,
-              frameEndIndexExclusive: renderedFrames,
-              currentFrameIndex: -1,
-              playbackFrameCount: contentFrames,
-              leadingFrameSpacerWidth: 0,
-              trailingFrameSpacerWidth: 0,
-              metrics: metrics,
-              onSelectFrame: _seekFrame,
-              framesPerSecond: framesPerSecond,
-              showSeconds: showSeconds,
-              windowBucket: windowBucket,
-              viewportMainExtent: viewportWidth,
-            ),
-            // The moving parts REPAINT only: current-frame tint + green
-            // cached bar, one thin isolated layer.
-            Positioned.fill(
-              child: IgnorePointer(
-                child: RepaintBoundary(
-                  child: CustomPaint(
-                    key: const ValueKey<String>(
-                      'storyboard-ruler-cursor-overlay',
-                    ),
-                    painter: _StoryboardRulerCursorPainter(
-                      playhead: playhead,
-                      cacheProgress: cacheProgress,
-                      windowBucket: windowBucket,
-                      viewportMainExtent: viewportWidth,
-                      renderedFrames: renderedFrames,
-                      contentFrames: contentFrames,
-                      cellWidth: cellWidth,
-                      isFrameCached: isFrameCached,
+      onPointerDown: (event) {
+        _resetScrubTracking();
+        _scrubAt(event.localPosition.dx);
+      },
+      onPointerUp: (_) => widget.onScrubEnd?.call(),
+      onPointerCancel: (_) => widget.onScrubEnd?.call(),
+      child: GestureDetector(
+        behavior: HitTestBehavior.translucent,
+        dragStartBehavior: DragStartBehavior.down,
+        onHorizontalDragStart: (details) => _scrubAt(details.localPosition.dx),
+        onHorizontalDragUpdate: (details) => _scrubAt(details.localPosition.dx),
+        onHorizontalDragEnd: (_) => _resetScrubTracking(),
+        onHorizontalDragCancel: _resetScrubTracking,
+        child: SizedBox(
+          width: widget.width,
+          height: StoryboardPanel._rulerHeight,
+          child: Stack(
+            children: [
+              // STATIC header cells: cursor- and cache-independent — ticks
+              // and warming frames never rebuild them. Full bounds (UI-R15):
+              // the shared painter self-windows off the live offset.
+              TimelineFrameRuler(
+                key: const ValueKey<String>('storyboard-frame-ruler'),
+                frameStartIndex: 0,
+                frameEndIndexExclusive: widget.renderedFrames,
+                currentFrameIndex: -1,
+                playbackFrameCount: widget.contentFrames,
+                leadingFrameSpacerWidth: 0,
+                trailingFrameSpacerWidth: 0,
+                metrics: metrics,
+                onSelectFrame: (_) {},
+                framesPerSecond: widget.framesPerSecond,
+                showSeconds: widget.showSeconds,
+                windowBucket: widget.windowBucket,
+                viewportMainExtent: widget.viewportWidth,
+              ),
+              // The moving parts REPAINT only: current-frame tint + green
+              // cached bar, one thin isolated layer.
+              Positioned.fill(
+                child: IgnorePointer(
+                  child: RepaintBoundary(
+                    child: CustomPaint(
+                      key: const ValueKey<String>(
+                        'storyboard-ruler-cursor-overlay',
+                      ),
+                      painter: _StoryboardRulerCursorPainter(
+                        playhead: widget.playhead,
+                        cacheProgress: widget.cacheProgress,
+                        windowBucket: widget.windowBucket,
+                        viewportMainExtent: widget.viewportWidth,
+                        renderedFrames: widget.renderedFrames,
+                        contentFrames: widget.contentFrames,
+                        cellWidth: cellWidth,
+                        isFrameCached: widget.isFrameCached,
+                      ),
                     ),
                   ),
                 ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
@@ -3273,6 +3342,91 @@ class _CutFxToggleButton extends StatelessWidget {
           ),
         ),
         onPressed: onToggle,
+      ),
+    );
+  }
+}
+
+/// The end line's drag grip (UI-R18 #15): a 12px strip over the strips'
+/// cut-end boundary line; dragging it end-trims the boundary-defining cut
+/// through the shared trim channel — live preview, ONE undo on release
+/// (the timeline end-line drag's storyboard sibling).
+class _StoryboardEndLineHandle extends StatefulWidget {
+  const _StoryboardEndLineHandle({
+    required this.left,
+    required this.cutId,
+    required this.pixelsPerFrame,
+    required this.cutTrim,
+  });
+
+  final double left;
+
+  /// The cut whose end sits on the boundary; null (no cuts) disables.
+  final CutId? cutId;
+  final double pixelsPerFrame;
+  final StoryboardCutTrimCallbacks cutTrim;
+
+  @override
+  State<_StoryboardEndLineHandle> createState() =>
+      _StoryboardEndLineHandleState();
+}
+
+class _StoryboardEndLineHandleState extends State<_StoryboardEndLineHandle> {
+  double _dx = 0;
+  bool _dragging = false;
+
+  void _start() {
+    final cutId = widget.cutId;
+    if (cutId == null ||
+        !widget.cutTrim.onBegin(cutId, TimelineBlockEdge.end)) {
+      return;
+    }
+    _dragging = true;
+    _dx = 0;
+  }
+
+  void _update(double delta) {
+    if (!_dragging) {
+      return;
+    }
+    _dx += delta;
+    widget.cutTrim.onUpdate((_dx / widget.pixelsPerFrame).round());
+  }
+
+  void _end() {
+    if (!_dragging) {
+      return;
+    }
+    _dragging = false;
+    widget.cutTrim.onEnd();
+  }
+
+  void _cancel() {
+    if (!_dragging) {
+      return;
+    }
+    _dragging = false;
+    widget.cutTrim.onCancel();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Positioned(
+      key: const ValueKey<String>('storyboard-cut-end-handle'),
+      left: widget.left,
+      top: 0,
+      bottom: 0,
+      width: 12,
+      child: MouseRegion(
+        cursor: SystemMouseCursors.resizeColumn,
+        child: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          dragStartBehavior: DragStartBehavior.down,
+          onHorizontalDragStart: (_) => _start(),
+          onHorizontalDragUpdate: (details) => _update(details.delta.dx),
+          onHorizontalDragEnd: (_) => _end(),
+          onHorizontalDragCancel: _cancel,
+        ),
       ),
     );
   }

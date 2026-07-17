@@ -13,6 +13,7 @@ import 'timeline_block_move_handle.dart' show resolveBlockMoveTargetLayer;
 import 'timeline_frame_range_gesture.dart';
 import 'timeline_run_end_handles.dart';
 import 'timeline_cell_exposure_state.dart';
+import 'timeline_cut_end_handle.dart';
 import 'timeline_drag_preview.dart';
 import 'timeline_exposure_comma_drag_policy.dart';
 import 'timeline_frame_coordinate_policy.dart';
@@ -107,6 +108,7 @@ class LayerTimelineGrid extends StatefulWidget {
     this.opacityDragPreview,
     this.masterOpacityValue = 1.0,
     this.seSpillInLayerIds = const {},
+    this.cutEndDrag,
   });
 
   final List<Layer> layers;
@@ -116,6 +118,11 @@ class LayerTimelineGrid extends StatefulWidget {
   /// only the dragged layer's row (its gate) and the cursor overlay —
   /// never this grid.
   final ValueListenable<TimelineDragPreview?>? dragPreview;
+
+  /// End-line drag hooks (UI-R18 #14): the red cut-end boundary grows a
+  /// grip that end-trims the ACTIVE cut through the session's trim
+  /// channel; the line follows the live preview. Null = display-only.
+  final TimelineCutEndDragCallbacks? cutEndDrag;
 
   /// Track-SE rows whose display clone starts with a spill-in block
   /// (UI-R7 #6: `~` at the cut start, start grip stands down).
@@ -1204,6 +1211,9 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                                                   widget.isFrameCached,
                                               windowBucket: _frameWindowBucket,
                                               viewportMainExtent: viewportWidth,
+                                              dragPreview: widget.dragPreview,
+                                              previewCutId:
+                                                  widget.cutEndDrag?.cutId,
                                             ),
                                       ),
                                     );
@@ -1566,6 +1576,17 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                                                             .playbackFrameCount,
                                                         metrics: _metrics,
                                                       ),
+                                                  // UI-R18 #14: the end
+                                                  // line grows a trim
+                                                  // grip and follows the
+                                                  // live preview.
+                                                  cutEndDrag: widget.cutEndDrag,
+                                                  dragPreview:
+                                                      widget.dragPreview,
+                                                  frameCellExtent:
+                                                      _metrics.frameCellWidth,
+                                                  playbackFrameCount:
+                                                      widget.playbackFrameCount,
                                                   // The cursor layer decides
                                                   // per frame what to show —
                                                   // the slot itself is static
