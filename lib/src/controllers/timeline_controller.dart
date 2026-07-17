@@ -10,6 +10,7 @@ import '../models/layer_id.dart';
 import '../models/timeline_coverage.dart';
 import '../models/timeline_exposure.dart';
 import '../models/timeline_repeat.dart';
+import '../services/command.dart';
 import '../services/commands/update_layer_timeline_command.dart';
 import '../services/history_manager.dart';
 import '../services/project_repository.dart';
@@ -361,7 +362,24 @@ class TimelineController {
     required LayerId layerId,
     required List<int> blockStartIndexes,
   }) {
-    final before = _requireLayer(layerId);
+    deleteBlocksForLayers({layerId: blockStartIndexes});
+  }
+
+  /// The cross-layer form (UI-R17 #8): every layer's deletions compose
+  /// into ONE undo step.
+  void deleteBlocksForLayers(Map<LayerId, List<int>> blockStartsByLayer) {
+    final commands = <Command>[];
+    for (final entry in blockStartsByLayer.entries) {
+      final before = _requireLayer(entry.key);
+      final after = _deletedBlocksLayer(before, entry.value);
+      if (after != null) {
+        commands.add(_layerEditCommand(before: before, after: after));
+      }
+    }
+    _executeCommands(commands, description: 'Delete selected cells');
+  }
+
+  Layer? _deletedBlocksLayer(Layer before, List<int> blockStartIndexes) {
     final nextTimeline = SplayTreeMap<int, TimelineExposure>.from(
       before.timeline,
     );
@@ -378,7 +396,7 @@ class TimelineController {
       }
     }
     if (nextTimeline.length == before.timeline.length) {
-      return;
+      return null;
     }
     var nextFrames = before.frames;
     final unreferenced = removedFrameIds
@@ -389,11 +407,7 @@ class TimelineController {
           .where((frame) => !unreferenced.contains(frame.id))
           .toList(growable: false);
     }
-
-    _applyLayerEdit(
-      before: before,
-      after: before.copyWith(frames: nextFrames, timeline: nextTimeline),
-    );
+    return before.copyWith(frames: nextFrames, timeline: nextTimeline);
   }
 
   // --- Bulk retime (UI-R17 #3/#7) --------------------------------------------
@@ -466,15 +480,50 @@ class TimelineController {
     required LayerId layerId,
     required Map<int, int> newLengthByStart,
   }) {
-    final before = _requireLayer(layerId);
-    final after = retimedLayerForBlocks(
-      layer: before,
-      newLengthByStart: newLengthByStart,
-    );
-    if (after == null) {
+    retimeBlocksForLayers({layerId: newLengthByStart});
+  }
+
+  /// The cross-layer form (UI-R17 #8): every layer's retime composes into
+  /// ONE undo step.
+  void retimeBlocksForLayers(Map<LayerId, Map<int, int>> newLengthsByLayer) {
+    final commands = <Command>[];
+    for (final entry in newLengthsByLayer.entries) {
+      final before = _requireLayer(entry.key);
+      final after = retimedLayerForBlocks(
+        layer: before,
+        newLengthByStart: entry.value,
+      );
+      if (after != null) {
+        commands.add(_layerEditCommand(before: before, after: after));
+      }
+    }
+    _executeCommands(commands, description: 'Set comma exposure');
+  }
+
+  /// Commits several layers' already-previewed drags as ONE undo step
+  /// (the cross-layer bulk edge drag's release).
+  void commitLayerTimelineDrags(List<({Layer before, Layer after})> edits) {
+    final commands = <Command>[
+      for (final edit in edits)
+        if (edit.before != edit.after)
+          _layerEditCommand(before: edit.before, after: edit.after),
+    ];
+    _executeCommands(commands, description: 'Adjust selected exposures');
+  }
+
+  void _executeCommands(List<Command> commands, {required String description}) {
+    if (commands.isEmpty) {
       return;
     }
-    _applyLayerEdit(before: before, after: after);
+    final command = commands.length == 1
+        ? commands.single
+        : CompositeCommand(description: description, commands: commands);
+    final historyManager = _historyManager;
+    if (historyManager == null) {
+      command.execute();
+    } else {
+      historyManager.execute(command);
+    }
   }
 
   // --- Linked paste ------------------------------------------------------------
@@ -915,16 +964,23 @@ class TimelineController {
     throw StateError('Frame not found in layer ${layer.id}: $frameId');
   }
 
-  void _applyLayerEdit({required Layer before, required Layer after}) {
-    // THE run-behavior normalize choke point (UI-R8/R9): every timeline
-    // edit lands here, so the derived ghost entries re-arrange with
-    // whatever the edit did to their source run (live sync). Layers
-    // without behaviors/ghosts pass through untouched (identity).
-    final command = UpdateLayerTimelineCommand(
+  /// THE run-behavior normalize choke point (UI-R8/R9): every timeline
+  /// edit builds through here, so the derived ghost entries re-arrange
+  /// with whatever the edit did to their source run (live sync). Layers
+  /// without behaviors/ghosts pass through untouched (identity).
+  UpdateLayerTimelineCommand _layerEditCommand({
+    required Layer before,
+    required Layer after,
+  }) {
+    return UpdateLayerTimelineCommand(
       repository: _repository,
       before: before,
       after: rederiveRunBehaviors(after, cutFrameCount: _cutFrameCount()),
     );
+  }
+
+  void _applyLayerEdit({required Layer before, required Layer after}) {
+    final command = _layerEditCommand(before: before, after: after);
     final historyManager = _historyManager;
     if (historyManager == null) {
       command.execute();

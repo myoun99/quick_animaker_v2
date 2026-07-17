@@ -41,7 +41,16 @@ class TimelineFrameRangeHooks {
   });
 
   final ValueListenable<TimelineFrameRangeSelection?> selection;
-  final void Function(LayerId layerId, int anchorIndex, int headIndex)
+
+  /// [headLayerId] is the row under the pointer (UI-R17 #8 — the grid
+  /// resolves cross-row drags like it does for moves); null/anchor keeps
+  /// the single-layer selection.
+  final void Function(
+    LayerId layerId,
+    int anchorIndex,
+    int headIndex, {
+    LayerId? headLayerId,
+  })
   onSelectUpdate;
   final VoidCallback onClear;
   final TimelineRangeMoveCallbacks move;
@@ -114,8 +123,15 @@ class TimelineRangeGestureCallbacks {
   final ValueListenable<TimelineFrameRangeSelection?> selection;
 
   /// A select-drag step: anchor = where the drag started, head = the
-  /// pointer's frame now (the session snaps to whole blocks).
-  final void Function(LayerId layerId, int anchorIndex, int headIndex)
+  /// pointer's frame now (the session snaps to whole blocks). The row
+  /// delta (Excel-style cross-row select, UI-R17 #8) rides along — the
+  /// grid maps it onto the head layer.
+  final void Function(
+    LayerId layerId,
+    int anchorIndex,
+    int headIndex,
+    int headRowDelta,
+  )
   onSelectUpdate;
 
   /// A plain tap on the cells (no drag): clears the selection — the cell's
@@ -191,7 +207,7 @@ class _TimelineFrameRangeGestureLayerState
     final selection = widget.callbacks.selection.value;
     final insideSelection =
         selection != null &&
-        selection.layerId == widget.layer.id &&
+        selection.coversLayer(widget.layer.id) &&
         selection.contains(frame);
     if (insideSelection && widget.callbacks.onMoveBegin(widget.layer.id)) {
       setState(() {
@@ -205,7 +221,20 @@ class _TimelineFrameRangeGestureLayerState
     }
     _mode = _RangeDragMode.select;
     _anchorIndex = frame;
-    widget.callbacks.onSelectUpdate(widget.layer.id, frame, frame);
+    widget.callbacks.onSelectUpdate(widget.layer.id, frame, frame, 0);
+  }
+
+  /// The display-row delta of the pointer relative to THIS row (Excel
+  /// cross-row select): the cross-axis local position may run past the
+  /// row's own bounds during the pan.
+  int _rowDeltaAt(Offset localPosition) {
+    final cross = widget.axis == Axis.horizontal
+        ? localPosition.dy
+        : localPosition.dx;
+    if (widget.crossAxisExtent <= 0) {
+      return 0;
+    }
+    return (cross / widget.crossAxisExtent).floor();
   }
 
   void _updateDrag(DragUpdateDetails details) {
@@ -217,6 +246,7 @@ class _TimelineFrameRangeGestureLayerState
           widget.layer.id,
           _anchorIndex,
           _frameAt(details.localPosition),
+          _rowDeltaAt(details.localPosition),
         );
       case _RangeDragMode.move:
         final horizontal = widget.axis == Axis.horizontal;

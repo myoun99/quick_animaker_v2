@@ -82,7 +82,10 @@ void main() {
   }) {
     return TimelineFrameRangeHooks(
       selection: selection,
-      onSelectUpdate: onSelectUpdate ?? (_, _, _) {},
+      onSelectUpdate: onSelectUpdate == null
+          ? (_, _, _, {headLayerId}) {}
+          : (layerId, anchorIndex, headIndex, {headLayerId}) =>
+                onSelectUpdate(layerId, anchorIndex, headIndex),
       onClear: onClear ?? () {},
       move: TimelineRangeMoveCallbacks(
         onBegin: onMoveBegin ?? () => true,
@@ -191,8 +194,8 @@ void main() {
     expect(ended, 1, reason: 'exactly one commit, on release');
   });
 
-  testWidgets('touch never selects or grabs — the pan arena is pen/mouse '
-      'only (R12-⑤)', (tester) async {
+  testWidgets('touch selects like the pen (UI-R17 #6, superseding R12-⑤: '
+      'pens report as touch on some drivers)', (tester) async {
     final selectUpdates = <(LayerId, int, int)>[];
     final cursor = ValueNotifier<int>(0);
     final selection = ValueNotifier<TimelineFrameRangeSelection?>(null);
@@ -230,7 +233,13 @@ void main() {
     await touch.moveBy(const Offset(96, 0));
     await touch.up();
     await tester.pump();
-    expect(selectUpdates, isEmpty, reason: 'a finger scrolls, never selects');
+    expect(
+      selectUpdates,
+      isNotEmpty,
+      reason:
+          'touch joins the pan arena — pen-as-touch drivers must work; '
+          'grid panning lives on the rulers/scrollbars',
+    );
   });
 
   testWidgets('a plain tap clears the selection AND still selects the cell '

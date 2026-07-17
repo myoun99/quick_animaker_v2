@@ -9,6 +9,7 @@ import '../../models/layer_id.dart';
 import '../../models/layer_kind.dart';
 import '../../models/layer_mark.dart';
 import '../../services/audio/audio_peaks_extractor.dart';
+import 'timeline_block_move_handle.dart' show resolveBlockMoveTargetLayer;
 import 'timeline_frame_range_gesture.dart';
 import 'timeline_run_end_handles.dart';
 import 'timeline_cell_exposure_state.dart';
@@ -1018,7 +1019,21 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
         ? null
         : TimelineRangeGestureCallbacks(
             selection: rangeHooks.selection,
-            onSelectUpdate: rangeHooks.onSelectUpdate,
+            // Cross-row select (UI-R17 #8): the gesture's row delta maps
+            // onto the display rows exactly like the move drags do.
+            onSelectUpdate: (layerId, anchorIndex, headIndex, headRowDelta) =>
+                rangeHooks.onSelectUpdate(
+                  layerId,
+                  anchorIndex,
+                  headIndex,
+                  headLayerId: headRowDelta == 0
+                      ? null
+                      : resolveBlockMoveTargetLayer(
+                          rows: rows,
+                          sourceLayerId: layerId,
+                          rowDelta: headRowDelta,
+                        ),
+                ),
             onTapClear: (_) => rangeHooks.onClear(),
             onMoveBegin: _rangeMoveResolver.begin,
             onMoveUpdate: _rangeMoveResolver.update,

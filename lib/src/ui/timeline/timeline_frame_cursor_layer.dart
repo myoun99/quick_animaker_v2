@@ -159,11 +159,15 @@ class TimelineCursorLayer extends StatelessWidget {
         if (range != null &&
             range.endIndexExclusive > window.startIndex &&
             range.startIndex < window.endIndexExclusive) {
+          // Excel-style spans (UI-R17 #8): the band covers every spanned
+          // row (contiguous in display order by construction).
           int? rangeRowIndex;
+          var rangeRowCount = 1;
           for (var index = 0; index < rows.length; index += 1) {
-            if (!rows[index].isLane && rows[index].layer.id == range.layerId) {
-              rangeRowIndex = index;
-              break;
+            if (!rows[index].isLane &&
+                range.coversLayer(rows[index].layer.id)) {
+              rangeRowIndex ??= index;
+              rangeRowCount = index - rangeRowIndex + 1;
             }
           }
           if (rangeRowIndex != null) {
@@ -197,20 +201,21 @@ class TimelineCursorLayer extends StatelessWidget {
                 ),
               ),
             );
+            final bandCross = rangeRowCount * metrics.layerRowHeight;
             children.add(
               horizontal
                   ? Positioned(
                       left: spanStart,
                       top: rowOffset,
                       width: spanEnd - spanStart,
-                      height: metrics.layerRowHeight,
+                      height: bandCross,
                       child: band,
                     )
                   : Positioned(
                       top: spanStart,
                       left: rowOffset,
                       height: spanEnd - spanStart,
-                      width: metrics.layerRowHeight,
+                      width: bandCross,
                       child: band,
                     ),
             );

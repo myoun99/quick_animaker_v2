@@ -1,5 +1,6 @@
 import 'dart:math' as math;
 
+import '../core/collection_equality.dart';
 import 'layer.dart';
 import 'layer_id.dart';
 import 'timeline_coverage.dart';
@@ -13,11 +14,24 @@ class TimelineFrameRangeSelection {
     required this.layerId,
     required this.startIndex,
     required this.endIndexExclusive,
+    this.layerIds = const [],
   }) : assert(endIndexExclusive > startIndex, 'Range must cover frames.');
 
+  /// The ANCHOR layer (where the drag started) — single-layer flows keep
+  /// reading this.
   final LayerId layerId;
   final int startIndex;
   final int endIndexExclusive;
+
+  /// The Excel-style layer SPAN (UI-R17 #8): display-ordered eligible
+  /// layers from anchor to head. Empty = the anchor layer alone.
+  final List<LayerId> layerIds;
+
+  /// The layers this selection covers, anchor-only selections included.
+  List<LayerId> get spanLayerIds => layerIds.isEmpty ? [layerId] : layerIds;
+
+  bool coversLayer(LayerId id) =>
+      layerIds.isEmpty ? id == layerId : layerIds.contains(id);
 
   int get lengthFrames => endIndexExclusive - startIndex;
 
@@ -30,15 +44,21 @@ class TimelineFrameRangeSelection {
       other is TimelineFrameRangeSelection &&
           other.layerId == layerId &&
           other.startIndex == startIndex &&
-          other.endIndexExclusive == endIndexExclusive;
+          other.endIndexExclusive == endIndexExclusive &&
+          listEquals(other.layerIds, layerIds);
 
   @override
-  int get hashCode => Object.hash(layerId, startIndex, endIndexExclusive);
+  int get hashCode => Object.hash(
+    layerId,
+    startIndex,
+    endIndexExclusive,
+    Object.hashAll(layerIds),
+  );
 
   @override
   String toString() =>
       'TimelineFrameRangeSelection($layerId, [$startIndex, '
-      '$endIndexExclusive))';
+      '$endIndexExclusive), span: $spanLayerIds)';
 }
 
 /// Snaps a raw dragged span to WHOLE exposure blocks (UI-R8 user rule: a

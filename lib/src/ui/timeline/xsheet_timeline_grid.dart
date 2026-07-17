@@ -20,6 +20,7 @@ import 'timeline_drag_preview.dart';
 import 'timeline_exposure_block_visual.dart';
 import 'timeline_exposure_comma_drag_policy.dart';
 import '../../models/timeline_repeat.dart';
+import 'timeline_block_move_handle.dart' show resolveBlockMoveTargetLayer;
 import 'timeline_frame_range_gesture.dart';
 import 'timeline_run_end_handles.dart';
 import 'timeline_frame_cell.dart';
@@ -717,7 +718,21 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
             ? null
             : TimelineRangeGestureCallbacks(
                 selection: rangeHooks.selection,
-                onSelectUpdate: rangeHooks.onSelectUpdate,
+                // Cross-row select (UI-R17 #8), transposed like the moves.
+                onSelectUpdate:
+                    (layerId, anchorIndex, headIndex, headRowDelta) =>
+                        rangeHooks.onSelectUpdate(
+                          layerId,
+                          anchorIndex,
+                          headIndex,
+                          headLayerId: headRowDelta == 0
+                              ? null
+                              : resolveBlockMoveTargetLayer(
+                                  rows: entries,
+                                  sourceLayerId: layerId,
+                                  rowDelta: headRowDelta,
+                                ),
+                        ),
                 onTapClear: (_) => rangeHooks.onClear(),
                 onMoveBegin: _rangeMoveResolver.begin,
                 onMoveUpdate: _rangeMoveResolver.update,
