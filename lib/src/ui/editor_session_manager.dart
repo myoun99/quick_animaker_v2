@@ -1530,6 +1530,12 @@ class EditorSessionManager extends ChangeNotifier {
     if (activeLayer == null || selectedFrame == null) {
       return null;
     }
+    // Ghost repeat instances are DERIVED (UI-R19 #1): the playhead on
+    // one resolves the ANCHOR cel, so accepting strokes here would edit
+    // the source from a ghost. No brush target on ghost frames.
+    if (timelineIndexIsGhost(activeLayer, currentFrameIndex)) {
+      return null;
+    }
     // R6-④: SE/instruction cels are data rows — no editable brush target,
     // so the canvas never accepts strokes on them (the drawn stack still
     // composites them read-only).
@@ -4670,18 +4676,47 @@ class EditorSessionManager extends ChangeNotifier {
   /// end); zero without a cut.
   int get _activeCutFrameCount => activeCutOrNull?.duration ?? 0;
 
+  /// Whether the live frame-range selection can SCOPE a repeat pattern on
+  /// this run edge (UI-R10 #5 rules: the selection must cover the edge
+  /// block and cut the run short of the other end) — the tag flyout shows
+  /// its explicit "Repeat selection" entry from this (UI-R19 #2).
+  bool canScopeRepeatToSelection({
+    required LayerId layerId,
+    required int blockStartIndex,
+    required TimelineRunEdgeSide side,
+  }) {
+    final layer = _layerById(layerId);
+    if (layer == null) {
+      return false;
+    }
+    final run = gluedRunAt(layer, blockStartIndex);
+    final selection = frameRangeSelection.value;
+    if (run == null || selection == null || selection.layerId != layerId) {
+      return false;
+    }
+    if (side == TimelineRunEdgeSide.end) {
+      return selection.contains(run.endIndexExclusive - 1) &&
+          selection.startIndex > run.startIndex;
+    }
+    return selection.contains(run.startIndex) &&
+        selection.endIndexExclusive < run.endIndexExclusive;
+  }
+
   /// Sets or clears the [side] edge property of the glued run containing
-  /// [blockStartIndex] (UI-R9 #10): `mode` null = None. Repeat captures
-  /// the current frame-range selection as its pattern when the selection
-  /// covers the run's edge block (end side: selection start → run end;
-  /// start side: run start → selection end); otherwise the whole run
-  /// cycles. Ghosts always fill to the cut boundary. One undo step,
+  /// [blockStartIndex] (UI-R9 #10): `mode` null = None. With
+  /// [scopeToSelection] (the flyout's explicit "Repeat selection" entry,
+  /// UI-R19 #2), Repeat captures the current frame-range selection as its
+  /// pattern when the selection covers the run's edge block (end side:
+  /// selection start → run end; start side: run start → selection end);
+  /// otherwise — and always when [scopeToSelection] is false — the whole
+  /// run cycles. Ghosts always fill to the cut boundary. One undo step,
   /// committed immediately.
   void setRunEdgeBehavior({
     required LayerId layerId,
     required int blockStartIndex,
     required TimelineRunEdgeSide side,
     TimelineRunEdgeMode? mode,
+    bool scopeToSelection = true,
   }) {
     if (!_blockMoveEligible(layerId)) {
       return;
@@ -4711,7 +4746,7 @@ class EditorSessionManager extends ChangeNotifier {
     }
 
     FrameId? patternAnchor;
-    if (mode == TimelineRunEdgeMode.repeat) {
+    if (mode == TimelineRunEdgeMode.repeat && scopeToSelection) {
       final selection = frameRangeSelection.value;
       if (selection != null && selection.layerId == layerId) {
         if (side == TimelineRunEdgeSide.end &&

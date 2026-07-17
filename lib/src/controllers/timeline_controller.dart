@@ -601,6 +601,13 @@ class TimelineController {
   // --- Frame rename / link -------------------------------------------------------
 
   bool canRenameFrameAt({required Layer layer, required int frameIndex}) {
+    // Ghost cells are DERIVED display material (UI-R19 #1): resolving
+    // them would rename the anchor cel from a repeat instance — refuse,
+    // like delete does.
+    final block = coveringDrawingBlockAt(layer.timeline, frameIndex);
+    if (block == null || block.entry.ghost) {
+      return false;
+    }
     return resolveFrameForLayer(layer: layer, frameIndex: frameIndex) != null;
   }
 

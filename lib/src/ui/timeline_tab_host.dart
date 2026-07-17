@@ -902,12 +902,27 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
             onAddUpdate: _session.updateRunFramesAddDrag,
             onAddEnd: _session.endRunFramesAddDrag,
             onAddCancel: _session.cancelRunFramesAddDrag,
-            onEdgeModeSelected: (layerId, blockStartIndex, side, mode) =>
-                _session.setRunEdgeBehavior(
+            onEdgeModeSelected:
+                (
+                  layerId,
+                  blockStartIndex,
+                  side,
+                  mode, {
+                  scopeToSelection = false,
+                }) => _session.setRunEdgeBehavior(
                   layerId: layerId,
                   blockStartIndex: blockStartIndex,
                   side: side,
                   mode: mode,
+                  scopeToSelection: scopeToSelection,
+                ),
+            // The flyout's "Repeat selection" entry gates on this
+            // (UI-R19 #2).
+            canScopeToSelection: (layerId, blockStartIndex, side) =>
+                _session.canScopeRepeatToSelection(
+                  layerId: layerId,
+                  blockStartIndex: blockStartIndex,
+                  side: side,
                 ),
           ),
           orientation: widget.orientation,

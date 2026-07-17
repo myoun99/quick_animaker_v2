@@ -67,6 +67,94 @@ void main() {
     expect(layer.timeline.values.any((entry) => entry.ghost), isFalse);
   });
 
+  test('scopeToSelection FALSE keeps the whole run even with a live '
+      'selection — the flyout\'s explicit "Repeat" entry (UI-R19 #2)', () {
+    final (s, layerId) = sessionWithBlock();
+    s.selectFrameIndex(1);
+    s.createDrawingAtCurrentFrame();
+    s.selectFrameIndex(2);
+    s.createDrawingAtCurrentFrame();
+    s.updateFrameRangeSelectionDrag(
+      layerId: layerId,
+      anchorIndex: 1,
+      headIndex: 2,
+    );
+
+    s.setRunEdgeBehavior(
+      layerId: layerId,
+      blockStartIndex: 0,
+      side: TimelineRunEdgeSide.end,
+      mode: TimelineRunEdgeMode.repeat,
+      scopeToSelection: false,
+    );
+
+    final layer = layerOf(s, layerId);
+    expect(
+      layer.runBehaviors.single.patternAnchorFrameId,
+      isNull,
+      reason: 'the whole run cycles — the selection is deliberately ignored',
+    );
+    // The ghost tail cycles ALL three frames.
+    expect(layer.timeline[3]!.frameId, layer.timeline[0]!.frameId);
+  });
+
+  test('canScopeRepeatToSelection mirrors the pattern rules (UI-R19 #2: '
+      'the "Repeat selection" flyout entry\'s gate)', () {
+    final (s, layerId) = sessionWithBlock();
+    s.selectFrameIndex(1);
+    s.createDrawingAtCurrentFrame();
+    s.selectFrameIndex(2);
+    s.createDrawingAtCurrentFrame();
+
+    // No selection: nothing to scope.
+    expect(
+      s.canScopeRepeatToSelection(
+        layerId: layerId,
+        blockStartIndex: 0,
+        side: TimelineRunEdgeSide.end,
+      ),
+      isFalse,
+    );
+
+    // Tail selection [1,3): scopes the END edge, not the START one.
+    s.updateFrameRangeSelectionDrag(
+      layerId: layerId,
+      anchorIndex: 1,
+      headIndex: 2,
+    );
+    expect(
+      s.canScopeRepeatToSelection(
+        layerId: layerId,
+        blockStartIndex: 0,
+        side: TimelineRunEdgeSide.end,
+      ),
+      isTrue,
+    );
+    expect(
+      s.canScopeRepeatToSelection(
+        layerId: layerId,
+        blockStartIndex: 0,
+        side: TimelineRunEdgeSide.start,
+      ),
+      isFalse,
+    );
+
+    // A whole-run selection scopes nothing (it IS the run).
+    s.updateFrameRangeSelectionDrag(
+      layerId: layerId,
+      anchorIndex: 0,
+      headIndex: 2,
+    );
+    expect(
+      s.canScopeRepeatToSelection(
+        layerId: layerId,
+        blockStartIndex: 0,
+        side: TimelineRunEdgeSide.end,
+      ),
+      isFalse,
+    );
+  });
+
   test('a selection covering the run tail scopes the repeat pattern', () {
     final (s, layerId) = sessionWithBlock();
     s.selectFrameIndex(1);
