@@ -3,10 +3,11 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:quick_animaker_v2/src/ui/timeline/timeline_frame_ruler.dart';
 import 'package:quick_animaker_v2/src/ui/timeline/timeline_grid_metrics.dart';
 
+import 'timeline_ruler_probe.dart';
+
 void main() {
-  testWidgets('renders supplied frame ruler range and preserves header keys', (
-    tester,
-  ) async {
+  testWidgets('renders the supplied range through the PAINTERIZED strip '
+      '(UI-R13 #1) with the cut-end boundary aligned', (tester) async {
     int? selectedFrameIndex;
 
     await tester.pumpWidget(
@@ -30,10 +31,7 @@ void main() {
       find.byKey(const ValueKey<String>('timeline-frame-ruler')),
       findsOneWidget,
     );
-    expect(
-      find.byKey(const ValueKey<String>('timeline-frame-header-row')),
-      findsOneWidget,
-    );
+    expect(timelineRulerPaintFinder(), findsOneWidget);
     final rulerBoundary = find.byKey(
       const ValueKey<String>('timeline-cut-end-boundary-ruler'),
     );
@@ -47,42 +45,17 @@ void main() {
               .dx,
       5 * TimelineGridMetrics.defaults.frameCellWidth,
     );
-    expect(
-      find.byKey(
-        const ValueKey<String>('timeline-frame-header-leading-spacer'),
-      ),
-      findsOneWidget,
-    );
-    expect(
-      find.byKey(
-        const ValueKey<String>('timeline-frame-header-trailing-spacer'),
-      ),
-      findsOneWidget,
-    );
-    expect(
-      find.byKey(const ValueKey<String>('timeline-frame-header-1')),
-      findsNothing,
-    );
-    expect(
-      find.byKey(const ValueKey<String>('timeline-frame-header-2')),
-      findsOneWidget,
-    );
-    expect(
-      find.byKey(const ValueKey<String>('timeline-frame-header-4')),
-      findsOneWidget,
-    );
-    expect(
-      find.byKey(const ValueKey<String>('timeline-frame-header-5')),
-      findsNothing,
-    );
+
+    // The painter window covers exactly the supplied range.
+    expect(timelineHeaderInWindow(tester, 1), isFalse);
+    expect(timelineHeaderInWindow(tester, 2), isTrue);
+    expect(timelineHeaderInWindow(tester, 4), isTrue);
+    expect(timelineHeaderInWindow(tester, 5), isFalse);
 
     // The header cells are PASSIVE (UI-R10 #25): selection rides the
     // grid's ruler scrub listener, not per-cell taps — the standalone
     // ruler forwards nothing.
-    await tester.tap(
-      find.byKey(const ValueKey<String>('timeline-frame-header-4')),
-      warnIfMissed: false,
-    );
+    await tester.tapAt(timelineHeaderGlobalRect(tester, 4).center);
     expect(selectedFrameIndex, isNull);
   });
 }

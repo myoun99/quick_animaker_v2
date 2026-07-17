@@ -3,6 +3,10 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:quick_animaker_v2/src/ui/timeline/timeline_frame_header_row.dart';
 import 'package:quick_animaker_v2/src/ui/timeline/timeline_grid_metrics.dart';
 
+import 'timeline/timeline_ruler_probe.dart';
+
+/// The ruler strip is PAINTERIZED (UI-R13 #1): headers are paint, not
+/// widgets — the probe reads models/geometry off the strip's painter.
 void main() {
   Future<void> pumpHeaderRow(
     WidgetTester tester, {
@@ -32,7 +36,7 @@ void main() {
     );
   }
 
-  testWidgets('renders stable row and spacer keys exactly once', (
+  testWidgets('the strip is ONE CustomPaint sized spacers + window', (
     tester,
   ) async {
     await pumpHeaderRow(
@@ -44,25 +48,14 @@ void main() {
       onSelectFrame: (_) {},
     );
 
-    expect(
-      find.byKey(const ValueKey<String>('timeline-frame-header-row')),
-      findsOneWidget,
-    );
-    expect(
-      find.byKey(
-        const ValueKey<String>('timeline-frame-header-leading-spacer'),
-      ),
-      findsOneWidget,
-    );
-    expect(
-      find.byKey(
-        const ValueKey<String>('timeline-frame-header-trailing-spacer'),
-      ),
-      findsOneWidget,
-    );
+    expect(timelineRulerPaintFinder(), findsOneWidget);
+    // Geometry flows through the painter (spacer offset + cell widths).
+    final rect3 = timelineHeaderGlobalRect(tester, 3);
+    expect(rect3.left, 96);
+    expect(rect3.width, TimelineGridMetrics.defaults.frameCellWidth);
   });
 
-  testWidgets('renders visible frame header keys for the supplied window', (
+  testWidgets('the painter window covers exactly the supplied range', (
     tester,
   ) async {
     await pumpHeaderRow(
@@ -74,25 +67,13 @@ void main() {
       onSelectFrame: (_) {},
     );
 
-    expect(
-      find.byKey(const ValueKey<String>('timeline-frame-header-3')),
-      findsOneWidget,
-    );
-    expect(
-      find.byKey(const ValueKey<String>('timeline-frame-header-4')),
-      findsOneWidget,
-    );
-    expect(
-      find.byKey(const ValueKey<String>('timeline-frame-header-5')),
-      findsOneWidget,
-    );
-    expect(
-      find.byKey(const ValueKey<String>('timeline-frame-header-6')),
-      findsNothing,
-    );
+    expect(timelineHeaderInWindow(tester, 3), isTrue);
+    expect(timelineHeaderInWindow(tester, 5), isTrue);
+    expect(timelineHeaderInWindow(tester, 6), isFalse);
+    expect(timelineHeaderInWindow(tester, 2), isFalse);
   });
 
-  testWidgets('renders one-based frame number text', (tester) async {
+  testWidgets('headers label with one-based frame numbers', (tester) async {
     await pumpHeaderRow(
       tester,
       frameStartIndex: 3,
@@ -102,9 +83,9 @@ void main() {
       onSelectFrame: (_) {},
     );
 
-    expect(find.text('4'), findsOneWidget);
-    expect(find.text('5'), findsOneWidget);
-    expect(find.text('6'), findsOneWidget);
+    expect(timelineHeaderModel(tester, 3).label, '4');
+    expect(timelineHeaderModel(tester, 4).label, '5');
+    expect(timelineHeaderModel(tester, 5).label, '6');
   });
 
   testWidgets('header cells are PASSIVE (UI-R10 #25): no per-cell tap '
@@ -122,15 +103,14 @@ void main() {
       onSelectFrame: (frameIndex) => selectedFrameIndex = frameIndex,
     );
 
-    await tester.tap(
-      find.byKey(const ValueKey<String>('timeline-frame-header-4')),
-      warnIfMissed: false,
-    );
+    await tester.tapAt(timelineHeaderGlobalRect(tester, 4).center);
 
     expect(selectedFrameIndex, isNull);
   });
 
-  testWidgets('current frame header keeps stable key behavior', (tester) async {
+  testWidgets('the current frame reads selected with its tinted background', (
+    tester,
+  ) async {
     await pumpHeaderRow(
       tester,
       frameStartIndex: 3,
@@ -140,13 +120,15 @@ void main() {
       onSelectFrame: (_) {},
     );
 
+    expect(timelineHeaderModel(tester, 4).selected, isTrue);
+    expect(timelineHeaderModel(tester, 3).selected, isFalse);
     expect(
-      find.byKey(const ValueKey<String>('timeline-frame-header-4')),
-      findsOneWidget,
+      timelineHeaderModel(tester, 4).background,
+      isNot(timelineHeaderModel(tester, 3).background),
     );
   });
 
-  testWidgets('outside-playback frame headers are still rendered', (
+  testWidgets('outside-playback frame headers still paint, marked outside', (
     tester,
   ) async {
     await pumpHeaderRow(
@@ -158,13 +140,9 @@ void main() {
       onSelectFrame: (_) {},
     );
 
-    expect(
-      find.byKey(const ValueKey<String>('timeline-frame-header-5')),
-      findsOneWidget,
-    );
-    expect(
-      find.byKey(const ValueKey<String>('timeline-frame-header-6')),
-      findsOneWidget,
-    );
+    expect(timelineHeaderInWindow(tester, 5), isTrue);
+    expect(timelineHeaderInWindow(tester, 6), isTrue);
+    expect(timelineHeaderModel(tester, 5).outsidePlaybackRange, isTrue);
+    expect(timelineHeaderModel(tester, 4).outsidePlaybackRange, isFalse);
   });
 }

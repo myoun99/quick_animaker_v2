@@ -47,7 +47,7 @@ void main() {
       await tester.pumpWidget(_panel(currentFrameIndex: 2));
 
       _expectKeyOnce('timeline-frame-ruler');
-      _expectKeyOnce('timeline-frame-header-row');
+      _expectKeyOnce('timeline-frame-ruler-paint');
     });
 
     testWidgets('renders layer row, frame row area, and frame cell keys', (

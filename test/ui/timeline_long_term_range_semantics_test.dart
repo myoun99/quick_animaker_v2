@@ -18,6 +18,7 @@ import 'package:quick_animaker_v2/src/ui/timeline/timeline_orientation.dart';
 import 'package:quick_animaker_v2/src/ui/timeline/timeline_panel.dart';
 
 import 'timeline/timeline_cell_probe.dart';
+import 'timeline/timeline_ruler_probe.dart';
 
 void main() {
   group('Timeline long-term range semantics regression', () {
@@ -30,10 +31,7 @@ void main() {
 
         expect(fixture.cut.duration, 3);
         expect(timelineCellInWindow(tester, 'layer-a', 10), isTrue);
-        expect(
-          find.byKey(const ValueKey<String>('timeline-frame-header-10')),
-          findsOneWidget,
-        );
+        expect(timelineHeaderInWindow(tester, 10), isTrue);
       },
     );
 

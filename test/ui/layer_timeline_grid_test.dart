@@ -11,6 +11,7 @@ import 'package:quick_animaker_v2/src/ui/timeline/layer_timeline_grid.dart';
 import 'package:quick_animaker_v2/src/ui/timeline/timeline_horizontal_scrollbar_rail.dart';
 
 import 'timeline/timeline_cell_probe.dart';
+import 'timeline/timeline_ruler_probe.dart';
 import 'package:quick_animaker_v2/src/ui/timeline/timeline_cell_exposure_state.dart';
 import 'package:quick_animaker_v2/src/ui/timeline/timeline_cell_style.dart';
 import 'package:quick_animaker_v2/src/ui/timeline/timeline_grid_metrics.dart';
@@ -109,10 +110,7 @@ void main() {
         find.byKey(const ValueKey<String>('timeline-frame-ruler')),
         findsOneWidget,
       );
-      expect(
-        find.byKey(const ValueKey<String>('timeline-frame-header-row')),
-        findsOneWidget,
-      );
+      expect(timelineRulerPaintFinder(), findsOneWidget);
     },
   );
 
@@ -145,9 +143,7 @@ void main() {
     final frameRuler = find.byKey(
       const ValueKey<String>('timeline-frame-ruler'),
     );
-    final frameHeaderRow = find.byKey(
-      const ValueKey<String>('timeline-frame-header-row'),
-    );
+    final frameHeaderRow = timelineRulerPaintFinder();
     final frameGridArea = find.byKey(
       const ValueKey<String>('timeline-frame-grid-area'),
     );
@@ -335,10 +331,7 @@ void main() {
       moreOrLessEquals(bottomRailRect.width),
     );
 
-    expect(
-      find.byKey(const ValueKey<String>('timeline-frame-header-0')),
-      findsOneWidget,
-    );
+    expect(timelineHeaderInWindow(tester, 0), isTrue);
     expect(
       find.byKey(const ValueKey<String>('timeline-layer-visibility-layer-1')),
       findsOneWidget,
@@ -360,9 +353,6 @@ void main() {
     await tester.pumpWidget(_grid(layers: manyLayers, playbackFrameCount: 48));
 
     final addLayer = find.byKey(const ValueKey<String>('legend-layer'));
-    final frameHeader = find.byKey(
-      const ValueKey<String>('timeline-frame-header-0'),
-    );
     final firstLayerRow = find.byKey(
       const ValueKey<String>('timeline-layer-row-layer-1'),
     );
@@ -371,7 +361,7 @@ void main() {
     );
 
     final initialAddLayerTop = tester.getTopLeft(addLayer).dy;
-    final initialFrameHeaderTop = tester.getTopLeft(frameHeader).dy;
+    final initialFrameHeaderTop = timelineHeaderGlobalRect(tester, 0).top;
     final initialLayerRowTop = tester.getTopLeft(firstLayerRow).dy;
     final initialFrameRowTop = tester.getTopLeft(firstFrameRow).dy;
 
@@ -388,7 +378,7 @@ void main() {
       moreOrLessEquals(initialAddLayerTop),
     );
     expect(
-      tester.getTopLeft(frameHeader).dy,
+      timelineHeaderGlobalRect(tester, 0).top,
       moreOrLessEquals(initialFrameHeaderTop),
     );
     expect(tester.getTopLeft(firstLayerRow).dy, lessThan(initialLayerRowTop));
@@ -456,9 +446,7 @@ void main() {
 
       double railContentWidth() => tester
           .widget<TimelineHorizontalScrollbarRail>(
-            find.byKey(
-              const ValueKey<String>('timeline-horizontal-scrollbar'),
-            ),
+            find.byKey(const ValueKey<String>('timeline-horizontal-scrollbar')),
           )
           .contentWidth;
 
@@ -480,8 +468,11 @@ void main() {
         framePosition().jumpTo(framePosition().maxScrollExtent);
         await tester.pump();
       }
-      expect(railContentWidth(), baseWidth,
-          reason: 'scroll cannot extend the axis (UI-R12 #16)');
+      expect(
+        railContentWidth(),
+        baseWidth,
+        reason: 'scroll cannot extend the axis (UI-R12 #16)',
+      );
 
       // The ruler edge-pan OVERSHOOTS the built extent (the one growth
       // path) — the growth listener materializes what the view needs.
@@ -628,46 +619,21 @@ void main() {
   ) async {
     await tester.pumpWidget(_grid(playbackFrameCount: 100000));
 
-    expect(
-      find.byKey(
-        const ValueKey<String>('timeline-frame-header-leading-spacer'),
-      ),
-      findsOneWidget,
-    );
-    expect(
-      find.byKey(
-        const ValueKey<String>('timeline-frame-header-trailing-spacer'),
-      ),
-      findsOneWidget,
-    );
-    // Painted rows (UI-R9 #12b): the row is ONE CustomPaint whose window
-    // carries the virtualization facts the old spacer/cell keys pinned.
+    // Painted rows AND the painted ruler (UI-R9 #12b → UI-R13 #1): both
+    // are ONE CustomPaint whose window carries the virtualization facts
+    // the old spacer/cell keys pinned.
     expect(
       find.byKey(const ValueKey<String>('timeline-row-cells-layer-1')),
       findsOneWidget,
     );
-    expect(
-      find.byKey(const ValueKey<String>('timeline-frame-header-0')),
-      findsOneWidget,
-    );
+    expect(timelineHeaderInWindow(tester, 0), isTrue);
     expect(timelineCellInWindow(tester, 'layer-1', 0), isTrue);
-    expect(
-      find.byKey(const ValueKey<String>('timeline-frame-header-99999')),
-      findsNothing,
-    );
+    expect(timelineHeaderInWindow(tester, 99999), isFalse);
     expect(timelineCellInWindow(tester, 'layer-1', 99999), isFalse);
 
-    final builtHeaderCount = find
-        .byWidgetPredicate(
-          (widget) =>
-              widget.key is ValueKey<String> &&
-              ((widget.key as ValueKey<String>).value).startsWith(
-                'timeline-frame-header-',
-              ) &&
-              !((widget.key as ValueKey<String>).value).contains('spacer'),
-        )
-        .evaluate()
-        .length;
+    final rulerPainter = timelineRulerPainter(tester);
+    final builtHeaderCount =
+        rulerPainter.frameEndIndexExclusive - rulerPainter.frameStartIndex;
     final painter = timelineRowCellsPainterFor(tester, 'layer-1');
     final builtLayerOneCellCount =
         painter.frameEndIndexExclusive - painter.frameStartIndex;
@@ -681,10 +647,7 @@ void main() {
   ) async {
     await tester.pumpWidget(_grid(playbackFrameCount: 100000));
 
-    expect(
-      find.byKey(const ValueKey<String>('timeline-frame-header-100')),
-      findsNothing,
-    );
+    expect(timelineHeaderInWindow(tester, 100), isFalse);
     expect(timelineCellInWindow(tester, 'layer-1', 100), isFalse);
 
     await tester.drag(
@@ -697,15 +660,9 @@ void main() {
       find.byKey(const ValueKey<String>('timeline-layer-controls-rail')),
       findsOneWidget,
     );
-    expect(
-      find.byKey(const ValueKey<String>('timeline-frame-header-100')),
-      findsOneWidget,
-    );
+    expect(timelineHeaderInWindow(tester, 100), isTrue);
     expect(timelineCellInWindow(tester, 'layer-1', 100), isTrue);
-    expect(
-      find.byKey(const ValueKey<String>('timeline-frame-header-0')),
-      findsNothing,
-    );
+    expect(timelineHeaderInWindow(tester, 0), isFalse);
   });
 
   testWidgets('minimum visible frame cells still extends small frame counts', (
@@ -718,10 +675,7 @@ void main() {
       ),
     );
 
-    expect(
-      find.byKey(const ValueKey<String>('timeline-frame-header-3')),
-      findsOneWidget,
-    );
+    expect(timelineHeaderInWindow(tester, 3), isTrue);
     expect(timelineCellInWindow(tester, 'layer-1', 3), isTrue);
   });
 
@@ -738,9 +692,7 @@ void main() {
         ),
       );
 
-      await tester.tap(
-        find.byKey(const ValueKey<String>('timeline-frame-header-3')),
-      );
+      await tester.tapAt(timelineHeaderGlobalRect(tester, 3).center);
 
       expect(selectedFrameIndices, isNotEmpty);
       expect(selectedFrameIndices.last, 3);
@@ -832,10 +784,7 @@ void main() {
   testWidgets('renders frame headers and cells', (tester) async {
     await tester.pumpWidget(_grid());
 
-    expect(
-      find.byKey(const ValueKey<String>('timeline-frame-header-0')),
-      findsOneWidget,
-    );
+    expect(timelineHeaderInWindow(tester, 0), isTrue);
     expect(timelineCellInWindow(tester, 'layer-1', 0), isTrue);
     expect(timelineCellInWindow(tester, 'layer-2', 0), isTrue);
   });
@@ -849,17 +798,13 @@ void main() {
       _grid(onSelectFrame: (frameIndex) => selectedFrameIndex = frameIndex),
     );
 
-    await tester.tap(
-      find.byKey(const ValueKey<String>('timeline-frame-header-3')),
-    );
+    await tester.tapAt(timelineHeaderGlobalRect(tester, 3).center);
 
     expect(selectedFrameIndex, 3);
   });
 
   testWidgets('the resting extent IS the cut: no runway headers exist past '
-      'it, however far scrolling reaches (UI-R12 #16)', (
-    tester,
-  ) async {
+      'it, however far scrolling reaches (UI-R12 #16)', (tester) async {
     // Same frame-viewport width as when the rail was 220px wide, so the
     // scroll offsets below keep exercising the same frame windows.
     await tester.binding.setSurfaceSize(const Size(944, 600));
@@ -867,10 +812,7 @@ void main() {
 
     await tester.pumpWidget(_grid(playbackFrameCount: 24, width: 944));
 
-    expect(
-      find.byKey(const ValueKey<String>('timeline-frame-header-0')),
-      findsOneWidget,
-    );
+    expect(timelineHeaderInWindow(tester, 0), isTrue);
 
     await tester.drag(
       find.byKey(const ValueKey<String>('timeline-frame-scroll-viewport')),
@@ -878,14 +820,15 @@ void main() {
     );
     await tester.pumpAndSettle();
     expect(
-      find.byKey(const ValueKey<String>('timeline-frame-header-23')),
-      findsOneWidget,
+      timelineHeaderInWindow(tester, 23),
+      isTrue,
       reason: 'the cut\'s last cell',
     );
     expect(
-      find.byKey(const ValueKey<String>('timeline-frame-header-24')),
-      findsNothing,
-      reason: 'past-cut cells exist only while visible/materialized '
+      timelineHeaderInWindow(tester, 24),
+      isFalse,
+      reason:
+          'past-cut cells exist only while visible/materialized '
           '(UI-R12 #16) — scrolling never creates them',
     );
 
@@ -895,8 +838,8 @@ void main() {
     );
     await tester.pumpAndSettle();
     expect(
-      find.byKey(const ValueKey<String>('timeline-frame-header-47')),
-      findsNothing,
+      timelineHeaderInWindow(tester, 47),
+      isFalse,
       reason: 'the scroll walls at the built extent',
     );
   });
@@ -951,21 +894,15 @@ void main() {
     final frameGridArea = find.byKey(
       const ValueKey<String>('timeline-frame-grid-area'),
     );
-    final header = find.byKey(
-      const ValueKey<String>('timeline-frame-header-10'),
-    );
 
-    expect(header, findsOneWidget);
+    expect(timelineHeaderInWindow(tester, 10), isTrue);
     expect(timelineCellInWindow(tester, 'layer-1', 10), isTrue);
     final cellRect = timelineCellGlobalRect(tester, 'layer-1', 10);
     expect(
       cellRect.left,
-      moreOrLessEquals(tester.getTopLeft(header).dx, epsilon: 1),
+      moreOrLessEquals(timelineHeaderGlobalRect(tester, 10).left, epsilon: 1),
     );
-    expect(
-      cellRect.left,
-      lessThan(tester.getTopRight(frameGridArea).dx),
-    );
+    expect(cellRect.left, lessThan(tester.getTopRight(frameGridArea).dx));
   });
 
   testWidgets(
@@ -1166,21 +1103,16 @@ void main() {
       await materializeBy(200);
 
       expect(timelineCellInWindow(tester, 'layer-1', 24), isTrue);
-      expect(
-        timelineCellGlobalRect(tester, 'layer-1', 24),
-        _isInsideTestRoot,
-      );
+      expect(timelineCellGlobalRect(tester, 'layer-1', 24), _isInsideTestRoot);
       await tapTimelineCell(tester, 'layer-1', 24);
 
       await materializeBy(400);
       await materializeBy(400);
 
-      final outsidePlaybackHeader = find.byKey(
-        const ValueKey<String>('timeline-frame-header-40'),
-      );
-      expect(outsidePlaybackHeader, findsOneWidget);
-      expect(tester.getRect(outsidePlaybackHeader), _isInsideTestRoot);
-      await tester.tap(outsidePlaybackHeader);
+      expect(timelineHeaderInWindow(tester, 40), isTrue);
+      final headerRect = timelineHeaderGlobalRect(tester, 40);
+      expect(headerRect, _isInsideTestRoot);
+      await tester.tapAt(headerRect.center);
 
       expect(selectedFrameIndices, isNotEmpty);
       expect(selectedFrameIndices, contains(24));
@@ -1247,12 +1179,13 @@ void main() {
     await tester.pump();
 
     expect(currentFrameIndex, 9);
-    final decoration = _headerDecoration(tester, 9);
-    final border = decoration.border as Border;
-
-    expect(decoration.color, isNotNull);
-    expect(border.top.color, isNot(timelineSelectedFrameBorderColor));
-    expect(border.top.width, 1);
+    // The selected header reads by TINT only (painter model): its
+    // background differs from a neighbor's, no red-border machinery.
+    expect(timelineHeaderModel(tester, 9).selected, isTrue);
+    expect(
+      timelineHeaderModel(tester, 9).background,
+      isNot(timelineHeaderModel(tester, 8).background),
+    );
   });
 
   testWidgets('dragging frame ruler scrub area scrubs changed frames', (
@@ -1495,10 +1428,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(
-      find.byKey(const ValueKey<String>('timeline-frame-header-100')),
-      findsOneWidget,
-    );
+    expect(timelineHeaderInWindow(tester, 100), isTrue);
     expect(
       find.byKey(const ValueKey<String>('timeline-playhead')),
       findsOneWidget,
@@ -1543,9 +1473,7 @@ void main() {
       ),
     );
 
-    await tester.tap(
-      find.byKey(const ValueKey<String>('timeline-frame-header-3')),
-    );
+    await tester.tapAt(timelineHeaderGlobalRect(tester, 3).center);
 
     expect(selectedFrameIndex, 3);
   });
@@ -1572,11 +1500,10 @@ void main() {
     await tester.pumpWidget(_grid(currentFrameIndex: 3));
 
     expect(
-      find.byKey(const ValueKey<String>('timeline-frame-header-3')),
-      findsOneWidget,
+      timelineHeaderModel(tester, 3).label,
+      '4',
+      reason: 'the plain one-based number, no playhead glyph',
     );
-    expect(find.text('4'), findsOneWidget);
-    expect(find.text('▶ 4'), findsNothing);
   });
 
   testWidgets('current frame header keeps tint without red outline', (
@@ -1584,16 +1511,14 @@ void main() {
   ) async {
     await tester.pumpWidget(_grid(currentFrameIndex: 3));
 
-    final decoration = _headerDecoration(tester, 3);
-    final border = decoration.border! as Border;
-
+    // Selection reads by the TINT alone (painter model): the background
+    // differs from unselected neighbors; the painter has no selected
+    // border path at all.
+    expect(timelineHeaderModel(tester, 3).selected, isTrue);
     expect(
-      find.byKey(const ValueKey<String>('timeline-frame-header-3')),
-      findsOneWidget,
+      timelineHeaderModel(tester, 3).background,
+      isNot(timelineHeaderModel(tester, 2).background),
     );
-    expect(decoration.color, isNotNull);
-    expect(border.top.color, isNot(timelineSelectedFrameBorderColor));
-    expect(border.top.width, 1);
   });
 
   testWidgets('named drawing start displays name and mark has priority', (
@@ -2249,14 +2174,11 @@ void main() {
     final content = find.byKey(
       const ValueKey<String>('timeline-frame-scroll-content'),
     );
-    final headerZero = find.byKey(
-      const ValueKey<String>('timeline-frame-header-0'),
-    );
 
     expect(tester.getSize(content).width, closeTo(expectedContentWidth, 1.0));
     expect(
       timelineCellGlobalRect(tester, 'layer-1', 0).left,
-      closeTo(tester.getTopLeft(headerZero).dx, 1.0),
+      closeTo(timelineHeaderGlobalRect(tester, 0).left, 1.0),
     );
     _expectSelectedExposureRangeOutline(tester, 'layer-1', const [2, 3, 4]);
   });
@@ -2434,15 +2356,6 @@ void _expectNoSelectedExposureRangeBorder(WidgetTester tester, String key) {
   expect(border.right.width, 1.0);
   expect(border.bottom.width, 1.0);
   expect(border.left.width, 1.0);
-}
-
-BoxDecoration _headerDecoration(WidgetTester tester, int frameIndex) {
-  // The header cells are PASSIVE Containers now (UI-R10 #25 dropped the
-  // per-cell InkWell — selection rides the ruler's scrub listener).
-  final container = tester.widget<Container>(
-    find.byKey(ValueKey<String>('timeline-frame-header-$frameIndex')),
-  );
-  return container.decoration! as BoxDecoration;
 }
 
 void _expectSelectedExposureRangeOutline(
