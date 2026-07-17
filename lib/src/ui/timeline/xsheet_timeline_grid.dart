@@ -560,6 +560,7 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
     TimelineDisplayRow entry,
     TimelineVisibleRange frameRange,
     TimelineVirtualizationPlan plan,
+    double viewportExtent,
   ) {
     return RepaintBoundary(
       key: ValueKey<String>(
@@ -569,7 +570,7 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
         dragPreview: widget.dragPreview,
         layer: entry.layer,
         rowBuilder: (context, layer) =>
-            _columnFor(entry, layer, frameRange, plan),
+            _columnFor(entry, layer, frameRange, plan, viewportExtent),
       ),
     );
   }
@@ -579,6 +580,7 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
     Layer layer,
     TimelineVisibleRange frameRange,
     TimelineVirtualizationPlan plan,
+    double viewportExtent,
   ) {
     if (entry.isLane) {
       return laneIsSeAudio(entry.lane!)
@@ -630,6 +632,10 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
               laneEdit: widget.laneEdit,
             );
     }
+    // PRO-TIMELINE scrolling (UI-R15, transposed): the cells column gets
+    // FULL bounds — its painter windows itself off the live offset
+    // (repaint-only), so the bucket pass diffs identical params and
+    // records nothing; the sparse widget-cell kinds re-window internally.
     return _XSheetFrameCellsColumn(
       onActivateCell: widget.onActivateCell,
       instructionDefById: widget.instructionDefById,
@@ -641,10 +647,13 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
       baseLayer: entry.layer,
       active: entry.layer.id == widget.activeLayerId,
       playbackFrameCount: widget.frameCount,
-      frameStartIndex: frameRange.startIndex,
-      frameEndIndexExclusive: frameRange.endIndexExclusive,
-      leadingFrameSpacerHeight: plan.leadingFrameSpacerWidth,
-      trailingFrameSpacerHeight: plan.trailingFrameSpacerWidth,
+      frameStartIndex: 0,
+      frameEndIndexExclusive: _renderedFrameCount,
+      leadingFrameSpacerHeight: 0,
+      trailingFrameSpacerHeight: 0,
+      viewportOffset: _frameAxisOffset,
+      windowBucket: _frameWindowBucket,
+      viewportMainExtent: viewportExtent,
       metrics: _metrics,
       exposureStateForLayer: widget.exposureStateForLayer,
       frameNameForLayer: widget.frameNameForLayer,
@@ -795,15 +804,13 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
                                   maxHeight: totalFrameContentHeight,
                                   minWidth: _metrics.layerControlsWidth,
                                   maxWidth: _metrics.layerControlsWidth,
-                                  // Pixels move the TRANSLATE only; the rail
-                                  // content re-windows on cell crossings.
+                                  // Pixels move the TRANSLATE only; the
+                                  // rail painter windows itself off the
+                                  // offset (UI-R15 — no bucket rebuild).
                                   child: ValueListenableBuilder<double>(
                                     valueListenable: _frameAxisOffset,
-                                    child: ValueListenableBuilder<int>(
-                                      valueListenable: _frameWindowBucket,
-                                      builder: (context, _, _) {
-                                        final plan = framePlan();
-                                        final frameRange = plan.frameRange;
+                                    child: Builder(
+                                      builder: (context) {
                                         return SizedBox(
                                           width: _metrics.layerControlsWidth,
                                           height: totalFrameContentHeight,
@@ -818,30 +825,37 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
                                                   widget.frameCursor,
                                                   ?widget.cacheProgress,
                                                 ]),
-                                                builder: (context, _) => _XSheetFrameNumberRail(
-                                                  frameStartIndex:
-                                                      frameRange.startIndex,
-                                                  frameEndIndexExclusive:
-                                                      frameRange
-                                                          .endIndexExclusive,
-                                                  currentFrameIndex:
-                                                      widget.frameCursor.value,
-                                                  playbackFrameCount:
-                                                      widget.frameCount,
-                                                  leadingFrameSpacerHeight: plan
-                                                      .leadingFrameSpacerWidth,
-                                                  trailingFrameSpacerHeight: plan
-                                                      .trailingFrameSpacerWidth,
-                                                  metrics: _metrics,
-                                                  onSelectFrame:
-                                                      _selectClampedFrameFromRail,
-                                                  framesPerSecond:
-                                                      widget.projectFps,
-                                                  showSeconds:
-                                                      widget.showSeconds,
-                                                  isFrameCached:
-                                                      widget.isFrameCached,
-                                                ),
+                                                // UI-R15: full bounds —
+                                                // the rail painter windows
+                                                // itself off the offset.
+                                                builder: (context, _) =>
+                                                    _XSheetFrameNumberRail(
+                                                      frameStartIndex: 0,
+                                                      frameEndIndexExclusive:
+                                                          _renderedFrameCount,
+                                                      currentFrameIndex: widget
+                                                          .frameCursor
+                                                          .value,
+                                                      playbackFrameCount:
+                                                          widget.frameCount,
+                                                      leadingFrameSpacerHeight:
+                                                          0,
+                                                      trailingFrameSpacerHeight:
+                                                          0,
+                                                      metrics: _metrics,
+                                                      onSelectFrame:
+                                                          _selectClampedFrameFromRail,
+                                                      framesPerSecond:
+                                                          widget.projectFps,
+                                                      showSeconds:
+                                                          widget.showSeconds,
+                                                      isFrameCached:
+                                                          widget.isFrameCached,
+                                                      viewportOffset:
+                                                          _frameAxisOffset,
+                                                      viewportMainExtent:
+                                                          bodyViewportHeight,
+                                                    ),
                                               ),
                                               TimelineRulerCutEndBoundary(
                                                 axis: Axis.vertical,
@@ -1081,6 +1095,7 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
                                                             entries[index],
                                                             frameRange,
                                                             plan,
+                                                            bodyViewportHeight,
                                                           ),
                                                       ],
                                                     ),
@@ -1235,6 +1250,8 @@ class _XSheetFrameNumberRail extends StatelessWidget {
     this.framesPerSecond = 24,
     this.showSeconds = false,
     this.isFrameCached,
+    this.viewportOffset,
+    this.viewportMainExtent = 0,
   });
 
   final int frameStartIndex;
@@ -1251,6 +1268,11 @@ class _XSheetFrameNumberRail extends StatelessWidget {
   /// Whether a frame's playback composite is warmed; drawn as the green
   /// strip along the cell edge that faces the frame cells.
   final bool Function(int frameIndex)? isFrameCached;
+
+  /// PRO-TIMELINE scrolling (UI-R15): the painter windows itself off the
+  /// live offset — pass full bounds, no bucket re-windowing needed.
+  final ValueListenable<double>? viewportOffset;
+  final double viewportMainExtent;
 
   @override
   Widget build(BuildContext context) {
@@ -1282,6 +1304,8 @@ class _XSheetFrameNumberRail extends StatelessWidget {
           framesPerSecond: framesPerSecond,
           showSeconds: showSeconds,
           isFrameCached: isFrameCached,
+          viewportOffset: viewportOffset,
+          viewportMainExtent: viewportMainExtent,
         ),
       ),
     );
@@ -1304,7 +1328,9 @@ class XSheetFrameRailPainter extends CustomPainter {
     this.framesPerSecond = 24,
     this.showSeconds = false,
     this.isFrameCached,
-  });
+    this.viewportOffset,
+    this.viewportMainExtent = 0,
+  }) : super(repaint: viewportOffset);
 
   final int frameStartIndex;
   final int frameEndIndexExclusive;
@@ -1316,6 +1342,35 @@ class XSheetFrameRailPainter extends CustomPainter {
   final int framesPerSecond;
   final bool showSeconds;
   final bool Function(int frameIndex)? isFrameCached;
+
+  /// PRO-TIMELINE scrolling (UI-R15): with these set the rail windows
+  /// ITSELF off the live offset (repaint-only scroll) — full bounds in,
+  /// no bucket re-windowing.
+  final ValueListenable<double>? viewportOffset;
+  final double viewportMainExtent;
+
+  /// The row window paint() actually draws (probe surface).
+  ({int startIndex, int endIndexExclusive}) visibleRowWindow() {
+    final offset = viewportOffset;
+    if (offset == null ||
+        viewportMainExtent <= 0 ||
+        metrics.frameCellWidth <= 0) {
+      return (
+        startIndex: frameStartIndex,
+        endIndexExclusive: frameEndIndexExclusive,
+      );
+    }
+    final localOffset = offset.value - leadingFrameSpacerHeight;
+    final first =
+        frameStartIndex + (localOffset / metrics.frameCellWidth).floor();
+    final last =
+        frameStartIndex +
+        ((localOffset + viewportMainExtent) / metrics.frameCellWidth).ceil();
+    return (
+      startIndex: math.max(frameStartIndex, first - 2),
+      endIndexExclusive: math.min(frameEndIndexExclusive, last + 2),
+    );
+  }
 
   /// The row's rect in the rail's local coordinates.
   Rect rowRectFor(int frameIndex) => Rect.fromLTWH(
@@ -1368,9 +1423,12 @@ class XSheetFrameRailPainter extends CustomPainter {
       frameCellExtent: metrics.frameCellWidth,
     );
 
+    // Self-windowing (UI-R15): only the rows under the live viewport
+    // record — a scroll is a repaint of this thin pass, never a rebuild.
+    final window = visibleRowWindow();
     for (
-      var frameIndex = frameStartIndex;
-      frameIndex < frameEndIndexExclusive;
+      var frameIndex = window.startIndex;
+      frameIndex < window.endIndexExclusive;
       frameIndex += 1
     ) {
       final model = modelAt(frameIndex);
@@ -1444,15 +1502,18 @@ class XSheetFrameRailPainter extends CustomPainter {
       oldDelegate.metrics != metrics ||
       oldDelegate.framesPerSecond != framesPerSecond ||
       oldDelegate.showSeconds != showSeconds ||
+      !identical(oldDelegate.viewportOffset, viewportOffset) ||
+      oldDelegate.viewportMainExtent != viewportMainExtent ||
       !identical(oldDelegate.colorScheme, colorScheme) ||
       !identical(oldDelegate.isFrameCached, isFrameCached);
 
   @override
   SemanticsBuilderCallback get semanticsBuilder => (size) {
     final nodes = <CustomPainterSemantics>[];
+    final window = visibleRowWindow();
     for (
-      var frameIndex = frameStartIndex;
-      frameIndex < frameEndIndexExclusive;
+      var frameIndex = window.startIndex;
+      frameIndex < window.endIndexExclusive;
       frameIndex += 1
     ) {
       nodes.add(
@@ -1495,6 +1556,9 @@ class _XSheetFrameCellsColumn extends StatelessWidget {
     this.rangeGesture,
     this.runEdit,
     this.baseLayer,
+    this.viewportOffset,
+    this.windowBucket,
+    this.viewportMainExtent = 0,
   });
 
   final Layer layer;
@@ -1536,6 +1600,14 @@ class _XSheetFrameCellsColumn extends StatelessWidget {
   /// The run-edge [+]/[↻] handle hooks (UI-R8); null hides the handles.
   final TimelineRunEditCallbacks? runEdit;
 
+  /// PRO-TIMELINE scrolling (UI-R15, transposed): with these set the
+  /// column builds ONCE for the full frame bounds — the painter windows
+  /// itself off the live offset, the sparse widget-cell kinds re-window
+  /// under [windowBucket] alone. Null keeps the classic contract.
+  final ValueListenable<double>? viewportOffset;
+  final ValueListenable<int>? windowBucket;
+  final double viewportMainExtent;
+
   @override
   Widget build(BuildContext context) {
     // Instruction columns adapt their events onto the shared exposure
@@ -1568,6 +1640,8 @@ class _XSheetFrameCellsColumn extends StatelessWidget {
               frameCellExtent: metrics.frameCellWidth,
               crossAxisExtent: metrics.layerRowHeight,
               axis: Axis.vertical,
+              viewportOffset: viewportOffset,
+              viewportMainExtent: viewportMainExtent,
               exposureStateForLayer: exposureStateForLayer,
               frameNameForLayer: frameNameForLayer,
               onSelectLayer: onSelectLayer,
@@ -1582,62 +1656,40 @@ class _XSheetFrameCellsColumn extends StatelessWidget {
                           selection.contains(frameIndex);
                     },
             )
+          else if (windowBucket != null && viewportOffset != null)
+            // Sparse widget-cell kinds re-window under the bucket ALONE
+            // (UI-R15): the column never rebuilds on scroll.
+            ValueListenableBuilder<int>(
+              valueListenable: windowBucket!,
+              builder: (context, _, _) {
+                final cellExtent = metrics.frameCellWidth;
+                final localOffset = viewportOffset!.value;
+                final first = math.max(
+                  frameStartIndex,
+                  (localOffset / cellExtent).floor() - 2,
+                );
+                final last = math.min(
+                  frameEndIndexExclusive,
+                  ((localOffset + viewportMainExtent) / cellExtent).ceil() + 2,
+                );
+                return _widgetCellsStrip(
+                  stateAt,
+                  startIndex: first,
+                  endIndexExclusive: math.max(first, last),
+                  leading: first * cellExtent,
+                  trailing:
+                      (frameEndIndexExclusive - math.max(first, last)) *
+                      cellExtent,
+                );
+              },
+            )
           else
-            Column(
-              children: [
-                SizedBox(
-                  key: ValueKey<String>(
-                    'xsheet-frame-column-leading-spacer-${layer.id}',
-                  ),
-                  height: leadingFrameSpacerHeight,
-                  width: metrics.layerRowHeight,
-                ),
-                for (
-                  var frameIndex = frameStartIndex;
-                  frameIndex < frameEndIndexExclusive;
-                  frameIndex += 1
-                )
-                  TimelineFrameCell(
-                    layer: layer,
-                    frameIndex: frameIndex,
-                    active: active,
-                    outsidePlaybackRange: frameIndex >= playbackFrameCount,
-                    ghost: timelineIndexIsGhost(layer, frameIndex),
-                    exposureState: stateAt(frameIndex),
-                    exposureBlockSegment:
-                        calculateTimelineExposureBlockVisualSegment(
-                          previous: frameIndex == 0
-                              ? null
-                              : stateAt(frameIndex - 1),
-                          current: stateAt(frameIndex),
-                          next: stateAt(frameIndex + 1),
-                        ),
-                    emptyRunStart: timelineEmptyRunStartsAt(
-                      current: stateAt(frameIndex),
-                      previous: frameIndex == 0
-                          ? null
-                          : stateAt(frameIndex - 1),
-                    ),
-                    frameName: frameNameForLayer?.call(layer, frameIndex),
-                    onSelectLayer: onSelectLayer,
-                    onSelectFrame: onSelectFrame,
-                    onActivateCell:
-                        layerKindOpensCellEditorOnDoubleTap(layer.kind)
-                        ? onActivateCell
-                        : null,
-                    axis: Axis.vertical,
-                    width: metrics.layerRowHeight,
-                    height: metrics.frameCellWidth,
-                    cellKeyPrefix: 'xsheet-cell',
-                  ),
-                SizedBox(
-                  key: ValueKey<String>(
-                    'xsheet-frame-column-trailing-spacer-${layer.id}',
-                  ),
-                  height: trailingFrameSpacerHeight,
-                  width: metrics.layerRowHeight,
-                ),
-              ],
+            _widgetCellsStrip(
+              stateAt,
+              startIndex: frameStartIndex,
+              endIndexExclusive: frameEndIndexExclusive,
+              leading: leadingFrameSpacerHeight,
+              trailing: trailingFrameSpacerHeight,
             ),
           // NO extra section-divider overlay (R3 feedback #6): section
           // boundaries share the same single hairline as every column
@@ -1764,6 +1816,67 @@ class _XSheetFrameCellsColumn extends StatelessWidget {
             ),
         ],
       ),
+    );
+  }
+
+  /// The sparse kinds' per-cell widget strip, transposed: spacers stand
+  /// in for the cells outside [startIndex, endIndexExclusive).
+  Widget _widgetCellsStrip(
+    TimelineCellExposureState Function(int frameIndex) stateAt, {
+    required int startIndex,
+    required int endIndexExclusive,
+    required double leading,
+    required double trailing,
+  }) {
+    return Column(
+      children: [
+        SizedBox(
+          key: ValueKey<String>(
+            'xsheet-frame-column-leading-spacer-${layer.id}',
+          ),
+          height: leading,
+          width: metrics.layerRowHeight,
+        ),
+        for (
+          var frameIndex = startIndex;
+          frameIndex < endIndexExclusive;
+          frameIndex += 1
+        )
+          TimelineFrameCell(
+            layer: layer,
+            frameIndex: frameIndex,
+            active: active,
+            outsidePlaybackRange: frameIndex >= playbackFrameCount,
+            ghost: timelineIndexIsGhost(layer, frameIndex),
+            exposureState: stateAt(frameIndex),
+            exposureBlockSegment: calculateTimelineExposureBlockVisualSegment(
+              previous: frameIndex == 0 ? null : stateAt(frameIndex - 1),
+              current: stateAt(frameIndex),
+              next: stateAt(frameIndex + 1),
+            ),
+            emptyRunStart: timelineEmptyRunStartsAt(
+              current: stateAt(frameIndex),
+              previous: frameIndex == 0 ? null : stateAt(frameIndex - 1),
+            ),
+            frameName: frameNameForLayer?.call(layer, frameIndex),
+            onSelectLayer: onSelectLayer,
+            onSelectFrame: onSelectFrame,
+            onActivateCell: layerKindOpensCellEditorOnDoubleTap(layer.kind)
+                ? onActivateCell
+                : null,
+            axis: Axis.vertical,
+            width: metrics.layerRowHeight,
+            height: metrics.frameCellWidth,
+            cellKeyPrefix: 'xsheet-cell',
+          ),
+        SizedBox(
+          key: ValueKey<String>(
+            'xsheet-frame-column-trailing-spacer-${layer.id}',
+          ),
+          height: trailing,
+          width: metrics.layerRowHeight,
+        ),
+      ],
     );
   }
 }

@@ -1,3 +1,6 @@
+import 'dart:math' as math;
+
+import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
 import 'package:flutter/semantics.dart' show SemanticsProperties;
 
@@ -51,7 +54,9 @@ class TimelineFrameRulerPainter extends CustomPainter {
     this.framesPerSecond = 24,
     this.showSeconds = false,
     this.isFrameCached,
-  });
+    this.viewportOffset,
+    this.viewportMainExtent = 0,
+  }) : super(repaint: viewportOffset);
 
   final int frameStartIndex;
   final int frameEndIndexExclusive;
@@ -63,6 +68,36 @@ class TimelineFrameRulerPainter extends CustomPainter {
   final int framesPerSecond;
   final bool showSeconds;
   final bool Function(int frameIndex)? isFrameCached;
+
+  /// PRO-TIMELINE scrolling (UI-R15): with these set the strip windows
+  /// ITSELF off the live offset (repaint-only scroll) — the header row
+  /// builds once for the full bounds and the old bucket re-windowing is
+  /// gone. Null keeps the classic pre-windowed contract.
+  final ValueListenable<double>? viewportOffset;
+  final double viewportMainExtent;
+
+  /// The header window paint() actually draws (probe surface).
+  ({int startIndex, int endIndexExclusive}) visibleHeaderWindow() {
+    final offset = viewportOffset;
+    if (offset == null ||
+        viewportMainExtent <= 0 ||
+        metrics.frameCellWidth <= 0) {
+      return (
+        startIndex: frameStartIndex,
+        endIndexExclusive: frameEndIndexExclusive,
+      );
+    }
+    final localOffset = offset.value - leadingFrameSpacerWidth;
+    final first =
+        frameStartIndex + (localOffset / metrics.frameCellWidth).floor();
+    final last =
+        frameStartIndex +
+        ((localOffset + viewportMainExtent) / metrics.frameCellWidth).ceil();
+    return (
+      startIndex: math.max(frameStartIndex, first - 2),
+      endIndexExclusive: math.min(frameEndIndexExclusive, last + 2),
+    );
+  }
 
   /// The header cell's rect in the strip's local coordinates (the probe
   /// geometry tests and taps share).
@@ -120,9 +155,12 @@ class TimelineFrameRulerPainter extends CustomPainter {
       ..strokeWidth = 1;
     final linePaint = Paint()..strokeWidth = 1;
 
+    // Self-windowing (UI-R15): only the headers under the live viewport
+    // record — a scroll is a repaint of this thin pass, never a rebuild.
+    final window = visibleHeaderWindow();
     for (
-      var frameIndex = frameStartIndex;
-      frameIndex < frameEndIndexExclusive;
+      var frameIndex = window.startIndex;
+      frameIndex < window.endIndexExclusive;
       frameIndex += 1
     ) {
       final model = headerModelAt(frameIndex);
@@ -228,16 +266,20 @@ class TimelineFrameRulerPainter extends CustomPainter {
       oldDelegate.metrics != metrics ||
       oldDelegate.framesPerSecond != framesPerSecond ||
       oldDelegate.showSeconds != showSeconds ||
+      !identical(oldDelegate.viewportOffset, viewportOffset) ||
+      oldDelegate.viewportMainExtent != viewportMainExtent ||
       !identical(oldDelegate.colorScheme, colorScheme) ||
       !identical(oldDelegate.isFrameCached, isFrameCached);
 
   @override
   SemanticsBuilderCallback get semanticsBuilder => (size) {
-    // One node per labeled header (the old per-cell widgets' surface).
+    // One node per labeled header (the old per-cell widgets' surface),
+    // windowed with the paint pass.
     final nodes = <CustomPainterSemantics>[];
+    final window = visibleHeaderWindow();
     for (
-      var frameIndex = frameStartIndex;
-      frameIndex < frameEndIndexExclusive;
+      var frameIndex = window.startIndex;
+      frameIndex < window.endIndexExclusive;
       frameIndex += 1
     ) {
       final model = headerModelAt(frameIndex);

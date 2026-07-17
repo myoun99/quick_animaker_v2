@@ -1,3 +1,6 @@
+import 'dart:math' as math;
+
+import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/gestures.dart' show kPrimaryButton;
 import 'package:flutter/material.dart';
 import 'package:flutter/semantics.dart' show SemanticsProperties;
@@ -87,7 +90,9 @@ class TimelineRowCellsPainter extends CustomPainter {
     required this.colorScheme,
     required this.baseTextStyle,
     this.axis = Axis.horizontal,
-  });
+    this.viewportOffset,
+    this.viewportMainExtent = 0,
+  }) : super(repaint: viewportOffset);
 
   final Layer layer;
   final bool active;
@@ -107,6 +112,48 @@ class TimelineRowCellsPainter extends CustomPainter {
   /// glyphs merge color/weight onto it so painted text matches exactly.
   final TextStyle baseTextStyle;
   final Axis axis;
+
+  /// PRO-TIMELINE scrolling (UI-R15): with these set, the painter windows
+  /// ITSELF — paint() reads the live scroll offset, draws only the cells
+  /// under the viewport, and the offset notifier triggers repaint alone
+  /// (the `repaint` listenable). The row widget then builds ONCE for the
+  /// full frame bounds and never rebuilds on scroll; the old widget-side
+  /// windowing (bucket rebuilds re-baking [frameStartIndex..end)) is what
+  /// made fast drags heavy. Null keeps the classic pre-windowed contract
+  /// (the sparse widget rows' plan windows still use it).
+  final ValueListenable<double>? viewportOffset;
+
+  /// The scroll viewport's main-axis extent for the self-windowing path.
+  final double viewportMainExtent;
+
+  /// Frames of overscan kept painted around the self-computed window (the
+  /// widget-windowing era's allowance, kept for parity).
+  static const int selfWindowOverscan = 2;
+
+  /// The frame window paint() actually draws: the full bounds under the
+  /// classic contract, the offset-derived slice (+overscan) under the
+  /// self-windowing one. THE probe surface for visibility tests.
+  ({int startIndex, int endIndexExclusive}) visibleFrameWindow() {
+    final offset = viewportOffset;
+    if (offset == null || viewportMainExtent <= 0 || frameCellExtent <= 0) {
+      return (
+        startIndex: frameStartIndex,
+        endIndexExclusive: frameEndIndexExclusive,
+      );
+    }
+    final localOffset = offset.value - leadingFrameSpacerWidth;
+    final first = frameStartIndex + (localOffset / frameCellExtent).floor();
+    final last =
+        frameStartIndex +
+        ((localOffset + viewportMainExtent) / frameCellExtent).ceil();
+    return (
+      startIndex: math.max(frameStartIndex, first - selfWindowOverscan),
+      endIndexExclusive: math.min(
+        frameEndIndexExclusive,
+        last + selfWindowOverscan,
+      ),
+    );
+  }
 
   TimelineCellExposureState _stateAt(int frameIndex) =>
       exposureStateForLayer(layer, frameIndex);
@@ -286,9 +333,12 @@ class TimelineRowCellsPainter extends CustomPainter {
       ..strokeWidth = 1;
     final fillPaint = Paint();
 
+    // Self-windowing (UI-R15): only the cells under the live viewport
+    // record — a scroll is a repaint of this thin pass, never a rebuild.
+    final window = visibleFrameWindow();
     for (
-      var frameIndex = frameStartIndex;
-      frameIndex < frameEndIndexExclusive;
+      var frameIndex = window.startIndex;
+      frameIndex < window.endIndexExclusive;
       frameIndex += 1
     ) {
       final model = cellModelAt(frameIndex);
@@ -428,6 +478,8 @@ class TimelineRowCellsPainter extends CustomPainter {
       oldDelegate.frameCellExtent != frameCellExtent ||
       oldDelegate.crossAxisExtent != crossAxisExtent ||
       oldDelegate.axis != axis ||
+      !identical(oldDelegate.viewportOffset, viewportOffset) ||
+      oldDelegate.viewportMainExtent != viewportMainExtent ||
       !identical(oldDelegate.colorScheme, colorScheme) ||
       !identical(oldDelegate.exposureStateForLayer, exposureStateForLayer) ||
       !identical(oldDelegate.frameNameForLayer, frameNameForLayer);
@@ -435,12 +487,14 @@ class TimelineRowCellsPainter extends CustomPainter {
   @override
   SemanticsBuilderCallback get semanticsBuilder => (size) {
     // One semantics node per NON-EMPTY cell (labels only where content
-    // exists) — the per-cell widget tree used to emit these; the painted
-    // rows keep the a11y surface without the widget cost.
+    // exists), windowed with the paint pass — the per-cell widget tree
+    // used to emit these; the painted rows keep the a11y surface without
+    // the widget cost.
     final nodes = <CustomPainterSemantics>[];
+    final window = visibleFrameWindow();
     for (
-      var frameIndex = frameStartIndex;
-      frameIndex < frameEndIndexExclusive;
+      var frameIndex = window.startIndex;
+      frameIndex < window.endIndexExclusive;
       frameIndex += 1
     ) {
       final label = cellModelAt(frameIndex).semanticsLabel;
@@ -496,6 +550,8 @@ Widget timelineRowCellsPaintArea({
   required ValueChanged<int> onSelectFrame,
   void Function(LayerId layerId, int frameIndex)? onActivateCell,
   bool Function(int frameIndex)? suppressPointerDownSelect,
+  ValueListenable<double>? viewportOffset,
+  double viewportMainExtent = 0,
 }) {
   final painter = TimelineRowCellsPainter(
     layer: layer,
@@ -511,6 +567,8 @@ Widget timelineRowCellsPaintArea({
     colorScheme: Theme.of(context).colorScheme,
     baseTextStyle: DefaultTextStyle.of(context).style,
     axis: axis,
+    viewportOffset: viewportOffset,
+    viewportMainExtent: viewportMainExtent,
   );
   final totalMainExtent =
       leadingFrameSpacerWidth +

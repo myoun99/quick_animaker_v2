@@ -51,7 +51,18 @@ class TimelineFrameRowsScrollBody extends StatefulWidget {
     this.laneEdit,
     this.dragPreview,
     this.seSpillInLayerIds = const {},
+    this.viewportOffset,
+    this.windowBucket,
+    this.viewportMainExtent = 0,
   });
+
+  /// PRO-TIMELINE scrolling (UI-R15): with these set the drawing rows
+  /// build once for the full bounds (their painters window themselves off
+  /// the live offset) and the sparse rows re-window under the bucket
+  /// alone — a scroll rebuilds nothing here.
+  final ValueListenable<double>? viewportOffset;
+  final ValueListenable<int>? windowBucket;
+  final double viewportMainExtent;
 
   /// Display rows: layer rows interleaved with expanded property lanes.
   /// May be a layer-axis WINDOW of the full row list — the spacer heights
@@ -234,6 +245,9 @@ class _TimelineFrameRowsScrollBodyState
       rangeGesture: widget.rangeGesture,
       runEdit: widget.runEdit,
       seSpillsIn: widget.seSpillInLayerIds.contains(layer.id),
+      viewportOffset: widget.viewportOffset,
+      windowBucket: widget.windowBucket,
+      viewportMainExtent: widget.viewportMainExtent,
     );
   }
 

@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
 
 import 'timeline_frame_ruler_painter.dart';
@@ -30,7 +31,15 @@ class TimelineFrameHeaderRow extends StatelessWidget {
     this.framesPerSecond = 24,
     this.showSeconds = false,
     this.isFrameCached,
+    this.viewportOffset,
+    this.viewportMainExtent = 0,
   });
+
+  /// PRO-TIMELINE scrolling (UI-R15): with these set the painter windows
+  /// itself off the live offset (repaint-only scroll) — pass the FULL
+  /// frame bounds and no bucket re-windowing is needed.
+  final ValueListenable<double>? viewportOffset;
+  final double viewportMainExtent;
 
   final int frameStartIndex;
   final int frameEndIndexExclusive;
@@ -79,6 +88,8 @@ class TimelineFrameHeaderRow extends StatelessWidget {
           framesPerSecond: framesPerSecond,
           showSeconds: showSeconds,
           isFrameCached: isFrameCached,
+          viewportOffset: viewportOffset,
+          viewportMainExtent: viewportMainExtent,
         ),
       ),
     );

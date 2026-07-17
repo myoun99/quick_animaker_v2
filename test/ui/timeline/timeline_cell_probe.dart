@@ -60,17 +60,23 @@ Rect timelineCellGlobalRect(
   return box.localToGlobal(local.topLeft) & local.size;
 }
 
-/// Whether [frameIndex] lies inside the row's BUILT window (the painted
-/// successor of `find.byKey(cell key) → findsOneWidget`).
+/// Whether [frameIndex] lies inside the row's PAINT window (the painted
+/// successor of `find.byKey(cell key) → findsOneWidget`). Under the
+/// UI-R15 self-windowing contract this is the offset-derived slice the
+/// painter actually records, not the widget's (now full) bounds.
 bool timelineCellInWindow(
   WidgetTester tester,
   String layerId,
   int frameIndex, {
   String prefix = 'timeline',
 }) {
-  final painter = timelineRowCellsPainterFor(tester, layerId, prefix: prefix);
-  return frameIndex >= painter.frameStartIndex &&
-      frameIndex < painter.frameEndIndexExclusive;
+  final window = timelineRowCellsPainterFor(
+    tester,
+    layerId,
+    prefix: prefix,
+  ).visibleFrameWindow();
+  return frameIndex >= window.startIndex &&
+      frameIndex < window.endIndexExclusive;
 }
 
 /// The cell's resolved BoxDecoration equivalent — a drop-in for the old
