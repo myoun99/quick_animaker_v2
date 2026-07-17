@@ -394,7 +394,15 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
   final ScrollController _horizontalController = ScrollController();
 
   int _endlessTrailingFrames = 0;
-  double _horizontalScrollOffset = 0;
+
+  /// The live horizontal offset as a VALUE channel (UI-R15, the
+  /// timeline's B1 pattern): scroll pixels update this notifier — the
+  /// pinned ruler's translate and the self-windowing ruler painters
+  /// follow it with zero panel rebuilds. Only an endless-extent change
+  /// (growth/shrink) still goes through setState.
+  final ValueNotifier<double> _horizontalScrollOffset = ValueNotifier<double>(
+    0,
+  );
 
   @override
   void initState() {
@@ -442,12 +450,11 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
       // away, gesture pixels wait for the settle listener.
       allowShrink: !position.isScrollingNotifier.value,
     );
-    if (next != _endlessTrailingFrames || offset != _horizontalScrollOffset) {
-      setState(() {
-        _endlessTrailingFrames = next;
-        // The shared frame ruler windows itself to the viewport.
-        _horizontalScrollOffset = offset;
-      });
+    // Repaint-only scroll (UI-R15): the offset rides the value channel;
+    // widgets rebuild ONLY when the endless extent itself changes.
+    _horizontalScrollOffset.value = offset;
+    if (next != _endlessTrailingFrames) {
+      setState(() => _endlessTrailingFrames = next);
     }
   }
 
@@ -517,6 +524,7 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
     );
     _verticalController.dispose();
     _horizontalController.dispose();
+    _horizontalScrollOffset.dispose();
     super.dispose();
   }
 
@@ -1266,15 +1274,18 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
                           maxWidth: contentWidth,
                           minHeight: StoryboardPanel._rulerHeight,
                           maxHeight: StoryboardPanel._rulerHeight,
-                          child: Transform.translate(
-                            offset: Offset(-_horizontalScrollOffset, 0),
+                          // UI-R15: scroll moves ONLY this translate — the
+                          // ruler strip itself builds once (full bounds)
+                          // and its painters window off the live offset.
+                          child: ValueListenableBuilder<double>(
+                            valueListenable: _horizontalScrollOffset,
                             child: _StoryboardRuler(
                               width: contentWidth,
                               renderedFrames: renderedFrames,
                               contentFrames: totalFrames,
                               playhead: playheadListenable,
                               cacheProgress: widget.cacheProgress,
-                              scrollOffset: _horizontalScrollOffset,
+                              viewportOffset: _horizontalScrollOffset,
                               viewportWidth: viewportWidth,
                               timelineScale: scale,
                               onSeekGlobalFrame: widget.onSeekGlobalFrame,
@@ -1285,6 +1296,11 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
                               framesPerSecond: widget.projectFps,
                               showSeconds: widget.showSeconds,
                             ),
+                            builder: (context, offset, child) =>
+                                Transform.translate(
+                                  offset: Offset(-offset, 0),
+                                  child: child,
+                                ),
                           ),
                         ),
                       ),
@@ -1569,7 +1585,7 @@ class _StoryboardRuler extends StatelessWidget {
     required this.contentFrames,
     required this.playhead,
     required this.cacheProgress,
-    required this.scrollOffset,
+    required this.viewportOffset,
     required this.viewportWidth,
     required this.timelineScale,
     required this.onSeekGlobalFrame,
@@ -1580,8 +1596,6 @@ class _StoryboardRuler extends StatelessWidget {
     this.framesPerSecond = 24,
     this.showSeconds = false,
   });
-
-  static const int _overscanCells = 4;
 
   final double width;
 
@@ -1599,7 +1613,12 @@ class _StoryboardRuler extends StatelessWidget {
   /// why the old rebuild-per-tick ruler showed up as fixed frame drops.
   final ValueListenable<int?>? playhead;
   final Listenable? cacheProgress;
-  final double scrollOffset;
+
+  /// The live horizontal offset (UI-R15): the strip builds ONCE with the
+  /// full frame bounds; the shared ruler painter and the cursor overlay
+  /// window themselves off this listenable — a scroll repaints, never
+  /// rebuilds. The edge-pan test reads its current value.
+  final ValueListenable<double> viewportOffset;
   final double viewportWidth;
   final TimelineScale timelineScale;
   final ValueChanged<int>? onSeekGlobalFrame;
@@ -1647,7 +1666,7 @@ class _StoryboardRuler extends StatelessWidget {
       return;
     }
     const edge = 24.0;
-    final viewportX = dx - scrollOffset;
+    final viewportX = dx - viewportOffset.value;
     double delta = 0;
     if (viewportX > viewportWidth - edge) {
       delta = viewportX - (viewportWidth - edge);
@@ -1662,14 +1681,6 @@ class _StoryboardRuler extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final cellWidth = timelineScale.pixelsPerFrame;
-    final startIndex = math.max(
-      0,
-      (scrollOffset / cellWidth).floor() - _overscanCells,
-    );
-    final endIndexExclusive = math.min(
-      renderedFrames,
-      ((scrollOffset + viewportWidth) / cellWidth).ceil() + _overscanCells,
-    );
     final metrics = TimelineGridMetrics(
       frameCellWidth: cellWidth,
       layerRowHeight: StoryboardPanel._rulerHeight,
@@ -1698,23 +1709,22 @@ class _StoryboardRuler extends StatelessWidget {
         child: Stack(
           children: [
             // STATIC header cells: cursor- and cache-independent — ticks
-            // and warming frames never rebuild them.
+            // and warming frames never rebuild them. Full bounds (UI-R15):
+            // the shared painter self-windows off the live offset.
             TimelineFrameRuler(
               key: const ValueKey<String>('storyboard-frame-ruler'),
-              frameStartIndex: startIndex,
-              frameEndIndexExclusive: math.max(startIndex, endIndexExclusive),
+              frameStartIndex: 0,
+              frameEndIndexExclusive: renderedFrames,
               currentFrameIndex: -1,
               playbackFrameCount: contentFrames,
-              leadingFrameSpacerWidth: startIndex * cellWidth,
-              trailingFrameSpacerWidth: math.max(
-                0,
-                (renderedFrames - math.max(startIndex, endIndexExclusive)) *
-                    cellWidth,
-              ),
+              leadingFrameSpacerWidth: 0,
+              trailingFrameSpacerWidth: 0,
               metrics: metrics,
               onSelectFrame: _seekFrame,
               framesPerSecond: framesPerSecond,
               showSeconds: showSeconds,
+              viewportOffset: viewportOffset,
+              viewportMainExtent: viewportWidth,
             ),
             // The moving parts REPAINT only: current-frame tint + green
             // cached bar, one thin isolated layer.
@@ -1728,11 +1738,9 @@ class _StoryboardRuler extends StatelessWidget {
                     painter: _StoryboardRulerCursorPainter(
                       playhead: playhead,
                       cacheProgress: cacheProgress,
-                      frameStartIndex: startIndex,
-                      frameEndIndexExclusive: math.max(
-                        startIndex,
-                        endIndexExclusive,
-                      ),
+                      viewportOffset: viewportOffset,
+                      viewportMainExtent: viewportWidth,
+                      renderedFrames: renderedFrames,
                       contentFrames: contentFrames,
                       cellWidth: cellWidth,
                       isFrameCached: isFrameCached,
@@ -1755,16 +1763,23 @@ class _StoryboardRulerCursorPainter extends CustomPainter {
   _StoryboardRulerCursorPainter({
     required this.playhead,
     required Listenable? cacheProgress,
-    required this.frameStartIndex,
-    required this.frameEndIndexExclusive,
+    required this.viewportOffset,
+    required this.viewportMainExtent,
+    required this.renderedFrames,
     required this.contentFrames,
     required this.cellWidth,
     required this.isFrameCached,
-  }) : super(repaint: Listenable.merge([?playhead, ?cacheProgress]));
+  }) : super(
+         repaint: Listenable.merge([?playhead, ?cacheProgress, viewportOffset]),
+       );
 
   final ValueListenable<int?>? playhead;
-  final int frameStartIndex;
-  final int frameEndIndexExclusive;
+
+  /// UI-R15 self-windowing: paint covers the offset-derived slice of the
+  /// full-bounds strip (scroll = repaint, not rebuild).
+  final ValueListenable<double> viewportOffset;
+  final double viewportMainExtent;
+  final int renderedFrames;
   final int contentFrames;
   final double cellWidth;
   final bool Function(int globalFrame)? isFrameCached;
@@ -1772,8 +1787,25 @@ class _StoryboardRulerCursorPainter extends CustomPainter {
   /// The AE-style cached-range green (the header cells' own strip color).
   static const Color _cachedBarColor = Color(0xFF54B435);
 
+  ({int startIndex, int endIndexExclusive}) _visibleWindow() {
+    if (viewportMainExtent <= 0 || cellWidth <= 0) {
+      return (startIndex: 0, endIndexExclusive: renderedFrames);
+    }
+    final offset = viewportOffset.value;
+    return (
+      startIndex: math.max(0, (offset / cellWidth).floor() - 4),
+      endIndexExclusive: math.min(
+        renderedFrames,
+        ((offset + viewportMainExtent) / cellWidth).ceil() + 4,
+      ),
+    );
+  }
+
   @override
   void paint(Canvas canvas, Size size) {
+    final window = _visibleWindow();
+    final frameStartIndex = window.startIndex;
+    final frameEndIndexExclusive = window.endIndexExclusive;
     final cached = isFrameCached;
     if (cached != null) {
       final barPaint = Paint()..color = _cachedBarColor;
@@ -1816,8 +1848,9 @@ class _StoryboardRulerCursorPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(_StoryboardRulerCursorPainter oldDelegate) =>
-      oldDelegate.frameStartIndex != frameStartIndex ||
-      oldDelegate.frameEndIndexExclusive != frameEndIndexExclusive ||
+      !identical(oldDelegate.viewportOffset, viewportOffset) ||
+      oldDelegate.viewportMainExtent != viewportMainExtent ||
+      oldDelegate.renderedFrames != renderedFrames ||
       oldDelegate.contentFrames != contentFrames ||
       oldDelegate.cellWidth != cellWidth ||
       !identical(oldDelegate.playhead, playhead) ||
