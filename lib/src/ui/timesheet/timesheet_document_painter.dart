@@ -334,25 +334,24 @@ class TimesheetDocumentPainter extends CustomPainter {
   bool get _drawContent => paintLayer != TimesheetPaintLayer.form;
 
   /// The column's display cells, with an in-flight drag preview
-  /// substituted for its layer (ACTION columns only — SE windowing stays
-  /// the document's job).
+  /// substituted for its layer. Every layer-backed column kind previews
+  /// (UI-R18 #7 — action, SE, camera instruction): the column's own baked
+  /// [TimesheetColumn.previewCellsBuilder] re-derives the cells, so the
+  /// painter never learns each kind's recipe. SE previews arrive as
+  /// DISPLAY clones under the same id (the timeline's seam), so the SE
+  /// windowing stays the document's job.
   List<TimesheetCell> displayCellsFor(TimesheetColumn column) {
     final preview = dragPreview?.value;
     final layerId = column.layerId;
-    if (preview == null ||
-        layerId == null ||
-        column.kind != TimesheetColumnKind.action) {
+    final rebuild = column.previewCellsBuilder;
+    if (preview == null || layerId == null || rebuild == null) {
       return column.cells;
     }
     final previewLayer = timelineDragPreviewLayerFor(preview, layerId);
     if (previewLayer == null) {
       return column.cells;
     }
-    return timesheetLayerCells(
-      layer: previewLayer,
-      rowCount: document.rowCount,
-      playbackFrameCount: document.playbackFrameCount,
-    );
+    return rebuild(previewLayer);
   }
 
   static const Color _paper = Color(0xFFF6F4F0);
