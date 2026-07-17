@@ -810,6 +810,45 @@ void main() {
         findsNothing,
       );
     });
+
+    testWidgets('the GAP keeps the fx/eye slots as PARKED disabled buttons '
+        'instead of blinking them out (UI-R11 #3)', (tester) async {
+      await _pumpPanel(
+        tester,
+        project: _project(),
+        activeCutId: null, // gap: no cut selected anywhere
+        cutFxEnabledOf: (_) => true,
+        onToggleCutFx: (_) => fail('parked buttons must not toggle'),
+        cutPictureVisibleOf: (_) => true,
+        onToggleCutPictureVisibility: (_) =>
+            fail('parked buttons must not toggle'),
+      );
+
+      final parkedFx = find.byKey(
+        const ValueKey<String>('storyboard-cut-fx-parked-lane-track'),
+      );
+      final parkedEye = find.byKey(
+        const ValueKey<String>('storyboard-cut-visibility-parked-lane-track'),
+      );
+      expect(parkedFx, findsOneWidget);
+      expect(parkedEye, findsOneWidget);
+      expect(
+        tester.widget<IconButton>(parkedFx).onPressed,
+        isNull,
+        reason: 'no subject cut — the button parks disabled',
+      );
+      expect(tester.widget<IconButton>(parkedEye).onPressed, isNull);
+      // Pressing the parked slots is a no-op (the fail() wiring proves it).
+      await tester.tap(parkedFx);
+      await tester.tap(parkedEye);
+      await tester.pumpAndSettle();
+
+      // The live-keyed buttons are gone with their cut.
+      expect(
+        find.byKey(const ValueKey<String>('storyboard-cut-fx-lane-cut')),
+        findsNothing,
+      );
+    });
   });
 
   group('rail layout (R7-④⑤)', () {

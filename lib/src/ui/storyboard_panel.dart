@@ -724,6 +724,10 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
             ? null
             : () => widget.onToggleTrackLane!(track),
         activeCut: activeCut,
+        // GAP (no cut selected anywhere): the fx/eye buttons park instead
+        // of vanishing (UI-R11 #3) — fx can exist around the gap, so the
+        // slots stay furniture.
+        parkedForGap: widget.activeCutId == null,
         cutFxEnabledOf: widget.cutFxEnabledOf,
         onToggleCutFx: widget.onToggleCutFx,
         cutPictureVisibleOf: widget.cutPictureVisibleOf,
@@ -1154,6 +1158,8 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
                                   onScrubGlobalFrame: widget.onScrubGlobalFrame,
                                   onScrubEnd: widget.onScrubEnd,
                                   isFrameCached: widget.isFrameCached,
+                                  framesPerSecond: widget.projectFps,
+                                  showSeconds: widget.showSeconds,
                                 ),
                               ),
                             ),
@@ -1353,6 +1359,8 @@ class _StoryboardRuler extends StatelessWidget {
     required this.onScrubGlobalFrame,
     required this.onScrubEnd,
     required this.isFrameCached,
+    this.framesPerSecond = 24,
+    this.showSeconds = false,
   });
 
   static const int _overscanCells = 4;
@@ -1384,6 +1392,11 @@ class _StoryboardRuler extends StatelessWidget {
   final VoidCallback? onScrubEnd;
 
   final bool Function(int globalFrame)? isFrameCached;
+
+  /// The two-line ruler's parameters (UI-R10 #27, unified: the seconds
+  /// display cycles 1..fps here exactly like the timeline — UI-R11 #10).
+  final int framesPerSecond;
+  final bool showSeconds;
 
   void _reportFrame(ValueChanged<int>? sink, int frame) {
     if (sink == null || contentFrames <= 0 || renderedFrames <= 0) {
@@ -1455,6 +1468,8 @@ class _StoryboardRuler extends StatelessWidget {
               ),
               metrics: metrics,
               onSelectFrame: _seekFrame,
+              framesPerSecond: framesPerSecond,
+              showSeconds: showSeconds,
             ),
             // The moving parts REPAINT only: current-frame tint + green
             // cached bar, one thin isolated layer.
@@ -2685,6 +2700,7 @@ class _StoryboardTrackLabel extends StatelessWidget {
     this.laneExpanded = false,
     this.onToggleLane,
     this.activeCut,
+    this.parkedForGap = false,
     this.cutFxEnabledOf,
     this.onToggleCutFx,
     this.cutPictureVisibleOf,
@@ -2701,6 +2717,12 @@ class _StoryboardTrackLabel extends StatelessWidget {
   /// V-row display toggles act on it, standing down like the S rows'
   /// layer controls when the active cut lives elsewhere.
   final Cut? activeCut;
+
+  /// GAP state (no cut selected anywhere, UI-R11 #3): the fx/eye slots
+  /// keep their buttons in a PARKED (disabled) look instead of blinking
+  /// out — the slots are track furniture, only their subject is absent.
+  /// An active cut on another track still empties them (R9 stand-down).
+  final bool parkedForGap;
   final bool Function(CutId cutId)? cutFxEnabledOf;
   final ValueChanged<CutId>? onToggleCutFx;
   final bool Function(CutId cutId)? cutPictureVisibleOf;
@@ -2785,6 +2807,32 @@ class _StoryboardTrackLabel extends StatelessWidget {
               fxEnabled: cutFxEnabledOf?.call(activeCut!.id) ?? true,
               onToggle: onToggleCutFx!,
             )
+          else if (parkedForGap && onToggleCutFx != null)
+            SizedBox(
+              width: 26,
+              height: 26,
+              child: IconButton(
+                key: ValueKey<String>(
+                  'storyboard-cut-fx-parked-${track.id.value}',
+                ),
+                tooltip: 'Cut FX (no cut selected)',
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints.tightFor(
+                  width: 26,
+                  height: 26,
+                ),
+                icon: Text(
+                  'fx',
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontStyle: FontStyle.italic,
+                    fontWeight: FontWeight.w700,
+                    color: colorScheme.onSurface.withValues(alpha: 0.35),
+                  ),
+                ),
+                onPressed: null,
+              ),
+            )
           else
             const SizedBox(width: layerFxSlotWidth),
           if (activeCut != null && onToggleCutPictureVisibility != null)
@@ -2810,6 +2858,24 @@ class _StoryboardTrackLabel extends StatelessWidget {
                   size: 16,
                 ),
                 onPressed: () => onToggleCutPictureVisibility!(activeCut!.id),
+              ),
+            )
+          else if (parkedForGap && onToggleCutPictureVisibility != null)
+            SizedBox(
+              width: layerVisibilitySlotWidth,
+              height: 26,
+              child: IconButton(
+                key: ValueKey<String>(
+                  'storyboard-cut-visibility-parked-${track.id.value}',
+                ),
+                tooltip: 'Cut picture (no cut selected)',
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints.tightFor(
+                  width: layerVisibilitySlotWidth,
+                  height: 26,
+                ),
+                icon: const Icon(Icons.visibility, size: 16),
+                onPressed: null,
               ),
             )
           else

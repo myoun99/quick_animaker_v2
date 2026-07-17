@@ -109,6 +109,13 @@ class TimelineRowCellsPainter extends CustomPainter {
   TimelineCellExposureState _stateAt(int frameIndex) =>
       exposureStateForLayer(layer, frameIndex);
 
+  /// UI-R11 #7: how much of the plain (non-block) cell grid survives at
+  /// the current zoom — 1 at comfortable cell widths, 0 at/below ~7px
+  /// where the hairlines would smear into noise. paint() skips the border
+  /// draw entirely at 0, so far-out zooms also draw fewer primitives.
+  double get _baseGridFade =>
+      ((frameCellExtent - 7) / 9).clamp(0.0, 1.0).toDouble();
+
   /// The cell's rect in the ROW's local coordinates — the probe geometry
   /// tests and the row's hit-testing share (single source of truth).
   Rect cellRectFor(int frameIndex) {
@@ -252,6 +259,12 @@ class TimelineRowCellsPainter extends CustomPainter {
     final baseBorder = model.segment.isBlock
         ? styleColors.border
         : styleColors.border.withValues(alpha: 0.45);
+    final border = washDim
+        ? Color.alphaBlend(
+            colorScheme.outlineVariant.withValues(alpha: 0.55),
+            baseBorder,
+          )
+        : baseBorder;
     return (
       background: washDim
           ? Color.alphaBlend(
@@ -259,12 +272,12 @@ class TimelineRowCellsPainter extends CustomPainter {
               styleColors.background,
             )
           : styleColors.background,
-      border: washDim
-          ? Color.alphaBlend(
-              colorScheme.outlineVariant.withValues(alpha: 0.55),
-              baseBorder,
-            )
-          : baseBorder,
+      // UI-R11 #7: the plain grid FADES OUT as the cells shrink (the
+      // storyboard's adaptive-detail convention) until only the 6f/24f
+      // line system carries the structure. Blocks keep full chrome.
+      border: model.segment.isBlock
+          ? border
+          : border.withValues(alpha: border.a * _baseGridFade),
       radius: _cellRadius(model.segment),
     );
   }
@@ -292,7 +305,9 @@ class TimelineRowCellsPainter extends CustomPainter {
       final radius = style.radius;
       if (radius == null) {
         canvas.drawRect(rect, fillPaint..color = background);
-        canvas.drawRect(borderRect, borderPaint..color = borderColor);
+        if (borderColor.a > 0) {
+          canvas.drawRect(borderRect, borderPaint..color = borderColor);
+        }
       } else {
         canvas.drawRRect(
           RRect.fromRectAndCorners(
@@ -354,13 +369,14 @@ class TimelineRowCellsPainter extends CustomPainter {
     // The 6f/24f line system (UI-R10 #26, KGB-sheet convention): a medium
     // line every 6 frames, a strong one on second boundaries — drawn over
     // the lightened cell grid, per row so they read continuous down the
-    // grid.
+    // grid. UI-R11 #9 lifted both well above the base hairlines (they are
+    // the surviving structure once #7 fades the plain grid out).
     final sixPaint = Paint()
-      ..color = colorScheme.outlineVariant
+      ..color = colorScheme.outline
       ..strokeWidth = 1;
     final secondPaint = Paint()
-      ..color = colorScheme.outline
-      ..strokeWidth = 1.2;
+      ..color = colorScheme.onSurfaceVariant
+      ..strokeWidth = 1.5;
     final firstBoundary = ((frameStartIndex + 5) ~/ 6) * 6;
     for (
       var frameIndex = firstBoundary;
