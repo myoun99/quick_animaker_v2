@@ -4038,19 +4038,50 @@ class EditorSessionManager extends ChangeNotifier {
   int? _rangeMoveGroupStart;
   DrawingBlockMovePlan? _rangeMovePlan;
 
+  /// Cross-layer selections (UI-R18 #1): every spanned layer's drag-start
+  /// snapshot; the move slides them together along the FRAME axis (row
+  /// changes stay single-layer — the kind guard would make partial rect
+  /// drops ambiguous).
+  List<Layer>? _rangeMoveMultiSources;
+  List<DrawingBlockMovePlan>? _rangeMoveMultiPlans;
+
   /// Starts moving the CURRENT frame-range selection; returns false when
   /// there is none (or its row stands down).
   ///
-  /// Cross-layer selections (UI-R17 #8) refuse the MOVE for now — the
-  /// drag falls back to re-selecting. Bulk delete/comma/edge ops cover
-  /// the span; a multi-layer move (with its per-layer push planning and
-  /// cross-kind safety) is a follow-up.
+  /// Cross-layer selections (UI-R18 #1) move too: every spanned layer's
+  /// selected blocks slide together along the frame axis, one composite
+  /// undo on release. Row-changing drops stay single-layer (the kind
+  /// guard would make partial rect drops ambiguous).
   bool beginFrameRangeMoveDrag() {
     final selection = frameRangeSelection.value;
-    if (selection == null ||
-        selection.spanLayerIds.length > 1 ||
-        !_blockMoveEligible(selection.layerId)) {
+    if (selection == null || !_blockMoveEligible(selection.layerId)) {
       return false;
+    }
+    _rangeMoveMultiSources = null;
+    _rangeMoveMultiPlans = null;
+    if (selection.spanLayerIds.length > 1) {
+      final sources = <Layer>[];
+      for (final id in selection.spanLayerIds) {
+        final spanned = _layerById(id);
+        if (spanned == null) {
+          continue;
+        }
+        final hasBlock = drawingBlocks(spanned.timeline).any(
+          (block) =>
+              !block.entry.ghost &&
+              block.startIndex >= selection.startIndex &&
+              block.endIndexExclusive <= selection.endIndexExclusive,
+        );
+        if (hasBlock) {
+          sources.add(spanned);
+        }
+      }
+      if (sources.isEmpty) {
+        return false;
+      }
+      _rangeMoveMultiSources = sources;
+      _rangeMoveSelectionBefore = selection;
+      return true;
     }
     final layer = _layerById(selection.layerId);
     if (layer == null) {
@@ -4082,8 +4113,56 @@ class EditorSessionManager extends ChangeNotifier {
     required int frameDelta,
     LayerId? targetLayerId,
   }) {
-    final source = _rangeMoveSourceBefore;
     final selection = _rangeMoveSelectionBefore;
+    final multiSources = _rangeMoveMultiSources;
+    if (selection != null && multiSources != null) {
+      // Cross-layer slide (UI-R18 #1): every spanned layer plans the SAME
+      // frame delta on itself; any illegal landing clears the whole
+      // preview (all-or-nothing, the single-layer discipline).
+      final plans = <DrawingBlockMovePlan>[];
+      for (final sourceLayer in multiSources) {
+        final plan = planDrawingRangeMove(
+          source: sourceLayer,
+          target: sourceLayer,
+          rangeStartIndex: selection.startIndex,
+          rangeEndIndexExclusive: selection.endIndexExclusive,
+          frameDelta: frameDelta,
+        );
+        if (plan == null) {
+          plans.clear();
+          break;
+        }
+        plans.add(plan);
+      }
+      _rangeMoveMultiPlans = plans.isEmpty ? null : plans;
+      dragPreview.value = plans.isEmpty
+          ? null
+          : BlockMoveDragPreview(
+              previewLayers: {
+                for (final plan in plans)
+                  plan.sourceAfter.id: rederiveRunBehaviors(
+                    plan.sourceAfter,
+                    cutFrameCount: _activeCutFrameCount,
+                  ),
+              },
+            );
+      if (plans.isEmpty) {
+        frameRangeSelection.value = selection;
+      } else {
+        final newStart = selection.startIndex + frameDelta;
+        if (newStart >= 0) {
+          frameRangeSelection.value = TimelineFrameRangeSelection(
+            layerId: selection.layerId,
+            startIndex: newStart,
+            endIndexExclusive: selection.endIndexExclusive + frameDelta,
+            layerIds: selection.layerIds,
+          );
+        }
+      }
+      return;
+    }
+
+    final source = _rangeMoveSourceBefore;
     final groupStart = _rangeMoveGroupStart;
     if (source == null || selection == null || groupStart == null) {
       return;
@@ -4144,12 +4223,38 @@ class EditorSessionManager extends ChangeNotifier {
     final source = _rangeMoveSourceBefore;
     final selection = _rangeMoveSelectionBefore;
     final plan = _rangeMovePlan;
+    final multiPlans = _rangeMoveMultiPlans;
+    final multiSources = _rangeMoveMultiSources;
     final landedSelection = frameRangeSelection.value;
     _rangeMoveSourceBefore = null;
     _rangeMoveSelectionBefore = null;
     _rangeMoveGroupStart = null;
     _rangeMovePlan = null;
+    _rangeMoveMultiSources = null;
+    _rangeMoveMultiPlans = null;
     dragPreview.value = null;
+    if (selection != null && multiSources != null) {
+      // Cross-layer slide commit (UI-R18 #1): one composite undo.
+      if (multiPlans == null) {
+        frameRangeSelection.value = selection;
+        return;
+      }
+      _historyManager.execute(
+        multiPlans.length == 1
+            ? _multiMoveCommand(multiSources.single, multiPlans.single)
+            : CompositeCommand(
+                description: 'Move frame range',
+                commands: [
+                  for (var i = 0; i < multiPlans.length; i += 1)
+                    _multiMoveCommand(multiSources[i], multiPlans[i]),
+                ],
+              ),
+      );
+      frameRangeSelection.value = landedSelection;
+      _warmActiveCut();
+      notifyListeners();
+      return;
+    }
     if (source == null || selection == null) {
       return;
     }
@@ -4208,6 +4313,18 @@ class EditorSessionManager extends ChangeNotifier {
     notifyListeners();
   }
 
+  UpdateLayerTimelineCommand _multiMoveCommand(
+    Layer before,
+    DrawingBlockMovePlan plan,
+  ) => UpdateLayerTimelineCommand(
+    repository: _repository,
+    before: before,
+    after: rederiveRunBehaviors(
+      plan.sourceAfter,
+      cutFrameCount: _activeCutFrameCount,
+    ),
+  );
+
   /// Drops an in-flight range-move preview, restoring the selection.
   void cancelFrameRangeMoveDrag() {
     final selection = _rangeMoveSelectionBefore;
@@ -4215,6 +4332,8 @@ class EditorSessionManager extends ChangeNotifier {
     _rangeMoveSelectionBefore = null;
     _rangeMoveGroupStart = null;
     _rangeMovePlan = null;
+    _rangeMoveMultiSources = null;
+    _rangeMoveMultiPlans = null;
     dragPreview.value = null;
     if (selection != null) {
       frameRangeSelection.value = selection;
