@@ -44,6 +44,11 @@ class TimelineRowCellModel {
   final String? semanticsLabel;
 }
 
+/// The hold ghost's dash glyph — the probe VALUE tests read from
+/// [TimelineRowCellsPainter.cellModelAt]. paint() renders it as an
+/// axis-aligned line (UI-R12 #18), never as text.
+const String _holdDashGlyph = 'ㅡ';
+
 /// Glyph TextPainters are cached per (text, color, weight, base style):
 /// frame numbers and markers repeat heavily across rows and repaints.
 final Map<Object, TextPainter> _glyphPainterCache = <Object, TextPainter>{};
@@ -156,22 +161,28 @@ class TimelineRowCellsPainter extends CustomPainter {
       previous: previous,
     );
     final frameName = frameNameForLayer?.call(layer, frameIndex);
+    // Hold ghosts keep their dash at ANY zoom (it paints as a line, not
+    // text — UI-R12 #18): the continuing stroke is structure, so it never
+    // joins the narrow-cell text suppression below.
+    final holdGhost =
+        ghost &&
+        runBehaviorOwningGhostAt(layer, frameIndex)?.mode ==
+            TimelineRunEdgeMode.hold;
     String glyph;
-    if (frameCellExtent < 14) {
+    if (holdGhost) {
+      glyph = _holdDashGlyph;
+    } else if (frameCellExtent < 14) {
       glyph = '';
     } else if (ghost) {
-      // Ghosts are TEXT-ONLY (UI-R10 #11): a hold ghost strings ㅡ dashes
+      // Ghosts are TEXT-ONLY (UI-R10 #11): a hold ghost strings dashes
       // through its span; a repeat ghost prints just the cel names.
-      final mode = runBehaviorOwningGhostAt(layer, frameIndex)?.mode;
-      glyph = mode == TimelineRunEdgeMode.hold
-          ? 'ㅡ'
-          : switch (exposureState) {
-              TimelineCellExposureState.drawingStart =>
-                frameName == null || frameName.isEmpty ? '○' : frameName,
-              TimelineCellExposureState.markHeld ||
-              TimelineCellExposureState.markUncovered => '●',
-              _ => '',
-            };
+      glyph = switch (exposureState) {
+        TimelineCellExposureState.drawingStart =>
+          frameName == null || frameName.isEmpty ? '○' : frameName,
+        TimelineCellExposureState.markHeld ||
+        TimelineCellExposureState.markUncovered => '●',
+        _ => '',
+      };
     } else {
       glyph = _marker(
         exposureState: exposureState,
@@ -350,6 +361,33 @@ class TimelineRowCellsPainter extends CustomPainter {
           : model.dimmed
           ? colorScheme.onSurfaceVariant.withValues(alpha: 0.45)
           : colorScheme.onSurface;
+      if (model.ghost && model.glyph == _holdDashGlyph) {
+        // UI-R12 #18: the hold dash is a PAINTED line along the frame
+        // axis, spanning nearly the whole cell — neighbors read as one
+        // continuing stroke, with a deliberate 3px break per boundary so
+        // it never fuses into a solid rule (user: 이어진 느낌, 완벽하게는
+        // 안 이어지게). The text glyph was too short to chain.
+        final dashPaint = Paint()
+          ..color = ink
+          ..strokeWidth = 1.4
+          ..strokeCap = StrokeCap.round;
+        if (axis == Axis.horizontal) {
+          if (rect.width > 4) {
+            canvas.drawLine(
+              Offset(rect.left + 1.5, rect.center.dy),
+              Offset(rect.right - 1.5, rect.center.dy),
+              dashPaint,
+            );
+          }
+        } else if (rect.height > 4) {
+          canvas.drawLine(
+            Offset(rect.center.dx, rect.top + 1.5),
+            Offset(rect.center.dx, rect.bottom - 1.5),
+            dashPaint,
+          );
+        }
+        continue;
+      }
       final glyphStyle = baseTextStyle.copyWith(
         color: ink,
         fontWeight:

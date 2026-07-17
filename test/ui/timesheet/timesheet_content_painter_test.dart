@@ -116,8 +116,8 @@ void main() {
   });
 
 
-  test('a FRONT hold MOVES the cel name to row 1: the block\'s own start '
-      'row prints nothing (UI-R11 #6)', () {
+  test('a FRONT hold MOVES the cel to row 1 FOR REAL: one run through the '
+      'authored position, no second drawing start (UI-R12 #17)', () {
     final frontHold = rederiveRunBehaviors(
       Layer(
         id: const LayerId('b'),
@@ -147,8 +147,17 @@ void main() {
 
     expect(cells[0].kind, TimesheetCellKind.drawing);
     expect(cells[0].label, '5', reason: 'the name lives on row 1');
-    expect(cells[4].kind, TimesheetCellKind.drawing);
-    expect(cells[4].label, isEmpty, reason: 'moved, never duplicated');
+    expect(cells[0].spanLength, 6, reason: 'ONE run [0,6): chain + block');
+    for (var row = 1; row < 6; row += 1) {
+      expect(cells[row].kind, TimesheetCellKind.held, reason: 'row $row — '
+          'the hold line runs straight through the authored position '
+          '(XDTS-facing data really moved; the timeline keeps frame 5)');
+      expect(cells[row].spanOffset, row);
+    }
+    expect(cells[4].label, anyOf(isNull, isEmpty),
+        reason: 'no second start, no label');
+    expect(cells[6].kind, TimesheetCellKind.emptyRunStart,
+        reason: 'past the run the X run restarts');
   });
 
   test('one cel held from row 1 prints the hold word chain (止め, '
