@@ -3163,6 +3163,11 @@ class EditorSessionManager extends ChangeNotifier {
       _edgeDragEdge = edge;
       _edgeDragBlockStart = globalStart;
       _edgeDragWindow = window;
+      // SE rows join the selection bulk (UI-R18 #1) — display-local
+      // starts only (the storyboard's global-keyed grips stand down).
+      if (!blockStartIsGlobal) {
+        _captureEdgeBulk(layerId, blockStartIndex, isDrawingBlock: true);
+      }
       return true;
     }
 
@@ -3186,35 +3191,50 @@ class EditorSessionManager extends ChangeNotifier {
     // Dragging an edge inside the selection retimes the WHOLE selection
     // (UI-R17 #3/#8) — every selected block on every spanned layer
     // follows the delta live, one undo step on release.
+    _captureEdgeBulk(layerId, blockStartIndex, isDrawingBlock: isDrawingBlock);
+    return true;
+  }
+
+  /// Captures the bulk-retime set when the dragged edge sits inside the
+  /// live selection (UI-R17 #3 → UI-R18 #1: SE rows join through the
+  /// commit-key seam — starts and before-layers are COMMIT forms).
+  void _captureEdgeBulk(
+    LayerId layerId,
+    int displayBlockStart, {
+    required bool isDrawingBlock,
+  }) {
     _edgeDragBulkStartsByLayer = null;
     _edgeDragBulkBefore = null;
     final selection = frameRangeSelection.value;
-    if (isDrawingBlock &&
-        selection != null &&
-        selection.coversLayer(layerId) &&
-        selection.contains(blockStartIndex)) {
-      final startsByLayer = <LayerId, List<int>>{};
-      final beforeByLayer = <LayerId, Layer>{};
-      for (final id in selection.spanLayerIds) {
-        final spanned = _layerById(id);
-        if (spanned == null) {
-          continue;
-        }
-        final starts = _selectionBlockStarts(spanned, selection);
-        if (starts.isEmpty) {
-          continue;
-        }
-        startsByLayer[id] = starts;
-        beforeByLayer[id] = spanned;
-      }
-      final multiBlock =
-          startsByLayer.length > 1 || (startsByLayer[layerId]?.length ?? 0) > 1;
-      if (multiBlock) {
-        _edgeDragBulkStartsByLayer = startsByLayer;
-        _edgeDragBulkBefore = beforeByLayer;
-      }
+    if (!isDrawingBlock ||
+        selection == null ||
+        !selection.coversLayer(layerId) ||
+        !selection.contains(displayBlockStart)) {
+      return;
     }
-    return true;
+    final startsByLayer = <LayerId, List<int>>{};
+    final beforeByLayer = <LayerId, Layer>{};
+    for (final id in selection.spanLayerIds) {
+      final display = _rangeLayerById(id);
+      final commit = _commitLayerById(id);
+      if (display == null || commit == null) {
+        continue;
+      }
+      final starts = _selectionBlockStarts(display, selection);
+      if (starts.isEmpty) {
+        continue;
+      }
+      startsByLayer[id] = [
+        for (final start in starts) _commitBlockStart(id, start),
+      ];
+      beforeByLayer[id] = commit;
+    }
+    final multiBlock =
+        startsByLayer.length > 1 || (startsByLayer[layerId]?.length ?? 0) > 1;
+    if (multiBlock) {
+      _edgeDragBulkStartsByLayer = startsByLayer;
+      _edgeDragBulkBefore = beforeByLayer;
+    }
   }
 
   /// The selection's real (non-ghost) drawing-block start keys, in order.
@@ -3291,7 +3311,11 @@ class EditorSessionManager extends ChangeNotifier {
         );
         if (after != null && after != beforeLayer) {
           edits.add((before: beforeLayer, after: after));
-          previews[entry.key] = after;
+          // Track-SE rows preview in their DISPLAY form (cut-local axis);
+          // the commit keeps the global form (UI-R18 #1 seam).
+          previews[entry.key] = isTrackSeLayerId(entry.key)
+              ? trackSeWindow.displayLayer(after)
+              : after;
         }
       }
       _edgeDragBulkEdits = edits.isEmpty ? null : edits;
@@ -3794,9 +3818,50 @@ class EditorSessionManager extends ChangeNotifier {
   final ValueNotifier<TimelineFrameRangeSelection?> frameRangeSelection =
       ValueNotifier<TimelineFrameRangeSelection?>(null);
 
+  /// Whether [layerId] can take part in a RANGE selection (UI-R18 #1):
+  /// the block-move-eligible drawing rows PLUS the SE section's
+  /// track-owned rows (their ops map through the global-axis seam);
+  /// camera/instruction rows keep their own timing model and stand down.
+  bool _rangeSelectionEligible(LayerId layerId) =>
+      _blockMoveEligible(layerId) ||
+      (isTrackSeLayerId(layerId) && trackSeGlobalLayerById(layerId) != null);
+
+  /// The layer a RANGE selection reads (cut-local DISPLAY indexes): cut
+  /// layers as-is, track-SE rows as their display clones.
+  Layer? _rangeLayerById(LayerId layerId) {
+    final cutLayer = _layerById(layerId);
+    if (cutLayer != null) {
+      return cutLayer;
+    }
+    if (!isTrackSeLayerId(layerId)) {
+      return null;
+    }
+    final global = trackSeGlobalLayerById(layerId);
+    return global == null ? null : trackSeWindow.displayLayer(global);
+  }
+
+  /// Maps a DISPLAY block start to the layer's COMMIT form key: identity
+  /// for cut layers; the global-axis start for track-SE rows.
+  int _commitBlockStart(LayerId layerId, int displayStart) {
+    if (!isTrackSeLayerId(layerId)) {
+      return displayStart;
+    }
+    final global = trackSeGlobalLayerById(layerId);
+    if (global == null) {
+      return displayStart;
+    }
+    return trackSeWindow.globalBlockStartFor(global, displayStart);
+  }
+
+  /// The layer ops COMMIT against: the GLOBAL form for track-SE rows.
+  Layer? _commitLayerById(LayerId layerId) => isTrackSeLayerId(layerId)
+      ? trackSeGlobalLayerById(layerId)
+      : _layerById(layerId);
+
   /// A range-select drag step: [anchorIndex] is where the drag started,
   /// [headIndex] where the pointer is now (both cut-local cell indices).
-  /// Rows that cannot range-edit (attach/SE/track rows) stay unselectable.
+  /// Rows that cannot range-edit (attach/camera rows) stay unselectable;
+  /// SE rows joined in UI-R18 #1.
   ///
   /// [headLayerId] (UI-R17 #8, Excel-style): the row under the pointer —
   /// the selection spans every ELIGIBLE layer between anchor and head in
@@ -3808,10 +3873,10 @@ class EditorSessionManager extends ChangeNotifier {
     required int headIndex,
     LayerId? headLayerId,
   }) {
-    if (!_blockMoveEligible(layerId)) {
+    if (!_rangeSelectionEligible(layerId)) {
       return;
     }
-    final layer = _layerById(layerId);
+    final layer = _rangeLayerById(layerId);
     if (layer == null) {
       return;
     }
@@ -3837,7 +3902,7 @@ class EditorSessionManager extends ChangeNotifier {
     while (changed) {
       changed = false;
       for (final id in spanIds) {
-        final spanned = _layerById(id);
+        final spanned = _rangeLayerById(id);
         if (spanned == null) {
           continue;
         }
@@ -3865,13 +3930,16 @@ class EditorSessionManager extends ChangeNotifier {
   }
 
   /// The display-ordered ELIGIBLE layers between [anchor] and [head]
-  /// (inclusive). Ineligible rows inside the span are skipped — the
-  /// anim→SE safety (UI-R17 #8) holds because SE/attach rows are never
-  /// selectable to begin with.
+  /// (inclusive) — cut drawing rows first, the SE section's track rows
+  /// after (the timeline's section order). Ineligible rows inside the
+  /// span are skipped; cross-KIND moves stay blocked at the move seam
+  /// (UI-R18 #1 safety).
   List<LayerId> _selectionSpanLayerIds(LayerId anchor, LayerId head) {
     final eligible = [
       for (final layer in activeCutOrNull?.layers ?? const <Layer>[])
         if (_blockMoveEligible(layer.id)) layer.id,
+      for (final layer in activeTrack.seLayers)
+        if (_rangeSelectionEligible(layer.id)) layer.id,
     ];
     final anchorIndex = eligible.indexOf(anchor);
     final headIndex = eligible.indexOf(head);
@@ -4039,10 +4107,11 @@ class EditorSessionManager extends ChangeNotifier {
   DrawingBlockMovePlan? _rangeMovePlan;
 
   /// Cross-layer selections (UI-R18 #1): every spanned layer's drag-start
-  /// snapshot; the move slides them together along the FRAME axis (row
-  /// changes stay single-layer — the kind guard would make partial rect
-  /// drops ambiguous).
-  List<Layer>? _rangeMoveMultiSources;
+  /// snapshot in COMMIT form (+ the display→commit index offset for
+  /// track-SE rows); the move slides them together along the FRAME axis
+  /// (row changes stay single-layer anim-only — the kind guard would make
+  /// partial rect drops ambiguous).
+  List<({Layer commit, int offset})>? _rangeMoveMultiSources;
   List<DrawingBlockMovePlan>? _rangeMoveMultiPlans;
 
   /// Starts moving the CURRENT frame-range selection; returns false when
@@ -4054,26 +4123,36 @@ class EditorSessionManager extends ChangeNotifier {
   /// guard would make partial rect drops ambiguous).
   bool beginFrameRangeMoveDrag() {
     final selection = frameRangeSelection.value;
-    if (selection == null || !_blockMoveEligible(selection.layerId)) {
+    if (selection == null || !_rangeSelectionEligible(selection.layerId)) {
       return false;
     }
     _rangeMoveMultiSources = null;
     _rangeMoveMultiPlans = null;
-    if (selection.spanLayerIds.length > 1) {
-      final sources = <Layer>[];
+    // Multi-layer spans AND single SE rows route through the frame-axis
+    // slide (UI-R18 #1): per-layer plans on the COMMIT forms; row-change
+    // drops stay the single-anim path below.
+    if (selection.spanLayerIds.length > 1 ||
+        isTrackSeLayerId(selection.layerId)) {
+      final sources = <({Layer commit, int offset})>[];
       for (final id in selection.spanLayerIds) {
-        final spanned = _layerById(id);
-        if (spanned == null) {
+        final display = _rangeLayerById(id);
+        final commit = _commitLayerById(id);
+        if (display == null || commit == null) {
           continue;
         }
-        final hasBlock = drawingBlocks(spanned.timeline).any(
+        final hasBlock = drawingBlocks(display.timeline).any(
           (block) =>
               !block.entry.ghost &&
               block.startIndex >= selection.startIndex &&
               block.endIndexExclusive <= selection.endIndexExclusive,
         );
         if (hasBlock) {
-          sources.add(spanned);
+          sources.add((
+            commit: commit,
+            offset:
+                _commitBlockStart(id, selection.startIndex) -
+                selection.startIndex,
+          ));
         }
       }
       if (sources.isEmpty) {
@@ -4120,12 +4199,12 @@ class EditorSessionManager extends ChangeNotifier {
       // frame delta on itself; any illegal landing clears the whole
       // preview (all-or-nothing, the single-layer discipline).
       final plans = <DrawingBlockMovePlan>[];
-      for (final sourceLayer in multiSources) {
+      for (final source in multiSources) {
         final plan = planDrawingRangeMove(
-          source: sourceLayer,
-          target: sourceLayer,
-          rangeStartIndex: selection.startIndex,
-          rangeEndIndexExclusive: selection.endIndexExclusive,
+          source: source.commit,
+          target: source.commit,
+          rangeStartIndex: selection.startIndex + source.offset,
+          rangeEndIndexExclusive: selection.endIndexExclusive + source.offset,
           frameDelta: frameDelta,
         );
         if (plan == null) {
@@ -4140,10 +4219,19 @@ class EditorSessionManager extends ChangeNotifier {
           : BlockMoveDragPreview(
               previewLayers: {
                 for (final plan in plans)
-                  plan.sourceAfter.id: rederiveRunBehaviors(
-                    plan.sourceAfter,
-                    cutFrameCount: _activeCutFrameCount,
-                  ),
+                  // Track-SE rows preview in their DISPLAY form (UI-R18
+                  // #1 seam); commits keep the global form.
+                  plan.sourceAfter.id: isTrackSeLayerId(plan.sourceAfter.id)
+                      ? trackSeWindow.displayLayer(
+                          rederiveRunBehaviors(
+                            plan.sourceAfter,
+                            cutFrameCount: _activeCutFrameCount,
+                          ),
+                        )
+                      : rederiveRunBehaviors(
+                          plan.sourceAfter,
+                          cutFrameCount: _activeCutFrameCount,
+                        ),
               },
             );
       if (plans.isEmpty) {
@@ -4172,6 +4260,11 @@ class EditorSessionManager extends ChangeNotifier {
       target = _blockMoveEligible(targetLayerId)
           ? _layerById(targetLayerId)
           : null;
+      // Cross-KIND drops are the UI-R18 #1 safety: an animation range
+      // never lands on a different section's row (and vice versa).
+      if (target != null && target.kind != source.kind) {
+        target = null;
+      }
     }
     final plan = target == null
         ? null
@@ -4241,12 +4334,12 @@ class EditorSessionManager extends ChangeNotifier {
       }
       _historyManager.execute(
         multiPlans.length == 1
-            ? _multiMoveCommand(multiSources.single, multiPlans.single)
+            ? _multiMoveCommand(multiSources.single.commit, multiPlans.single)
             : CompositeCommand(
                 description: 'Move frame range',
                 commands: [
                   for (var i = 0; i < multiPlans.length; i += 1)
-                    _multiMoveCommand(multiSources[i], multiPlans[i]),
+                    _multiMoveCommand(multiSources[i].commit, multiPlans[i]),
                 ],
               ),
       );
@@ -4781,8 +4874,10 @@ class EditorSessionManager extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// The selection resolved to real block starts per spanned layer; null
-  /// when there is no selection (or it holds no real blocks anywhere).
+  /// The selection resolved to real block starts per spanned layer —
+  /// in COMMIT keys (track-SE rows map their display starts onto the
+  /// global axis, UI-R18 #1); null when there is no selection (or it
+  /// holds no real blocks anywhere).
   Map<LayerId, List<int>>? _selectionBlockStartsByLayer() {
     final selection = frameRangeSelection.value;
     if (selection == null) {
@@ -4790,13 +4885,15 @@ class EditorSessionManager extends ChangeNotifier {
     }
     final byLayer = <LayerId, List<int>>{};
     for (final id in selection.spanLayerIds) {
-      final layer = _layerById(id);
+      final layer = _rangeLayerById(id);
       if (layer == null) {
         continue;
       }
       final starts = _selectionBlockStarts(layer, selection);
       if (starts.isNotEmpty) {
-        byLayer[id] = starts;
+        byLayer[id] = [
+          for (final start in starts) _commitBlockStart(id, start),
+        ];
       }
     }
     return byLayer.isEmpty ? null : byLayer;
