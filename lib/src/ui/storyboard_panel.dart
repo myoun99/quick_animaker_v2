@@ -557,6 +557,25 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
     return null;
   }
 
+  /// The cut sitting under the current global playhead on track
+  /// [trackIndex] (UI-R13 #2: the V-row fx/eye act on THIS, each track
+  /// independently). Null when the playhead is unwired or the index is a
+  /// gap on this track — the buttons then no-op, never gray out.
+  Cut? _cutAtPlayheadOn(int trackIndex) {
+    final globalFrame = widget.playheadFrame?.value;
+    if (globalFrame == null) {
+      return null;
+    }
+    for (final entry in buildStoryboardTimelineLayout(widget.project)) {
+      if (entry.trackIndex == trackIndex &&
+          globalFrame >= entry.startFrame &&
+          globalFrame < entry.endFrame) {
+        return entry.cut;
+      }
+    }
+    return null;
+  }
+
   /// The shared lane substrate speaks Layer; the V track's cut-level lanes
   /// ride a synthetic carrier 窶・its id only feeds the widget keys, the
   /// edit closures capture their cut ([StoryboardPanel.cutLaneEditFor]).
@@ -793,10 +812,11 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
             ? null
             : () => widget.onToggleTrackLane!(track),
         activeCut: activeCut,
-        // GAP (no cut selected anywhere): the fx/eye buttons park instead
-        // of vanishing (UI-R11 #3) — fx can exist around the gap, so the
-        // slots stay furniture.
-        parkedForGap: widget.activeCutId == null,
+        // UI-R13 #2: the fx/eye act on THIS track's cut at the current
+        // global index (each track independently) — no stand-down, no
+        // parked look. A gap simply means no cut exists there: the
+        // buttons stay normal and a press is a no-op.
+        subjectCut: _cutAtPlayheadOn(index) ?? activeCut,
         cutFxEnabledOf: widget.cutFxEnabledOf,
         onToggleCutFx: widget.onToggleCutFx,
         cutPictureVisibleOf: widget.cutPictureVisibleOf,
@@ -2936,7 +2956,7 @@ class _StoryboardTrackLabel extends StatelessWidget {
     this.laneExpanded = false,
     this.onToggleLane,
     this.activeCut,
-    this.parkedForGap = false,
+    this.subjectCut,
     this.cutFxEnabledOf,
     this.onToggleCutFx,
     this.cutPictureVisibleOf,
@@ -2949,16 +2969,15 @@ class _StoryboardTrackLabel extends StatelessWidget {
   final bool laneExpanded;
   final VoidCallback? onToggleLane;
 
-  /// The ACTIVE cut when it lives on this track (null otherwise) 窶・the
-  /// V-row display toggles act on it, standing down like the S rows'
-  /// layer controls when the active cut lives elsewhere.
+  /// The ACTIVE cut when it lives on this track (null otherwise) — the
+  /// transform-lane gating still keys off it.
   final Cut? activeCut;
 
-  /// GAP state (no cut selected anywhere, UI-R11 #3): the fx/eye slots
-  /// keep their buttons in a PARKED (disabled) look instead of blinking
-  /// out — the slots are track furniture, only their subject is absent.
-  /// An active cut on another track still empties them (R9 stand-down).
-  final bool parkedForGap;
+  /// The fx/eye buttons' target (UI-R13 #2): THIS track's cut at the
+  /// current global index. The buttons render NORMAL always — no parked
+  /// look, no stand-down; null (a gap on this track) just makes a press
+  /// a no-op, because no cut exists at the index.
+  final Cut? subjectCut;
   final bool Function(CutId cutId)? cutFxEnabledOf;
   final ValueChanged<CutId>? onToggleCutFx;
   final bool Function(CutId cutId)? cutPictureVisibleOf;
@@ -3039,53 +3058,39 @@ class _StoryboardTrackLabel extends StatelessWidget {
               ],
             ),
           ),
-          // V-row display toggles on the ACTIVE cut (R9), sitting in the
-          // shared fx/eye slots (UI-R5) so the columns line up with the S
-          // rows and the legend header; mute/opacity slots stay reserved.
+          // V-row display toggles (UI-R13 #2): ALWAYS-normal buttons in
+          // the shared fx/eye slots (UI-R5) acting on THIS track's cut at
+          // the current global index — no stand-down, no parked graying.
+          // Where no cut exists (a gap on this track) a press is a no-op;
+          // the button is track furniture, only its subject is absent.
           const SizedBox(width: layerFillReferenceSlotWidth),
-          if (activeCut != null && onToggleCutFx != null)
+          if (onToggleCutFx != null)
             _CutFxToggleButton(
-              cutId: activeCut!.id,
-              fxEnabled: cutFxEnabledOf?.call(activeCut!.id) ?? true,
-              onToggle: onToggleCutFx!,
-            )
-          else if (parkedForGap && onToggleCutFx != null)
-            SizedBox(
-              width: 26,
-              height: 26,
-              child: IconButton(
-                key: ValueKey<String>(
-                  'storyboard-cut-fx-parked-${track.id.value}',
-                ),
-                tooltip: 'Cut FX (no cut selected)',
-                padding: EdgeInsets.zero,
-                constraints: const BoxConstraints.tightFor(
-                  width: 26,
-                  height: 26,
-                ),
-                icon: Text(
-                  'fx',
-                  style: TextStyle(
-                    fontSize: 13,
-                    fontStyle: FontStyle.italic,
-                    fontWeight: FontWeight.w700,
-                    color: colorScheme.onSurface.withValues(alpha: 0.35),
-                  ),
-                ),
-                onPressed: null,
-              ),
+              keySuffix: subjectCut?.id.value ?? 'none-${track.id.value}',
+              fxEnabled: subjectCut == null
+                  ? true
+                  : (cutFxEnabledOf?.call(subjectCut!.id) ?? true),
+              onToggle: () {
+                final subject = subjectCut;
+                if (subject != null) {
+                  onToggleCutFx!(subject.id);
+                }
+              },
             )
           else
             const SizedBox(width: layerFxSlotWidth),
-          if (activeCut != null && onToggleCutPictureVisibility != null)
+          if (onToggleCutPictureVisibility != null)
             SizedBox(
               width: layerVisibilitySlotWidth,
               height: 26,
               child: IconButton(
                 key: ValueKey<String>(
-                  'storyboard-cut-visibility-${activeCut!.id.value}',
+                  'storyboard-cut-visibility-'
+                  '${subjectCut?.id.value ?? 'none-${track.id.value}'}',
                 ),
-                tooltip: (cutPictureVisibleOf?.call(activeCut!.id) ?? true)
+                tooltip:
+                    (subjectCut == null ||
+                        (cutPictureVisibleOf?.call(subjectCut!.id) ?? true))
                     ? 'Hide cut picture'
                     : 'Show cut picture',
                 padding: EdgeInsets.zero,
@@ -3094,30 +3099,18 @@ class _StoryboardTrackLabel extends StatelessWidget {
                   height: 26,
                 ),
                 icon: Icon(
-                  (cutPictureVisibleOf?.call(activeCut!.id) ?? true)
+                  (subjectCut == null ||
+                          (cutPictureVisibleOf?.call(subjectCut!.id) ?? true))
                       ? Icons.visibility
                       : Icons.visibility_off,
                   size: 16,
                 ),
-                onPressed: () => onToggleCutPictureVisibility!(activeCut!.id),
-              ),
-            )
-          else if (parkedForGap && onToggleCutPictureVisibility != null)
-            SizedBox(
-              width: layerVisibilitySlotWidth,
-              height: 26,
-              child: IconButton(
-                key: ValueKey<String>(
-                  'storyboard-cut-visibility-parked-${track.id.value}',
-                ),
-                tooltip: 'Cut picture (no cut selected)',
-                padding: EdgeInsets.zero,
-                constraints: const BoxConstraints.tightFor(
-                  width: layerVisibilitySlotWidth,
-                  height: 26,
-                ),
-                icon: const Icon(Icons.visibility, size: 16),
-                onPressed: null,
+                onPressed: () {
+                  final subject = subjectCut;
+                  if (subject != null) {
+                    onToggleCutPictureVisibility!(subject.id);
+                  }
+                },
               ),
             )
           else
@@ -3135,14 +3128,14 @@ class _StoryboardTrackLabel extends StatelessWidget {
 /// differences).
 class _CutFxToggleButton extends StatelessWidget {
   const _CutFxToggleButton({
-    required this.cutId,
+    required this.keySuffix,
     required this.fxEnabled,
     required this.onToggle,
   });
 
-  final CutId cutId;
+  final String keySuffix;
   final bool fxEnabled;
-  final ValueChanged<CutId> onToggle;
+  final VoidCallback onToggle;
 
   @override
   Widget build(BuildContext context) {
@@ -3153,7 +3146,7 @@ class _CutFxToggleButton extends StatelessWidget {
       width: 26,
       height: 26,
       child: IconButton(
-        key: ValueKey<String>('storyboard-cut-fx-${cutId.value}'),
+        key: ValueKey<String>('storyboard-cut-fx-$keySuffix'),
         tooltip: fxEnabled ? 'Bypass cut FX' : 'Apply cut FX',
         padding: EdgeInsets.zero,
         constraints: const BoxConstraints.tightFor(width: 26, height: 26),
@@ -3168,7 +3161,7 @@ class _CutFxToggleButton extends StatelessWidget {
                 : colorScheme.onSurface.withValues(alpha: 0.35),
           ),
         ),
-        onPressed: () => onToggle(cutId),
+        onPressed: onToggle,
       ),
     );
   }

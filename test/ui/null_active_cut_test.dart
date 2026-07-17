@@ -39,6 +39,33 @@ void main() {
     expect(() => s.requireActiveCut, throwsStateError);
   });
 
+  test('hiding the ACTIVE cut\'s picture enters the no-cut state exactly '
+      'like a gap landing (UI-R13 #2): park at the current global, '
+      'deselect; other cuts and re-showing do not', () {
+    final (s, first, second, aEnd) = gappedSession();
+    addTearDown(s.dispose);
+    s.selectCut(first);
+    s.selectFrameIndex(2);
+
+    // Hiding ANOTHER cut's picture: selection untouched.
+    s.toggleCutPictureVisibility(second);
+    expect(s.activeCutId, first);
+    s.toggleCutPictureVisibility(second); // restore
+
+    // Hiding the ACTIVE cut's picture: the index shows nothing anymore —
+    // the no-cut state, parked at the exact global.
+    s.toggleCutPictureVisibility(first);
+    expect(s.isCutPictureVisible(first), isFalse);
+    expect(s.activeCutId, isNull, reason: 'the active cut ceases');
+    expect(s.gapParkedGlobalFrame, 2, reason: 'parked where it stood');
+    expect(s.editingPlayheadInGap, isTrue);
+
+    // Re-showing does NOT auto-select — the user picks the cut back up.
+    s.toggleCutPictureVisibility(first);
+    expect(s.isCutPictureVisible(first), isTrue);
+    expect(s.activeCutId, isNull);
+  });
+
   test('a gap scrub deselects the cut IMMEDIATELY (UI-R10 #13): the empty '
       'states show during the drag, the release is a no-op backstop', () {
     final (s, first, _, aEnd) = gappedSession();

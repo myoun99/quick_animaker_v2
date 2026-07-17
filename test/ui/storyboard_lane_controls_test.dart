@@ -811,43 +811,38 @@ void main() {
       );
     });
 
-    testWidgets('the GAP keeps the fx/eye slots as PARKED disabled buttons '
-        'instead of blinking them out (UI-R11 #3)', (tester) async {
+    testWidgets('the GAP keeps the fx/eye buttons NORMAL — never grayed, '
+        'never gone; a press is simply a no-op because no cut exists at '
+        'the index (UI-R13 #2)', (tester) async {
       await _pumpPanel(
         tester,
         project: _project(),
         activeCutId: null, // gap: no cut selected anywhere
         cutFxEnabledOf: (_) => true,
-        onToggleCutFx: (_) => fail('parked buttons must not toggle'),
+        onToggleCutFx: (_) => fail('no subject cut — presses must no-op'),
         cutPictureVisibleOf: (_) => true,
         onToggleCutPictureVisibility: (_) =>
-            fail('parked buttons must not toggle'),
+            fail('no subject cut — presses must no-op'),
       );
 
-      final parkedFx = find.byKey(
-        const ValueKey<String>('storyboard-cut-fx-parked-lane-track'),
+      final fx = find.byKey(
+        const ValueKey<String>('storyboard-cut-fx-none-lane-track'),
       );
-      final parkedEye = find.byKey(
-        const ValueKey<String>('storyboard-cut-visibility-parked-lane-track'),
+      final eye = find.byKey(
+        const ValueKey<String>('storyboard-cut-visibility-none-lane-track'),
       );
-      expect(parkedFx, findsOneWidget);
-      expect(parkedEye, findsOneWidget);
+      expect(fx, findsOneWidget);
+      expect(eye, findsOneWidget);
       expect(
-        tester.widget<IconButton>(parkedFx).onPressed,
-        isNull,
-        reason: 'no subject cut — the button parks disabled',
+        tester.widget<IconButton>(fx).onPressed,
+        isNotNull,
+        reason: 'the button stays fully NORMAL (no disabled look)',
       );
-      expect(tester.widget<IconButton>(parkedEye).onPressed, isNull);
-      // Pressing the parked slots is a no-op (the fail() wiring proves it).
-      await tester.tap(parkedFx);
-      await tester.tap(parkedEye);
+      expect(tester.widget<IconButton>(eye).onPressed, isNotNull);
+      // Pressing is a no-op (the fail() wiring proves nothing fires).
+      await tester.tap(fx);
+      await tester.tap(eye);
       await tester.pumpAndSettle();
-
-      // The live-keyed buttons are gone with their cut.
-      expect(
-        find.byKey(const ValueKey<String>('storyboard-cut-fx-lane-cut')),
-        findsNothing,
-      );
     });
   });
 
