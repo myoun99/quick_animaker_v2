@@ -275,9 +275,10 @@ class _TimelineFrameRangeGestureLayerState
     return Positioned.fill(
       key: ValueKey<String>('timeline-range-gesture-${widget.layer.id}'),
       // Two detectors: the TAP (any device — a finger tap clears the
-      // selection too) and the PAN (pen/mouse only — a finger keeps
-      // scrolling the grid). One detector can't split devices per
-      // recognizer.
+      // selection too) and the PAN. Touch joined the pan set (UI-R17
+      // #6/#8): stylus pens report as TOUCH on some Windows/tablet
+      // drivers, which left range selection pen-dead there — cell-area
+      // panning stays available on the rulers/scrollbars.
       child: GestureDetector(
         behavior: HitTestBehavior.translucent,
         onTapUp: (_) => widget.callbacks.onTapClear(widget.layer.id),
@@ -289,6 +290,8 @@ class _TimelineFrameRangeGestureLayerState
             PointerDeviceKind.mouse,
             PointerDeviceKind.stylus,
             PointerDeviceKind.invertedStylus,
+            PointerDeviceKind.touch,
+            PointerDeviceKind.unknown,
           },
           dragStartBehavior: DragStartBehavior.down,
           onPanStart: (details) => _startDrag(details.localPosition),

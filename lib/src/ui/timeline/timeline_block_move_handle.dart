@@ -267,13 +267,16 @@ class _TimelineBlockMoveHandleState extends State<TimelineBlockMoveHandle> {
         // Translucent: taps have no handler here and fall through to the
         // cells; only the pan recognizer competes in the arena.
         behavior: HitTestBehavior.translucent,
-        // PEN (and mouse) only (R12-⑤): a finger on a block body must
-        // scroll the grid, never grab the block — touch stays out of the
-        // pan arena entirely.
+        // Touch joined the set (UI-R17 #6, superseding R12-⑤): stylus
+        // pens report as TOUCH on some Windows/tablet drivers, which made
+        // block grabs pen-dead there — grid panning stays on the
+        // rulers/scrollbars.
         supportedDevices: const {
           PointerDeviceKind.mouse,
           PointerDeviceKind.stylus,
           PointerDeviceKind.invertedStylus,
+          PointerDeviceKind.touch,
+          PointerDeviceKind.unknown,
         },
         // Pixel-exact deltas from the pointer-down point (the camera
         // overlay rule) — no slop swallowed out of the frame/row math.

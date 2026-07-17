@@ -3104,6 +3104,11 @@ class EditorSessionManager extends ChangeNotifier {
   TimelineBlockEdge? _edgeDragEdge;
   int? _edgeDragBlockStart;
 
+  /// UI-R17 #3: when the dragged edge belongs to a block INSIDE the frame
+  /// range selection, the drag retimes EVERY selected block together —
+  /// these are the selected blocks' start keys (null = single-block drag).
+  List<int>? _edgeDragBulkStarts;
+
   /// The drag's current result (GLOBAL layer for track SE): [dragPreview]
   /// carries the DISPLAY form, so the commit reads this instead.
   Layer? _edgeDragAfter;
@@ -3175,8 +3180,32 @@ class EditorSessionManager extends ChangeNotifier {
     _edgeDragBefore = layer;
     _edgeDragEdge = edge;
     _edgeDragBlockStart = blockStartIndex;
+    // Dragging an edge inside the selection retimes the WHOLE selection
+    // (UI-R17 #3) — every selected block's exposure follows the delta
+    // live, one undo step on release.
+    final selection = frameRangeSelection.value;
+    if (isDrawingBlock &&
+        selection != null &&
+        selection.layerId == layerId &&
+        selection.contains(blockStartIndex)) {
+      final starts = _selectionBlockStarts(layer, selection);
+      _edgeDragBulkStarts = starts.length > 1 ? starts : null;
+    }
     return true;
   }
+
+  /// The selection's real (non-ghost) drawing-block start keys, in order.
+  List<int> _selectionBlockStarts(
+    Layer layer,
+    TimelineFrameRangeSelection selection,
+  ) => [
+    for (final entry in layer.timeline.entries)
+      if (entry.key >= selection.startIndex &&
+          entry.key < selection.endIndexExclusive &&
+          entry.value.isDrawing &&
+          !entry.value.ghost)
+        entry.key,
+  ];
 
   Layer _edgeDraggedLayer({
     required Layer before,
@@ -3192,6 +3221,22 @@ class EditorSessionManager extends ChangeNotifier {
         delta: delta,
       );
       return shifted == null ? before : before.copyWith(instructions: shifted);
+    }
+    // Bulk selection retime (UI-R17 #3): the edge delta becomes a LENGTH
+    // delta on every selected block (end edge: +delta, start edge:
+    // dragging right shrinks), the retime ripple packs/pushes downstream.
+    final bulkStarts = _edgeDragBulkStarts;
+    if (bulkStarts != null) {
+      final lengthDelta = edge == TimelineBlockEdge.end ? delta : -delta;
+      return _timelineController.retimedLayerForBlocks(
+            layer: before,
+            newLengthByStart: {
+              for (final start in bulkStarts)
+                if (before.timeline[start]?.isDrawing ?? false)
+                  start: before.timeline[start]!.length! + lengthDelta,
+            },
+          ) ??
+          before;
     }
     return _timelineController.shiftedLayerForEdge(
           layer: before,
@@ -3244,6 +3289,7 @@ class EditorSessionManager extends ChangeNotifier {
     _edgeDragBefore = null;
     _edgeDragEdge = null;
     _edgeDragBlockStart = null;
+    _edgeDragBulkStarts = null;
     _edgeDragAfter = null;
     _edgeDragWindow = null;
     dragPreview.value = null;
@@ -3649,6 +3695,7 @@ class EditorSessionManager extends ChangeNotifier {
     _edgeDragBefore = null;
     _edgeDragEdge = null;
     _edgeDragBlockStart = null;
+    _edgeDragBulkStarts = null;
     _edgeDragAfter = null;
     _edgeDragWindow = null;
     dragPreview.value = null;
@@ -4333,6 +4380,11 @@ class EditorSessionManager extends ChangeNotifier {
   }
 
   bool get canDeleteCellAtCurrentFrame {
+    // A live selection is deletable wherever the playhead stands (UI-R17
+    // #2).
+    if (_selectionBlockTargets() != null) {
+      return true;
+    }
     final layer = activeLayer;
     // Attach rows: cel removal is out of v1 scope (delete the row or undo
     // the creation) — cells are display material here.
@@ -4459,6 +4511,19 @@ class EditorSessionManager extends ChangeNotifier {
   }
 
   void deleteCellAtCurrentFrame() {
+    // A live selection routes the delete to EVERY selected block (UI-R17
+    // #2, one undo step); the leftover selection covers empty cells so it
+    // clears with the delete.
+    final selectionTargets = _selectionBlockTargets();
+    if (selectionTargets != null) {
+      _timelineController.deleteBlocksForLayer(
+        layerId: selectionTargets.layer.id,
+        blockStartIndexes: selectionTargets.blockStarts,
+      );
+      clearFrameRangeSelection();
+      notifyListeners();
+      return;
+    }
     final layer = activeLayer;
     if (layer == null || !canDeleteCellAtCurrentFrame) {
       return;
@@ -4466,6 +4531,112 @@ class EditorSessionManager extends ChangeNotifier {
 
     _timelineController.deleteCellForLayer(layerId: layer.id);
     notifyListeners();
+  }
+
+  /// The frame-range selection resolved to its layer + real block starts;
+  /// null when there is no selection (or it holds no real blocks).
+  ({Layer layer, List<int> blockStarts})? _selectionBlockTargets() {
+    final selection = frameRangeSelection.value;
+    if (selection == null) {
+      return null;
+    }
+    final layer = _layerById(selection.layerId);
+    if (layer == null) {
+      return null;
+    }
+    final starts = _selectionBlockStarts(layer, selection);
+    if (starts.isEmpty) {
+      return null;
+    }
+    return (layer: layer, blockStarts: starts);
+  }
+
+  // --- Comma set (UI-R17 #7: the 1/2/3/4/N buttons) -------------------------
+
+  /// Whether a comma set has a target: the selection's blocks, else the
+  /// active layer's block covering the playhead.
+  bool get canSetCommaForSelectionOrCurrent =>
+      _selectionBlockTargets() != null || canDeleteCellAtCurrentFrame;
+
+  /// Sets the exposure length of every selected block — or the covering
+  /// block at the playhead without a selection — to [comma], packing the
+  /// run with the retime ripple (1--2--3-- set to 1 reads 123; TVP). One
+  /// undo step; the selection follows the retimed span so repeated comma
+  /// presses keep operating on the same cels.
+  void setCommaForSelectionOrCurrent(int comma) {
+    if (comma < 1) {
+      return;
+    }
+    final selectionTargets = _selectionBlockTargets();
+    if (selectionTargets != null) {
+      _timelineController.retimeBlocksForLayer(
+        layerId: selectionTargets.layer.id,
+        newLengthByStart: {
+          for (final start in selectionTargets.blockStarts) start: comma,
+        },
+      );
+      _reselectRetimedBlocks(
+        layerId: selectionTargets.layer.id,
+        firstBlockStart: selectionTargets.blockStarts.first,
+        blockCount: selectionTargets.blockStarts.length,
+      );
+      _warmActiveCut();
+      notifyListeners();
+      return;
+    }
+    final layer = activeLayer;
+    if (layer == null || isAttachedLayer(layer)) {
+      return;
+    }
+    final block = coveringDrawingBlockAt(
+      layer.timeline,
+      _timelineController.currentFrameIndex,
+    );
+    if (block == null || block.entry.ghost) {
+      return;
+    }
+    _timelineController.retimeBlocksForLayer(
+      layerId: layer.id,
+      newLengthByStart: {block.startIndex: comma},
+    );
+    _warmActiveCut();
+    notifyListeners();
+  }
+
+  /// Re-snaps the selection to the SAME cels after a retime: the first
+  /// retimed block kept its start; the span now ends where the last of
+  /// the [blockCount] real blocks from there ends.
+  void _reselectRetimedBlocks({
+    required LayerId layerId,
+    required int firstBlockStart,
+    required int blockCount,
+  }) {
+    final layer = _layerById(layerId);
+    if (layer == null) {
+      clearFrameRangeSelection();
+      return;
+    }
+    var remaining = blockCount;
+    int? end;
+    for (final entry in layer.timeline.entries) {
+      if (entry.key < firstBlockStart ||
+          !entry.value.isDrawing ||
+          entry.value.ghost) {
+        continue;
+      }
+      end = entry.key + entry.value.length!;
+      remaining -= 1;
+      if (remaining == 0) {
+        break;
+      }
+    }
+    frameRangeSelection.value = end == null
+        ? null
+        : TimelineFrameRangeSelection(
+            layerId: layerId,
+            startIndex: firstBlockStart,
+            endIndexExclusive: end,
+          );
   }
 
   int get currentFrameIndex => _timelineController.currentFrameIndex;

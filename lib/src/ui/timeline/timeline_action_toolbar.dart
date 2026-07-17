@@ -7,6 +7,45 @@ import '../widgets/panel_flyout.dart';
 import '../widgets/split_icon_button.dart';
 import 'timeline_section_policy.dart';
 
+/// The N-comma input (UI-R17 #7): asks for an exposure count and applies
+/// it to the selection (or the current block). Shared by the toolbar's N
+/// button and the digit-5 shortcut.
+Future<void> showTimelineCommaCountDialog(
+  BuildContext context,
+  EditorSessionManager session,
+) async {
+  final controller = TextEditingController();
+  final comma = await showDialog<int>(
+    context: context,
+    builder: (context) => AlertDialog(
+      title: const Text('Set commas'),
+      content: TextField(
+        key: const ValueKey<String>('set-comma-n-field'),
+        controller: controller,
+        autofocus: true,
+        keyboardType: TextInputType.number,
+        decoration: const InputDecoration(labelText: 'Exposure frames'),
+        onSubmitted: (value) => Navigator.of(context).pop(int.tryParse(value)),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          key: const ValueKey<String>('set-comma-n-apply'),
+          onPressed: () =>
+              Navigator.of(context).pop(int.tryParse(controller.text)),
+          child: const Text('Apply'),
+        ),
+      ],
+    ),
+  );
+  if (comma != null && comma >= 1) {
+    session.setCommaForSelectionOrCurrent(comma);
+  }
+}
+
 /// The command bar above the timeline grid (CSP-style, R-toolbar round):
 /// only the high-frequency commands stay as direct icons — everything else
 /// lives in the shared flyouts.
@@ -263,6 +302,27 @@ class TimelineActionToolbar extends StatelessWidget {
     );
   }
 
+  Widget _commaButton({
+    required ValueKey<String> key,
+    required String label,
+    required String tooltip,
+    required VoidCallback? onPressed,
+  }) {
+    return Tooltip(
+      message: tooltip,
+      child: TextButton(
+        key: key,
+        onPressed: onPressed,
+        style: TextButton.styleFrom(
+          minimumSize: const Size(26, 30),
+          padding: const EdgeInsets.symmetric(horizontal: 5),
+          visualDensity: VisualDensity.compact,
+        ),
+        child: Text(label, style: const TextStyle(fontSize: 13)),
+      ),
+    );
+  }
+
   Widget _groupDivider(BuildContext context) {
     return SizedBox(
       height: 22,
@@ -338,6 +398,29 @@ class TimelineActionToolbar extends StatelessWidget {
                     onPressed: session.canToggleMarkAtCurrentFrame
                         ? session.toggleMarkAtCurrentFrame
                         : null,
+                  ),
+                  const SizedBox(width: 4),
+                  // Comma set (UI-R17 #7, TVP-style): the current block —
+                  // or the whole selection, packed — takes the pressed
+                  // exposure outright; N asks for a count. Shortcuts 1-5.
+                  for (var comma = 1; comma <= 4; comma += 1)
+                    _commaButton(
+                      key: ValueKey<String>('set-comma-$comma-button'),
+                      label: '$comma',
+                      tooltip: 'Set $comma comma exposure',
+                      onPressed: session.canSetCommaForSelectionOrCurrent
+                          ? () => session.setCommaForSelectionOrCurrent(comma)
+                          : null,
+                    ),
+                  Builder(
+                    builder: (context) => _commaButton(
+                      key: const ValueKey<String>('set-comma-n-button'),
+                      label: 'N',
+                      tooltip: 'Set N commas…',
+                      onPressed: session.canSetCommaForSelectionOrCurrent
+                          ? () => showTimelineCommaCountDialog(context, session)
+                          : null,
+                    ),
                   ),
                   const SizedBox(width: 4),
                   PanelFlyoutButton(
