@@ -408,14 +408,12 @@ void main() {
           )
           .position;
 
-      // Painted rows (UI-R9 #12b): row identity = the row's CustomPaint
-      // widget instance (cells are paint, not widgets).
+      // Painted rows (UI-R9 #12b → UI-R15): row identity = the row's
+      // CustomPaint widget instance (cells are paint, not widgets).
       Widget rowPaint() => tester.widget(
         find.byKey(const ValueKey<String>('timeline-row-cells-layer-1')),
       );
 
-      // Warm-up: the very first scroll event establishes the endless
-      // runway (a legitimate extent relayout) — settle it first.
       framePosition().jumpTo(2);
       await tester.pump();
 
@@ -430,10 +428,26 @@ void main() {
 
       framePosition().jumpTo(4 * 48.0); // Crosses cell boundaries.
       await tester.pump();
+      // PRO-TIMELINE contract (UI-R15): a cell crossing rebuilds NOTHING
+      // either — the painter windows itself off the live offset, so the
+      // widget instance survives every scroll and only the PAINT window
+      // follows the offset.
       expect(
         identical(rowPaint(), beforeSubCell),
+        isTrue,
+        reason: 'crossings are repaint-only now — no rebuild at all',
+      );
+      expect(
+        timelineCellInWindow(tester, 'layer-1', 4),
+        isTrue,
+        reason: 'the paint window followed the offset',
+      );
+      expect(
+        timelineCellInWindow(tester, 'layer-1', 0),
         isFalse,
-        reason: 'a bucket crossing re-windows the rows',
+        reason:
+            'scrolled-out cells left the paint window (48px cells, '
+            'offset 192, overscan 2)',
       );
     },
   );
@@ -631,15 +645,19 @@ void main() {
     expect(timelineHeaderInWindow(tester, 99999), isFalse);
     expect(timelineCellInWindow(tester, 'layer-1', 99999), isFalse);
 
-    final rulerPainter = timelineRulerPainter(tester);
-    final builtHeaderCount =
-        rulerPainter.frameEndIndexExclusive - rulerPainter.frameStartIndex;
-    final painter = timelineRowCellsPainterFor(tester, 'layer-1');
-    final builtLayerOneCellCount =
-        painter.frameEndIndexExclusive - painter.frameStartIndex;
+    // UI-R15: the PAINT windows (offset-derived) stay tiny however large
+    // the document — the widget bounds are the full extent by design.
+    final headerWindow = timelineRulerPainter(tester).visibleHeaderWindow();
+    final cellWindow = timelineRowCellsPainterFor(
+      tester,
+      'layer-1',
+    ).visibleFrameWindow();
 
-    expect(builtHeaderCount, lessThan(100));
-    expect(builtLayerOneCellCount, lessThan(100));
+    expect(
+      headerWindow.endIndexExclusive - headerWindow.startIndex,
+      lessThan(100),
+    );
+    expect(cellWindow.endIndexExclusive - cellWindow.startIndex, lessThan(100));
   });
 
   testWidgets('horizontal scroll changes virtualized frame range', (
@@ -1983,11 +2001,20 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(timelineCellInWindow(tester, 'layer-1', 6), isFalse);
-      _expectSelectedExposureRangeOutline(tester, 'layer-1', const [
-        17,
-        18,
-        19,
-        20,
+      // UI-R15: the outline clamps to the OFFSET-derived paint window
+      // (the cursor layer follows the viewport by itself) — read the
+      // window off the painter probe instead of pinning bucket numbers.
+      final window = timelineRowCellsPainterFor(
+        tester,
+        'layer-1',
+      ).visibleFrameWindow();
+      _expectSelectedExposureRangeOutline(tester, 'layer-1', [
+        for (
+          var frame = math.max(6, window.startIndex);
+          frame <= math.min(20, window.endIndexExclusive - 1);
+          frame += 1
+        )
+          frame,
       ]);
     },
   );
@@ -2019,11 +2046,20 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(timelineCellInWindow(tester, 'layer-1', 16), isFalse);
-      _expectSelectedExposureRangeOutline(tester, 'layer-1', const [
-        22,
-        23,
-        24,
-      ]);
+      // UI-R15: the outline clamps to the offset-derived paint window.
+      final window = timelineRowCellsPainterFor(
+        tester,
+        'layer-1',
+      ).visibleFrameWindow();
+      List<int> clamped() => [
+        for (
+          var frame = math.max(12, window.startIndex);
+          frame <= math.min(24, window.endIndexExclusive - 1);
+          frame += 1
+        )
+          frame,
+      ];
+      _expectSelectedExposureRangeOutline(tester, 'layer-1', clamped());
 
       await tester.pumpWidget(
         _grid(
@@ -2045,11 +2081,7 @@ void main() {
       await tester.pump();
 
       expect(timelineCellInWindow(tester, 'layer-1', 16), isFalse);
-      _expectSelectedExposureRangeOutline(tester, 'layer-1', const [
-        22,
-        23,
-        24,
-      ]);
+      _expectSelectedExposureRangeOutline(tester, 'layer-1', clamped());
     },
   );
 

@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
 
 import 'timeline_frame_header_row.dart';
@@ -19,6 +20,8 @@ class TimelineFrameRuler extends StatelessWidget {
     this.framesPerSecond = 24,
     this.showSeconds = false,
     this.isFrameCached,
+    this.viewportOffset,
+    this.viewportMainExtent = 0,
   });
 
   final int frameStartIndex;
@@ -32,6 +35,11 @@ class TimelineFrameRuler extends StatelessWidget {
   final int framesPerSecond;
   final bool showSeconds;
   final bool Function(int frameIndex)? isFrameCached;
+
+  /// PRO-TIMELINE scrolling (UI-R15): the strip windows itself off the
+  /// live offset — pass the full bounds and skip bucket re-windowing.
+  final ValueListenable<double>? viewportOffset;
+  final double viewportMainExtent;
 
   @override
   Widget build(BuildContext context) {
@@ -49,6 +57,8 @@ class TimelineFrameRuler extends StatelessWidget {
           framesPerSecond: framesPerSecond,
           showSeconds: showSeconds,
           isFrameCached: isFrameCached,
+          viewportOffset: viewportOffset,
+          viewportMainExtent: viewportMainExtent,
         ),
         TimelineRulerCutEndBoundary(
           left: timelineCutEndBoundaryX(

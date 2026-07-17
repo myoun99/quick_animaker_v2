@@ -23,15 +23,20 @@ TimelineFrameRulerPainter timelineRulerPainter(
   return paint.painter! as TimelineFrameRulerPainter;
 }
 
-/// Whether the ruler's painted window contains [frameIndex].
+/// Whether the ruler's PAINT window contains [frameIndex] — the
+/// offset-derived slice under the UI-R15 self-windowing contract, the
+/// full bounds otherwise.
 bool timelineHeaderInWindow(
   WidgetTester tester,
   int frameIndex, {
   int index = 0,
 }) {
-  final painter = timelineRulerPainter(tester, index: index);
-  return frameIndex >= painter.frameStartIndex &&
-      frameIndex < painter.frameEndIndexExclusive;
+  final window = timelineRulerPainter(
+    tester,
+    index: index,
+  ).visibleHeaderWindow();
+  return frameIndex >= window.startIndex &&
+      frameIndex < window.endIndexExclusive;
 }
 
 /// The resolved header model at [frameIndex] (label, seconds line,
@@ -66,11 +71,12 @@ XSheetFrameRailPainter xsheetRailPainter(WidgetTester tester) =>
     tester.widget<CustomPaint>(xsheetRailPaintFinder()).painter!
         as XSheetFrameRailPainter;
 
-/// Whether the rail's painted window contains [frameIndex].
+/// Whether the rail's PAINT window contains [frameIndex] (the
+/// offset-derived slice under UI-R15).
 bool xsheetFrameRowInWindow(WidgetTester tester, int frameIndex) {
-  final painter = xsheetRailPainter(tester);
-  return frameIndex >= painter.frameStartIndex &&
-      frameIndex < painter.frameEndIndexExclusive;
+  final window = xsheetRailPainter(tester).visibleRowWindow();
+  return frameIndex >= window.startIndex &&
+      frameIndex < window.endIndexExclusive;
 }
 
 /// The resolved rail-row model at [frameIndex].

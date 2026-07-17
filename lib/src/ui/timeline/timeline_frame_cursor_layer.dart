@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
@@ -42,6 +44,8 @@ class TimelineCursorLayer extends StatelessWidget {
     this.axis = Axis.horizontal,
     this.dragPreview,
     this.frameRangeSelection,
+    this.viewportOffset,
+    this.viewportMainExtent = 0,
     this.selectedSemanticsKey = const ValueKey<String>(
       'timeline-selected-cell',
     ),
@@ -76,8 +80,35 @@ class TimelineCursorLayer extends StatelessWidget {
   /// The frame axis direction; every visual transposes, none forks.
   final Axis axis;
 
+  /// UI-R15: the live frame-axis scroll offset. When provided with a
+  /// positive [viewportMainExtent], visibility gating and the outline's
+  /// display clamp use the offset-derived window instead of the (now
+  /// full) build bounds — the widget builds once in content space and
+  /// this layer follows the viewport by itself.
+  final ValueListenable<double>? viewportOffset;
+  final double viewportMainExtent;
+
   /// Semantics key marking the selected cell in this grid's namespace.
   final ValueKey<String> selectedSemanticsKey;
+
+  ({int startIndex, int endIndexExclusive}) _visibleWindow() {
+    final offset = viewportOffset;
+    final cell = metrics.frameCellWidth;
+    if (offset == null || viewportMainExtent <= 0 || cell <= 0) {
+      return (
+        startIndex: frameStartIndex,
+        endIndexExclusive: frameEndIndexExclusive,
+      );
+    }
+    final localOffset = offset.value - leadingFrameSpacerWidth;
+    final first = frameStartIndex + (localOffset / cell).floor();
+    final last =
+        frameStartIndex + ((localOffset + viewportMainExtent) / cell).ceil();
+    return (
+      startIndex: math.max(frameStartIndex, first - 2),
+      endIndexExclusive: math.min(frameEndIndexExclusive, last + 2),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -87,11 +118,18 @@ class TimelineCursorLayer extends StatelessWidget {
         frameCursor,
         ?dragPreview,
         ?frameRangeSelection,
+        ?viewportOffset,
       ]),
       builder: (context, _) {
         final frame = frameCursor.value;
+        // UI-R15: under full bounds + a live offset, visibility GATES and
+        // the outline's display clamp use the offset-derived window (the
+        // old bucket-window semantics), while positioning stays in the
+        // widget's own coordinate space. This thin builder re-runs per
+        // scroll — a handful of Positioned, repaint-scale cost.
+        final window = _visibleWindow();
         final cursorVisible =
-            frame >= frameStartIndex && frame < frameEndIndexExclusive;
+            frame >= window.startIndex && frame < window.endIndexExclusive;
         final children = <Widget>[
           // Mounted only while the cursor is inside the built window (the
           // widget's own out-of-range shrink is not enough — tests and
@@ -113,12 +151,11 @@ class TimelineCursorLayer extends StatelessWidget {
         // selected layer's row — selection reads from color alone.
         final range = frameRangeSelection?.value;
         if (range != null &&
-            range.endIndexExclusive > frameStartIndex &&
-            range.startIndex < frameEndIndexExclusive) {
+            range.endIndexExclusive > window.startIndex &&
+            range.startIndex < window.endIndexExclusive) {
           int? rangeRowIndex;
           for (var index = 0; index < rows.length; index += 1) {
-            if (!rows[index].isLane &&
-                rows[index].layer.id == range.layerId) {
+            if (!rows[index].isLane && rows[index].layer.id == range.layerId) {
               rangeRowIndex = index;
               break;
             }
@@ -205,8 +242,8 @@ class TimelineCursorLayer extends StatelessWidget {
           final displayRange = resolveSelectedExposureDisplayRange(
             active: true,
             currentFrameIndex: frame,
-            frameStartIndex: frameStartIndex,
-            frameEndIndexExclusive: frameEndIndexExclusive,
+            frameStartIndex: window.startIndex,
+            frameEndIndexExclusive: window.endIndexExclusive,
             exposureStateAt: stateAt,
           );
           final cellOffset = frameVisibleX(
