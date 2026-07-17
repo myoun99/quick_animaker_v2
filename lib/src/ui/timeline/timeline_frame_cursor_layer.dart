@@ -14,6 +14,7 @@ import 'timeline_cell_exposure_state.dart';
 import 'timeline_cell_style.dart';
 import 'timeline_drag_preview.dart';
 import 'timeline_frame_coordinate_policy.dart';
+import 'timeline_frame_window.dart';
 import 'timeline_grid_metrics.dart';
 import 'timeline_instruction_row_visual.dart';
 import 'timeline_playhead.dart';
@@ -44,7 +45,7 @@ class TimelineCursorLayer extends StatelessWidget {
     this.axis = Axis.horizontal,
     this.dragPreview,
     this.frameRangeSelection,
-    this.viewportOffset,
+    this.windowBucket,
     this.viewportMainExtent = 0,
     this.selectedSemanticsKey = const ValueKey<String>(
       'timeline-selected-cell',
@@ -80,33 +81,38 @@ class TimelineCursorLayer extends StatelessWidget {
   /// The frame axis direction; every visual transposes, none forks.
   final Axis axis;
 
-  /// UI-R15: the live frame-axis scroll offset. When provided with a
+  /// UI-R15→R16: the quantized frame-window bucket. When provided with a
   /// positive [viewportMainExtent], visibility gating and the outline's
-  /// display clamp use the offset-derived window instead of the (now
-  /// full) build bounds — the widget builds once in content space and
-  /// this layer follows the viewport by itself.
-  final ValueListenable<double>? viewportOffset;
+  /// display clamp use the bucket-derived window (shared policy) instead
+  /// of the (now full) build bounds — the widget builds once in content
+  /// space, follows the viewport by itself, and rebuilds once per span
+  /// crossing rather than per scrolled pixel.
+  final ValueListenable<int>? windowBucket;
   final double viewportMainExtent;
 
   /// Semantics key marking the selected cell in this grid's namespace.
   final ValueKey<String> selectedSemanticsKey;
 
   ({int startIndex, int endIndexExclusive}) _visibleWindow() {
-    final offset = viewportOffset;
+    final bucket = windowBucket;
     final cell = metrics.frameCellWidth;
-    if (offset == null || viewportMainExtent <= 0 || cell <= 0) {
+    if (bucket == null || viewportMainExtent <= 0 || cell <= 0) {
       return (
         startIndex: frameStartIndex,
         endIndexExclusive: frameEndIndexExclusive,
       );
     }
-    final localOffset = offset.value - leadingFrameSpacerWidth;
-    final first = frameStartIndex + (localOffset / cell).floor();
-    final last =
-        frameStartIndex + ((localOffset + viewportMainExtent) / cell).ceil();
+    final window = timelineFrameWindowFor(
+      bucket: bucket.value,
+      cellExtent: cell,
+      viewportExtent: viewportMainExtent,
+    );
     return (
-      startIndex: math.max(frameStartIndex, first - 2),
-      endIndexExclusive: math.min(frameEndIndexExclusive, last + 2),
+      startIndex: math.max(frameStartIndex, window.startIndex),
+      endIndexExclusive: math.min(
+        frameEndIndexExclusive,
+        window.endIndexExclusive,
+      ),
     );
   }
 
@@ -118,15 +124,15 @@ class TimelineCursorLayer extends StatelessWidget {
         frameCursor,
         ?dragPreview,
         ?frameRangeSelection,
-        ?viewportOffset,
+        ?windowBucket,
       ]),
       builder: (context, _) {
         final frame = frameCursor.value;
-        // UI-R15: under full bounds + a live offset, visibility GATES and
-        // the outline's display clamp use the offset-derived window (the
-        // old bucket-window semantics), while positioning stays in the
-        // widget's own coordinate space. This thin builder re-runs per
-        // scroll — a handful of Positioned, repaint-scale cost.
+        // UI-R15→R16: under full bounds + the quantized bucket,
+        // visibility GATES and the outline's display clamp use the
+        // bucket-derived window, while positioning stays in the widget's
+        // own coordinate space. This thin builder re-runs once per span
+        // crossing — never per scrolled pixel.
         final window = _visibleWindow();
         final cursorVisible =
             frame >= window.startIndex && frame < window.endIndexExclusive;

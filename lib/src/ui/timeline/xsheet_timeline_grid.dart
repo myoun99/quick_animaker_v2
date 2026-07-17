@@ -29,6 +29,8 @@ import 'timeline_frame_coordinate_policy.dart';
 import 'timeline_frame_cursor_layer.dart';
 import 'timeline_beat_lines.dart';
 import 'timeline_frame_range_policy.dart';
+import 'timeline_frame_window.dart';
+import 'timeline_glyph_cache.dart';
 import 'timeline_body_cut_end_boundary.dart';
 import 'timeline_cell_editor_policy.dart';
 import 'property_lane_model.dart';
@@ -351,9 +353,11 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
       return;
     }
     _frameAxisOffset.value = offset;
-    final bucket = _metrics.frameCellWidth <= 0
-        ? 0
-        : (offset / _metrics.frameCellWidth).floor();
+    // Quantized span buckets (UI-R16): repaint once per span crossing.
+    final bucket = timelineFrameWindowBucketOf(
+      offset: offset,
+      cellExtent: _metrics.frameCellWidth,
+    );
     if (bucket != _frameWindowBucket.value) {
       _frameWindowBucket.value = bucket;
     }
@@ -632,10 +636,11 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
               laneEdit: widget.laneEdit,
             );
     }
-    // PRO-TIMELINE scrolling (UI-R15, transposed): the cells column gets
-    // FULL bounds — its painter windows itself off the live offset
-    // (repaint-only), so the bucket pass diffs identical params and
-    // records nothing; the sparse widget-cell kinds re-window internally.
+    // PRO-TIMELINE scrolling (UI-R15→R16, transposed): the cells column
+    // gets FULL bounds — its painter windows itself off the quantized
+    // bucket (repaint per span crossing), so the bucket pass diffs
+    // identical params and records nothing; the sparse widget-cell kinds
+    // re-window internally under the same bucket.
     return _XSheetFrameCellsColumn(
       onActivateCell: widget.onActivateCell,
       instructionDefById: widget.instructionDefById,
@@ -651,7 +656,6 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
       frameEndIndexExclusive: _renderedFrameCount,
       leadingFrameSpacerHeight: 0,
       trailingFrameSpacerHeight: 0,
-      viewportOffset: _frameAxisOffset,
       windowBucket: _frameWindowBucket,
       viewportMainExtent: viewportExtent,
       metrics: _metrics,
@@ -851,8 +855,8 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
                                                           widget.showSeconds,
                                                       isFrameCached:
                                                           widget.isFrameCached,
-                                                      viewportOffset:
-                                                          _frameAxisOffset,
+                                                      windowBucket:
+                                                          _frameWindowBucket,
                                                       viewportMainExtent:
                                                           bodyViewportHeight,
                                                     ),
@@ -1250,7 +1254,7 @@ class _XSheetFrameNumberRail extends StatelessWidget {
     this.framesPerSecond = 24,
     this.showSeconds = false,
     this.isFrameCached,
-    this.viewportOffset,
+    this.windowBucket,
     this.viewportMainExtent = 0,
   });
 
@@ -1269,9 +1273,9 @@ class _XSheetFrameNumberRail extends StatelessWidget {
   /// strip along the cell edge that faces the frame cells.
   final bool Function(int frameIndex)? isFrameCached;
 
-  /// PRO-TIMELINE scrolling (UI-R15): the painter windows itself off the
-  /// live offset — pass full bounds, no bucket re-windowing needed.
-  final ValueListenable<double>? viewportOffset;
+  /// PRO-TIMELINE scrolling (UI-R15→R16): the painter windows itself off
+  /// the quantized bucket — pass full bounds, repaint per span crossing.
+  final ValueListenable<int>? windowBucket;
   final double viewportMainExtent;
 
   @override
@@ -1304,7 +1308,7 @@ class _XSheetFrameNumberRail extends StatelessWidget {
           framesPerSecond: framesPerSecond,
           showSeconds: showSeconds,
           isFrameCached: isFrameCached,
-          viewportOffset: viewportOffset,
+          windowBucket: windowBucket,
           viewportMainExtent: viewportMainExtent,
         ),
       ),
@@ -1328,9 +1332,9 @@ class XSheetFrameRailPainter extends CustomPainter {
     this.framesPerSecond = 24,
     this.showSeconds = false,
     this.isFrameCached,
-    this.viewportOffset,
+    this.windowBucket,
     this.viewportMainExtent = 0,
-  }) : super(repaint: viewportOffset);
+  }) : super(repaint: windowBucket);
 
   final int frameStartIndex;
   final int frameEndIndexExclusive;
@@ -1343,16 +1347,16 @@ class XSheetFrameRailPainter extends CustomPainter {
   final bool showSeconds;
   final bool Function(int frameIndex)? isFrameCached;
 
-  /// PRO-TIMELINE scrolling (UI-R15): with these set the rail windows
-  /// ITSELF off the live offset (repaint-only scroll) — full bounds in,
-  /// no bucket re-windowing.
-  final ValueListenable<double>? viewportOffset;
+  /// PRO-TIMELINE scrolling (UI-R15→R16): with these set the rail
+  /// windows ITSELF off the quantized bucket — full bounds in, repaint
+  /// once per span crossing.
+  final ValueListenable<int>? windowBucket;
   final double viewportMainExtent;
 
   /// The row window paint() actually draws (probe surface).
   ({int startIndex, int endIndexExclusive}) visibleRowWindow() {
-    final offset = viewportOffset;
-    if (offset == null ||
+    final bucket = windowBucket;
+    if (bucket == null ||
         viewportMainExtent <= 0 ||
         metrics.frameCellWidth <= 0) {
       return (
@@ -1360,15 +1364,17 @@ class XSheetFrameRailPainter extends CustomPainter {
         endIndexExclusive: frameEndIndexExclusive,
       );
     }
-    final localOffset = offset.value - leadingFrameSpacerHeight;
-    final first =
-        frameStartIndex + (localOffset / metrics.frameCellWidth).floor();
-    final last =
-        frameStartIndex +
-        ((localOffset + viewportMainExtent) / metrics.frameCellWidth).ceil();
+    final window = timelineFrameWindowFor(
+      bucket: bucket.value,
+      cellExtent: metrics.frameCellWidth,
+      viewportExtent: viewportMainExtent,
+    );
     return (
-      startIndex: math.max(frameStartIndex, first - 2),
-      endIndexExclusive: math.min(frameEndIndexExclusive, last + 2),
+      startIndex: math.max(frameStartIndex, window.startIndex),
+      endIndexExclusive: math.min(
+        frameEndIndexExclusive,
+        window.endIndexExclusive,
+      ),
     );
   }
 
@@ -1487,10 +1493,10 @@ class XSheetFrameRailPainter extends CustomPainter {
     );
   }
 
-  TextPainter _label(String text, TextStyle style) => TextPainter(
-    text: TextSpan(text: text, style: style),
-    textDirection: TextDirection.ltr,
-  )..layout();
+  // Shared laid-out-TextPainter cache (UI-R16): rail numbers repeat
+  // across repaints — fresh layout per label was the debug hot spot.
+  TextPainter _label(String text, TextStyle style) =>
+      timelineGlyphPainter(text, style);
 
   @override
   bool shouldRepaint(covariant XSheetFrameRailPainter oldDelegate) =>
@@ -1502,7 +1508,7 @@ class XSheetFrameRailPainter extends CustomPainter {
       oldDelegate.metrics != metrics ||
       oldDelegate.framesPerSecond != framesPerSecond ||
       oldDelegate.showSeconds != showSeconds ||
-      !identical(oldDelegate.viewportOffset, viewportOffset) ||
+      !identical(oldDelegate.windowBucket, windowBucket) ||
       oldDelegate.viewportMainExtent != viewportMainExtent ||
       !identical(oldDelegate.colorScheme, colorScheme) ||
       !identical(oldDelegate.isFrameCached, isFrameCached);
@@ -1556,7 +1562,6 @@ class _XSheetFrameCellsColumn extends StatelessWidget {
     this.rangeGesture,
     this.runEdit,
     this.baseLayer,
-    this.viewportOffset,
     this.windowBucket,
     this.viewportMainExtent = 0,
   });
@@ -1600,11 +1605,11 @@ class _XSheetFrameCellsColumn extends StatelessWidget {
   /// The run-edge [+]/[↻] handle hooks (UI-R8); null hides the handles.
   final TimelineRunEditCallbacks? runEdit;
 
-  /// PRO-TIMELINE scrolling (UI-R15, transposed): with these set the
+  /// PRO-TIMELINE scrolling (UI-R15→R16, transposed): with these set the
   /// column builds ONCE for the full frame bounds — the painter windows
-  /// itself off the live offset, the sparse widget-cell kinds re-window
-  /// under [windowBucket] alone. Null keeps the classic contract.
-  final ValueListenable<double>? viewportOffset;
+  /// itself off the quantized [windowBucket] (repaint per span crossing),
+  /// the sparse widget-cell kinds re-window under the same bucket. Null
+  /// keeps the classic contract.
   final ValueListenable<int>? windowBucket;
   final double viewportMainExtent;
 
@@ -1640,7 +1645,7 @@ class _XSheetFrameCellsColumn extends StatelessWidget {
               frameCellExtent: metrics.frameCellWidth,
               crossAxisExtent: metrics.layerRowHeight,
               axis: Axis.vertical,
-              viewportOffset: viewportOffset,
+              windowBucket: windowBucket,
               viewportMainExtent: viewportMainExtent,
               exposureStateForLayer: exposureStateForLayer,
               frameNameForLayer: frameNameForLayer,
@@ -1656,21 +1661,23 @@ class _XSheetFrameCellsColumn extends StatelessWidget {
                           selection.contains(frameIndex);
                     },
             )
-          else if (windowBucket != null && viewportOffset != null)
+          else if (windowBucket != null)
             // Sparse widget-cell kinds re-window under the bucket ALONE
-            // (UI-R15): the column never rebuilds on scroll.
+            // (UI-R15→R16): the column never rebuilds on scroll — only
+            // this strip, once per span crossing (shared policy).
             ValueListenableBuilder<int>(
               valueListenable: windowBucket!,
-              builder: (context, _, _) {
+              builder: (context, bucket, _) {
                 final cellExtent = metrics.frameCellWidth;
-                final localOffset = viewportOffset!.value;
-                final first = math.max(
-                  frameStartIndex,
-                  (localOffset / cellExtent).floor() - 2,
+                final window = timelineFrameWindowFor(
+                  bucket: bucket,
+                  cellExtent: cellExtent,
+                  viewportExtent: viewportMainExtent,
                 );
+                final first = math.max(frameStartIndex, window.startIndex);
                 final last = math.min(
                   frameEndIndexExclusive,
-                  ((localOffset + viewportMainExtent) / cellExtent).ceil() + 2,
+                  window.endIndexExclusive,
                 );
                 return _widgetCellsStrip(
                   stateAt,

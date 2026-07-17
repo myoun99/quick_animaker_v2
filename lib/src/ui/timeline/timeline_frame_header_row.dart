@@ -31,14 +31,14 @@ class TimelineFrameHeaderRow extends StatelessWidget {
     this.framesPerSecond = 24,
     this.showSeconds = false,
     this.isFrameCached,
-    this.viewportOffset,
+    this.windowBucket,
     this.viewportMainExtent = 0,
   });
 
-  /// PRO-TIMELINE scrolling (UI-R15): with these set the painter windows
-  /// itself off the live offset (repaint-only scroll) — pass the FULL
-  /// frame bounds and no bucket re-windowing is needed.
-  final ValueListenable<double>? viewportOffset;
+  /// PRO-TIMELINE scrolling (UI-R15→R16): with these set the painter
+  /// windows itself off the quantized bucket — pass the FULL frame
+  /// bounds; repaints land once per span crossing.
+  final ValueListenable<int>? windowBucket;
   final double viewportMainExtent;
 
   final int frameStartIndex;
@@ -88,7 +88,7 @@ class TimelineFrameHeaderRow extends StatelessWidget {
           framesPerSecond: framesPerSecond,
           showSeconds: showSeconds,
           isFrameCached: isFrameCached,
-          viewportOffset: viewportOffset,
+          windowBucket: windowBucket,
           viewportMainExtent: viewportMainExtent,
         ),
       ),

@@ -50,6 +50,7 @@ import 'timeline/timeline_frame_range_policy.dart'
     show endlessTrailingFrames, endlessViewportFillFrames, timelineSecondsLabel;
 import '../models/layer_kind.dart';
 import 'timeline/timeline_frame_ruler.dart';
+import 'timeline/timeline_frame_window.dart';
 import 'timeline/timeline_grid_metrics.dart';
 import 'timeline/timeline_horizontal_scrollbar_rail.dart';
 import 'timeline/timeline_layer_controls_header.dart';
@@ -397,12 +398,17 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
 
   /// The live horizontal offset as a VALUE channel (UI-R15, the
   /// timeline's B1 pattern): scroll pixels update this notifier — the
-  /// pinned ruler's translate and the self-windowing ruler painters
-  /// follow it with zero panel rebuilds. Only an endless-extent change
-  /// (growth/shrink) still goes through setState.
+  /// pinned ruler's translate follows it with zero panel rebuilds. Only
+  /// an endless-extent change (growth/shrink) still goes through
+  /// setState.
   final ValueNotifier<double> _horizontalScrollOffset = ValueNotifier<double>(
     0,
   );
+
+  /// The QUANTIZED window bucket (UI-R16, shared policy): the ruler
+  /// painters' repaint trigger — fires once per span crossing, so the
+  /// frames between crossings are pure translation.
+  final ValueNotifier<int> _horizontalWindowBucket = ValueNotifier<int>(0);
 
   @override
   void initState() {
@@ -450,9 +456,14 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
       // away, gesture pixels wait for the settle listener.
       allowShrink: !position.isScrollingNotifier.value,
     );
-    // Repaint-only scroll (UI-R15): the offset rides the value channel;
+    // Repaint-only scroll (UI-R15→R16): the offset rides the value
+    // channel (translate), the quantized bucket triggers the painters;
     // widgets rebuild ONLY when the endless extent itself changes.
     _horizontalScrollOffset.value = offset;
+    _horizontalWindowBucket.value = timelineFrameWindowBucketOf(
+      offset: offset,
+      cellExtent: _scale.pixelsPerFrame,
+    );
     if (next != _endlessTrailingFrames) {
       setState(() => _endlessTrailingFrames = next);
     }
@@ -525,6 +536,7 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
     _verticalController.dispose();
     _horizontalController.dispose();
     _horizontalScrollOffset.dispose();
+    _horizontalWindowBucket.dispose();
     super.dispose();
   }
 
@@ -1286,6 +1298,7 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
                               playhead: playheadListenable,
                               cacheProgress: widget.cacheProgress,
                               viewportOffset: _horizontalScrollOffset,
+                              windowBucket: _horizontalWindowBucket,
                               viewportWidth: viewportWidth,
                               timelineScale: scale,
                               onSeekGlobalFrame: widget.onSeekGlobalFrame,
@@ -1586,6 +1599,7 @@ class _StoryboardRuler extends StatelessWidget {
     required this.playhead,
     required this.cacheProgress,
     required this.viewportOffset,
+    required this.windowBucket,
     required this.viewportWidth,
     required this.timelineScale,
     required this.onSeekGlobalFrame,
@@ -1615,10 +1629,12 @@ class _StoryboardRuler extends StatelessWidget {
   final Listenable? cacheProgress;
 
   /// The live horizontal offset (UI-R15): the strip builds ONCE with the
-  /// full frame bounds; the shared ruler painter and the cursor overlay
-  /// window themselves off this listenable — a scroll repaints, never
-  /// rebuilds. The edge-pan test reads its current value.
+  /// full frame bounds; the edge-pan test reads the live offset, while
+  /// the shared ruler painter and the cursor overlay window themselves
+  /// off the QUANTIZED [windowBucket] (UI-R16) — a scroll repaints once
+  /// per span crossing, never rebuilds.
   final ValueListenable<double> viewportOffset;
+  final ValueListenable<int> windowBucket;
   final double viewportWidth;
   final TimelineScale timelineScale;
   final ValueChanged<int>? onSeekGlobalFrame;
@@ -1723,7 +1739,7 @@ class _StoryboardRuler extends StatelessWidget {
               onSelectFrame: _seekFrame,
               framesPerSecond: framesPerSecond,
               showSeconds: showSeconds,
-              viewportOffset: viewportOffset,
+              windowBucket: windowBucket,
               viewportMainExtent: viewportWidth,
             ),
             // The moving parts REPAINT only: current-frame tint + green
@@ -1738,7 +1754,7 @@ class _StoryboardRuler extends StatelessWidget {
                     painter: _StoryboardRulerCursorPainter(
                       playhead: playhead,
                       cacheProgress: cacheProgress,
-                      viewportOffset: viewportOffset,
+                      windowBucket: windowBucket,
                       viewportMainExtent: viewportWidth,
                       renderedFrames: renderedFrames,
                       contentFrames: contentFrames,
@@ -1763,21 +1779,21 @@ class _StoryboardRulerCursorPainter extends CustomPainter {
   _StoryboardRulerCursorPainter({
     required this.playhead,
     required Listenable? cacheProgress,
-    required this.viewportOffset,
+    required this.windowBucket,
     required this.viewportMainExtent,
     required this.renderedFrames,
     required this.contentFrames,
     required this.cellWidth,
     required this.isFrameCached,
   }) : super(
-         repaint: Listenable.merge([?playhead, ?cacheProgress, viewportOffset]),
+         repaint: Listenable.merge([?playhead, ?cacheProgress, windowBucket]),
        );
 
   final ValueListenable<int?>? playhead;
 
-  /// UI-R15 self-windowing: paint covers the offset-derived slice of the
-  /// full-bounds strip (scroll = repaint, not rebuild).
-  final ValueListenable<double> viewportOffset;
+  /// UI-R15→R16 self-windowing: paint covers the bucket-derived slice of
+  /// the full-bounds strip (repaint once per span crossing).
+  final ValueListenable<int> windowBucket;
   final double viewportMainExtent;
   final int renderedFrames;
   final int contentFrames;
@@ -1791,13 +1807,14 @@ class _StoryboardRulerCursorPainter extends CustomPainter {
     if (viewportMainExtent <= 0 || cellWidth <= 0) {
       return (startIndex: 0, endIndexExclusive: renderedFrames);
     }
-    final offset = viewportOffset.value;
+    final window = timelineFrameWindowFor(
+      bucket: windowBucket.value,
+      cellExtent: cellWidth,
+      viewportExtent: viewportMainExtent,
+    );
     return (
-      startIndex: math.max(0, (offset / cellWidth).floor() - 4),
-      endIndexExclusive: math.min(
-        renderedFrames,
-        ((offset + viewportMainExtent) / cellWidth).ceil() + 4,
-      ),
+      startIndex: math.max(0, window.startIndex),
+      endIndexExclusive: math.min(renderedFrames, window.endIndexExclusive),
     );
   }
 
@@ -1848,7 +1865,7 @@ class _StoryboardRulerCursorPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(_StoryboardRulerCursorPainter oldDelegate) =>
-      !identical(oldDelegate.viewportOffset, viewportOffset) ||
+      !identical(oldDelegate.windowBucket, windowBucket) ||
       oldDelegate.viewportMainExtent != viewportMainExtent ||
       oldDelegate.renderedFrames != renderedFrames ||
       oldDelegate.contentFrames != contentFrames ||

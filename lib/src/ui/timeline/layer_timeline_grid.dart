@@ -22,6 +22,7 @@ import 'timeline_frame_range_policy.dart';
 import 'timeline_frame_scroll_viewport.dart';
 import 'timeline_frame_ruler.dart';
 import 'timeline_frame_rows_scroll_body.dart';
+import 'timeline_frame_window.dart';
 import 'layer_label_controls.dart'
     show
         SectionBandZone,
@@ -472,9 +473,13 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
       return;
     }
     _frameAxisOffset.value = offset;
-    final bucket = _metrics.frameCellWidth <= 0
-        ? 0
-        : (offset / _metrics.frameCellWidth).floor();
+    // Quantized span buckets (UI-R16): the bucket notifier — the
+    // painters' repaint trigger — fires once per span crossing, so the
+    // frames between crossings are pure translation.
+    final bucket = timelineFrameWindowBucketOf(
+      offset: offset,
+      cellExtent: _metrics.frameCellWidth,
+    );
     if (bucket != _frameWindowBucket.value) {
       _frameWindowBucket.value = bucket;
     }
@@ -1162,7 +1167,7 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                                               showSeconds: widget.showSeconds,
                                               isFrameCached:
                                                   widget.isFrameCached,
-                                              viewportOffset: _frameAxisOffset,
+                                              windowBucket: _frameWindowBucket,
                                               viewportMainExtent: viewportWidth,
                                             ),
                                       ),
@@ -1457,8 +1462,6 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                                                     trailingFrameSpacerWidth: 0,
                                                     totalFrameContentWidth:
                                                         totalFrameContentWidth,
-                                                    viewportOffset:
-                                                        _frameAxisOffset,
                                                     windowBucket:
                                                         _frameWindowBucket,
                                                     viewportMainExtent:
@@ -1554,8 +1557,8 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                                                         .exposureStateForLayer,
                                                     crossAxisExtent:
                                                         verticalContentHeight,
-                                                    viewportOffset:
-                                                        _frameAxisOffset,
+                                                    windowBucket:
+                                                        _frameWindowBucket,
                                                     viewportMainExtent:
                                                         viewportWidth,
                                                   ),
