@@ -77,15 +77,21 @@ void main() {
       expect(_latestLayer(fixture.repository), _editingLayer());
     });
 
-    test('delete cell does nothing on a dot-held cell (not a block start)',
-        () {
+    test('delete on a dot-held cell removes the COVERING block (UI-R17 #1 '
+        '— the head-only rule is gone)', () {
       final dottedLayer = _editingLayer(markIndex: 1);
       final fixture = _fixture(dottedLayer);
       fixture.controller.selectFrameIndex(1);
 
       fixture.controller.deleteCellForLayer(layerId: const LayerId('layer'));
 
-      expect(_latestLayer(fixture.repository), dottedLayer);
+      final layer = _latestLayer(fixture.repository);
+      expect(layer.timeline.keys, orderedEquals([5, 9]));
+      // 'a' survives the frame GC — still referenced by the block at 9.
+      expect(
+        layer.frames.map((frame) => frame.id),
+        orderedEquals([const FrameId('a'), const FrameId('b')]),
+      );
     });
 
     test(
@@ -142,35 +148,35 @@ void main() {
       },
     );
 
-    test(
-      'delete cell does nothing on held drawing, blank held, and empty cells',
-      () {
-        final drawingHeld = _fixture(_editingLayer());
-        drawingHeld.controller.selectFrameIndex(1);
-        drawingHeld.controller.deleteCellForLayer(
-          layerId: const LayerId('layer'),
-        );
-        expect(_latestLayer(drawingHeld.repository), _editingLayer());
+    test('delete works on held cells via the covering block (UI-R17 #1); '
+        'blank/empty cells stay no-ops', () {
+      final drawingHeld = _fixture(_editingLayer());
+      drawingHeld.controller.selectFrameIndex(1);
+      drawingHeld.controller.deleteCellForLayer(
+        layerId: const LayerId('layer'),
+      );
+      expect(
+        _latestLayer(drawingHeld.repository).timeline.keys,
+        orderedEquals([5, 9]),
+        reason: 'the covering a-block at 0 deletes from its held cell',
+      );
 
-        final blankHeld = _fixture(_editingLayer());
-        blankHeld.controller.selectFrameIndex(4);
-        blankHeld.controller.deleteCellForLayer(
-          layerId: const LayerId('layer'),
-        );
-        expect(_latestLayer(blankHeld.repository), _editingLayer());
+      final blankHeld = _fixture(_editingLayer());
+      blankHeld.controller.selectFrameIndex(4);
+      blankHeld.controller.deleteCellForLayer(layerId: const LayerId('layer'));
+      expect(_latestLayer(blankHeld.repository), _editingLayer());
 
-        final emptyLayer = Layer(
-          id: const LayerId('layer'),
-          name: 'Layer',
-          frames: const [],
-          timeline: const {},
-        );
-        final empty = _fixture(emptyLayer);
-        empty.controller.selectFrameIndex(4);
-        empty.controller.deleteCellForLayer(layerId: const LayerId('layer'));
-        expect(_latestLayer(empty.repository), emptyLayer);
-      },
-    );
+      final emptyLayer = Layer(
+        id: const LayerId('layer'),
+        name: 'Layer',
+        frames: const [],
+        timeline: const {},
+      );
+      final empty = _fixture(emptyLayer);
+      empty.controller.selectFrameIndex(4);
+      empty.controller.deleteCellForLayer(layerId: const LayerId('layer'));
+      expect(_latestLayer(empty.repository), emptyLayer);
+    });
 
     test('delete drawing start is undo and redo able', () {
       final history = HistoryManager();
@@ -216,6 +222,7 @@ void main() {
       expect(
         fixture.controller.canDeleteCellAt(layer: layer, frameIndex: 4),
         isFalse,
+        reason: 'empty cell — nothing covers it',
       );
       expect(
         fixture.controller.canDeleteCellAt(layer: layer, frameIndex: 5),
@@ -224,10 +231,12 @@ void main() {
       expect(
         fixture.controller.canDeleteCellAt(layer: layer, frameIndex: 3),
         isFalse,
+        reason: 'empty cell',
       );
       expect(
         fixture.controller.canDeleteCellAt(layer: layer, frameIndex: 1),
-        isFalse,
+        isTrue,
+        reason: 'held cell deletes its covering block (UI-R17 #1)',
       );
       expect(
         fixture.controller.canDeleteCellAt(layer: layer, frameIndex: -1),

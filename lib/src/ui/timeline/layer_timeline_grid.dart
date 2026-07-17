@@ -286,6 +286,7 @@ typedef _RailRowMemoInputs = ({
   bool hasLanes,
   bool lanesExpanded,
   bool fxEnabled,
+  bool onionSkinEnabled,
   double layerRowHeight,
   double layerControlsWidth,
   double sectionLabelGutterWidth,
@@ -310,6 +311,7 @@ typedef _LegendMemoInputs = ({
   Set<LayerId> displayedIds,
   double masterOpacityValue,
   bool hasLaneToggles,
+  bool displayedOnionSkinOn,
 });
 
 class _LayerTimelineGridState extends State<LayerTimelineGrid> {
@@ -821,6 +823,8 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
       hasLanes: _lanesFor(row.layer).isNotEmpty,
       lanesExpanded: widget.expandedLaneLayerIds.contains(row.layer.id),
       fxEnabled: widget.layerFxEnabledOf?.call(row.layer.id) ?? true,
+      onionSkinEnabled:
+          widget.layerOnionSkinEnabledOf?.call(row.layer.id) ?? false,
       layerRowHeight: _metrics.layerRowHeight,
       layerControlsWidth: _metrics.layerControlsWidth,
       sectionLabelGutterWidth: _metrics.sectionLabelGutterWidth,
@@ -844,6 +848,7 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
         a.hasLanes == b.hasLanes &&
         a.lanesExpanded == b.lanesExpanded &&
         a.fxEnabled == b.fxEnabled &&
+        a.onionSkinEnabled == b.onionSkinEnabled &&
         a.layerRowHeight == b.layerRowHeight &&
         a.layerControlsWidth == b.layerControlsWidth &&
         a.sectionLabelGutterWidth == b.sectionLabelGutterWidth &&
@@ -869,6 +874,7 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
       displayedIds: displayedIds,
       masterOpacityValue: widget.masterOpacityValue,
       hasLaneToggles: widget.onToggleLayerLanes != null,
+      displayedOnionSkinOn: widget.displayedOnionSkinOn,
     );
     final cached = _legendHeaderMemo;
     if (cached != null && _legendInputsMatch(cached.inputs, inputs)) {
@@ -914,7 +920,8 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
         a.allSeMuted == b.allSeMuted &&
         setEquals(a.displayedIds, b.displayedIds) &&
         a.masterOpacityValue == b.masterOpacityValue &&
-        a.hasLaneToggles == b.hasLaneToggles;
+        a.hasLaneToggles == b.hasLaneToggles &&
+        a.displayedOnionSkinOn == b.displayedOnionSkinOn;
   }
 
   /// One rail row (layer controls or a lane label), extracted so the

@@ -33,8 +33,10 @@ void main() {
     expect(s.onionSkinCanvasRequests().single.tint, isNull);
   });
 
-  testWidgets('O toggles onion skin; the panel chips and mode drive the '
-      'settings', (tester) async {
+  testWidgets('O toggles the ACTIVE layer onion (UI-R17 #5 — the master '
+      'switch is gone); the panel chips and mode drive the settings', (
+    tester,
+  ) async {
     await tester.pumpWidget(const MaterialApp(home: HomePage()));
     await tester.pumpAndSettle();
 
@@ -46,16 +48,29 @@ void main() {
     await tester.tap(tab);
     await tester.pumpAndSettle();
 
-    final masterToggle = find.byKey(
-      const ValueKey<String>('onion-skin-master-toggle'),
+    // The panel only shapes ghosts now — no master switch.
+    expect(
+      find.byKey(const ValueKey<String>('onion-skin-master-toggle')),
+      findsNothing,
     );
-    expect(masterToggle, findsOneWidget);
-    expect(tester.widget<Switch>(masterToggle).value, isFalse);
 
-    // The O key flips the master toggle (registry action).
+    // The O key toggles the ACTIVE layer's row button (tooltip carries
+    // the state).
+    final rowToggle = find.byKey(
+      const ValueKey<String>('timeline-layer-onion-default-layer-1'),
+    );
+    expect(rowToggle, findsOneWidget);
+    expect(tester.widget<IconButton>(rowToggle).tooltip, 'Onion skin');
+
+    // The row button toggles the layer on.
+    await tester.tap(rowToggle);
+    await tester.pumpAndSettle();
+    expect(tester.widget<IconButton>(rowToggle).tooltip, 'Onion skin (on)');
+
+    // The O key toggles the ACTIVE layer back off.
     await tester.sendKeyEvent(LogicalKeyboardKey.keyO);
     await tester.pumpAndSettle();
-    expect(tester.widget<Switch>(masterToggle).value, isTrue);
+    expect(tester.widget<IconButton>(rowToggle).tooltip, 'Onion skin');
 
     // Peg chip 2 (before) toggles off through the panel.
     final peg2 = find.byKey(const ValueKey<String>('onion-peg-before-2'));
