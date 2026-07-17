@@ -2489,8 +2489,202 @@ QA_EXPORT void qa_tile_pool_trim(void) {
   QA_TILE_UNLOCK();
 }
 
+// ---------------------------------------------------------------------------
+// Grid tile rasterizer (UI-R18 O7 / R18-T T1): the timeline frame grids
+// pre-raster their cell strips into RGBA tiles OFF the UI thread. The op
+// stream is a flat int32 word list - deterministic INTEGER rasterization
+// (byte-rounded source-over, the fill-compose arithmetic), so the output
+// bytes are pinned against the Dart reference implementation by parity
+// tests and identical on every platform/worker-count.
+//
+// Colors pack as memory-order RGBA words: r | g<<8 | b<<16 | a<<24,
+// STRAIGHT (non-premultiplied) alpha. The background fill forces a=255,
+// so a finished tile is opaque and uploads as-is.
+//
+// Op stream layout (int32 words, count validated - a truncated op makes
+// the call return negative without touching remaining pixels):
+//   QA_GRID_OP_FILL_RECT (1): x, y, w, h, rgba            = 6 words
+//   QA_GRID_OP_HLINE     (2): x, y, length, thickness, rgba = 6 words
+//   QA_GRID_OP_VLINE     (3): x, y, length, thickness, rgba = 6 words
+//   QA_GRID_OP_GLYPH     (4): dest_x, dest_y, atlas_x, atlas_y,
+//                             w, h, rgba                  = 8 words
+// Glyph coverage reads the A8 atlas and scales the color's alpha per
+// pixel. Every op clips to the tile (and the glyph also to the atlas);
+// fully off-tile ops are no-ops, never errors.
+
+enum {
+  QA_GRID_OP_FILL_RECT = 1,
+  QA_GRID_OP_HLINE = 2,
+  QA_GRID_OP_VLINE = 3,
+  QA_GRID_OP_GLYPH = 4,
+};
+
+static inline void qa_grid_blend_span(
+    uint8_t* dst,
+    int32_t count,
+    int32_t r,
+    int32_t g,
+    int32_t b,
+    int32_t a) {
+  if (a >= 255) {
+    for (int32_t i = 0; i < count; i += 1) {
+      dst[0] = (uint8_t)r;
+      dst[1] = (uint8_t)g;
+      dst[2] = (uint8_t)b;
+      dst[3] = 255;
+      dst += 4;
+    }
+    return;
+  }
+  const int32_t inv = 255 - a;
+  for (int32_t i = 0; i < count; i += 1) {
+    dst[0] = (uint8_t)((r * a + dst[0] * inv + 127) / 255);
+    dst[1] = (uint8_t)((g * a + dst[1] * inv + 127) / 255);
+    dst[2] = (uint8_t)((b * a + dst[2] * inv + 127) / 255);
+    dst[3] = (uint8_t)(255 - ((255 - dst[3]) * inv + 127) / 255);
+    dst += 4;
+  }
+}
+
+static void qa_grid_blend_rect(
+    uint8_t* pixels,
+    int32_t tile_width,
+    int32_t tile_height,
+    int32_t x,
+    int32_t y,
+    int32_t w,
+    int32_t h,
+    uint32_t rgba) {
+  const int32_t a = (int32_t)(rgba >> 24) & 0xFF;
+  if (a == 0 || w <= 0 || h <= 0) {
+    return;
+  }
+  int32_t left = x < 0 ? 0 : x;
+  int32_t top = y < 0 ? 0 : y;
+  int32_t right = x + w;
+  int32_t bottom = y + h;
+  if (right > tile_width) right = tile_width;
+  if (bottom > tile_height) bottom = tile_height;
+  if (left >= right || top >= bottom) {
+    return;
+  }
+  const int32_t r = (int32_t)rgba & 0xFF;
+  const int32_t g = (int32_t)(rgba >> 8) & 0xFF;
+  const int32_t b = (int32_t)(rgba >> 16) & 0xFF;
+  for (int32_t row = top; row < bottom; row += 1) {
+    qa_grid_blend_span(
+        pixels + (((ptrdiff_t)row * tile_width + left) << 2),
+        right - left, r, g, b, a);
+  }
+}
+
+QA_EXPORT int32_t qa_grid_raster_tile(
+    uint8_t* pixels,
+    int32_t tile_width,
+    int32_t tile_height,
+    uint32_t background_rgba,
+    const int32_t* ops,
+    int32_t op_word_count,
+    const uint8_t* atlas,
+    int32_t atlas_width,
+    int32_t atlas_height) {
+  if (pixels == NULL || tile_width <= 0 || tile_height <= 0) {
+    return -1;
+  }
+  // Opaque background first: a finished tile never carries translucency.
+  {
+    const uint32_t bg = background_rgba | 0xFF000000u;
+    uint32_t* dst = (uint32_t*)pixels;
+    const ptrdiff_t count = (ptrdiff_t)tile_width * tile_height;
+    for (ptrdiff_t i = 0; i < count; i += 1) {
+      dst[i] = bg;
+    }
+  }
+  if (ops == NULL || op_word_count <= 0) {
+    return 0;
+  }
+
+  int32_t cursor = 0;
+  while (cursor < op_word_count) {
+    const int32_t op = ops[cursor];
+    switch (op) {
+      case QA_GRID_OP_FILL_RECT: {
+        if (cursor + 6 > op_word_count) return -2;
+        qa_grid_blend_rect(
+            pixels, tile_width, tile_height,
+            ops[cursor + 1], ops[cursor + 2], ops[cursor + 3],
+            ops[cursor + 4], (uint32_t)ops[cursor + 5]);
+        cursor += 6;
+        break;
+      }
+      case QA_GRID_OP_HLINE: {
+        if (cursor + 6 > op_word_count) return -2;
+        qa_grid_blend_rect(
+            pixels, tile_width, tile_height,
+            ops[cursor + 1], ops[cursor + 2], ops[cursor + 3],
+            ops[cursor + 4], (uint32_t)ops[cursor + 5]);
+        cursor += 6;
+        break;
+      }
+      case QA_GRID_OP_VLINE: {
+        if (cursor + 6 > op_word_count) return -2;
+        qa_grid_blend_rect(
+            pixels, tile_width, tile_height,
+            ops[cursor + 1], ops[cursor + 2], ops[cursor + 4],
+            ops[cursor + 3], (uint32_t)ops[cursor + 5]);
+        cursor += 6;
+        break;
+      }
+      case QA_GRID_OP_GLYPH: {
+        if (cursor + 8 > op_word_count) return -2;
+        if (atlas == NULL) return -3;
+        const int32_t dest_x = ops[cursor + 1];
+        const int32_t dest_y = ops[cursor + 2];
+        const int32_t atlas_x = ops[cursor + 3];
+        const int32_t atlas_y = ops[cursor + 4];
+        const int32_t w = ops[cursor + 5];
+        const int32_t h = ops[cursor + 6];
+        const uint32_t rgba = (uint32_t)ops[cursor + 7];
+        const int32_t color_a = (int32_t)(rgba >> 24) & 0xFF;
+        const int32_t r = (int32_t)rgba & 0xFF;
+        const int32_t g = (int32_t)(rgba >> 8) & 0xFF;
+        const int32_t b = (int32_t)(rgba >> 16) & 0xFF;
+        for (int32_t row = 0; row < h; row += 1) {
+          const int32_t ty = dest_y + row;
+          const int32_t ay = atlas_y + row;
+          if (ty < 0 || ty >= tile_height || ay < 0 || ay >= atlas_height) {
+            continue;
+          }
+          for (int32_t col = 0; col < w; col += 1) {
+            const int32_t tx = dest_x + col;
+            const int32_t ax = atlas_x + col;
+            if (tx < 0 || tx >= tile_width || ax < 0 || ax >= atlas_width) {
+              continue;
+            }
+            const int32_t coverage =
+                atlas[(ptrdiff_t)ay * atlas_width + ax];
+            if (coverage == 0 || color_a == 0) {
+              continue;
+            }
+            const int32_t a = (color_a * coverage + 127) / 255;
+            qa_grid_blend_span(
+                pixels + (((ptrdiff_t)ty * tile_width + tx) << 2),
+                1, r, g, b, a);
+          }
+        }
+        cursor += 8;
+        break;
+      }
+      default:
+        return -4;
+    }
+  }
+  return 0;
+}
+
 // Engine ABI version - the Dart loader refuses a mismatched binary.
 // v12: fill raster RGB -> RGBX (R22-D flood SIMD).
 // v13: qa_flood_fill_wave - wave-parallel flood (R22-E3).
 // v14: qa_fill_compose_batch - pooled fill compose (R25-3).
-QA_EXPORT int32_t qa_engine_abi_version(void) { return 14; }
+// v15: qa_grid_raster_tile - timeline grid tile rasterizer (UI-R18 O7 T1).
+QA_EXPORT int32_t qa_engine_abi_version(void) { return 15; }
