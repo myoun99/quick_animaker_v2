@@ -2497,9 +2497,12 @@ QA_EXPORT void qa_tile_pool_trim(void) {
 // bytes are pinned against the Dart reference implementation by parity
 // tests and identical on every platform/worker-count.
 //
-// Colors pack as memory-order RGBA words: r | g<<8 | b<<16 | a<<24,
-// STRAIGHT (non-premultiplied) alpha. The background fill forces a=255,
-// so a finished tile is opaque and uploads as-is.
+// OP colors pack as memory-order RGBA words: r | g<<8 | b<<16 | a<<24,
+// STRAIGHT (non-premultiplied) alpha. The background word is written
+// VERBATIM (pass 0 for a fully transparent tile); accumulating
+// source-over from transparent black produces PREMULTIPLIED output
+// bytes - the image upload's contract - so tiles composite pixel-true
+// over any panel background.
 //
 // Op stream layout (int32 words, count validated - a truncated op makes
 // the call return negative without touching remaining pixels):
@@ -2517,6 +2520,22 @@ enum {
   QA_GRID_OP_HLINE = 2,
   QA_GRID_OP_VLINE = 3,
   QA_GRID_OP_GLYPH = 4,
+  // Rounded-rect ops (T2: the cell BLOCK chrome - block start/end corners
+  // round, so the tile path needs analytic-AA corners to match the Skia
+  // painter's look):
+  //   QA_GRID_OP_RRECT_FILL   (5): x_q8, y_q8, w_q8, h_q8, radius_q8,
+  //                                corner_mask, rgba         = 8 words
+  //   QA_GRID_OP_RRECT_STROKE (6): x_q8, y_q8, w_q8, h_q8, radius_q8,
+  //                                corner_mask, thickness_q8,
+  //                                rgba                      = 9 words
+  // Every _q8 field is 24.8 fixed point (pixels * 256): cell rects are
+  // FRACTIONAL at fractional zooms, so the whole geometry rides
+  // sub-pixel. corner_mask bit0=TL, bit1=TR, bit2=BL, bit3=BR (unset
+  // corners stay square). AA coverage comes from the rounded-box SDF
+  // with float sqrt - IEEE correctly-rounded, so bytes stay identical
+  // across platforms.
+  QA_GRID_OP_RRECT_FILL = 5,
+  QA_GRID_OP_RRECT_STROKE = 6,
 };
 
 static inline void qa_grid_blend_span(
@@ -2578,6 +2597,110 @@ static void qa_grid_blend_rect(
   }
 }
 
+// Signed distance of the pixel center to a rounded box with PER-CORNER
+// radii (0 = square corner). The quadrant of the pixel picks its corner
+// radius. DOUBLE math throughout: the Dart reference computes with
+// doubles, and +,-,*,/,sqrt are IEEE correctly rounded in both - so the
+// two sides stay byte-identical (a float sqrtf would round differently).
+static inline double qa_grid_rrect_distance(
+    double cx,
+    double cy,
+    double center_x,
+    double center_y,
+    double half_w,
+    double half_h,
+    double radius_tl,
+    double radius_tr,
+    double radius_bl,
+    double radius_br) {
+  const double rx = cx - center_x;
+  const double ry = cy - center_y;
+  double r;
+  if (rx < 0.0) {
+    r = ry < 0.0 ? radius_tl : radius_bl;
+  } else {
+    r = ry < 0.0 ? radius_tr : radius_br;
+  }
+  const double ax = (rx < 0.0 ? -rx : rx) - (half_w - r);
+  const double ay = (ry < 0.0 ? -ry : ry) - (half_h - r);
+  const double mx = ax > 0.0 ? ax : 0.0;
+  const double my = ay > 0.0 ? ay : 0.0;
+  const double outside = sqrt(mx * mx + my * my);
+  const double inside_axis = ax > ay ? ax : ay;
+  const double inside = inside_axis < 0.0 ? inside_axis : 0.0;
+  return outside + inside - r;
+}
+
+// Shared raster loop for RRECT_FILL/STROKE: analytic-AA coverage from
+// the rounded-box SDF (fill: 0.5 - d; stroke of thickness t centered on
+// the boundary: 0.5 - (|d| - t/2)), blended source-over per pixel.
+static void qa_grid_blend_rrect(
+    uint8_t* pixels,
+    int32_t tile_width,
+    int32_t tile_height,
+    double x,
+    double y,
+    double w,
+    double h,
+    double radius,
+    int32_t corner_mask,
+    double stroke_thickness,  // <= 0 = fill
+    uint32_t rgba) {
+  const int32_t color_a = (int32_t)(rgba >> 24) & 0xFF;
+  if (color_a == 0 || w <= 0.0 || h <= 0.0) {
+    return;
+  }
+  const double half_w = w * 0.5;
+  const double half_h = h * 0.5;
+  double max_radius = half_w < half_h ? half_w : half_h;
+  if (radius > max_radius) {
+    radius = max_radius;
+  }
+  const double radius_tl = (corner_mask & 1) != 0 ? radius : 0.0;
+  const double radius_tr = (corner_mask & 2) != 0 ? radius : 0.0;
+  const double radius_bl = (corner_mask & 4) != 0 ? radius : 0.0;
+  const double radius_br = (corner_mask & 8) != 0 ? radius : 0.0;
+  const double center_x = x + half_w;
+  const double center_y = y + half_h;
+  const double reach = stroke_thickness > 0.0 ? stroke_thickness * 0.5 : 0.0;
+
+  int32_t left = (int32_t)(x - reach - 1.0);
+  int32_t top = (int32_t)(y - reach - 1.0);
+  int32_t right = (int32_t)(x + w + reach + 2.0);
+  int32_t bottom = (int32_t)(y + h + reach + 2.0);
+  if (left < 0) left = 0;
+  if (top < 0) top = 0;
+  if (right > tile_width) right = tile_width;
+  if (bottom > tile_height) bottom = tile_height;
+
+  const int32_t r = (int32_t)rgba & 0xFF;
+  const int32_t g = (int32_t)(rgba >> 8) & 0xFF;
+  const int32_t b = (int32_t)(rgba >> 16) & 0xFF;
+  for (int32_t py = top; py < bottom; py += 1) {
+    uint8_t* dst = pixels + (((ptrdiff_t)py * tile_width + left) << 2);
+    for (int32_t px = left; px < right; px += 1) {
+      const double d = qa_grid_rrect_distance(
+          (double)px + 0.5, (double)py + 0.5, center_x, center_y, half_w,
+          half_h, radius_tl, radius_tr, radius_bl, radius_br);
+      double coverage;
+      if (stroke_thickness > 0.0) {
+        const double ad = d < 0.0 ? -d : d;
+        coverage = 0.5 - (ad - reach);
+      } else {
+        coverage = 0.5 - d;
+      }
+      if (coverage > 0.0) {
+        if (coverage > 1.0) {
+          coverage = 1.0;
+        }
+        const int32_t a = (int32_t)(coverage * (double)color_a + 0.5);
+        qa_grid_blend_span(dst, 1, r, g, b, a);
+      }
+      dst += 4;
+    }
+  }
+}
+
 QA_EXPORT int32_t qa_grid_raster_tile(
     uint8_t* pixels,
     int32_t tile_width,
@@ -2591,9 +2714,13 @@ QA_EXPORT int32_t qa_grid_raster_tile(
   if (pixels == NULL || tile_width <= 0 || tile_height <= 0) {
     return -1;
   }
-  // Opaque background first: a finished tile never carries translucency.
+  // Background fill VERBATIM (T2: 0 = fully transparent). Source-over
+  // accumulation from transparent black yields PREMULTIPLIED bytes
+  // natively (src.rgb*a + dst.rgb*(1-a)), which is exactly what the
+  // image upload expects (the fill overlay's premultiply contract) - so
+  // tiles composite pixel-true over ANY panel background.
   {
-    const uint32_t bg = background_rgba | 0xFF000000u;
+    const uint32_t bg = background_rgba;
     uint32_t* dst = (uint32_t*)pixels;
     const ptrdiff_t count = (ptrdiff_t)tile_width * tile_height;
     for (ptrdiff_t i = 0; i < count; i += 1) {
@@ -2633,6 +2760,28 @@ QA_EXPORT int32_t qa_grid_raster_tile(
             ops[cursor + 1], ops[cursor + 2], ops[cursor + 4],
             ops[cursor + 3], (uint32_t)ops[cursor + 5]);
         cursor += 6;
+        break;
+      }
+      case QA_GRID_OP_RRECT_FILL: {
+        if (cursor + 8 > op_word_count) return -2;
+        qa_grid_blend_rrect(
+            pixels, tile_width, tile_height,
+            (double)ops[cursor + 1] / 256.0, (double)ops[cursor + 2] / 256.0,
+            (double)ops[cursor + 3] / 256.0, (double)ops[cursor + 4] / 256.0,
+            (double)ops[cursor + 5] / 256.0, ops[cursor + 6], 0.0,
+            (uint32_t)ops[cursor + 7]);
+        cursor += 8;
+        break;
+      }
+      case QA_GRID_OP_RRECT_STROKE: {
+        if (cursor + 9 > op_word_count) return -2;
+        qa_grid_blend_rrect(
+            pixels, tile_width, tile_height,
+            (double)ops[cursor + 1] / 256.0, (double)ops[cursor + 2] / 256.0,
+            (double)ops[cursor + 3] / 256.0, (double)ops[cursor + 4] / 256.0,
+            (double)ops[cursor + 5] / 256.0, ops[cursor + 6],
+            (double)ops[cursor + 7] / 256.0, (uint32_t)ops[cursor + 8]);
+        cursor += 9;
         break;
       }
       case QA_GRID_OP_GLYPH: {

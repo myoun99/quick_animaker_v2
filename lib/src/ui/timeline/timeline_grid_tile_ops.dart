@@ -1,3 +1,4 @@
+import 'dart:math' as math;
 import 'dart:typed_data';
 import 'dart:ui' show Color;
 
@@ -10,16 +11,35 @@ import 'dart:ui' show Color;
 /// load-fallback discipline): byte parity between the two is pinned by
 /// tests, so the native path can never silently diverge.
 ///
-/// Colors pack as memory-order RGBA words (r | g<<8 | b<<16 | a<<24),
+/// OP colors pack as memory-order RGBA words (r | g<<8 | b<<16 | a<<24),
 /// STRAIGHT alpha; rasterization is byte-rounded integer source-over
-/// (the fill-compose arithmetic). The background fill forces a=255, so
-/// finished tiles are opaque and upload as rgba8888 directly.
+/// (the fill-compose arithmetic). The background word is written
+/// VERBATIM — pass 0 for a fully transparent tile: accumulating
+/// source-over from transparent black produces PREMULTIPLIED bytes,
+/// which is the raw-image upload's contract (the fill overlay's
+/// premultiply precedent), so tiles composite pixel-true over any panel
+/// background.
 abstract final class TimelineGridTileOp {
   static const int fillRect = 1;
   static const int hline = 2;
   static const int vline = 3;
   static const int glyph = 4;
+
+  /// Rounded-rect ops (T2, the cell BLOCK chrome): every geometry field
+  /// is 24.8 fixed point (pixels * 256 — [q8]) so fractional-zoom cell
+  /// rects ride sub-pixel; corner mask bit0=TL, bit1=TR, bit2=BL,
+  /// bit3=BR (unset corners square). AA from the rounded-box SDF.
+  static const int rrectFill = 5;
+  static const int rrectStroke = 6;
+
+  static const int cornerTopLeft = 1;
+  static const int cornerTopRight = 2;
+  static const int cornerBottomLeft = 4;
+  static const int cornerBottomRight = 8;
 }
+
+/// Pixels → the op stream's 24.8 fixed-point word.
+int timelineGridQ8(double pixels) => (pixels * 256).round();
 
 /// Packs a straight-alpha color into the op stream's RGBA word.
 int timelineGridPackRgba(Color color) {
@@ -66,6 +86,51 @@ class TimelineGridTileOpWriter {
       ..add(y)
       ..add(length)
       ..add(thickness)
+      ..add(rgba);
+  }
+
+  /// A filled rounded rect; geometry in PIXELS (converted to q8 here),
+  /// [cornerMask] picks which corners round.
+  void rrectFill(
+    double x,
+    double y,
+    double width,
+    double height,
+    double radius,
+    int cornerMask,
+    int rgba,
+  ) {
+    _words
+      ..add(TimelineGridTileOp.rrectFill)
+      ..add(timelineGridQ8(x))
+      ..add(timelineGridQ8(y))
+      ..add(timelineGridQ8(width))
+      ..add(timelineGridQ8(height))
+      ..add(timelineGridQ8(radius))
+      ..add(cornerMask)
+      ..add(rgba);
+  }
+
+  /// A stroked rounded rect, [thickness] centered on the boundary.
+  void rrectStroke(
+    double x,
+    double y,
+    double width,
+    double height,
+    double radius,
+    int cornerMask,
+    double thickness,
+    int rgba,
+  ) {
+    _words
+      ..add(TimelineGridTileOp.rrectStroke)
+      ..add(timelineGridQ8(x))
+      ..add(timelineGridQ8(y))
+      ..add(timelineGridQ8(width))
+      ..add(timelineGridQ8(height))
+      ..add(timelineGridQ8(radius))
+      ..add(cornerMask)
+      ..add(timelineGridQ8(thickness))
       ..add(rgba);
   }
 
@@ -124,6 +189,122 @@ void _blendSpan(
   }
 }
 
+/// The rounded-box SDF with per-corner radii — the C
+/// `qa_grid_rrect_distance` verbatim (double math on both sides keeps
+/// the bytes identical; +,-,*,/,sqrt are IEEE correctly rounded).
+double _rrectDistance(
+  double cx,
+  double cy,
+  double centerX,
+  double centerY,
+  double halfW,
+  double halfH,
+  double radiusTl,
+  double radiusTr,
+  double radiusBl,
+  double radiusBr,
+) {
+  final rx = cx - centerX;
+  final ry = cy - centerY;
+  final double r;
+  if (rx < 0.0) {
+    r = ry < 0.0 ? radiusTl : radiusBl;
+  } else {
+    r = ry < 0.0 ? radiusTr : radiusBr;
+  }
+  final ax = (rx < 0.0 ? -rx : rx) - (halfW - r);
+  final ay = (ry < 0.0 ? -ry : ry) - (halfH - r);
+  final mx = ax > 0.0 ? ax : 0.0;
+  final my = ay > 0.0 ? ay : 0.0;
+  final outside = math.sqrt(mx * mx + my * my);
+  final insideAxis = ax > ay ? ax : ay;
+  final inside = insideAxis < 0.0 ? insideAxis : 0.0;
+  return outside + inside - r;
+}
+
+void _blendRRect(
+  Uint8List pixels,
+  int tileWidth,
+  int tileHeight, {
+  required double x,
+  required double y,
+  required double w,
+  required double h,
+  required double radius,
+  required int cornerMask,
+  required double strokeThickness, // <= 0 = fill
+  required int rgba,
+}) {
+  final colorA = (rgba >> 24) & 0xFF;
+  if (colorA == 0 || w <= 0.0 || h <= 0.0) {
+    return;
+  }
+  final halfW = w * 0.5;
+  final halfH = h * 0.5;
+  final maxRadius = halfW < halfH ? halfW : halfH;
+  if (radius > maxRadius) {
+    radius = maxRadius;
+  }
+  final radiusTl = (cornerMask & 1) != 0 ? radius : 0.0;
+  final radiusTr = (cornerMask & 2) != 0 ? radius : 0.0;
+  final radiusBl = (cornerMask & 4) != 0 ? radius : 0.0;
+  final radiusBr = (cornerMask & 8) != 0 ? radius : 0.0;
+  final centerX = x + halfW;
+  final centerY = y + halfH;
+  final reach = strokeThickness > 0.0 ? strokeThickness * 0.5 : 0.0;
+
+  var left = (x - reach - 1.0).toInt();
+  var top = (y - reach - 1.0).toInt();
+  var right = (x + w + reach + 2.0).toInt();
+  var bottom = (y + h + reach + 2.0).toInt();
+  if (left < 0) {
+    left = 0;
+  }
+  if (top < 0) {
+    top = 0;
+  }
+  if (right > tileWidth) {
+    right = tileWidth;
+  }
+  if (bottom > tileHeight) {
+    bottom = tileHeight;
+  }
+
+  final r = rgba & 0xFF;
+  final g = (rgba >> 8) & 0xFF;
+  final b = (rgba >> 16) & 0xFF;
+  for (var py = top; py < bottom; py += 1) {
+    for (var px = left; px < right; px += 1) {
+      final d = _rrectDistance(
+        px + 0.5,
+        py + 0.5,
+        centerX,
+        centerY,
+        halfW,
+        halfH,
+        radiusTl,
+        radiusTr,
+        radiusBl,
+        radiusBr,
+      );
+      double coverage;
+      if (strokeThickness > 0.0) {
+        final ad = d < 0.0 ? -d : d;
+        coverage = 0.5 - (ad - reach);
+      } else {
+        coverage = 0.5 - d;
+      }
+      if (coverage > 0.0) {
+        if (coverage > 1.0) {
+          coverage = 1.0;
+        }
+        final a = (coverage * colorA + 0.5).toInt();
+        _blendSpan(pixels, (py * tileWidth + px) * 4, 1, r, g, b, a);
+      }
+    }
+  }
+}
+
 void _blendRect(
   Uint8List pixels,
   int tileWidth,
@@ -176,15 +357,19 @@ int timelineGridRasterTileReference({
   if (tileWidth <= 0 || tileHeight <= 0) {
     return -1;
   }
+  // Background fill VERBATIM (T2: 0 = fully transparent — source-over
+  // accumulation from transparent black yields PREMULTIPLIED bytes, the
+  // image upload's contract).
   final bgR = backgroundRgba & 0xFF;
   final bgG = (backgroundRgba >> 8) & 0xFF;
   final bgB = (backgroundRgba >> 16) & 0xFF;
+  final bgA = (backgroundRgba >> 24) & 0xFF;
   for (var i = 0; i < tileWidth * tileHeight; i += 1) {
     final base = i * 4;
     pixels[base] = bgR;
     pixels[base + 1] = bgG;
     pixels[base + 2] = bgB;
-    pixels[base + 3] = 255;
+    pixels[base + 3] = bgA;
   }
   if (ops == null || ops.isEmpty) {
     return 0;
@@ -225,6 +410,42 @@ int timelineGridRasterTileReference({
           ops[cursor + 5],
         );
         cursor += 6;
+      case TimelineGridTileOp.rrectFill:
+        if (cursor + 8 > ops.length) {
+          return -2;
+        }
+        _blendRRect(
+          pixels,
+          tileWidth,
+          tileHeight,
+          x: ops[cursor + 1] / 256.0,
+          y: ops[cursor + 2] / 256.0,
+          w: ops[cursor + 3] / 256.0,
+          h: ops[cursor + 4] / 256.0,
+          radius: ops[cursor + 5] / 256.0,
+          cornerMask: ops[cursor + 6],
+          strokeThickness: 0.0,
+          rgba: ops[cursor + 7],
+        );
+        cursor += 8;
+      case TimelineGridTileOp.rrectStroke:
+        if (cursor + 9 > ops.length) {
+          return -2;
+        }
+        _blendRRect(
+          pixels,
+          tileWidth,
+          tileHeight,
+          x: ops[cursor + 1] / 256.0,
+          y: ops[cursor + 2] / 256.0,
+          w: ops[cursor + 3] / 256.0,
+          h: ops[cursor + 4] / 256.0,
+          radius: ops[cursor + 5] / 256.0,
+          cornerMask: ops[cursor + 6],
+          strokeThickness: ops[cursor + 7] / 256.0,
+          rgba: ops[cursor + 8],
+        );
+        cursor += 9;
       case TimelineGridTileOp.glyph:
         if (cursor + 8 > ops.length) {
           return -2;

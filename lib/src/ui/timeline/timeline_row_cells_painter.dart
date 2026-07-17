@@ -14,6 +14,7 @@ import 'timeline_cell_style.dart';
 import 'timeline_exposure_block_visual.dart';
 import 'timeline_frame_window.dart';
 import 'timeline_glyph_cache.dart';
+import 'timeline_grid_tile_store.dart';
 import 'timeline_se_row_visual.dart' show layerKindUsesSeSheetCells;
 
 /// One DRAWING row's frame cells as a single painter (UI-R9 #12b, the
@@ -76,7 +77,13 @@ class TimelineRowCellsPainter extends CustomPainter {
     this.axis = Axis.horizontal,
     this.windowBucket,
     this.viewportMainExtent = 0,
-  }) : super(repaint: windowBucket);
+    this.tileStore,
+    this.devicePixelRatio = 1.0,
+  }) : super(
+         repaint: tileStore == null
+             ? windowBucket
+             : Listenable.merge([?windowBucket, tileStore.revision]),
+       );
 
   final Layer layer;
   final bool active;
@@ -108,6 +115,16 @@ class TimelineRowCellsPainter extends CustomPainter {
 
   /// The scroll viewport's main-axis extent for the self-windowing path.
   final double viewportMainExtent;
+
+  /// The substrate TILE store (UI-R18 O7 T2): with it set, span-sized
+  /// pre-rastered images replace the per-cell fill/border canvas work —
+  /// its revision joins the repaint listenable so landed tiles paint on
+  /// the next frame. Null (or no native engine) keeps the classic path.
+  final TimelineGridTileStore? tileStore;
+
+  /// Physical resolution for the tiles (tiles raster at logical × DPR
+  /// and draw 1:1, so hidpi rows stay crisp).
+  final double devicePixelRatio;
 
   /// The frame window paint() actually draws: the full bounds under the
   /// classic contract, the bucket-derived span (shared policy) under the
@@ -305,59 +322,151 @@ class TimelineRowCellsPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    final borderPaint = Paint()
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 1;
-    final fillPaint = Paint();
-
     // Self-windowing (UI-R15): only the cells under the live viewport
     // record — a scroll is a repaint of this thin pass, never a rebuild.
     final window = visibleFrameWindow();
+    final store = tileStore;
+    if (store == null || frameCellExtent <= 0) {
+      for (
+        var frameIndex = window.startIndex;
+        frameIndex < window.endIndexExclusive;
+        frameIndex += 1
+      ) {
+        _paintCellSubstrate(canvas, frameIndex);
+      }
+    } else {
+      // TILE substrate pass (UI-R18 O7 T2): the span grid rides the
+      // SHARED window policy — a fresh tile is one drawImageRect; a
+      // cold/stale span keeps the classic paint underneath (no flash)
+      // while its raster lands off-frame.
+      final span = timelineFrameWindowSpanFor(frameCellExtent);
+      final tilePaint = Paint()..filterQuality = FilterQuality.low;
+      var tile = window.startIndex < 0 ? 0 : window.startIndex ~/ span;
+      for (; tile * span < window.endIndexExclusive; tile += 1) {
+        final spanStart = tile * span;
+        final spanEnd = math.min(spanStart + span, frameEndIndexExclusive);
+        if (spanEnd <= spanStart) {
+          continue;
+        }
+        final image = store.tileFor(
+          painter: this,
+          spanStartIndex: spanStart,
+          spanEndIndexExclusive: spanEnd,
+          devicePixelRatio: devicePixelRatio,
+        );
+        if (image != null) {
+          final origin = cellRectFor(spanStart);
+          final mainExtent = (spanEnd - spanStart) * frameCellExtent;
+          final dst = axis == Axis.horizontal
+              ? Rect.fromLTWH(origin.left, 0, mainExtent, crossAxisExtent)
+              : Rect.fromLTWH(0, origin.top, crossAxisExtent, mainExtent);
+          canvas.drawImageRect(
+            image,
+            Rect.fromLTWH(
+              0,
+              0,
+              image.width.toDouble(),
+              image.height.toDouble(),
+            ),
+            dst,
+            tilePaint,
+          );
+          continue;
+        }
+        final fallbackStart = math.max(spanStart, window.startIndex);
+        final fallbackEnd = math.min(spanEnd, window.endIndexExclusive);
+        for (var frame = fallbackStart; frame < fallbackEnd; frame += 1) {
+          _paintCellSubstrate(canvas, frame);
+        }
+      }
+      // PREFETCH one span beyond both window edges (scroll warm-up):
+      // requesting is enough — the raster lands before the crossing
+      // reveals it, so steady scrolling never hits the fallback.
+      for (final neighbor in [
+        (window.startIndex ~/ span) - 1,
+        tile, // one past the loop's last drawn tile
+      ]) {
+        final spanStart = neighbor * span;
+        final spanEnd = math.min(spanStart + span, frameEndIndexExclusive);
+        if (spanStart < 0 || spanEnd <= spanStart) {
+          continue;
+        }
+        store.tileFor(
+          painter: this,
+          spanStartIndex: spanStart,
+          spanEndIndexExclusive: spanEnd,
+          devicePixelRatio: devicePixelRatio,
+        );
+      }
+    }
     for (
       var frameIndex = window.startIndex;
       frameIndex < window.endIndexExclusive;
       frameIndex += 1
     ) {
-      final model = cellModelAt(frameIndex);
-      final style = resolvedCellStyleFor(frameIndex);
-      final background = style.background;
-      final borderColor = style.border;
+      _paintCellForeground(canvas, frameIndex);
+    }
 
-      final rect = cellRectFor(frameIndex);
-      // Border.all paints INSIDE the box: stroke centered half a pixel in.
-      final borderRect = rect.deflate(0.5);
-      final radius = style.radius;
-      if (radius == null) {
-        canvas.drawRect(rect, fillPaint..color = background);
-        if (borderColor.a > 0) {
-          canvas.drawRect(borderRect, borderPaint..color = borderColor);
-        }
-      } else {
-        canvas.drawRRect(
-          RRect.fromRectAndCorners(
-            rect,
-            topLeft: radius.topLeft,
-            topRight: radius.topRight,
-            bottomLeft: radius.bottomLeft,
-            bottomRight: radius.bottomRight,
-          ),
-          fillPaint..color = background,
-        );
-        canvas.drawRRect(
-          RRect.fromRectAndCorners(
-            borderRect,
-            topLeft: radius.topLeft,
-            topRight: radius.topRight,
-            bottomLeft: radius.bottomLeft,
-            bottomRight: radius.bottomRight,
-          ),
-          borderPaint..color = borderColor,
-        );
-      }
+    // The 6f/24f beat lines moved to ONE grid-wide overlay
+    // (TimelineBeatLinesPainter, UI-R13 #7) so they span every row —
+    // SE, camera and lane rows included — not just the painterized
+    // drawing rows.
+  }
 
-      if (model.glyph.isEmpty) {
-        continue;
+  /// The cell's dense, mostly-static part: the paper-block fill and its
+  /// border — what the substrate TILES rasterize (the emitter probes the
+  /// same style/geometry, so the two paths cannot drift).
+  void _paintCellSubstrate(Canvas canvas, int frameIndex) {
+    final style = resolvedCellStyleFor(frameIndex);
+    final background = style.background;
+    final borderColor = style.border;
+
+    final rect = cellRectFor(frameIndex);
+    // Border.all paints INSIDE the box: stroke centered half a pixel in.
+    final borderRect = rect.deflate(0.5);
+    final radius = style.radius;
+    final fillPaint = Paint();
+    final borderPaint = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1;
+    if (radius == null) {
+      canvas.drawRect(rect, fillPaint..color = background);
+      if (borderColor.a > 0) {
+        canvas.drawRect(borderRect, borderPaint..color = borderColor);
       }
+    } else {
+      canvas.drawRRect(
+        RRect.fromRectAndCorners(
+          rect,
+          topLeft: radius.topLeft,
+          topRight: radius.topRight,
+          bottomLeft: radius.bottomLeft,
+          bottomRight: radius.bottomRight,
+        ),
+        fillPaint..color = background,
+      );
+      canvas.drawRRect(
+        RRect.fromRectAndCorners(
+          borderRect,
+          topLeft: radius.topLeft,
+          topRight: radius.topRight,
+          bottomLeft: radius.bottomLeft,
+          bottomRight: radius.bottomRight,
+        ),
+        borderPaint..color = borderColor,
+      );
+    }
+  }
+
+  /// The cell's sparse foreground ink (hold dashes, glyph text) — stays
+  /// a Dart pass in tile mode too.
+  void _paintCellForeground(Canvas canvas, int frameIndex) {
+    final model = cellModelAt(frameIndex);
+    if (model.glyph.isEmpty) {
+      return;
+    }
+    final rect = cellRectFor(frameIndex);
+    {
       final isEmptyX =
           model.exposureState == TimelineCellExposureState.uncovered;
       // Ghost glyphs (repeat names, hold dashes, dots) read as ONE quiet
@@ -399,7 +508,7 @@ class TimelineRowCellsPainter extends CustomPainter {
             dashPaint,
           );
         }
-        continue;
+        return;
       }
       final glyphStyle = baseTextStyle.copyWith(
         color: ink,
@@ -416,11 +525,6 @@ class TimelineRowCellsPainter extends CustomPainter {
         rect.center - Offset(glyph.width / 2, glyph.height / 2),
       );
     }
-
-    // The 6f/24f beat lines moved to ONE grid-wide overlay
-    // (TimelineBeatLinesPainter, UI-R13 #7) so they span every row —
-    // SE, camera and lane rows included — not just the painterized
-    // drawing rows.
   }
 
   BorderRadius? _cellRadius(TimelineExposureBlockVisualSegment segment) {
@@ -459,7 +563,9 @@ class TimelineRowCellsPainter extends CustomPainter {
       oldDelegate.viewportMainExtent != viewportMainExtent ||
       !identical(oldDelegate.colorScheme, colorScheme) ||
       !identical(oldDelegate.exposureStateForLayer, exposureStateForLayer) ||
-      !identical(oldDelegate.frameNameForLayer, frameNameForLayer);
+      !identical(oldDelegate.frameNameForLayer, frameNameForLayer) ||
+      !identical(oldDelegate.tileStore, tileStore) ||
+      oldDelegate.devicePixelRatio != devicePixelRatio;
 
   @override
   SemanticsBuilderCallback get semanticsBuilder => (size) {
@@ -546,6 +652,10 @@ Widget timelineRowCellsPaintArea({
     axis: axis,
     windowBucket: windowBucket,
     viewportMainExtent: viewportMainExtent,
+    // Substrate tiles (UI-R18 O7 T2): the app-wide store; it stands down
+    // by itself when the native engine is unavailable (tests, web).
+    tileStore: TimelineGridTileStore.instance,
+    devicePixelRatio: MediaQuery.maybeDevicePixelRatioOf(context) ?? 1.0,
   );
   final totalMainExtent =
       leadingFrameSpacerWidth +
