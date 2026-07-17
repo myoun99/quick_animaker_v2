@@ -755,8 +755,9 @@ void main() {
       const ValueKey<String>('timeline-orientation-toggle-button'),
     );
 
-    final row0 = find.byKey(const ValueKey<String>('xsheet-frame-row-0'));
-    expect(tester.getSize(row0).height, 36);
+    // The rail is painterized (UI-R14 #1): row geometry probes off its
+    // painter.
+    expect(xsheetFrameRowGlobalRect(tester, 0).height, 36);
 
     // The X-sheet row height tracks the slider proportionally (36 at the
     // slim default 24, ratio 1.5).
@@ -766,7 +767,7 @@ void main() {
         )
         .onChanged!(72);
     await tester.pumpAndSettle();
-    expect(tester.getSize(row0).height, 108);
+    expect(xsheetFrameRowGlobalRect(tester, 0).height, 108);
   });
 
   testWidgets('the time display toggle switches the counter to seconds', (
@@ -805,17 +806,10 @@ void main() {
       const ValueKey<String>('timeline-orientation-toggle-button'),
     );
 
-    Finder beyondBaseRows() => find.byWidgetPredicate((widget) {
-      final key = widget.key;
-      if (key is! ValueKey<String> ||
-          !key.value.startsWith('xsheet-frame-row-')) {
-        return false;
-      }
-      final index = int.tryParse(
-        key.value.substring('xsheet-frame-row-'.length),
-      );
-      return index != null && index >= 48;
-    });
+    // Painterized rail (UI-R14 #1): rows past the base exist exactly
+    // when the rail painter's window reaches past 48.
+    bool beyondBaseRows() =>
+        xsheetRailPainter(tester).frameEndIndexExclusive > 48;
 
     // Scroll gestures wall at the built extent (base 48 rows).
     for (var i = 0; i < 3; i += 1) {
@@ -825,7 +819,7 @@ void main() {
       );
       await tester.pumpAndSettle();
     }
-    expect(beyondBaseRows(), findsNothing);
+    expect(beyondBaseRows(), isFalse);
 
     // The frame-rail edge-drag is THE way past the wall (UI-R12 #16).
     final railRect = tester.getRect(
@@ -840,7 +834,7 @@ void main() {
     }
     await gesture.up();
     await tester.pumpAndSettle();
-    expect(beyondBaseRows(), findsWidgets);
+    expect(beyondBaseRows(), isTrue);
   });
 
   testWidgets('top row keeps cut switching and undo redo reachable', (

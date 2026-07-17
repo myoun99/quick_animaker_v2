@@ -12,7 +12,10 @@ import '../../services/audio/audio_peaks_extractor.dart';
 import '../widgets/field_slider.dart';
 import 'layer_label_controls.dart';
 import 'timeline_cell_exposure_state.dart';
+import 'package:flutter/semantics.dart' show SemanticsProperties;
+
 import 'timeline_cell_style.dart';
+import 'timeline_frame_ruler_painter.dart' show TimelineRulerHeaderModel;
 import 'timeline_drag_preview.dart';
 import 'timeline_exposure_block_visual.dart';
 import 'timeline_exposure_comma_drag_policy.dart';
@@ -1251,141 +1254,219 @@ class _XSheetFrameNumberRail extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Column(
+    final colorScheme = Theme.of(context).colorScheme;
+    final height =
+        leadingFrameSpacerHeight +
+        (frameEndIndexExclusive - frameStartIndex) * metrics.frameCellWidth +
+        trailingFrameSpacerHeight;
+    // PAINTERIZED (UI-R14 #1, the ruler's UI-R13 #1 treatment — 통일화):
+    // the whole rail is one CustomPaint; per-frame row widgets are gone.
+    // Tests probe [XSheetFrameRailPainter.modelAt]/`rowRectFor` through
+    // the 'xsheet-frame-rail-paint' key; selection stays on the rail's
+    // viewport-level scrub listener.
+    return SizedBox(
       key: const ValueKey<String>('xsheet-frame-number-rail'),
-      children: [
-        SizedBox(
-          key: const ValueKey<String>('xsheet-frame-rail-leading-spacer'),
-          height: leadingFrameSpacerHeight,
-          width: metrics.layerControlsWidth,
+      width: metrics.layerControlsWidth,
+      height: height,
+      child: CustomPaint(
+        key: const ValueKey<String>('xsheet-frame-rail-paint'),
+        size: Size(metrics.layerControlsWidth, height),
+        painter: XSheetFrameRailPainter(
+          frameStartIndex: frameStartIndex,
+          frameEndIndexExclusive: frameEndIndexExclusive,
+          currentFrameIndex: currentFrameIndex,
+          playbackFrameCount: playbackFrameCount,
+          leadingFrameSpacerHeight: leadingFrameSpacerHeight,
+          metrics: metrics,
+          colorScheme: colorScheme,
+          framesPerSecond: framesPerSecond,
+          showSeconds: showSeconds,
+          isFrameCached: isFrameCached,
         ),
-        for (
-          var frameIndex = frameStartIndex;
-          frameIndex < frameEndIndexExclusive;
-          frameIndex += 1
-        )
-          _FrameNumberCell(
-            frameIndex: frameIndex,
-            selected: frameIndex == currentFrameIndex,
-            outsidePlaybackRange: frameIndex >= playbackFrameCount,
-            cached:
-                frameIndex < playbackFrameCount &&
-                (isFrameCached?.call(frameIndex) ?? false),
-            metrics: metrics,
-            framesPerSecond: framesPerSecond,
-            showSeconds: showSeconds,
-          ),
-        SizedBox(
-          key: const ValueKey<String>('xsheet-frame-rail-trailing-spacer'),
-          height: trailingFrameSpacerHeight,
-          width: metrics.layerControlsWidth,
-        ),
-      ],
+      ),
     );
   }
 }
 
-class _FrameNumberCell extends StatelessWidget {
-  const _FrameNumberCell({
-    required this.frameIndex,
-    required this.selected,
-    required this.outsidePlaybackRange,
-    required this.cached,
+/// The X-sheet frame rail as ONE CustomPainter (UI-R14 #1 — the shared
+/// ruler's UI-R13 #1 treatment, transposed): number rows, the seconds
+/// column, selection tint, playback dimming and the cached strip paint
+/// in a single pass. Public for the test probe.
+class XSheetFrameRailPainter extends CustomPainter {
+  XSheetFrameRailPainter({
+    required this.frameStartIndex,
+    required this.frameEndIndexExclusive,
+    required this.currentFrameIndex,
+    required this.playbackFrameCount,
+    required this.leadingFrameSpacerHeight,
     required this.metrics,
+    required this.colorScheme,
     this.framesPerSecond = 24,
     this.showSeconds = false,
+    this.isFrameCached,
   });
 
-  final int frameIndex;
-  final bool selected;
-  final bool outsidePlaybackRange;
-  final bool cached;
+  final int frameStartIndex;
+  final int frameEndIndexExclusive;
+  final int currentFrameIndex;
+  final int playbackFrameCount;
+  final double leadingFrameSpacerHeight;
   final TimelineGridMetrics metrics;
+  final ColorScheme colorScheme;
   final int framesPerSecond;
   final bool showSeconds;
+  final bool Function(int frameIndex)? isFrameCached;
 
-  @override
-  Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
+  /// The row's rect in the rail's local coordinates.
+  Rect rowRectFor(int frameIndex) => Rect.fromLTWH(
+    0,
+    leadingFrameSpacerHeight +
+        (frameIndex - frameStartIndex) * metrics.frameCellWidth,
+    metrics.layerControlsWidth,
+    metrics.frameCellWidth,
+  );
 
-    // NO per-cell InkWell (UI-R10 #25): the rail's viewport-level scrub
-    // Listener already selects on raw pointer-down — the per-frame ink
-    // machinery was pure zoom/extent-rebuild cost.
-    return Container(
-      // Key kept from the old per-frame row so existing flows/tests hold.
-      key: ValueKey<String>('xsheet-frame-row-$frameIndex'),
-      width: metrics.layerControlsWidth,
-      height: metrics.frameCellWidth,
-      decoration: BoxDecoration(
-        color: selected
-            ? Color.alphaBlend(
-                timelineSelectedFrameBorderColor.withValues(alpha: 0.12),
-                colorScheme.surface,
-              )
-            : outsidePlaybackRange
-            ? colorScheme.surfaceContainerHighest.withValues(alpha: 0.72)
-            : colorScheme.surface,
-        border: Border.all(
-          color: outsidePlaybackRange
-              ? colorScheme.outlineVariant.withValues(alpha: 0.55)
-              : colorScheme.outlineVariant,
-        ),
-      ),
-      // The Stack must FILL the cell (no Container alignment, which
-      // loosens constraints and shrink-wraps it to the text) so the
-      // cached strip's right edge is the rail/cells boundary — the
-      // transposed twin of the horizontal header's bottom-edge strip.
-      child: Stack(
-        children: [
-          // Seconds column on the left (UI-R10 #27): the 1-based second
-          // prints bold on its boundary row; the frame number reads
-          // absolute in frame mode, the 1..fps cycle in seconds mode.
-          if (frameIndex % framesPerSecond == 0)
-            Positioned(
-              left: 3,
-              top: 0,
-              bottom: 0,
-              child: Center(
-                child: Text(
-                  '${frameIndex ~/ framesPerSecond + 1}',
-                  style: TextStyle(
-                    fontSize: 9,
-                    fontWeight: FontWeight.w700,
-                    color: colorScheme.onSurfaceVariant,
-                  ),
-                ),
-              ),
-            ),
-          Center(
-            child: Text(
-              showSeconds
-                  ? '${frameIndex % framesPerSecond + 1}'
-                  : '${frameIndex + 1}',
-              style: TextStyle(
-                color: outsidePlaybackRange
-                    ? colorScheme.onSurfaceVariant.withValues(alpha: 0.55)
-                    : colorScheme.onSurface,
-              ),
-            ),
-          ),
-          // Transposed cached-range strip: the horizontal header draws it
-          // along the bottom edge (facing the cells); here the cells sit
-          // to the RIGHT of the rail.
-          if (cached)
-            Positioned(
-              top: 0,
-              bottom: 0,
-              right: 0,
-              child: Container(
-                key: ValueKey<String>('xsheet-frame-cached-$frameIndex'),
-                width: 3,
-                color: const Color(0xFF54B435),
-              ),
-            ),
-        ],
-      ),
+  /// The resolved per-row model — the probe surface (the shared ruler's
+  /// model class; the rail labels EVERY row, no cadence).
+  TimelineRulerHeaderModel modelAt(int frameIndex) {
+    final selected = frameIndex == currentFrameIndex;
+    final outside = frameIndex >= playbackFrameCount;
+    final safeFps = framesPerSecond > 0 ? framesPerSecond : 24;
+    return TimelineRulerHeaderModel(
+      frameIndex: frameIndex,
+      label: showSeconds ? '${frameIndex % safeFps + 1}' : '${frameIndex + 1}',
+      secondsLabel: frameIndex % safeFps == 0
+          ? '${frameIndex ~/ safeFps + 1}'
+          : '',
+      selected: selected,
+      outsidePlaybackRange: outside,
+      cached:
+          frameIndex < playbackFrameCount &&
+          (isFrameCached?.call(frameIndex) ?? false),
+      background: selected
+          ? Color.alphaBlend(
+              timelineSelectedFrameBorderColor.withValues(alpha: 0.12),
+              colorScheme.surface,
+            )
+          : outside
+          ? colorScheme.surfaceContainerHighest.withValues(alpha: 0.72)
+          : colorScheme.surface,
     );
   }
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final fillPaint = Paint();
+    final borderPaint = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1;
+    final linePaint = Paint()..strokeWidth = 1;
+    // Rows draw the shared FAINT grid ink (UI-R14 #4); the structural
+    // right edge (the rail/scrollbar divider) paints once below.
+    final borderColor = timelineBaseGridInk(
+      colorScheme,
+      frameCellExtent: metrics.frameCellWidth,
+    );
+
+    for (
+      var frameIndex = frameStartIndex;
+      frameIndex < frameEndIndexExclusive;
+      frameIndex += 1
+    ) {
+      final model = modelAt(frameIndex);
+      final rect = rowRectFor(frameIndex);
+      canvas.drawRect(rect, fillPaint..color = model.background);
+      if (borderColor.a > 0) {
+        canvas.drawRect(rect.deflate(0.5), borderPaint..color = borderColor);
+      }
+
+      // Seconds column on the left (UI-R10 #27): the 1-based second
+      // prints bold on its boundary row.
+      if (model.secondsLabel.isNotEmpty) {
+        final seconds = _label(
+          model.secondsLabel,
+          TextStyle(
+            fontSize: 9,
+            fontWeight: FontWeight.w700,
+            color: colorScheme.onSurfaceVariant,
+          ),
+        );
+        seconds.paint(canvas, Offset(3, rect.center.dy - seconds.height / 2));
+      }
+
+      final number = _label(
+        model.label,
+        TextStyle(
+          fontSize: 14,
+          color: model.outsidePlaybackRange
+              ? colorScheme.onSurfaceVariant.withValues(alpha: 0.55)
+              : colorScheme.onSurface,
+        ),
+      );
+      number.paint(
+        canvas,
+        Offset(
+          rect.center.dx - number.width / 2,
+          rect.center.dy - number.height / 2,
+        ),
+      );
+
+      // Transposed cached-range strip: the cells sit to the RIGHT of the
+      // rail, so the strip hugs the right edge.
+      if (model.cached) {
+        canvas.drawRect(
+          Rect.fromLTWH(rect.right - 3, rect.top, 3, rect.height),
+          fillPaint..color = const Color(0xFF54B435),
+        );
+      }
+    }
+
+    // The structural right edge, full strength, whatever the zoom.
+    canvas.drawLine(
+      Offset(size.width - 0.5, 0),
+      Offset(size.width - 0.5, size.height),
+      linePaint..color = colorScheme.outlineVariant,
+    );
+  }
+
+  TextPainter _label(String text, TextStyle style) => TextPainter(
+    text: TextSpan(text: text, style: style),
+    textDirection: TextDirection.ltr,
+  )..layout();
+
+  @override
+  bool shouldRepaint(covariant XSheetFrameRailPainter oldDelegate) =>
+      oldDelegate.frameStartIndex != frameStartIndex ||
+      oldDelegate.frameEndIndexExclusive != frameEndIndexExclusive ||
+      oldDelegate.currentFrameIndex != currentFrameIndex ||
+      oldDelegate.playbackFrameCount != playbackFrameCount ||
+      oldDelegate.leadingFrameSpacerHeight != leadingFrameSpacerHeight ||
+      oldDelegate.metrics != metrics ||
+      oldDelegate.framesPerSecond != framesPerSecond ||
+      oldDelegate.showSeconds != showSeconds ||
+      !identical(oldDelegate.colorScheme, colorScheme) ||
+      !identical(oldDelegate.isFrameCached, isFrameCached);
+
+  @override
+  SemanticsBuilderCallback get semanticsBuilder => (size) {
+    final nodes = <CustomPainterSemantics>[];
+    for (
+      var frameIndex = frameStartIndex;
+      frameIndex < frameEndIndexExclusive;
+      frameIndex += 1
+    ) {
+      nodes.add(
+        CustomPainterSemantics(
+          rect: rowRectFor(frameIndex),
+          properties: SemanticsProperties(
+            label: 'frame ${frameIndex + 1}',
+            textDirection: TextDirection.ltr,
+          ),
+        ),
+      );
+    }
+    return nodes;
+  };
 }
 
 /// One layer's vertical run of frame cells: the transposed counterpart of
