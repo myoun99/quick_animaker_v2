@@ -96,9 +96,15 @@ int endlessTrailingFrames({
   }
   // The formula keeps [scrollOffset + viewportExtent] covered, so the
   // shrunken extent never cuts frames out from under the viewport.
+  //
+  // UI-R13 #6: the hysteresis is CAPPED at 24 frames (one second). The
+  // old one-full-viewport threshold happened to be small on the X-sheet
+  // (~a dozen 36px rows — shrink felt live, the reference behavior) but
+  // enormous on the timeline/storyboard (60–120 narrow cells), where the
+  // release never fired and materialized cells seemed permanent.
   final hysteresisFrames = math.max(
     1,
-    (viewportExtent / frameCellExtent).ceil(),
+    math.min(24, (viewportExtent / frameCellExtent).ceil()),
   );
   return currentTrailingFrames - targetFrames >= hysteresisFrames
       ? targetFrames

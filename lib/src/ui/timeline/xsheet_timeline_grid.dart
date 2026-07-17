@@ -24,6 +24,7 @@ import 'timeline_frame_cells_row.dart' show timelineRowBlockEdgeGrips;
 import 'timeline_row_cells_painter.dart';
 import 'timeline_frame_coordinate_policy.dart';
 import 'timeline_frame_cursor_layer.dart';
+import 'timeline_beat_lines.dart';
 import 'timeline_frame_range_policy.dart';
 import 'timeline_body_cut_end_boundary.dart';
 import 'timeline_cell_editor_policy.dart';
@@ -1080,6 +1081,36 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
                                                           ),
                                                       ],
                                                     ),
+                                                    // UI-R13 #7: the 6f/24f
+                                                    // beat lines span EVERY
+                                                    // column — one grid-wide
+                                                    // overlay (transposed).
+                                                    Positioned.fill(
+                                                      child: IgnorePointer(
+                                                        child: RepaintBoundary(
+                                                          child: CustomPaint(
+                                                            key:
+                                                                const ValueKey<
+                                                                  String
+                                                                >(
+                                                                  'xsheet-beat-lines',
+                                                                ),
+                                                            painter: TimelineBeatLinesPainter(
+                                                              axis:
+                                                                  Axis.vertical,
+                                                              frameCellExtent:
+                                                                  _metrics
+                                                                      .frameCellWidth,
+                                                              framesPerSecond:
+                                                                  widget
+                                                                      .projectFps,
+                                                              colorScheme:
+                                                                  colorScheme,
+                                                            ),
+                                                          ),
+                                                        ),
+                                                      ),
+                                                    ),
                                                     // The cursor layer carries
                                                     // the playhead + selection
                                                     // visuals; ticks repaint it
@@ -1456,7 +1487,6 @@ class _XSheetFrameCellsColumn extends StatelessWidget {
               frameCellExtent: metrics.frameCellWidth,
               crossAxisExtent: metrics.layerRowHeight,
               axis: Axis.vertical,
-              framesPerSecond: projectFps,
               exposureStateForLayer: exposureStateForLayer,
               frameNameForLayer: frameNameForLayer,
               onSelectLayer: onSelectLayer,
