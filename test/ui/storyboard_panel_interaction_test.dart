@@ -341,6 +341,160 @@ void main() {
       expect(updates.last, 5);
     });
 
+    testWidgets('with cutSelect a body drag on an UNSELECTED cut paints a '
+        'run selection instead of sliding (UI-R18 #1)', (tester) async {
+      final selection = ValueNotifier<List<CutId>?>(null);
+      addTearDown(selection.dispose);
+      final dragSteps = <(TrackId, int, int)>[];
+      final began = <CutId>[];
+
+      await _pumpStoryboardPanel(
+        tester,
+        _singleTrackProject([
+          _cut('cut-a', name: 'Cut A'),
+          _cut('cut-b', name: 'Cut B'),
+          _cut('cut-c', name: 'Cut C'),
+        ]),
+        activeCutId: const CutId('cut-a'),
+        onCutSelected: (_) {},
+        cutMove: StoryboardCutMoveCallbacks(
+          onBegin: (cutId) {
+            began.add(cutId);
+            return true;
+          },
+          onUpdate: (_) {},
+          onEnd: () {},
+          onCancel: () {},
+        ),
+        cutSelect: StoryboardCutSelectCallbacks(
+          selectedCutIds: selection,
+          onDrag:
+              ({
+                required TrackId trackId,
+                required int anchorCutIndex,
+                required int headCutIndex,
+              }) {
+                dragSteps.add((trackId, anchorCutIndex, headCutIndex));
+              },
+          onClear: () => selection.value = null,
+        ),
+      );
+
+      // Sweep from cut-a's body across cut-b: anchor stays 0, the head
+      // follows the pointer to ordinal 1. No slide begins.
+      final blockA = find.byKey(
+        const ValueKey<String>('storyboard-cut-block-cut-a'),
+      );
+      final gesture = await tester.startGesture(tester.getCenter(blockA));
+      await tester.pump();
+      await gesture.moveBy(const Offset(192, 0));
+      await tester.pump();
+      await gesture.up();
+      await tester.pumpAndSettle();
+
+      expect(began, isEmpty);
+      expect(dragSteps, isNotEmpty);
+      expect(dragSteps.first, (const TrackId('track-a'), 0, 0));
+      expect(dragSteps.last, (const TrackId('track-a'), 0, 1));
+    });
+
+    testWidgets('a body drag starting INSIDE the selection slides the run '
+        'through cutMove (UI-R18 #1)', (tester) async {
+      final selection = ValueNotifier<List<CutId>?>([
+        const CutId('cut-a'),
+        const CutId('cut-b'),
+      ]);
+      addTearDown(selection.dispose);
+      final began = <CutId>[];
+      final updates = <int>[];
+      var selectDrags = 0;
+
+      await _pumpStoryboardPanel(
+        tester,
+        _singleTrackProject([
+          _cut('cut-a', name: 'Cut A'),
+          _cut('cut-b', name: 'Cut B'),
+        ]),
+        activeCutId: const CutId('cut-a'),
+        onCutSelected: (_) {},
+        cutMove: StoryboardCutMoveCallbacks(
+          onBegin: (cutId) {
+            began.add(cutId);
+            return true;
+          },
+          onUpdate: updates.add,
+          onEnd: () {},
+          onCancel: () {},
+        ),
+        cutSelect: StoryboardCutSelectCallbacks(
+          selectedCutIds: selection,
+          onDrag:
+              ({
+                required TrackId trackId,
+                required int anchorCutIndex,
+                required int headCutIndex,
+              }) => selectDrags += 1,
+          onClear: () => selection.value = null,
+        ),
+      );
+
+      final blockA = find.byKey(
+        const ValueKey<String>('storyboard-cut-block-cut-a'),
+      );
+      final gesture = await tester.startGesture(tester.getCenter(blockA));
+      await tester.pump();
+      await gesture.moveBy(const Offset(40, 0));
+      await tester.pump();
+      await gesture.up();
+      await tester.pumpAndSettle();
+
+      expect(selectDrags, 0);
+      expect(began, [const CutId('cut-a')]);
+      expect(updates, isNotEmpty);
+      expect(updates.last, 5);
+    });
+
+    testWidgets('while a selection is live a tap clears it — even on the '
+        'ACTIVE cut (UI-R18 #1)', (tester) async {
+      final selection = ValueNotifier<List<CutId>?>([const CutId('cut-b')]);
+      addTearDown(selection.dispose);
+      var clears = 0;
+      final selectedCuts = <CutId>[];
+
+      await _pumpStoryboardPanel(
+        tester,
+        _singleTrackProject([
+          _cut('cut-a', name: 'Cut A'),
+          _cut('cut-b', name: 'Cut B'),
+        ]),
+        activeCutId: const CutId('cut-a'),
+        onCutSelected: selectedCuts.add,
+        cutSelect: StoryboardCutSelectCallbacks(
+          selectedCutIds: selection,
+          onDrag:
+              ({
+                required TrackId trackId,
+                required int anchorCutIndex,
+                required int headCutIndex,
+              }) {},
+          onClear: () {
+            clears += 1;
+            selection.value = null;
+          },
+        ),
+      );
+
+      // Tap the ACTIVE cut: normally tap-dead, but the live selection
+      // keeps it wired so the tap can clear.
+      await tester.tap(
+        find.byKey(const ValueKey<String>('storyboard-cut-block-cut-a')),
+      );
+      await tester.pumpAndSettle();
+
+      expect(clears, 1);
+      expect(selectedCuts, [const CutId('cut-a')]);
+    });
+
     testWidgets('dropping a block onto itself does not reorder', (
       tester,
     ) async {
@@ -691,9 +845,7 @@ void main() {
     });
 
     testWidgets('frame axis: scrolling stays CLAMPED to the built cells; '
-        'the ruler edge-drag alone extends it (UI-R12 #16)', (
-      tester,
-    ) async {
+        'the ruler edge-drag alone extends it (UI-R12 #16)', (tester) async {
       await _pumpStoryboardPanel(
         tester,
         _singleTrackProject([
@@ -718,8 +870,11 @@ void main() {
         );
         await tester.pumpAndSettle();
       }
-      expect(tester.getSize(ruler).width, initialWidth,
-          reason: 'scroll cannot extend the axis (UI-R12 #16)');
+      expect(
+        tester.getSize(ruler).width,
+        initialWidth,
+        reason: 'scroll cannot extend the axis (UI-R12 #16)',
+      );
 
       // The ruler edge-drag is THE way past the wall — each move pans the
       // axis (overshooting the built extent) and growth materializes the
@@ -962,6 +1117,7 @@ Future<void> _pumpStoryboardPanel(
   CutReorderedCallback? onCutReordered,
   StoryboardCutTrimCallbacks? cutTrim,
   StoryboardCutMoveCallbacks? cutMove,
+  StoryboardCutSelectCallbacks? cutSelect,
   int? playheadGlobalFrame,
   ValueChanged<int>? onSeekGlobalFrame,
   ui.Image? Function(Cut cut)? thumbnailFor,
@@ -984,6 +1140,7 @@ Future<void> _pumpStoryboardPanel(
           onCutReordered: onCutReordered,
           cutTrim: cutTrim,
           cutMove: cutMove,
+          cutSelect: cutSelect,
           playheadFrame: playheadGlobalFrame == null
               ? null
               : ValueNotifier<int?>(playheadGlobalFrame),

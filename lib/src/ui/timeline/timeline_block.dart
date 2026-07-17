@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import 'timeline_cell_style.dart';
+
 class TimelineBlock extends StatelessWidget {
   const TimelineBlock({
     super.key,
@@ -7,12 +9,18 @@ class TimelineBlock extends StatelessWidget {
     required this.isActive,
     required this.child,
     this.onTap,
+    this.isRangeSelected = false,
     this.minHeight = 64,
     this.padding = const EdgeInsets.all(6),
   });
 
   final double width;
   final bool isActive;
+
+  /// Inside a live range selection: an accent tint blends over the
+  /// background — COLOR ONLY, the border stays as-is (the selection
+  /// language, UI-R18 #5).
+  final bool isRangeSelected;
   final VoidCallback? onTap;
   final Widget child;
   final double minHeight;
@@ -24,6 +32,9 @@ class TimelineBlock extends StatelessWidget {
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
     final borderRadius = BorderRadius.circular(borderRadiusValue);
+    final baseColor = isActive
+        ? colorScheme.primaryContainer
+        : colorScheme.surfaceContainerHighest;
 
     return Material(
       color: Colors.transparent,
@@ -38,9 +49,12 @@ class TimelineBlock extends StatelessWidget {
           constraints: BoxConstraints(minHeight: minHeight),
           padding: padding,
           decoration: timelineBlockDecoration(
-            backgroundColor: isActive
-                ? colorScheme.primaryContainer
-                : colorScheme.surfaceContainerHighest,
+            backgroundColor: isRangeSelected
+                ? Color.alphaBlend(
+                    timelineSelectedFrameBorderColor.withValues(alpha: 0.28),
+                    baseColor,
+                  )
+                : baseColor,
             // Blocks sit on dark track lanes: a brighter inactive edge
             // keeps cut boundaries readable.
             borderColor: isActive
