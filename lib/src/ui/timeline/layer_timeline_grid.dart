@@ -65,6 +65,7 @@ class LayerTimelineGrid extends StatefulWidget {
     this.instructionDefById,
     this.audioPeaksFor,
     this.projectFps = 24,
+    this.repeatWord = 'REPEAT',
     this.showSeconds = false,
     this.onRemoveAudioClip,
     this.onDropMediaAsset,
@@ -151,6 +152,9 @@ class LayerTimelineGrid extends StatefulWidget {
   /// Waveform peaks for SE rows' audio clips + the removal hook.
   final AudioPeaks? Function(String filePath)? audioPeaksFor;
   final int projectFps;
+
+  /// The notation-language repeat word for ghost chains (UI-R13 #4).
+  final String repeatWord;
 
   /// The ruler's bottom-line mode (UI-R10 #27): seconds display repeats
   /// 1..fps per second instead of absolute frame numbers.
@@ -1523,6 +1527,8 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                                                             .audioPeaksFor,
                                                         projectFps:
                                                             widget.projectFps,
+                                                        repeatWord:
+                                                            widget.repeatWord,
                                                         onRemoveAudioClip: widget
                                                             .onRemoveAudioClip,
                                                         onDropMediaAsset: widget

@@ -868,19 +868,31 @@ class TimesheetDocumentPainter extends CustomPainter {
               Paint()..color = _ink,
             );
           case TimesheetCellKind.repeatStart:
-            // A repeat ghost chain prints the NOTATION-language repeat
-            // word VERTICALLY, one character per row (UI-R11 #14) — the
-            // expanded cel numbers live in the timeline for exporters,
-            // never here. No guide line.
+            // A repeat ghost chain prints the sheet CONVENTION (UI-R13
+            // #4): its first row writes the cel it restarts on, and the
+            // NOTATION-language repeat word runs VERTICALLY from the
+            // next row (UI-R11 #14) — the expanded cel numbers live in
+            // the timeline for exporters, never here. No guide line.
             if (drawTexts) {
-              _paintVerticalWord(
+              _text(
                 canvas,
-                notation.repeat,
-                centerX: centerX,
-                top: cellTop,
-                rows: cell.spanLength ?? 1,
-                columnWidth: columnWidth,
+                cell.label ?? '',
+                Offset(centerX, cellTop + 3),
+                fontSize: 10,
+                color: _ink,
+                centeredAtX: true,
               );
+              final wordRows = (cell.spanLength ?? 1) - 1;
+              if (wordRows > 0) {
+                _paintVerticalWord(
+                  canvas,
+                  notation.repeat,
+                  centerX: centerX,
+                  top: cellTop + TimesheetDocumentLayout.rowHeight,
+                  rows: wordRows,
+                  columnWidth: columnWidth,
+                );
+              }
             }
           case TimesheetCellKind.repeatSpan:
             break; // The word above covers the chain (UI-R11 #14).
@@ -1393,6 +1405,19 @@ class TimesheetDocumentPainter extends CustomPainter {
   /// A notation word written VERTICALLY down a chain of rows (UI-R11
   /// #14/#15 — リ/ピ/ー/ト one per row): with fewer rows than characters
   /// the glyphs shrink and pack so the whole word still fits the span.
+  /// Characters that ROTATE 90° in vertical writing (UI-R13 #3): the
+  /// long-vowel bar family reads as a vertical stroke down the column —
+  /// stacking the horizontal glyphs was 가로쓰기 in disguise.
+  static const Set<String> _rotatedVerticalChars = {
+    'ー',
+    '－',
+    'ｰ',
+    '〜',
+    '~',
+    '…',
+    '-',
+  };
+
   void _paintVerticalWord(
     Canvas canvas,
     String word, {
@@ -1411,9 +1436,26 @@ class TimesheetDocumentPainter extends CustomPainter {
         : rows * rowHeight / chars.length;
     final fontSize = math.min(10.0, step - 3).clamp(4.0, 10.0).toDouble();
     for (var index = 0; index < chars.length; index += 1) {
+      final char = chars[index];
+      if (_rotatedVerticalChars.contains(char)) {
+        final painter = TextPainter(
+          text: TextSpan(
+            text: char,
+            style: TextStyle(color: _ink, fontSize: fontSize),
+          ),
+          textDirection: TextDirection.ltr,
+          maxLines: 1,
+        )..layout();
+        canvas.save();
+        canvas.translate(centerX, top + index * step + step / 2 - 1);
+        canvas.rotate(math.pi / 2);
+        painter.paint(canvas, Offset(-painter.width / 2, -painter.height / 2));
+        canvas.restore();
+        continue;
+      }
       _text(
         canvas,
-        chars[index],
+        char,
         Offset(centerX, top + index * step + (step - fontSize) / 2 - 1),
         fontSize: fontSize,
         color: _ink,

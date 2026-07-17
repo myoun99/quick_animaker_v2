@@ -73,6 +73,7 @@ class XSheetTimelineGrid extends StatefulWidget {
     this.instructionDefById,
     this.audioPeaksFor,
     this.projectFps = 24,
+    this.repeatWord = 'REPEAT',
     this.showSeconds = false,
     this.onRemoveAudioClip,
     this.onDropMediaAsset,
@@ -149,6 +150,9 @@ class XSheetTimelineGrid extends StatefulWidget {
   /// Waveform peaks for SE columns' audio clips + the removal hook.
   final AudioPeaks? Function(String filePath)? audioPeaksFor;
   final int projectFps;
+
+  /// The notation-language repeat word for ghost chains (UI-R13 #4).
+  final String repeatWord;
 
   /// The frame rail's number mode (UI-R10 #27): seconds display repeats
   /// 1..fps per second instead of absolute frame numbers.
@@ -632,6 +636,7 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
       instructionDefById: widget.instructionDefById,
       audioPeaksFor: widget.audioPeaksFor,
       projectFps: widget.projectFps,
+      repeatWord: widget.repeatWord,
       onRemoveAudioClip: widget.onRemoveAudioClip,
       onDropMediaAsset: widget.onDropMediaAsset,
       layer: layer,
@@ -1408,6 +1413,7 @@ class _XSheetFrameCellsColumn extends StatelessWidget {
     this.instructionDefById,
     this.audioPeaksFor,
     this.projectFps = 24,
+    this.repeatWord = 'REPEAT',
     this.onRemoveAudioClip,
     this.onDropMediaAsset,
     this.commaDrag,
@@ -1439,6 +1445,9 @@ class _XSheetFrameCellsColumn extends StatelessWidget {
   instructionDefById;
   final AudioPeaks? Function(String filePath)? audioPeaksFor;
   final int projectFps;
+
+  /// The notation-language repeat word for ghost chains (UI-R13 #4).
+  final String repeatWord;
   final void Function(LayerId layerId, int clipIndex)? onRemoveAudioClip;
 
   /// Links a media-browser asset to an SE block (drag-drop); null hides
@@ -1487,6 +1496,7 @@ class _XSheetFrameCellsColumn extends StatelessWidget {
               frameCellExtent: metrics.frameCellWidth,
               crossAxisExtent: metrics.layerRowHeight,
               axis: Axis.vertical,
+              repeatWord: repeatWord,
               exposureStateForLayer: exposureStateForLayer,
               frameNameForLayer: frameNameForLayer,
               onSelectLayer: onSelectLayer,

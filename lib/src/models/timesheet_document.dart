@@ -476,8 +476,7 @@ class TimesheetDocument {
         authoredBlockCount += 1;
       }
     }
-    final displaysFromRowZero =
-        entries.isNotEmpty && entries.first.key == 0;
+    final displaysFromRowZero = entries.isNotEmpty && entries.first.key == 0;
     final singleCelDisplay = authoredBlockCount == 1 && displaysFromRowZero;
     // Front-hold relocation (UI-R11 #6 → UI-R12 #17): the sheet's DATA
     // moves the cel to the chain's first row FOR REAL — chain + anchor
@@ -516,12 +515,9 @@ class TimesheetDocument {
             // block's last frame, held straight across the authored
             // position (breakdown ● keep their absolute rows).
             final blockIndex = entries.indexWhere(
-              (entry) =>
-                  !entry.value.ghost && entry.key == chainEndExclusive,
+              (entry) => !entry.value.ghost && entry.key == chainEndExclusive,
             );
-            final block = blockIndex == -1
-                ? null
-                : entries[blockIndex].value;
+            final block = blockIndex == -1 ? null : entries[blockIndex].value;
             final mergedEndExclusive = block == null
                 ? rowsEnd
                 : (chainEndExclusive + block.length!).clamp(0, rowCount);
@@ -554,9 +550,16 @@ class TimesheetDocument {
               spanLength: rowsEnd - start,
             );
           }
+        } else if (behavior?.side == TimelineRunEdgeSide.start) {
+          // FRONT repeats print NOTHING on the sheet (UI-R13 #5 — the
+          // user has never seen one notated); the chain only counts as
+          // coverage. The timeline still shows it.
         } else {
           cells[start] = TimesheetCell(
             TimesheetCellKind.repeatStart,
+            // The convention (UI-R13 #4): the repeat's first row writes
+            // the CEL it restarts on; the word begins on the next row.
+            label: labelsByFrameId[exposure.frameId] ?? '?',
             spanLength: rowsEnd - start,
           );
           for (var row = start + 1; row < rowsEnd; row += 1) {
