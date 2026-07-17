@@ -869,27 +869,34 @@ class TimesheetDocumentPainter extends CustomPainter {
             );
           case TimesheetCellKind.repeatStart:
             // A repeat ghost chain prints the NOTATION-language repeat
-            // word once (UI-R10 #6) — the expanded cel numbers live in
-            // the timeline for exporters, never here.
+            // word VERTICALLY, one character per row (UI-R11 #14) — the
+            // expanded cel numbers live in the timeline for exporters,
+            // never here. No guide line.
             if (drawTexts) {
-              _text(
+              _paintVerticalWord(
                 canvas,
                 notation.repeat,
-                Offset(centerX, cellTop + 3),
-                fontSize: 8,
-                color: _ink,
-                centeredAtX: true,
-                maxWidth: columnWidth - 2,
+                centerX: centerX,
+                top: cellTop,
+                rows: cell.spanLength ?? 1,
+                columnWidth: columnWidth,
               );
             }
           case TimesheetCellKind.repeatSpan:
-            canvas.drawLine(
-              Offset(centerX, cellTop),
-              Offset(centerX, cellBottom),
-              Paint()
-                ..color = _gridMedium
-                ..strokeWidth = 1.0,
-            );
+            break; // The word above covers the chain (UI-R11 #14).
+          case TimesheetCellKind.holdStart:
+            // One cel held from row 1: the rear hold chain prints the
+            // notation hold word (止め) vertically (UI-R11 #15).
+            if (drawTexts) {
+              _paintVerticalWord(
+                canvas,
+                notation.hold,
+                centerX: centerX,
+                top: cellTop,
+                rows: cell.spanLength ?? 1,
+                columnWidth: columnWidth,
+              );
+            }
           case TimesheetCellKind.emptyRunStart:
             if (drawTexts) {
               _text(
@@ -1379,6 +1386,39 @@ class TimesheetDocumentPainter extends CustomPainter {
           topCenter.dx - painter.width / 2,
           topCenter.dy + centers[index] - painter.height / 2,
         ),
+      );
+    }
+  }
+
+  /// A notation word written VERTICALLY down a chain of rows (UI-R11
+  /// #14/#15 — リ/ピ/ー/ト one per row): with fewer rows than characters
+  /// the glyphs shrink and pack so the whole word still fits the span.
+  void _paintVerticalWord(
+    Canvas canvas,
+    String word, {
+    required double centerX,
+    required double top,
+    required int rows,
+    required double columnWidth,
+  }) {
+    if (word.isEmpty || rows <= 0) {
+      return;
+    }
+    final chars = word.split('');
+    const rowHeight = TimesheetDocumentLayout.rowHeight;
+    final step = rows >= chars.length
+        ? rowHeight
+        : rows * rowHeight / chars.length;
+    final fontSize = math.min(10.0, step - 3).clamp(4.0, 10.0).toDouble();
+    for (var index = 0; index < chars.length; index += 1) {
+      _text(
+        canvas,
+        chars[index],
+        Offset(centerX, top + index * step + (step - fontSize) / 2 - 1),
+        fontSize: fontSize,
+        color: _ink,
+        centeredAtX: true,
+        maxWidth: columnWidth - 2,
       );
     }
   }

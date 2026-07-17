@@ -75,13 +75,36 @@ void main() {
       ),
       '話数',
     );
+    // UI-R11 #4: the user's studio wording — タイトル/タイム/原画/シート.
+    expect(
+      TimesheetDocumentPainter.headerFieldLabel(
+        TimesheetHeaderField.title,
+        TimesheetNotation.of(AppLanguage.ja),
+      ),
+      'タイトル',
+    );
     expect(
       TimesheetDocumentPainter.headerFieldLabel(
         TimesheetHeaderField.time,
         TimesheetNotation.of(AppLanguage.ja),
       ),
-      '秒数',
+      'タイム',
     );
+    expect(
+      TimesheetDocumentPainter.headerFieldLabel(
+        TimesheetHeaderField.name,
+        TimesheetNotation.of(AppLanguage.ja),
+      ),
+      '原画',
+    );
+    expect(
+      TimesheetDocumentPainter.headerFieldLabel(
+        TimesheetHeaderField.sheet,
+        TimesheetNotation.of(AppLanguage.ja),
+      ),
+      'シート',
+    );
+    expect(TimesheetNotation.of(AppLanguage.ja).hold, '止め');
     // The default stays the reference forms' English wording.
     expect(
       TimesheetDocumentPainter.headerFieldLabel(TimesheetHeaderField.episode),
