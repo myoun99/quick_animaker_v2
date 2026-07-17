@@ -69,6 +69,7 @@ class TimelinePanel extends StatefulWidget {
     this.showSeconds = false,
     this.onShowSecondsChanged,
     this.projectFps = 24,
+    this.notationRepeatWord = 'REPEAT',
     this.expandedLaneLayerIds = const {},
     this.onToggleLayerLanes,
     this.lanesForLayer,
@@ -222,6 +223,10 @@ class TimelinePanel extends StatefulWidget {
   final ValueChanged<bool>? onShowSecondsChanged;
   final int projectFps;
 
+  /// The NOTATION-language repeat word (UI-R13 #4): repeat ghost chains
+  /// print [first cel][repeat word...] in both orientations.
+  final String notationRepeatWord;
+
   /// AE-style property lanes (twirl-down rows under a layer): expansion
   /// state, toggle and the generic lane provider.
   final Set<LayerId> expandedLaneLayerIds;
@@ -347,6 +352,7 @@ class _TimelinePanelState extends State<TimelinePanel> {
                     instructionDefById: widget.instructionDefById,
                     audioPeaksFor: widget.audioPeaksFor,
                     projectFps: widget.projectFps,
+                    repeatWord: widget.notationRepeatWord,
                     showSeconds: widget.showSeconds,
                     onRemoveAudioClip: widget.onRemoveAudioClip,
                     onDropMediaAsset: widget.onDropMediaAsset,
@@ -403,6 +409,7 @@ class _TimelinePanelState extends State<TimelinePanel> {
                     instructionDefById: widget.instructionDefById,
                     audioPeaksFor: widget.audioPeaksFor,
                     projectFps: widget.projectFps,
+                    repeatWord: widget.notationRepeatWord,
                     showSeconds: widget.showSeconds,
                     onRemoveAudioClip: widget.onRemoveAudioClip,
                     onDropMediaAsset: widget.onDropMediaAsset,

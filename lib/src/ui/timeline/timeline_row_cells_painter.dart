@@ -87,11 +87,20 @@ class TimelineRowCellsPainter extends CustomPainter {
     required this.colorScheme,
     required this.baseTextStyle,
     this.axis = Axis.horizontal,
+    this.repeatWord = 'REPEAT',
   });
 
   final Layer layer;
   final bool active;
   final int playbackFrameCount;
+
+  /// The NOTATION-language repeat word (UI-R13 #4): repeat ghost chains
+  /// print the sheet convention — the chain's first cell writes the cel
+  /// it restarts on, the following cells spell this word one character
+  /// per cell. Display only; the expanded entries stay for exporters.
+  final String repeatWord;
+
+  late final List<String> _repeatWordChars = repeatWord.split('');
 
   final int frameStartIndex;
   final int frameEndIndexExclusive;
@@ -171,15 +180,19 @@ class TimelineRowCellsPainter extends CustomPainter {
     } else if (frameCellExtent < 14) {
       glyph = '';
     } else if (ghost) {
-      // Ghosts are TEXT-ONLY (UI-R10 #11): a hold ghost strings dashes
-      // through its span; a repeat ghost prints just the cel names.
-      glyph = switch (exposureState) {
-        TimelineCellExposureState.drawingStart =>
-          frameName == null || frameName.isEmpty ? '○' : frameName,
-        TimelineCellExposureState.markHeld ||
-        TimelineCellExposureState.markUncovered => '●',
-        _ => '',
-      };
+      // Ghosts are TEXT-ONLY (UI-R10 #11). A repeat ghost chain prints
+      // the sheet CONVENTION (UI-R13 #4): its first cell writes the cel
+      // it restarts on, the following cells spell the notation repeat
+      // word one character per cell — never the re-listed numbers.
+      final chainOffset =
+          timelineGhostChainOffsetAt(layer, frameIndex) ?? frameIndex;
+      if (chainOffset == 0) {
+        glyph = frameName == null || frameName.isEmpty ? '○' : frameName;
+      } else {
+        glyph = chainOffset - 1 < _repeatWordChars.length
+            ? _repeatWordChars[chainOffset - 1]
+            : '';
+      }
     } else {
       glyph = _marker(
         exposureState: exposureState,
@@ -439,6 +452,7 @@ class TimelineRowCellsPainter extends CustomPainter {
       oldDelegate.frameCellExtent != frameCellExtent ||
       oldDelegate.crossAxisExtent != crossAxisExtent ||
       oldDelegate.axis != axis ||
+      oldDelegate.repeatWord != repeatWord ||
       !identical(oldDelegate.colorScheme, colorScheme) ||
       !identical(oldDelegate.exposureStateForLayer, exposureStateForLayer) ||
       !identical(oldDelegate.frameNameForLayer, frameNameForLayer);
@@ -500,6 +514,7 @@ Widget timelineRowCellsPaintArea({
   required double frameCellExtent,
   required double crossAxisExtent,
   required Axis axis,
+  String repeatWord = 'REPEAT',
   required TimelineCellExposureState Function(Layer layer, int frameIndex)
   exposureStateForLayer,
   String? Function(Layer layer, int frameIndex)? frameNameForLayer,
@@ -522,6 +537,7 @@ Widget timelineRowCellsPaintArea({
     colorScheme: Theme.of(context).colorScheme,
     baseTextStyle: DefaultTextStyle.of(context).style,
     axis: axis,
+    repeatWord: repeatWord,
   );
   final totalMainExtent =
       leadingFrameSpacerWidth +

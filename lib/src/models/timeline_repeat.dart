@@ -166,8 +166,7 @@ Layer rederiveRunBehaviors(Layer layer, {required int cutFrameCount}) {
     ];
     var index = blocks.indexWhere((block) => block.start == blockStartIndex);
     var first = index;
-    while (
-        first > 0 && blocks[first - 1].endExclusive == blocks[first].start) {
+    while (first > 0 && blocks[first - 1].endExclusive == blocks[first].start) {
       first -= 1;
     }
     var last = index;
@@ -183,8 +182,11 @@ Layer rederiveRunBehaviors(Layer layer, {required int cutFrameCount}) {
   }
 
   // Resolve + dedupe: one behavior per (run, side), the LAST wins.
-  final byEdge = <(int, TimelineRunEdgeSide),
-      ({TimelineRunBehavior behavior, _Run run})>{};
+  final byEdge =
+      <
+        (int, TimelineRunEdgeSide),
+        ({TimelineRunBehavior behavior, _Run run})
+      >{};
   for (final behavior in layer.runBehaviors) {
     final anchorStart = anchorStartOf(behavior.anchorFrameId);
     if (anchorStart == null) {
@@ -195,6 +197,16 @@ Layer rederiveRunBehaviors(Layer layer, {required int cutFrameCount}) {
   }
   final resolved = byEdge.values.toList()
     ..sort((a, b) {
+      // HOLDS apply before REPEATS (UI-R13 #5): a repeat's default
+      // pattern is the DISPLAYED run including the opposite edge's hold
+      // ghosts, so every hold must sit in the result first. Within a
+      // mode: run order, start side before end side.
+      final byMode =
+          (a.behavior.mode == TimelineRunEdgeMode.hold ? 0 : 1) -
+          (b.behavior.mode == TimelineRunEdgeMode.hold ? 0 : 1);
+      if (byMode != 0) {
+        return byMode;
+      }
       final byRun = a.run.startIndex.compareTo(b.run.startIndex);
       if (byRun != 0) {
         return byRun;
@@ -263,10 +275,29 @@ Layer rederiveRunBehaviors(Layer layer, {required int cutFrameCount}) {
             key < run.endIndexExclusive) {
           patternStart = key;
         }
+      } else {
+        // UI-R13 #5: the DEFAULT pattern is the DISPLAYED run — a
+        // front-hold lead-in abutting the run start joins the repeated
+        // unit (holds applied first, so its ghost already sits here).
+        final startEdge = byEdge[(run.startIndex, TimelineRunEdgeSide.start)];
+        if (startEdge != null &&
+            startEdge.behavior.mode == TimelineRunEdgeMode.hold) {
+          final leadKey = result.lastKeyBefore(run.startIndex);
+          if (leadKey != null) {
+            final lead = result[leadKey]!;
+            if (lead.ghost &&
+                lead.ghostOwnerId == startEdge.behavior.ghostOwnerId &&
+                leadKey + lead.length! == run.startIndex) {
+              patternStart = leadKey;
+            }
+          }
+        }
       }
       final span = run.endIndexExclusive - patternStart;
       final parts = [
-        for (final entry in base.entries)
+        // From RESULT, not base: the pattern may include this run's own
+        // front-hold ghost (UI-R13 #5); inside the run the two agree.
+        for (final entry in result.entries)
           if (entry.key >= patternStart && entry.key < run.endIndexExclusive)
             (
               offset: entry.key - patternStart,
@@ -301,10 +332,7 @@ Layer rederiveRunBehaviors(Layer layer, {required int cutFrameCount}) {
     var limitStart = 0;
     final previousKey = result.lastKeyBefore(runStart);
     if (previousKey != null) {
-      limitStart = math.max(
-        0,
-        previousKey + result[previousKey]!.length!,
-      );
+      limitStart = math.max(0, previousKey + result[previousKey]!.length!);
     }
     if (limitStart >= runStart) {
       continue; // Occluded; the spec survives.
@@ -327,10 +355,26 @@ Layer rederiveRunBehaviors(Layer layer, {required int cutFrameCount}) {
       if (key != null && key >= runStart && key < run.endIndexExclusive) {
         patternEnd = key + base[key]!.length!;
       }
+    } else {
+      // UI-R13 #5 (the mirror): a rear-hold tail abutting the run end
+      // joins the repeated unit — the front repeat cycles the DISPLAYED
+      // run, hold included.
+      final endEdge = byEdge[(run.startIndex, TimelineRunEdgeSide.end)];
+      if (endEdge != null &&
+          endEdge.behavior.mode == TimelineRunEdgeMode.hold) {
+        final rear = result[run.endIndexExclusive];
+        if (rear != null &&
+            rear.ghost &&
+            rear.ghostOwnerId == endEdge.behavior.ghostOwnerId) {
+          patternEnd = run.endIndexExclusive + rear.length!;
+        }
+      }
     }
     final span = patternEnd - runStart;
     final parts = [
-      for (final entry in base.entries)
+      // From RESULT, not base: the pattern may include this run's own
+      // rear-hold ghost (UI-R13 #5); inside the run the two agree.
+      for (final entry in result.entries)
         if (entry.key >= runStart && entry.key < patternEnd)
           (
             offset: entry.key - runStart,
@@ -493,6 +537,46 @@ TimelineRunBehavior? runBehaviorOwningGhostAt(Layer layer, int frameIndex) {
     }
   }
   return found;
+}
+
+/// The offset of [index] inside its contiguous same-owner ghost CHAIN
+/// (0 = the chain's first frame); null when the index is not
+/// ghost-covered. The timeline cells print the repeat convention off
+/// this (UI-R13 #4): the chain's first cell writes the cel it restarts
+/// on, the following cells spell the notation repeat word.
+int? timelineGhostChainOffsetAt(Layer layer, int index) {
+  int? coveringKey;
+  final direct = layer.timeline[index];
+  if (direct != null && direct.ghost) {
+    coveringKey = index;
+  } else if (direct == null) {
+    final before = layer.timeline.lastKeyBefore(index);
+    if (before != null) {
+      final covering = layer.timeline[before]!;
+      if (covering.ghost && index < before + covering.length!) {
+        coveringKey = before;
+      }
+    }
+  }
+  if (coveringKey == null) {
+    return null;
+  }
+  final ownerId = layer.timeline[coveringKey]!.ghostOwnerId;
+  var chainStart = coveringKey;
+  while (true) {
+    final before = layer.timeline.lastKeyBefore(chainStart);
+    if (before == null) {
+      break;
+    }
+    final previous = layer.timeline[before]!;
+    if (!previous.ghost ||
+        previous.ghostOwnerId != ownerId ||
+        before + previous.length! != chainStart) {
+      break;
+    }
+    chainStart = before;
+  }
+  return index - chainStart;
 }
 
 /// Whether [index] on [layer] falls inside a GHOST exposure (a derived

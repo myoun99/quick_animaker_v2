@@ -36,6 +36,7 @@ import 'timeline/timeline_section_bracket_rail.dart'
 import 'timeline/timeline_section_policy.dart';
 import 'timeline/transform_lane_editing.dart';
 import 'timeline/transform_lane_policy.dart';
+import 'timesheet/timesheet_notation.dart';
 
 /// The Timeline tab's content: the timeline panel with its transport, cell
 /// action toolbar and the layer/frame dialogs it triggers. All wiring lives
@@ -883,6 +884,11 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
           showSeconds: widget.showSeconds,
           onShowSecondsChanged: widget.onShowSecondsChanged,
           projectFps: _session.projectFps,
+          // UI-R13 #4: repeat ghost chains print the notation-language
+          // repeat word after the first repeated cel.
+          notationRepeatWord: TimesheetNotation.of(
+            _session.languageSettings.value.notationLanguage,
+          ).repeat,
           expandedLaneLayerIds: widget.expandedLaneLayerIds,
           onToggleLayerLanes: widget.onToggleLayerLanes,
           hiddenSections: widget.hiddenSections,

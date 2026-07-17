@@ -265,7 +265,9 @@ void main() {
     expect(derived.timeline[6]!.breakdownOffsets, const [1]);
   });
 
-  test('both edges of one run derive together; start applies first', () {
+  test('both edges of one run derive together; holds apply first, and the '
+      'end repeat cycles the DISPLAYED run — front hold included '
+      '(UI-R13 #5)', () {
     final layer = _layer(
       timeline: {4: _draw('a', 2)},
       behaviors: const [_startHold, _endRepeat],
@@ -273,9 +275,48 @@ void main() {
 
     final derived = rederiveRunBehaviors(layer, cutFrameCount: 10);
     expect(derived.timeline[0]!.ghost, isTrue);
-    expect(derived.timeline[0]!.length, 4);
+    expect(derived.timeline[0]!.length, 4, reason: 'the front-hold lead-in');
+    // The repeated unit is hold(4f) + block(2f) = 6 frames; the tail
+    // space [6,10) fits the cycle's first part — the 4f hold copy.
     expect(derived.timeline[6]!.ghost, isTrue);
-    expect(derived.timeline[8]!.ghost, isTrue);
+    expect(derived.timeline[6]!.length, 4);
+    expect(timelineIndexIsGhost(derived, 8), isTrue,
+        reason: 'covered by the cycled hold copy, not a separate entry');
+    expect(derived.timeline[8], isNull);
+  });
+
+  test('a START repeat cycles the displayed run too: the rear-hold tail '
+      'joins the pattern (UI-R13 #5 mirror)', () {
+    final layer = _layer(
+      timeline: {6: _draw('a', 2)},
+      behaviors: const [
+        TimelineRunBehavior(
+          anchorFrameId: FrameId('a'),
+          side: TimelineRunEdgeSide.end,
+          mode: TimelineRunEdgeMode.hold,
+        ),
+        TimelineRunBehavior(
+          anchorFrameId: FrameId('a'),
+          side: TimelineRunEdgeSide.start,
+          mode: TimelineRunEdgeMode.repeat,
+        ),
+      ],
+    );
+
+    final derived = rederiveRunBehaviors(layer, cutFrameCount: 10);
+    // Rear hold: [8,10) ghost. Pattern = block(2f) + hold(2f) = 4 frames,
+    // tiled flush leftward over the [0,6) lead-in: cycle at 2 = block copy
+    // [2,4) + hold copy [4,6); the leftmost partial keeps the TAIL — the
+    // hold copy lands [0,2) (the block part is fully cut off).
+    expect(derived.timeline[8]!.ghost, isTrue, reason: 'the rear hold');
+    expect(derived.timeline[8]!.length, 2);
+    expect(derived.timeline[2]!.ghost, isTrue);
+    expect(derived.timeline[2]!.length, 2, reason: 'cycled block copy');
+    expect(derived.timeline[4]!.ghost, isTrue);
+    expect(derived.timeline[4]!.length, 2, reason: 'cycled hold copy');
+    expect(derived.timeline[0]!.ghost, isTrue);
+    expect(derived.timeline[0]!.length, 2,
+        reason: 'partial lead-in keeps the pattern tail (the hold part)');
   });
 
   test('setting the same edge twice: the LAST spec wins the dedupe', () {

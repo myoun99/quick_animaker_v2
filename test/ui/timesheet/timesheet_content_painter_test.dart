@@ -90,8 +90,9 @@ void main() {
     );
   });
 
-  test('a REPEAT ghost chain prints the repeat word once + a guide line, '
-      'never the expanded numbers (UI-R10 #6)', () {
+  test('a REPEAT ghost chain prints the CONVENTION (UI-R13 #4): the first '
+      'row writes the cel it restarts on, the word runs from the next row '
+      '— never the expanded numbers', () {
     final layer = rederiveRunBehaviors(
       animationLayer('a').copyWith(
         runBehaviors: const [
@@ -107,12 +108,45 @@ void main() {
     final cells = documentFor([layer]).columns[0].cells;
 
     expect(cells[2].kind, TimesheetCellKind.repeatStart);
+    expect(cells[2].label, '○',
+        reason: 'the repeat restarts on the (unnamed) first cel');
     expect(cells[2].spanLength, 6, reason: 'chain [2,8)');
     for (var row = 3; row < 8; row += 1) {
       expect(cells[row].kind, TimesheetCellKind.repeatSpan, reason: '$row');
     }
     expect(cells[8].kind, TimesheetCellKind.emptyRunStart,
         reason: 'past the chain the X run restarts');
+  });
+
+  test('a FRONT repeat prints NOTHING on the sheet (UI-R13 #5): coverage '
+      'only — the timeline still shows it', () {
+    final frontRepeat = rederiveRunBehaviors(
+      Layer(
+        id: const LayerId('fr'),
+        name: 'FR',
+        frames: [
+          Frame(id: const FrameId('fr-f1'), duration: 1, strokes: const []),
+        ],
+        timeline: {
+          4: const TimelineExposure.drawing(FrameId('fr-f1'), length: 2),
+        },
+        runBehaviors: const [
+          TimelineRunBehavior(
+            anchorFrameId: FrameId('fr-f1'),
+            side: TimelineRunEdgeSide.start,
+            mode: TimelineRunEdgeMode.repeat,
+          ),
+        ],
+      ),
+      cutFrameCount: 12,
+    );
+    final cells = documentFor([frontRepeat]).columns[0].cells;
+
+    for (var row = 0; row < 4; row += 1) {
+      expect(cells[row].kind, TimesheetCellKind.empty,
+          reason: 'row $row — silent lead-in, no repeat notation');
+    }
+    expect(cells[4].kind, TimesheetCellKind.drawing);
   });
 
 
