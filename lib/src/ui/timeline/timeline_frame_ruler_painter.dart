@@ -5,6 +5,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/semantics.dart' show SemanticsProperties;
 
 import 'timeline_cell_style.dart';
+import 'timeline_frame_window.dart';
+import 'timeline_glyph_cache.dart';
 import 'timeline_grid_metrics.dart';
 
 /// The resolved per-header model — THE probe surface for ruler tests
@@ -54,9 +56,9 @@ class TimelineFrameRulerPainter extends CustomPainter {
     this.framesPerSecond = 24,
     this.showSeconds = false,
     this.isFrameCached,
-    this.viewportOffset,
+    this.windowBucket,
     this.viewportMainExtent = 0,
-  }) : super(repaint: viewportOffset);
+  }) : super(repaint: windowBucket);
 
   final int frameStartIndex;
   final int frameEndIndexExclusive;
@@ -69,17 +71,17 @@ class TimelineFrameRulerPainter extends CustomPainter {
   final bool showSeconds;
   final bool Function(int frameIndex)? isFrameCached;
 
-  /// PRO-TIMELINE scrolling (UI-R15): with these set the strip windows
-  /// ITSELF off the live offset (repaint-only scroll) — the header row
-  /// builds once for the full bounds and the old bucket re-windowing is
-  /// gone. Null keeps the classic pre-windowed contract.
-  final ValueListenable<double>? viewportOffset;
+  /// PRO-TIMELINE scrolling (UI-R15→R16): with these set the strip
+  /// windows ITSELF off the quantized bucket (repaint once per span
+  /// crossing, pure translation between) — the header row builds once
+  /// for the full bounds. Null keeps the classic pre-windowed contract.
+  final ValueListenable<int>? windowBucket;
   final double viewportMainExtent;
 
   /// The header window paint() actually draws (probe surface).
   ({int startIndex, int endIndexExclusive}) visibleHeaderWindow() {
-    final offset = viewportOffset;
-    if (offset == null ||
+    final bucket = windowBucket;
+    if (bucket == null ||
         viewportMainExtent <= 0 ||
         metrics.frameCellWidth <= 0) {
       return (
@@ -87,15 +89,17 @@ class TimelineFrameRulerPainter extends CustomPainter {
         endIndexExclusive: frameEndIndexExclusive,
       );
     }
-    final localOffset = offset.value - leadingFrameSpacerWidth;
-    final first =
-        frameStartIndex + (localOffset / metrics.frameCellWidth).floor();
-    final last =
-        frameStartIndex +
-        ((localOffset + viewportMainExtent) / metrics.frameCellWidth).ceil();
+    final window = timelineFrameWindowFor(
+      bucket: bucket.value,
+      cellExtent: metrics.frameCellWidth,
+      viewportExtent: viewportMainExtent,
+    );
     return (
-      startIndex: math.max(frameStartIndex, first - 2),
-      endIndexExclusive: math.min(frameEndIndexExclusive, last + 2),
+      startIndex: math.max(frameStartIndex, window.startIndex),
+      endIndexExclusive: math.min(
+        frameEndIndexExclusive,
+        window.endIndexExclusive,
+      ),
     );
   }
 
@@ -251,10 +255,11 @@ class TimelineFrameRulerPainter extends CustomPainter {
     );
   }
 
-  TextPainter _label(String text, TextStyle style) => TextPainter(
-    text: TextSpan(text: text, style: style),
-    textDirection: TextDirection.ltr,
-  )..layout();
+  // Labels come from the shared laid-out-TextPainter cache (UI-R16):
+  // fresh layout per label per repaint was the priciest slice of a
+  // scroll-time repaint in debug.
+  TextPainter _label(String text, TextStyle style) =>
+      timelineGlyphPainter(text, style);
 
   @override
   bool shouldRepaint(covariant TimelineFrameRulerPainter oldDelegate) =>
@@ -266,7 +271,7 @@ class TimelineFrameRulerPainter extends CustomPainter {
       oldDelegate.metrics != metrics ||
       oldDelegate.framesPerSecond != framesPerSecond ||
       oldDelegate.showSeconds != showSeconds ||
-      !identical(oldDelegate.viewportOffset, viewportOffset) ||
+      !identical(oldDelegate.windowBucket, windowBucket) ||
       oldDelegate.viewportMainExtent != viewportMainExtent ||
       !identical(oldDelegate.colorScheme, colorScheme) ||
       !identical(oldDelegate.isFrameCached, isFrameCached);

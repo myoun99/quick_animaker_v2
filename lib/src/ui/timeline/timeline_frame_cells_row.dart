@@ -19,6 +19,7 @@ import '../../models/timeline_repeat.dart';
 import 'timeline_frame_cell.dart';
 import 'timeline_frame_coordinate_policy.dart';
 import 'timeline_frame_range_gesture.dart';
+import 'timeline_frame_window.dart';
 import 'timeline_row_cells_painter.dart';
 import 'timeline_run_end_handles.dart';
 import 'timeline_grid_metrics.dart';
@@ -56,7 +57,6 @@ class TimelineFrameCellsRow extends StatelessWidget {
     this.runEdit,
     this.baseLayer,
     this.seSpillsIn = false,
-    this.viewportOffset,
     this.windowBucket,
     this.viewportMainExtent = 0,
   });
@@ -70,13 +70,13 @@ class TimelineFrameCellsRow extends StatelessWidget {
   final double trailingFrameSpacerWidth;
   final TimelineGridMetrics metrics;
 
-  /// PRO-TIMELINE scrolling (UI-R15): with these set, the row builds ONCE
-  /// for the FULL frame bounds — the painter windows itself off the live
-  /// offset (repaint-only scroll), the sparse widget-cell kinds re-window
-  /// their cells under [windowBucket] alone, and the overlays (grips,
-  /// handles, SE writing) position content-absolutely. Null keeps the
-  /// classic pre-windowed contract.
-  final ValueListenable<double>? viewportOffset;
+  /// PRO-TIMELINE scrolling (UI-R15→R16): with these set, the row builds
+  /// ONCE for the FULL frame bounds — the painter windows itself off the
+  /// quantized [windowBucket] (repaint once per span crossing, pure
+  /// translation between), the sparse widget-cell kinds re-window their
+  /// cells under the same bucket, and the overlays (grips, handles, SE
+  /// writing) position content-absolutely. Null keeps the classic
+  /// pre-windowed contract.
   final ValueListenable<int>? windowBucket;
   final double viewportMainExtent;
   final TimelineCellExposureState Function(Layer layer, int frameIndex)
@@ -159,7 +159,7 @@ class TimelineFrameCellsRow extends StatelessWidget {
             frameCellExtent: metrics.frameCellWidth,
             crossAxisExtent: metrics.layerRowHeight,
             axis: Axis.horizontal,
-            viewportOffset: viewportOffset,
+            windowBucket: windowBucket,
             viewportMainExtent: viewportMainExtent,
             exposureStateForLayer: exposureStateForLayer,
             frameNameForLayer: frameNameForLayer,
@@ -175,22 +175,24 @@ class TimelineFrameCellsRow extends StatelessWidget {
                         selection.contains(frameIndex);
                   },
           )
-        else if (windowBucket != null && viewportOffset != null)
+        else if (windowBucket != null)
           // Sparse widget-cell kinds re-window their cells under the
-          // bucket ALONE (UI-R15): the row itself never rebuilds on
-          // scroll — only this thin cell strip does, per cell crossing.
+          // bucket ALONE (UI-R15→R16): the row itself never rebuilds on
+          // scroll — only this thin cell strip does, once per span
+          // crossing (shared window policy).
           ValueListenableBuilder<int>(
             valueListenable: windowBucket!,
-            builder: (context, _, _) {
+            builder: (context, bucket, _) {
               final cellExtent = metrics.frameCellWidth;
-              final localOffset = viewportOffset!.value;
-              final first = math.max(
-                frameStartIndex,
-                (localOffset / cellExtent).floor() - 2,
+              final window = timelineFrameWindowFor(
+                bucket: bucket,
+                cellExtent: cellExtent,
+                viewportExtent: viewportMainExtent,
               );
+              final first = math.max(frameStartIndex, window.startIndex);
               final last = math.min(
                 frameEndIndexExclusive,
-                ((localOffset + viewportMainExtent) / cellExtent).ceil() + 2,
+                window.endIndexExclusive,
               );
               return _widgetCellsStrip(
                 stateAt,

@@ -20,7 +20,7 @@ class TimelineFrameRuler extends StatelessWidget {
     this.framesPerSecond = 24,
     this.showSeconds = false,
     this.isFrameCached,
-    this.viewportOffset,
+    this.windowBucket,
     this.viewportMainExtent = 0,
   });
 
@@ -36,9 +36,9 @@ class TimelineFrameRuler extends StatelessWidget {
   final bool showSeconds;
   final bool Function(int frameIndex)? isFrameCached;
 
-  /// PRO-TIMELINE scrolling (UI-R15): the strip windows itself off the
-  /// live offset — pass the full bounds and skip bucket re-windowing.
-  final ValueListenable<double>? viewportOffset;
+  /// PRO-TIMELINE scrolling (UI-R15→R16): the strip windows itself off
+  /// the quantized bucket — pass the full bounds, repaint per crossing.
+  final ValueListenable<int>? windowBucket;
   final double viewportMainExtent;
 
   @override
@@ -57,7 +57,7 @@ class TimelineFrameRuler extends StatelessWidget {
           framesPerSecond: framesPerSecond,
           showSeconds: showSeconds,
           isFrameCached: isFrameCached,
-          viewportOffset: viewportOffset,
+          windowBucket: windowBucket,
           viewportMainExtent: viewportMainExtent,
         ),
         TimelineRulerCutEndBoundary(

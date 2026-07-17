@@ -12,6 +12,8 @@ import '../../models/timeline_repeat.dart';
 import 'timeline_cell_exposure_state.dart';
 import 'timeline_cell_style.dart';
 import 'timeline_exposure_block_visual.dart';
+import 'timeline_frame_window.dart';
+import 'timeline_glyph_cache.dart';
 import 'timeline_se_row_visual.dart' show layerKindUsesSeSheetCells;
 
 /// One DRAWING row's frame cells as a single painter (UI-R9 #12b, the
@@ -52,28 +54,10 @@ class TimelineRowCellModel {
 /// axis-aligned line (UI-R12 #18), never as text.
 const String _holdDashGlyph = 'ㅡ';
 
-/// Glyph TextPainters are cached per (text, color, weight, base style):
+/// Glyph TextPainters come from the shared timeline cache (UI-R16):
 /// frame numbers and markers repeat heavily across rows and repaints.
-final Map<Object, TextPainter> _glyphPainterCache = <Object, TextPainter>{};
-const int _glyphPainterCacheCap = 512;
-
-TextPainter _glyphPainter(String text, TextStyle style) {
-  final key = (text, style.color, style.fontWeight, style.fontSize);
-  final cached = _glyphPainterCache.remove(key);
-  if (cached != null) {
-    _glyphPainterCache[key] = cached; // LRU touch.
-    return cached;
-  }
-  final painter = TextPainter(
-    text: TextSpan(text: text, style: style),
-    textDirection: TextDirection.ltr,
-  )..layout();
-  if (_glyphPainterCache.length >= _glyphPainterCacheCap) {
-    _glyphPainterCache.remove(_glyphPainterCache.keys.first);
-  }
-  _glyphPainterCache[key] = painter;
-  return painter;
-}
+TextPainter _glyphPainter(String text, TextStyle style) =>
+    timelineGlyphPainter(text, style);
 
 class TimelineRowCellsPainter extends CustomPainter {
   TimelineRowCellsPainter({
@@ -90,9 +74,9 @@ class TimelineRowCellsPainter extends CustomPainter {
     required this.colorScheme,
     required this.baseTextStyle,
     this.axis = Axis.horizontal,
-    this.viewportOffset,
+    this.windowBucket,
     this.viewportMainExtent = 0,
-  }) : super(repaint: viewportOffset);
+  }) : super(repaint: windowBucket);
 
   final Layer layer;
   final bool active;
@@ -113,44 +97,39 @@ class TimelineRowCellsPainter extends CustomPainter {
   final TextStyle baseTextStyle;
   final Axis axis;
 
-  /// PRO-TIMELINE scrolling (UI-R15): with these set, the painter windows
-  /// ITSELF — paint() reads the live scroll offset, draws only the cells
-  /// under the viewport, and the offset notifier triggers repaint alone
-  /// (the `repaint` listenable). The row widget then builds ONCE for the
-  /// full frame bounds and never rebuilds on scroll; the old widget-side
-  /// windowing (bucket rebuilds re-baking [frameStartIndex..end)) is what
-  /// made fast drags heavy. Null keeps the classic pre-windowed contract
-  /// (the sparse widget rows' plan windows still use it).
-  final ValueListenable<double>? viewportOffset;
+  /// PRO-TIMELINE scrolling (UI-R15→R16): with these set, the painter
+  /// windows ITSELF off the QUANTIZED bucket — the bucket notifier is the
+  /// `repaint` listenable, so a repaint happens once per span crossing
+  /// (several cells), not per pixel; between crossings scrolling is pure
+  /// translation of the already-painted (raster-cacheable) picture. The
+  /// row widget builds ONCE for the full frame bounds and never rebuilds
+  /// on scroll. Null keeps the classic pre-windowed contract.
+  final ValueListenable<int>? windowBucket;
 
   /// The scroll viewport's main-axis extent for the self-windowing path.
   final double viewportMainExtent;
 
-  /// Frames of overscan kept painted around the self-computed window (the
-  /// widget-windowing era's allowance, kept for parity).
-  static const int selfWindowOverscan = 2;
-
   /// The frame window paint() actually draws: the full bounds under the
-  /// classic contract, the offset-derived slice (+overscan) under the
+  /// classic contract, the bucket-derived span (shared policy) under the
   /// self-windowing one. THE probe surface for visibility tests.
   ({int startIndex, int endIndexExclusive}) visibleFrameWindow() {
-    final offset = viewportOffset;
-    if (offset == null || viewportMainExtent <= 0 || frameCellExtent <= 0) {
+    final bucket = windowBucket;
+    if (bucket == null || viewportMainExtent <= 0 || frameCellExtent <= 0) {
       return (
         startIndex: frameStartIndex,
         endIndexExclusive: frameEndIndexExclusive,
       );
     }
-    final localOffset = offset.value - leadingFrameSpacerWidth;
-    final first = frameStartIndex + (localOffset / frameCellExtent).floor();
-    final last =
-        frameStartIndex +
-        ((localOffset + viewportMainExtent) / frameCellExtent).ceil();
+    final window = timelineFrameWindowFor(
+      bucket: bucket.value,
+      cellExtent: frameCellExtent,
+      viewportExtent: viewportMainExtent,
+    );
     return (
-      startIndex: math.max(frameStartIndex, first - selfWindowOverscan),
+      startIndex: math.max(frameStartIndex, window.startIndex),
       endIndexExclusive: math.min(
         frameEndIndexExclusive,
-        last + selfWindowOverscan,
+        window.endIndexExclusive,
       ),
     );
   }
@@ -478,7 +457,7 @@ class TimelineRowCellsPainter extends CustomPainter {
       oldDelegate.frameCellExtent != frameCellExtent ||
       oldDelegate.crossAxisExtent != crossAxisExtent ||
       oldDelegate.axis != axis ||
-      !identical(oldDelegate.viewportOffset, viewportOffset) ||
+      !identical(oldDelegate.windowBucket, windowBucket) ||
       oldDelegate.viewportMainExtent != viewportMainExtent ||
       !identical(oldDelegate.colorScheme, colorScheme) ||
       !identical(oldDelegate.exposureStateForLayer, exposureStateForLayer) ||
@@ -550,7 +529,7 @@ Widget timelineRowCellsPaintArea({
   required ValueChanged<int> onSelectFrame,
   void Function(LayerId layerId, int frameIndex)? onActivateCell,
   bool Function(int frameIndex)? suppressPointerDownSelect,
-  ValueListenable<double>? viewportOffset,
+  ValueListenable<int>? windowBucket,
   double viewportMainExtent = 0,
 }) {
   final painter = TimelineRowCellsPainter(
@@ -567,7 +546,7 @@ Widget timelineRowCellsPaintArea({
     colorScheme: Theme.of(context).colorScheme,
     baseTextStyle: DefaultTextStyle.of(context).style,
     axis: axis,
-    viewportOffset: viewportOffset,
+    windowBucket: windowBucket,
     viewportMainExtent: viewportMainExtent,
   );
   final totalMainExtent =
