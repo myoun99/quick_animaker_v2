@@ -454,6 +454,27 @@ void main() {
       expect(updates.last, 5);
     });
 
+    testWidgets('tapping a V-row label selects its TRACK (UI-R18 #6)', (
+      tester,
+    ) async {
+      final selectedTracks = <TrackId>[];
+
+      await _pumpStoryboardPanel(
+        tester,
+        _singleTrackProject([_cut('cut-a', name: 'Cut A')]),
+        activeCutId: const CutId('cut-a'),
+        onCutSelected: (_) {},
+        onSelectTrack: selectedTracks.add,
+      );
+
+      await tester.tap(
+        find.byKey(const ValueKey<String>('storyboard-track-select-track-a')),
+      );
+      await tester.pumpAndSettle();
+
+      expect(selectedTracks, [const TrackId('track-a')]);
+    });
+
     testWidgets('while a selection is live a tap clears it — even on the '
         'ACTIVE cut (UI-R18 #1)', (tester) async {
       final selection = ValueNotifier<List<CutId>?>([const CutId('cut-b')]);
@@ -1118,6 +1139,7 @@ Future<void> _pumpStoryboardPanel(
   StoryboardCutTrimCallbacks? cutTrim,
   StoryboardCutMoveCallbacks? cutMove,
   StoryboardCutSelectCallbacks? cutSelect,
+  ValueChanged<TrackId>? onSelectTrack,
   int? playheadGlobalFrame,
   ValueChanged<int>? onSeekGlobalFrame,
   ui.Image? Function(Cut cut)? thumbnailFor,
@@ -1141,6 +1163,7 @@ Future<void> _pumpStoryboardPanel(
           cutTrim: cutTrim,
           cutMove: cutMove,
           cutSelect: cutSelect,
+          onSelectTrack: onSelectTrack,
           playheadFrame: playheadGlobalFrame == null
               ? null
               : ValueNotifier<int?>(playheadGlobalFrame),

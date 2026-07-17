@@ -5265,6 +5265,31 @@ class EditorSessionManager extends ChangeNotifier {
     return true;
   }
 
+  /// V-TRACK selection (UI-R18 #6): tapping a V row makes THAT track's
+  /// cut under the current global playhead the ACTIVE cut — every track
+  /// reads the one shared global index, each independently (the V-row
+  /// fx/eye subject rule). The landing keeps the global position: the new
+  /// cut's local frame is the same global frame. A gap on the tapped
+  /// track is a no-op, like the fx/eye buttons there.
+  void selectTrackCutAtPlayhead(TrackId trackId) {
+    if (editingInteractionBusy) {
+      return;
+    }
+    final globalFrame = editingGlobalFrame;
+    final layout = buildStoryboardTimelineLayout(repository.requireProject());
+    for (final entry in layout) {
+      if (entry.trackId == trackId &&
+          globalFrame >= entry.startFrame &&
+          globalFrame < entry.endFrame) {
+        if (entry.cutId != activeCutId) {
+          selectCut(entry.cutId);
+        }
+        selectFrameIndex(globalFrame - entry.startFrame);
+        return;
+      }
+    }
+  }
+
   /// THE canonical seek: a global frame in. Inside a cut it selects
   /// cut + local frame; in a GAP it deselects the cut ENTIRELY (UI-R9 #3)
   /// and PARKS there — the stored global addresses the gap exactly,

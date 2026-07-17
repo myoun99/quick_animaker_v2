@@ -145,6 +145,7 @@ class StoryboardPanel extends StatefulWidget {
     required this.onCutSelected,
     this.activeLayerId,
     this.onSelectLayer,
+    this.onSelectTrack,
     this.onCutReordered,
     this.cutTrim,
     this.cutMove,
@@ -243,6 +244,11 @@ class StoryboardPanel extends StatefulWidget {
   /// Tapping an S-row label selects its TRACK layer (the same session
   /// selection a timeline row tap makes). Null keeps labels display-only.
   final ValueChanged<LayerId>? onSelectLayer;
+
+  /// Tapping a V-row label selects its TRACK (UI-R18 #6): the session
+  /// promotes that track's cut under the shared global playhead to the
+  /// active cut. Null keeps V labels display-only.
+  final ValueChanged<TrackId>? onSelectTrack;
 
   /// Dragging a cut block onto another block of the same track reorders the
   /// cuts (same semantics as the top-bar chips). Null disables dragging.
@@ -867,6 +873,13 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
         onToggleLane: widget.onToggleTrackLane == null
             ? null
             : () => widget.onToggleTrackLane!(track),
+        // V-track selection (UI-R18 #6): the row highlights while the
+        // ACTIVE cut lives on this track; tapping selects the track (its
+        // playhead-index cut becomes active).
+        active: activeCut != null,
+        onSelectTrack: widget.onSelectTrack == null
+            ? null
+            : () => widget.onSelectTrack!(track.id),
         activeCut: activeCut,
         // UI-R13 #2: the fx/eye act on THIS track's cut at the current
         // global index (each track independently) — no stand-down, no
@@ -3034,6 +3047,8 @@ class _StoryboardTrackLabel extends StatelessWidget {
     required this.trackLabel,
     this.laneExpanded = false,
     this.onToggleLane,
+    this.active = false,
+    this.onSelectTrack,
     this.activeCut,
     this.subjectCut,
     this.cutFxEnabledOf,
@@ -3047,6 +3062,14 @@ class _StoryboardTrackLabel extends StatelessWidget {
 
   final bool laneExpanded;
   final VoidCallback? onToggleLane;
+
+  /// The active cut lives on this track — the S-row active treatment
+  /// (background only, UI-R18 #5/#6).
+  final bool active;
+
+  /// Tapping the row selects the TRACK (UI-R18 #6): the session promotes
+  /// its playhead-index cut to active. Null keeps the row display-only.
+  final VoidCallback? onSelectTrack;
 
   /// The ACTIVE cut when it lives on this track (null otherwise) — the
   /// transform-lane gating still keys off it.
@@ -3065,138 +3088,147 @@ class _StoryboardTrackLabel extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
-    return Container(
-      key: ValueKey<String>('storyboard-track-label-row-${track.id.value}'),
-      width: StoryboardPanel._trackLabelWidth,
-      height: StoryboardPanel._trackLaneHeight,
-      padding: const EdgeInsets.only(right: 8),
-      decoration: BoxDecoration(
-        color: colorScheme.surface,
-        // Side/bottom borders only (UI-R10 #20): stacked rail rows keep
-        // single-pixel seams, like the timeline rail.
-        border: Border(
-          left: BorderSide(color: colorScheme.outlineVariant),
-          right: BorderSide(color: colorScheme.outlineVariant),
-          bottom: BorderSide(color: colorScheme.outlineVariant),
+    // V-track selection (UI-R18 #6): the S-row tap/highlight language on
+    // the V row — tap selects the TRACK, the active treatment speaks
+    // through the background alone.
+    return InkWell(
+      key: ValueKey<String>('storyboard-track-select-${track.id.value}'),
+      onTap: onSelectTrack,
+      child: Container(
+        key: ValueKey<String>('storyboard-track-label-row-${track.id.value}'),
+        width: StoryboardPanel._trackLabelWidth,
+        height: StoryboardPanel._trackLaneHeight,
+        padding: const EdgeInsets.only(right: 8),
+        decoration: BoxDecoration(
+          color: active
+              ? colorScheme.secondaryContainer.withValues(alpha: 0.55)
+              : colorScheme.surface,
+          // Side/bottom borders only (UI-R10 #20): stacked rail rows keep
+          // single-pixel seams, like the timeline rail.
+          border: Border(
+            left: BorderSide(color: colorScheme.outlineVariant),
+            right: BorderSide(color: colorScheme.outlineVariant),
+            bottom: BorderSide(color: colorScheme.outlineVariant),
+          ),
         ),
-      ),
-      child: Row(
-        children: [
-          // Reserved section slot — the V zone overlays the group
-          // (UI-R7 #2).
-          const LayerSectionBandCell(),
-          const SizedBox(width: 8),
-          // The timeline rows' lane chevron: twirls down the track's
-          // cut-level Transform group (the V-track lanes + fade strip).
-          if (onToggleLane != null)
-            InkWell(
-              key: ValueKey<String>(
-                'storyboard-track-lane-toggle-${track.id.value}',
-              ),
-              onTap: onToggleLane,
-              child: SizedBox(
-                width: 16,
-                height: 24,
-                child: Icon(
-                  laneExpanded ? Icons.arrow_drop_down : Icons.arrow_right,
-                  size: 16,
-                  color: colorScheme.onSurfaceVariant,
+        child: Row(
+          children: [
+            // Reserved section slot — the V zone overlays the group
+            // (UI-R7 #2).
+            const LayerSectionBandCell(),
+            const SizedBox(width: 8),
+            // The timeline rows' lane chevron: twirls down the track's
+            // cut-level Transform group (the V-track lanes + fade strip).
+            if (onToggleLane != null)
+              InkWell(
+                key: ValueKey<String>(
+                  'storyboard-track-lane-toggle-${track.id.value}',
                 ),
-              ),
-            )
-          else
-            const SizedBox(width: 16),
-          const Icon(Icons.movie_outlined, size: 18),
-          const SizedBox(width: 6),
-          Expanded(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  trackLabel,
-                  key: ValueKey<String>(
-                    'storyboard-track-label-${track.id.value}',
+                onTap: onToggleLane,
+                child: SizedBox(
+                  width: 16,
+                  height: 24,
+                  child: Icon(
+                    laneExpanded ? Icons.arrow_drop_down : Icons.arrow_right,
+                    size: 16,
+                    color: colorScheme.onSurfaceVariant,
                   ),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  softWrap: false,
-                  style: const TextStyle(fontWeight: FontWeight.bold),
                 ),
-                if (track.name.isNotEmpty)
+              )
+            else
+              const SizedBox(width: 16),
+            const Icon(Icons.movie_outlined, size: 18),
+            const SizedBox(width: 6),
+            Expanded(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
                   Text(
-                    track.name,
+                    trackLabel,
+                    key: ValueKey<String>(
+                      'storyboard-track-label-${track.id.value}',
+                    ),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     softWrap: false,
-                    style: TextStyle(
-                      fontSize: 11,
-                      color: colorScheme.onSurfaceVariant,
-                    ),
+                    style: const TextStyle(fontWeight: FontWeight.bold),
                   ),
-              ],
+                  if (track.name.isNotEmpty)
+                    Text(
+                      track.name,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      softWrap: false,
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                ],
+              ),
             ),
-          ),
-          // V-row display toggles (UI-R13 #2): ALWAYS-normal buttons in
-          // the shared fx/eye slots (UI-R5) acting on THIS track's cut at
-          // the current global index — no stand-down, no parked graying.
-          // Where no cut exists (a gap on this track) a press is a no-op;
-          // the button is track furniture, only its subject is absent.
-          const SizedBox(width: layerFillReferenceSlotWidth),
-          if (onToggleCutFx != null)
-            _CutFxToggleButton(
-              keySuffix: subjectCut?.id.value ?? 'none-${track.id.value}',
-              fxEnabled: subjectCut == null
-                  ? true
-                  : (cutFxEnabledOf?.call(subjectCut!.id) ?? true),
-              onToggle: () {
-                final subject = subjectCut;
-                if (subject != null) {
-                  onToggleCutFx!(subject.id);
-                }
-              },
-            )
-          else
-            const SizedBox(width: layerFxSlotWidth),
-          if (onToggleCutPictureVisibility != null)
-            SizedBox(
-              width: layerVisibilitySlotWidth,
-              height: 26,
-              child: IconButton(
-                key: ValueKey<String>(
-                  'storyboard-cut-visibility-'
-                  '${subjectCut?.id.value ?? 'none-${track.id.value}'}',
-                ),
-                tooltip:
-                    (subjectCut == null ||
-                        (cutPictureVisibleOf?.call(subjectCut!.id) ?? true))
-                    ? 'Hide cut picture'
-                    : 'Show cut picture',
-                padding: EdgeInsets.zero,
-                constraints: const BoxConstraints.tightFor(
-                  width: layerVisibilitySlotWidth,
-                  height: 26,
-                ),
-                icon: Icon(
-                  (subjectCut == null ||
-                          (cutPictureVisibleOf?.call(subjectCut!.id) ?? true))
-                      ? Icons.visibility
-                      : Icons.visibility_off,
-                  size: 16,
-                ),
-                onPressed: () {
+            // V-row display toggles (UI-R13 #2): ALWAYS-normal buttons in
+            // the shared fx/eye slots (UI-R5) acting on THIS track's cut at
+            // the current global index — no stand-down, no parked graying.
+            // Where no cut exists (a gap on this track) a press is a no-op;
+            // the button is track furniture, only its subject is absent.
+            const SizedBox(width: layerFillReferenceSlotWidth),
+            if (onToggleCutFx != null)
+              _CutFxToggleButton(
+                keySuffix: subjectCut?.id.value ?? 'none-${track.id.value}',
+                fxEnabled: subjectCut == null
+                    ? true
+                    : (cutFxEnabledOf?.call(subjectCut!.id) ?? true),
+                onToggle: () {
                   final subject = subjectCut;
                   if (subject != null) {
-                    onToggleCutPictureVisibility!(subject.id);
+                    onToggleCutFx!(subject.id);
                   }
                 },
-              ),
-            )
-          else
-            const SizedBox(width: layerVisibilitySlotWidth),
-          const SizedBox(width: layerMuteSlotWidth),
-          const SizedBox(width: layerOpacitySlotWidth),
-        ],
+              )
+            else
+              const SizedBox(width: layerFxSlotWidth),
+            if (onToggleCutPictureVisibility != null)
+              SizedBox(
+                width: layerVisibilitySlotWidth,
+                height: 26,
+                child: IconButton(
+                  key: ValueKey<String>(
+                    'storyboard-cut-visibility-'
+                    '${subjectCut?.id.value ?? 'none-${track.id.value}'}',
+                  ),
+                  tooltip:
+                      (subjectCut == null ||
+                          (cutPictureVisibleOf?.call(subjectCut!.id) ?? true))
+                      ? 'Hide cut picture'
+                      : 'Show cut picture',
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints.tightFor(
+                    width: layerVisibilitySlotWidth,
+                    height: 26,
+                  ),
+                  icon: Icon(
+                    (subjectCut == null ||
+                            (cutPictureVisibleOf?.call(subjectCut!.id) ?? true))
+                        ? Icons.visibility
+                        : Icons.visibility_off,
+                    size: 16,
+                  ),
+                  onPressed: () {
+                    final subject = subjectCut;
+                    if (subject != null) {
+                      onToggleCutPictureVisibility!(subject.id);
+                    }
+                  },
+                ),
+              )
+            else
+              const SizedBox(width: layerVisibilitySlotWidth),
+            const SizedBox(width: layerMuteSlotWidth),
+            const SizedBox(width: layerOpacitySlotWidth),
+          ],
+        ),
       ),
     );
   }

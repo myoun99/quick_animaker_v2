@@ -353,6 +353,9 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
               // free (same layer identity).
               activeLayerId: _session.activeLayerId,
               onSelectLayer: _session.selectLayer,
+              // V-track selection (UI-R18 #6): tapping a V row promotes
+              // that track's playhead-index cut to the active cut.
+              onSelectTrack: _session.selectTrackCutAtPlayhead,
               onCutReordered: _session.reorderCut,
               pixelsPerFrame: widget.pixelsPerFrame,
               showSeconds: widget.showSeconds,

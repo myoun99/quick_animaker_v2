@@ -5,8 +5,10 @@ import 'package:quick_animaker_v2/src/models/cut.dart';
 import 'package:quick_animaker_v2/src/models/cut_id.dart';
 import 'package:quick_animaker_v2/src/models/frame.dart';
 import 'package:quick_animaker_v2/src/models/frame_id.dart';
+import 'package:quick_animaker_v2/src/models/camera_instruction.dart';
 import 'package:quick_animaker_v2/src/models/layer.dart';
 import 'package:quick_animaker_v2/src/models/layer_id.dart';
+import 'package:quick_animaker_v2/src/models/layer_kind.dart';
 import 'package:quick_animaker_v2/src/models/timeline_exposure.dart';
 import 'package:quick_animaker_v2/src/models/timeline_repeat.dart';
 import 'package:quick_animaker_v2/src/models/timesheet_document.dart';
@@ -22,22 +24,21 @@ void main() {
     id: LayerId(id),
     name: id.toUpperCase(),
     frames: [Frame(id: FrameId('$id-f1'), duration: 1, strokes: const [])],
-    timeline: {
-      0: TimelineExposure.drawing(FrameId('$id-f1'), length: length),
-    },
+    timeline: {0: TimelineExposure.drawing(FrameId('$id-f1'), length: length)},
   );
 
-  TimesheetDocument documentFor(List<Layer> layers) => TimesheetDocument.fromCut(
-    cut: Cut(
-      id: const CutId('cut-1'),
-      name: '1',
-      duration: 12,
-      canvasSize: const CanvasSize(width: 1920, height: 1080),
-      layers: layers,
-    ),
-    projectName: 'P',
-    fps: 24,
-  );
+  TimesheetDocument documentFor(List<Layer> layers) =>
+      TimesheetDocument.fromCut(
+        cut: Cut(
+          id: const CutId('cut-1'),
+          name: '1',
+          duration: 12,
+          canvasSize: const CanvasSize(width: 1920, height: 1080),
+          layers: layers,
+        ),
+        projectName: 'P',
+        fps: 24,
+      );
 
   TimesheetDocumentPainter contentPainter(
     TimesheetDocument document,
@@ -77,16 +78,92 @@ void main() {
       painter.displayCellsFor(document.columns[1]),
       same(document.columns[1].cells),
     );
-    expect(
-      document.columns[0].cells[2].kind,
-      TimesheetCellKind.emptyRunStart,
-    );
+    expect(document.columns[0].cells[2].kind, TimesheetCellKind.emptyRunStart);
 
     // Release clears the channel: back to the document.
     channel.value = null;
     expect(
       painter.displayCellsFor(document.columns[0]),
       same(document.columns[0].cells),
+    );
+  });
+
+  test('SE columns substitute the drag preview too (UI-R18 #7) — the '
+      'sheet recipe (no X runs, SE names) rides the preview', () {
+    Layer seLayer({int length = 2}) => Layer(
+      id: const LayerId('s'),
+      name: 'S1',
+      kind: LayerKind.se,
+      frames: [
+        Frame(id: const FrameId('s-f1'), duration: 1, strokes: const []),
+      ],
+      timeline: {
+        0: TimelineExposure.drawing(const FrameId('s-f1'), length: length),
+      },
+    );
+    final document = documentFor([animationLayer('a'), seLayer()]);
+    final channel = ValueNotifier<TimelineDragPreview?>(null);
+    addTearDown(channel.dispose);
+    final painter = contentPainter(document, channel);
+
+    // The first SE slot sits right after the ACTION block and carries the
+    // layer id the preview channel matches on.
+    final seColumn = document.columns[8];
+    expect(seColumn.kind, TimesheetColumnKind.se);
+    expect(seColumn.layerId, const LayerId('s'));
+    // Base: past the entry the SE column stays BLANK (no X runs).
+    expect(painter.displayCellsFor(seColumn)[3].kind, TimesheetCellKind.empty);
+
+    // Mid-drag: the SE block grew 2 → 5 — row 3 goes held LIVE while the
+    // document stays stale.
+    channel.value = ExposureEdgeDragPreview(previewLayer: seLayer(length: 5));
+    final cells = painter.displayCellsFor(seColumn);
+    expect(cells[3].kind, TimesheetCellKind.held);
+    expect(cells[5].kind, TimesheetCellKind.empty, reason: 'still no X runs');
+    expect(seColumn.cells[3].kind, TimesheetCellKind.empty);
+  });
+
+  test('instruction (CAM) columns substitute the drag preview too '
+      '(UI-R18 #7): the slot carries its layer id now', () {
+    Layer instructionLayer({int length = 3}) => Layer(
+      id: const LayerId('instr'),
+      name: 'PAN',
+      kind: LayerKind.instruction,
+      frames: const [],
+      instructions: {
+        2: InstructionEvent(instructionId: 'pan', length: length, text: 'PAN'),
+      },
+    );
+    final document = documentFor([animationLayer('a'), instructionLayer()]);
+    final channel = ValueNotifier<TimelineDragPreview?>(null);
+    addTearDown(channel.dispose);
+    final painter = contentPainter(document, channel);
+
+    // Camera slot 1 (after the CAM keyframe slot 0) hosts the instruction
+    // row: columns = 8 action + 2 SE + 8 cel + [cam0, cam1].
+    final instructionColumn = document.columns[19];
+    expect(instructionColumn.kind, TimesheetColumnKind.camera);
+    expect(instructionColumn.layerId, const LayerId('instr'));
+    expect(
+      painter.displayCellsFor(instructionColumn)[2].kind,
+      TimesheetCellKind.instructionStart,
+    );
+    expect(
+      painter.displayCellsFor(instructionColumn)[5].kind,
+      TimesheetCellKind.empty,
+    );
+
+    // Mid-drag: the span grew 3 → 6, covering row 5 LIVE.
+    channel.value = ExposureEdgeDragPreview(
+      previewLayer: instructionLayer(length: 6),
+    );
+    final cells = painter.displayCellsFor(instructionColumn);
+    expect(cells[5].kind, TimesheetCellKind.instructionSpan);
+    expect(cells[7].kind, TimesheetCellKind.instructionEnd);
+    expect(
+      instructionColumn.cells[5].kind,
+      TimesheetCellKind.empty,
+      reason: 'the document stays stale until the release commits',
     );
   });
 
@@ -108,14 +185,20 @@ void main() {
     final cells = documentFor([layer]).columns[0].cells;
 
     expect(cells[2].kind, TimesheetCellKind.repeatStart);
-    expect(cells[2].label, '○',
-        reason: 'the repeat restarts on the (unnamed) first cel');
+    expect(
+      cells[2].label,
+      '○',
+      reason: 'the repeat restarts on the (unnamed) first cel',
+    );
     expect(cells[2].spanLength, 6, reason: 'chain [2,8)');
     for (var row = 3; row < 8; row += 1) {
       expect(cells[row].kind, TimesheetCellKind.repeatSpan, reason: '$row');
     }
-    expect(cells[8].kind, TimesheetCellKind.emptyRunStart,
-        reason: 'past the chain the X run restarts');
+    expect(
+      cells[8].kind,
+      TimesheetCellKind.emptyRunStart,
+      reason: 'past the chain the X run restarts',
+    );
   });
 
   test('a FRONT repeat writes its ghost frames VERBATIM on the sheet '
@@ -156,10 +239,12 @@ void main() {
     expect(cells[2].kind, TimesheetCellKind.drawing);
     expect(cells[2].label, '7');
     expect(cells[3].kind, TimesheetCellKind.held);
-    expect(cells[4].kind, TimesheetCellKind.drawing,
-        reason: 'the authored block');
+    expect(
+      cells[4].kind,
+      TimesheetCellKind.drawing,
+      reason: 'the authored block',
+    );
   });
-
 
   test('a FRONT hold MOVES the cel to row 1 FOR REAL: one run through the '
       'authored position, no second drawing start (UI-R12 #17)', () {
@@ -194,15 +279,26 @@ void main() {
     expect(cells[0].label, '5', reason: 'the name lives on row 1');
     expect(cells[0].spanLength, 6, reason: 'ONE run [0,6): chain + block');
     for (var row = 1; row < 6; row += 1) {
-      expect(cells[row].kind, TimesheetCellKind.held, reason: 'row $row — '
-          'the hold line runs straight through the authored position '
-          '(XDTS-facing data really moved; the timeline keeps frame 5)');
+      expect(
+        cells[row].kind,
+        TimesheetCellKind.held,
+        reason:
+            'row $row — '
+            'the hold line runs straight through the authored position '
+            '(XDTS-facing data really moved; the timeline keeps frame 5)',
+      );
       expect(cells[row].spanOffset, row);
     }
-    expect(cells[4].label, anyOf(isNull, isEmpty),
-        reason: 'no second start, no label');
-    expect(cells[6].kind, TimesheetCellKind.emptyRunStart,
-        reason: 'past the run the X run restarts');
+    expect(
+      cells[4].label,
+      anyOf(isNull, isEmpty),
+      reason: 'no second start, no label',
+    );
+    expect(
+      cells[6].kind,
+      TimesheetCellKind.emptyRunStart,
+      reason: 'past the run the X run restarts',
+    );
   });
 
   test('one cel held from row 1 prints the hold word chain (止め, '
@@ -263,7 +359,10 @@ void main() {
     expect(celColumns[0].label, 'A');
     expect(celColumns[1].label, 'B');
     expect(celColumns[2].label, '');
-    expect(celColumns[0].cells.every((c) => c.kind == TimesheetCellKind.empty),
-        isTrue, reason: 'headers only — the content stays blank');
+    expect(
+      celColumns[0].cells.every((c) => c.kind == TimesheetCellKind.empty),
+      isTrue,
+      reason: 'headers only — the content stays blank',
+    );
   });
 }

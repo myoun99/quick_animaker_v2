@@ -133,6 +133,7 @@ class TimesheetColumn {
     required this.cells,
     this.layerName,
     this.layerId,
+    this.previewCellsBuilder,
   });
 
   final TimesheetColumnKind kind;
@@ -145,12 +146,19 @@ class TimesheetColumn {
   /// The backing layer's name (action/SE slots only); null for empty slots.
   final String? layerName;
 
-  /// The backing layer's id (action/SE slots only) — the timeline drag
-  /// preview overlay matches its per-layer previews to columns by this
-  /// (UI-R9 #7).
+  /// The backing layer's id (action/SE/instruction slots) — the timeline
+  /// drag preview overlay matches its per-layer previews to columns by
+  /// this (UI-R9 #7).
   final LayerId? layerId;
 
   final List<TimesheetCell> cells;
+
+  /// Re-derives this column's cells from a substituted layer — the
+  /// timeline drag-preview path (UI-R18 #7): baked at document build so
+  /// the painter can preview ANY layer-backed column kind (action, SE,
+  /// camera instruction) without knowing each kind's cell recipe. Null
+  /// for unbacked slots.
+  final List<TimesheetCell> Function(Layer layer)? previewCellsBuilder;
 }
 
 /// One paper page: [frameCount] rows starting at [startFrame], laid out in
@@ -295,6 +303,13 @@ class TimesheetDocument {
                   playbackFrameCount: playbackFrameCount,
                 )
               : _blankCells(rowCount),
+          previewCellsBuilder: slot < animationLayers.length
+              ? (layer) => timesheetLayerCells(
+                  layer: layer,
+                  rowCount: rowCount,
+                  playbackFrameCount: playbackFrameCount,
+                )
+              : null,
         ),
       for (var slot = 0; slot < _slotCount(seColumnCount, seLayers); slot += 1)
         TimesheetColumn(
@@ -315,6 +330,18 @@ class TimesheetDocument {
                   includeSeNames: true,
                 )
               : _blankCells(rowCount),
+          // SE drags preview live (UI-R18 #7): the timeline publishes
+          // the DISPLAY clone under the same id, so the recipe applies
+          // unchanged.
+          previewCellsBuilder: slot < seLayers.length
+              ? (layer) => timesheetLayerCells(
+                  layer: layer,
+                  rowCount: rowCount,
+                  playbackFrameCount: playbackFrameCount,
+                  markEmptyRuns: false,
+                  includeSeNames: true,
+                )
+              : null,
         ),
       // The CELL block mirrors the ACTION layers' NAMES as its headers
       // (UI-R10 #10) — the cel re-assignment content stays blank
@@ -337,6 +364,11 @@ class TimesheetDocument {
           layerName: slot >= 1 && slot - 1 < instructionLayers.length
               ? instructionLayers[slot - 1].name
               : null,
+          // Instruction slots carry their layer id so edge drags preview
+          // live on the sheet (UI-R18 #7), like action/SE columns.
+          layerId: slot >= 1 && slot - 1 < instructionLayers.length
+              ? instructionLayers[slot - 1].id
+              : null,
           cells: slot == 0
               ? (cameraOnSheet
                     ? _cameraCells(cut: cut, rowCount: rowCount)
@@ -348,6 +380,13 @@ class TimesheetDocument {
                   defById: instructionDefById,
                 )
               : _blankCells(rowCount),
+          previewCellsBuilder: slot >= 1 && slot - 1 < instructionLayers.length
+              ? (layer) => _instructionCells(
+                  layer: layer,
+                  rowCount: rowCount,
+                  defById: instructionDefById,
+                )
+              : null,
         ),
     ];
 
