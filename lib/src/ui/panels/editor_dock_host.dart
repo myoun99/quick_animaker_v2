@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 
 import 'editor_panel_layout.dart';
 import 'editor_panel_tabs.dart';
+import 'panel_flash.dart';
 
 /// Renders one dock of an [EditorPanelLayoutModel]: its sections stacked
 /// vertically (panel below panel) with draggable splitters between them,
@@ -25,6 +26,7 @@ class EditorDockHost extends StatelessWidget {
     required this.onTabDragChanged,
     this.onToggleLock,
     this.onCloseTab,
+    this.flash,
     this.compact = false,
   });
 
@@ -48,6 +50,10 @@ class EditorDockHost extends StatelessWidget {
   final ValueChanged<EditorPanelTabDragData?> onTabDragChanged;
   final ValueChanged<String>? onToggleLock;
   final ValueChanged<String>? onCloseTab;
+
+  /// The workspace's reveal-flash channel (UI-R17 #5), threaded to every
+  /// section's panel shell.
+  final PanelFlashController? flash;
   final bool compact;
 
   @override
@@ -91,6 +97,7 @@ class EditorDockHost extends StatelessWidget {
                     onTabDragChanged: onTabDragChanged,
                     onToggleLock: onToggleLock,
                     onCloseTab: onCloseTab,
+                    flash: flash,
                   ),
                 ),
               ),

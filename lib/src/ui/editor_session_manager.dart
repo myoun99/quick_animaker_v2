@@ -580,6 +580,7 @@ class EditorSessionManager extends ChangeNotifier {
     dragPreview.dispose();
     opacityDragPreview.dispose();
     onionSkinSettings.dispose();
+    onionSkinLayerIds.dispose();
     _historyManager.dispose();
     super.dispose();
   }
@@ -4875,38 +4876,91 @@ class EditorSessionManager extends ChangeNotifier {
   final ValueNotifier<OnionSkinSettings> onionSkinSettings =
       ValueNotifier<OnionSkinSettings>(const OnionSkinSettings());
 
-  /// The `O` shortcut / toolbar toggle.
-  void toggleOnionSkin() {
-    onionSkinSettings.value = onionSkinSettings.value.copyWith(
-      enabled: !onionSkinSettings.value.enabled,
-    );
+  /// PER-LAYER onion application (UI-R17 #5, TVPaint's light table): the
+  /// layers whose ghosts composite. The panel's master switch is GONE —
+  /// row/legend toggles drive this set.
+  final ValueNotifier<Set<LayerId>> onionSkinLayerIds =
+      ValueNotifier<Set<LayerId>>(<LayerId>{});
+
+  bool isLayerOnionSkinEnabled(LayerId layerId) =>
+      onionSkinLayerIds.value.contains(layerId);
+
+  void toggleLayerOnionSkin(LayerId layerId) {
+    final next = Set<LayerId>.from(onionSkinLayerIds.value);
+    if (!next.remove(layerId)) {
+      next.add(layerId);
+    }
+    onionSkinLayerIds.value = next;
+    // Row/legend toggle glyphs read through the session listenable.
+    notifyListeners();
   }
 
-  /// The ghost frames to composite under the ACTIVE layer at the playhead:
-  /// the onion plan (unique drawings, peg opacities, side tints) as canvas
-  /// stack requests. Empty while disabled, on brush-banned rows, or with
-  /// no active layer.
+  /// The drawing layers the legend's bulk onion sweep addresses: the
+  /// active cut's VISIBLE brush-holding rows.
+  List<Layer> get _onionSweepLayers => [
+    for (final layer in activeCutOrNull?.layers ?? const <Layer>[])
+      if (layer.isVisible && layerKindAcceptsBrushInput(layer.kind)) layer,
+  ];
+
+  /// Whether the legend's bulk button reads ON (every displayed layer
+  /// currently ghosting).
+  bool get displayedLayersOnionSkinEnabled {
+    final targets = _onionSweepLayers;
+    return targets.isNotEmpty &&
+        targets.every((layer) => isLayerOnionSkinEnabled(layer.id));
+  }
+
+  /// Legend bulk sweep (UI-R17 #5): all displayed layers on — or, when
+  /// they all are already, all off.
+  void toggleOnionSkinForDisplayedLayers() {
+    final targets = _onionSweepLayers;
+    if (targets.isEmpty) {
+      return;
+    }
+    final enable = !displayedLayersOnionSkinEnabled;
+    final next = Set<LayerId>.from(onionSkinLayerIds.value);
+    for (final layer in targets) {
+      enable ? next.add(layer.id) : next.remove(layer.id);
+    }
+    onionSkinLayerIds.value = next;
+    notifyListeners();
+  }
+
+  /// The `O` shortcut: toggles the ACTIVE layer's onion (the per-layer
+  /// model's successor of the old master toggle).
+  void toggleOnionSkin() {
+    final layer = activeLayer;
+    if (layer == null) {
+      return;
+    }
+    toggleLayerOnionSkin(layer.id);
+  }
+
+  /// The ghost frames to composite at the playhead: every onion-enabled
+  /// VISIBLE drawing layer contributes its plan (unique drawings, peg
+  /// opacities, side tints) in layer-stack order.
   List<CanvasLayerImageRequest> onionSkinCanvasRequests() {
     final settings = onionSkinSettings.value;
-    final layer = activeLayer;
     final cut = activeCutOrNull;
-    if (!settings.enabled ||
-        layer == null ||
-        cut == null ||
-        !layerKindAcceptsBrushInput(layer.kind)) {
+    final enabledIds = onionSkinLayerIds.value;
+    if (cut == null || enabledIds.isEmpty) {
       return const [];
     }
     return [
-      for (final plan in planOnionSkin(
-        layer: layer,
-        frameIndex: _timelineController.currentFrameIndex,
-        settings: settings,
-      ))
-        CanvasLayerImageRequest(
-          frameKey: brushFrameKeyForCut(cut, layer.id, plan.frameId),
-          opacity: plan.opacity,
-          tint: plan.tint,
-        ),
+      for (final layer in cut.layers)
+        if (enabledIds.contains(layer.id) &&
+            layer.isVisible &&
+            layerKindAcceptsBrushInput(layer.kind))
+          for (final plan in planOnionSkin(
+            layer: layer,
+            frameIndex: _timelineController.currentFrameIndex,
+            settings: settings,
+          ))
+            CanvasLayerImageRequest(
+              frameKey: brushFrameKeyForCut(cut, layer.id, plan.frameId),
+              opacity: plan.opacity,
+              tint: plan.tint,
+            ),
     ];
   }
 

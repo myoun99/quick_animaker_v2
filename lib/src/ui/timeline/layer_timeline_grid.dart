@@ -78,6 +78,9 @@ class LayerTimelineGrid extends StatefulWidget {
     this.onLayerOpacityChangeEnd,
     required this.onToggleLayerTimesheet,
     this.layerFxEnabledOf,
+    this.layerOnionSkinEnabledOf,
+    this.onToggleLayerOnionSkin,
+    this.displayedOnionSkinOn = false,
     this.onToggleLayerFx,
     required this.onLayerMarkSelected,
     this.onToggleLayerFillReference,
@@ -191,6 +194,12 @@ class LayerTimelineGrid extends StatefulWidget {
 
   /// The AE-style layer fx switch (session view state); null hides it.
   final bool Function(LayerId layerId)? layerFxEnabledOf;
+
+  /// Per-layer onion skin (UI-R17 #5): the row toggles + the legend cell's
+  /// engaged state. Null hides the onion column entirely.
+  final bool Function(LayerId layerId)? layerOnionSkinEnabledOf;
+  final ValueChanged<LayerId>? onToggleLayerOnionSkin;
+  final bool displayedOnionSkinOn;
   final ValueChanged<LayerId>? onToggleLayerFx;
   final void Function(LayerId layerId, LayerMark mark) onLayerMarkSelected;
 
@@ -879,6 +888,7 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
       // the cached header whenever the displayed rows change.
       displayedLayerIds: () => displayedIds,
       displayedOpacity: widget.masterOpacityValue,
+      displayedOnionSkinOn: widget.displayedOnionSkinOn,
       onExpandAllLanes: widget.onToggleLayerLanes == null
           ? null
           : _expandAllLanes,
@@ -938,6 +948,9 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
       onToggleLayerTimesheet: widget.onToggleLayerTimesheet,
       fxEnabled: widget.layerFxEnabledOf?.call(row.layer.id) ?? true,
       onToggleLayerFx: widget.onToggleLayerFx,
+      onionSkinEnabled:
+          widget.layerOnionSkinEnabledOf?.call(row.layer.id) ?? false,
+      onToggleLayerOnionSkin: widget.onToggleLayerOnionSkin,
       onLayerMarkSelected: widget.onLayerMarkSelected,
       onToggleLayerFillReference: widget.onToggleLayerFillReference,
       onToggleLayerMuted: widget.onToggleLayerMuted,

@@ -55,6 +55,9 @@ class TimelinePanel extends StatefulWidget {
     this.onToggleLayerFillReference,
     required this.onLayerMarkSelected,
     this.layerFxEnabledOf,
+    this.layerOnionSkinEnabledOf,
+    this.onToggleLayerOnionSkin,
+    this.displayedOnionSkinOn = false,
     this.onToggleLayerFx,
     this.onToggleLayerMuted,
     this.commaDrag,
@@ -175,6 +178,12 @@ class TimelinePanel extends StatefulWidget {
   /// The AE-style layer fx switch (session view state), both orientations;
   /// null hides it.
   final bool Function(LayerId layerId)? layerFxEnabledOf;
+
+  /// Per-layer onion skin (UI-R17 #5) — threaded to the horizontal grid's
+  /// rail rows + legend (the xsheet rail keeps its compact control set).
+  final bool Function(LayerId layerId)? layerOnionSkinEnabledOf;
+  final ValueChanged<LayerId>? onToggleLayerOnionSkin;
+  final bool displayedOnionSkinOn;
   final ValueChanged<LayerId>? onToggleLayerFx;
 
   /// SE rows' speaker button (mute), both orientations; null hides it.
@@ -365,6 +374,9 @@ class _TimelinePanelState extends State<TimelinePanel> {
                     onLayerMarkSelected: widget.onLayerMarkSelected,
                     layerFxEnabledOf: widget.layerFxEnabledOf,
                     onToggleLayerFx: widget.onToggleLayerFx,
+                    layerOnionSkinEnabledOf: widget.layerOnionSkinEnabledOf,
+                    onToggleLayerOnionSkin: widget.onToggleLayerOnionSkin,
+                    displayedOnionSkinOn: widget.displayedOnionSkinOn,
                     commaDrag: widget.commaDrag,
                     rangeHooks: widget.rangeHooks,
                     runEdit: widget.runEdit,

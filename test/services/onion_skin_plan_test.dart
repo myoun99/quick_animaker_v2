@@ -25,8 +25,9 @@ void main() {
     },
   );
 
+  // No master enable anymore (UI-R17 #5): application is per-layer at
+  // the session; these settings only shape the ghosts.
   const settings = OnionSkinSettings(
-    enabled: true,
     beforePegs: [
       OnionPeg(enabled: true, opacity: 0.4),
       OnionPeg(enabled: true, opacity: 0.2),
@@ -85,15 +86,7 @@ void main() {
     expect(plans.single.tint, isNull);
   });
 
-  test('disabled master or an empty timeline yields nothing', () {
-    expect(
-      planOnionSkin(
-        layer: layer,
-        frameIndex: 4,
-        settings: settings.copyWith(enabled: false),
-      ),
-      isEmpty,
-    );
+  test('an empty timeline yields nothing', () {
     expect(
       planOnionSkin(
         layer: layer.copyWith(timeline: const {}, frames: const []),

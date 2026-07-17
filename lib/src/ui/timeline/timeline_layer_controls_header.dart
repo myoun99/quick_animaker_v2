@@ -35,6 +35,8 @@ class LayerLegendCallbacks {
     required this.onToggleFillReferenceOnlyFilter,
     required this.onPreviewLayersOpacity,
     required this.onCommitLayersOpacity,
+    this.onToggleOnionSkinForDisplayed,
+    this.onRevealOnionSkinPanel,
   });
 
   final VoidCallback onShowAllLayers;
@@ -66,6 +68,12 @@ class LayerLegendCallbacks {
   onPreviewLayersOpacity;
   final void Function(Set<LayerId> layerIds, double opacity)
   onCommitLayersOpacity;
+
+  /// Onion legend (UI-R17 #5): bulk-apply/clear for every DISPLAYED
+  /// drawing layer, and the "open the onion panel" reveal (already open =
+  /// the panel flashes in place). Null hides the onion legend cell.
+  final VoidCallback? onToggleOnionSkinForDisplayed;
+  final VoidCallback? onRevealOnionSkinPanel;
 }
 
 /// The rail header cell, reborn as the LEGEND (R-toolbar round): the wide
@@ -90,6 +98,7 @@ class TimelineLayerControlsHeader extends StatelessWidget {
     this.allSeMuted = false,
     this.displayedLayerIds,
     this.displayedOpacity = 1.0,
+    this.displayedOnionSkinOn = false,
     this.showRowSolos = true,
   });
 
@@ -119,6 +128,10 @@ class TimelineLayerControlsHeader extends StatelessWidget {
   /// The master bar's resting value: the LAST value committed through the
   /// bar (UI-R6 #2) — not a live average of the rows.
   final double displayedOpacity;
+
+  /// Whether every displayed drawing layer is currently ghosting (the
+  /// onion legend's engaged state, UI-R17 #5).
+  final bool displayedOnionSkinOn;
 
   /// Hosts without a row filter (the storyboard's track-global rail,
   /// UI-R5) pass false: the 'Solo …' flyout entries and the kind-solo
@@ -449,6 +462,43 @@ class TimelineLayerControlsHeader extends StatelessWidget {
                       ),
                     ),
                   ),
+                  // Onion legend (UI-R17 #5): bulk apply/clear over the
+                  // displayed layers + the panel reveal. Hosts without the
+                  // callback (storyboard rail) skip the CELL so their row
+                  // columns stay aligned.
+                  if (legend?.onToggleOnionSkinForDisplayed != null)
+                    cell(
+                      keyValue: 'legend-onion',
+                      width: layerOnionSlotWidth,
+                      tooltip: 'Onion skin column',
+                      entriesBuilder:
+                          legend == null ||
+                              legend.onToggleOnionSkinForDisplayed == null
+                          ? null
+                          : () => [
+                              PanelFlyoutItem(
+                                keyValue: 'legend-onion-toggle-displayed',
+                                label: displayedOnionSkinOn
+                                    ? 'Clear onion on displayed layers'
+                                    : 'Apply onion to displayed layers',
+                                icon: Icons.filter_none,
+                                checked: displayedOnionSkinOn,
+                                onSelected:
+                                    legend.onToggleOnionSkinForDisplayed!,
+                              ),
+                              if (legend.onRevealOnionSkinPanel != null)
+                                PanelFlyoutItem(
+                                  keyValue: 'legend-onion-open-panel',
+                                  label: 'Open onion skin panel',
+                                  icon: Icons.open_in_new,
+                                  onSelected: legend.onRevealOnionSkinPanel!,
+                                ),
+                            ],
+                      child: legendIcon(
+                        Icons.filter_none,
+                        engaged: displayedOnionSkinOn,
+                      ),
+                    ),
                   cell(
                     keyValue: 'legend-eye',
                     width: layerVisibilitySlotWidth,

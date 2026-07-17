@@ -63,6 +63,7 @@ class TimelineTabHost extends StatefulWidget {
     this.audioFilePicker,
     this.cameraViewEnabled,
     this.cameraDimOpacity,
+    this.onRevealOnionSkinPanel,
   });
 
   final EditorSessionManager session;
@@ -110,6 +111,10 @@ class TimelineTabHost extends StatefulWidget {
   /// row's controls on the plain layer flags.
   final ValueNotifier<bool>? cameraViewEnabled;
   final ValueNotifier<double>? cameraDimOpacity;
+
+  /// The workspace's onion-panel reveal (UI-R17 #5): open when hidden,
+  /// flash-in-place when already open. Null hides the legend entry.
+  final VoidCallback? onRevealOnionSkinPanel;
 
   @override
   State<TimelineTabHost> createState() => _TimelineTabHostState();
@@ -818,6 +823,10 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
           // every composite route (session view state).
           layerFxEnabledOf: _session.isLayerFxEnabled,
           onToggleLayerFx: _session.toggleLayerFx,
+          // Per-layer onion skin (UI-R17 #5, TVPaint style).
+          layerOnionSkinEnabledOf: _session.isLayerOnionSkinEnabled,
+          onToggleLayerOnionSkin: _session.toggleLayerOnionSkin,
+          displayedOnionSkinOn: _session.displayedLayersOnionSkinEnabled,
           // Comma edge drags preview live from the session's drag-start
           // snapshot and commit as ONE undo entry on release.
           commaDrag: TimelineCommaDragCallbacks(
@@ -905,6 +914,11 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
             onShowAllLayers: () => _session.setAllLayersVisibility(true),
             onHideAllLayers: () => _session.setAllLayersVisibility(false),
             onToggleVisibilitySolo: _session.toggleLayerVisibilitySolo,
+            // Onion legend (UI-R17 #5): displayed-layer bulk + the panel
+            // reveal (already open = flash-in-place).
+            onToggleOnionSkinForDisplayed:
+                _session.toggleOnionSkinForDisplayedLayers,
+            onRevealOnionSkinPanel: widget.onRevealOnionSkinPanel,
             onSheetAllOn: () => _session.setAllLayersOnTimesheet(true),
             onSheetAllOff: () => _session.setAllLayersOnTimesheet(false),
             onClearAllMarks: _session.clearAllLayerMarks,
