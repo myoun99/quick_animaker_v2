@@ -13,6 +13,27 @@ void main() {
     );
   });
 
+  test('the pressure curve: gamma 1 is identity, soft lifts, hard lowers, '
+      'and it round-trips (PEN-3)', () {
+    expect(const AppInputSettings().pressureCurveGamma, 1.0);
+    expect(AppInput.applyPressureCurve(0.5), 0.5, reason: 'linear default');
+
+    AppInput.settings.value = const AppInputSettings(pressureCurveGamma: 0.5);
+    expect(AppInput.applyPressureCurve(0.25), closeTo(0.5, 1e-9));
+
+    AppInput.settings.value = const AppInputSettings(pressureCurveGamma: 2.0);
+    expect(AppInput.applyPressureCurve(0.5), closeTo(0.25, 1e-9));
+    expect(AppInput.applyPressureCurve(1.2), 1.0, reason: 'clamped input');
+
+    const curved = AppInputSettings(pressureCurveGamma: 1.75);
+    expect(AppInputSettings.fromJson(curved.toJson()), curved);
+    expect(
+      AppInputSettings.fromJson(const {}).pressureCurveGamma,
+      1.0,
+      reason: 'old settings files stay linear',
+    );
+  });
+
   test('tabletService json round-trips and defaults to standard', () {
     expect(const AppInputSettings().tabletService, TabletService.standard);
     // Old settings files (no field) stay standard.
