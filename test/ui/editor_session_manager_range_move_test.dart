@@ -1,9 +1,12 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:quick_animaker_v2/src/controllers/default_project_helpers.dart';
 import 'package:quick_animaker_v2/src/models/camera_instruction.dart';
+import 'package:quick_animaker_v2/src/models/canvas_point.dart';
 import 'package:quick_animaker_v2/src/models/layer.dart';
 import 'package:quick_animaker_v2/src/models/layer_kind.dart';
+import 'package:quick_animaker_v2/src/models/property_track.dart';
 import 'package:quick_animaker_v2/src/models/timeline_repeat.dart';
+import 'package:quick_animaker_v2/src/models/transform_track.dart';
 import 'package:quick_animaker_v2/src/ui/editor_session_manager.dart';
 import 'package:quick_animaker_v2/src/ui/timeline/timeline_cell_exposure_state.dart';
 import 'package:quick_animaker_v2/src/ui/timeline/timeline_drag_preview.dart';
@@ -318,6 +321,113 @@ void main() {
           .instructions
           .containsKey(1),
       isTrue,
+    );
+  });
+
+  test('P3c (#13): the layer\'s own transform keys RIDE the range move '
+      'with the blocks — and a key-only span moves keys alone', () {
+    final (s, a, _) = fixture();
+    // Key the position lane at frames 0 and 3 (where the blocks sit).
+    s.repository.replaceLayer(
+      layer: a.copyWith(
+        transformTrack: TransformTrack.properties(
+          anchorPoint: PropertyTrack.empty(),
+          position: PropertyTrack<CanvasPoint>()
+              .withKey(0, CanvasPoint(x: 1, y: 1))
+              .withKey(3, CanvasPoint(x: 2, y: 2)),
+          scale: PropertyTrack.empty(),
+          rotation: PropertyTrack.empty(),
+          opacity: PropertyTrack.empty(),
+        ),
+      ),
+    );
+
+    // Blocks + keys slide together (+2), ONE undo restores both.
+    s.updateFrameRangeSelectionDrag(
+      layerId: a.id,
+      anchorIndex: 0,
+      headIndex: 3,
+    );
+    expect(s.beginFrameRangeMoveDrag(), isTrue);
+    s.updateFrameRangeMoveDrag(frameDelta: 2);
+    final preview = s.dragPreview.value! as BlockMoveDragPreview;
+    expect(
+      preview.previewLayers[a.id]!.transformTrack.position.keys.keys.toSet(),
+      {2, 5},
+      reason: 'the preview layer carries the shifted track',
+    );
+    s.endFrameRangeMoveDrag();
+    var moved = s.layers.firstWhere((l) => l.id == a.id);
+    expect(moved.timeline.containsKey(2), isTrue);
+    expect(moved.transformTrack.position.keys.keys.toSet(), {2, 5});
+    s.undo();
+    moved = s.layers.firstWhere((l) => l.id == a.id);
+    expect(moved.timeline.containsKey(0), isTrue);
+    expect(moved.transformTrack.position.keys.keys.toSet(), {0, 3});
+
+    // A span over EMPTY cells that still holds a transform key moves the
+    // key alone (no blocks required). Key a far frame first.
+    s.repository.replaceLayer(
+      layer: s.layers
+          .firstWhere((l) => l.id == a.id)
+          .copyWith(
+            transformTrack: TransformTrack.properties(
+              anchorPoint: PropertyTrack.empty(),
+              position: PropertyTrack<CanvasPoint>().withKey(
+                8,
+                CanvasPoint(x: 3, y: 3),
+              ),
+              scale: PropertyTrack.empty(),
+              rotation: PropertyTrack.empty(),
+              opacity: PropertyTrack.empty(),
+            ),
+          ),
+    );
+    s.updateFrameRangeSelectionDrag(
+      layerId: a.id,
+      anchorIndex: 8,
+      headIndex: 8,
+    );
+    expect(s.beginFrameRangeMoveDrag(), isTrue);
+    s.updateFrameRangeMoveDrag(frameDelta: 3);
+    s.endFrameRangeMoveDrag();
+    expect(
+      s.layers
+          .firstWhere((l) => l.id == a.id)
+          .transformTrack
+          .position
+          .keys
+          .keys
+          .toSet(),
+      {11},
+    );
+  });
+
+  test('P3b-3 (#2): cross-row drops land within the SAME SECTION now — '
+      'animation ↔ storyboard/art interchange', () {
+    final (s, a, _) = fixture();
+    s.addLayerOfKind(LayerKind.storyboard);
+    final storyboard = s.activeLayer!;
+    s.selectLayer(a.id);
+
+    s.updateFrameRangeSelectionDrag(
+      layerId: a.id,
+      anchorIndex: 0,
+      headIndex: 0,
+    );
+    expect(s.beginFrameRangeMoveDrag(), isTrue);
+    s.updateFrameRangeMoveDrag(frameDelta: 0, targetLayerId: storyboard.id);
+    s.endFrameRangeMoveDrag();
+
+    final landed = s.layers.firstWhere((l) => l.id == storyboard.id);
+    expect(
+      landed.timeline.containsKey(0),
+      isTrue,
+      reason: 'the block landed on the storyboard-kind row',
+    );
+    expect(
+      s.layers.firstWhere((l) => l.id == a.id).timeline.containsKey(0),
+      isFalse,
     );
   });
 

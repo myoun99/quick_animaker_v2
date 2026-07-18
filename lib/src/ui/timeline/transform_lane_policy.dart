@@ -18,11 +18,20 @@ const PropertyLaneRow transformGroupHeaderLane = PropertyLaneRow(
 
 /// [transformGroupHeaderLane] carrying the collapse state (the header's
 /// chevron; tapping the header toggles it — AE group collapse).
-PropertyLaneRow transformGroupHeader({required bool expanded}) {
+///
+/// [keyedFrames] is the member lanes' KEY UNION (UI-R20 #13, the camera
+/// row's summary pattern): the header band shows every keyed frame at a
+/// glance — display-only markers (a union diamond has no single lane to
+/// edit); the range move shifts the keys through the LAYER row's
+/// selection.
+PropertyLaneRow transformGroupHeader({
+  required bool expanded,
+  Set<int> keyedFrames = const {},
+}) {
   return PropertyLaneRow(
     laneId: transformGroupHeaderLane.laneId,
     label: transformGroupHeaderLane.label,
-    keyedFrames: const {},
+    keyedFrames: keyedFrames,
     showsKeyNavigator: false,
     isGroupHeader: true,
     groupExpanded: expanded,
