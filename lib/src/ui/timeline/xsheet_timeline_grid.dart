@@ -1897,6 +1897,10 @@ class _XSheetFrameCellsColumn extends StatelessWidget {
           // mounts it (UI-R20 #2 — see the horizontal grid).
           if (rangeGesture != null)
             TimelineFrameRangeGestureLayer(
+              // The SLOT key (R12-③ rule, UI-R22 #1) — see the
+              // horizontal grid: preview-driven overlay churn must never
+              // remount this layer mid-drag.
+              key: ValueKey<String>('xsheet-range-gesture-slot-${layer.id}'),
               layer: layer,
               frameStartIndex: frameStartIndex,
               leadingFrameSpacerWidth: leadingFrameSpacerHeight,

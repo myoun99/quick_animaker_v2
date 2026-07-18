@@ -313,6 +313,11 @@ class TimelineFrameCellsRow extends StatelessWidget {
         // kind-gated at the session seams).
         if (rangeGesture != null)
           TimelineFrameRangeGestureLayer(
+            // The SLOT key (R12-③ rule, UI-R22 #1): mid-drag previews
+            // add/remove sibling overlays in this Stack — without a key
+            // the positional rematch REMOUNTS this layer and its dispose
+            // commits the move under the pointer.
+            key: ValueKey<String>('timeline-range-gesture-slot-${layer.id}'),
             layer: layer,
             frameStartIndex: frameStartIndex,
             leadingFrameSpacerWidth: leadingFrameSpacerWidth,
