@@ -329,8 +329,9 @@ void main() {
     );
   });
 
-  test('P3c (#13): the layer\'s own transform keys RIDE the range move '
-      'with the blocks — and a key-only span moves keys alone', () {
+  test('UI-R23 #3: a frame-range move does NOT carry the layer\'s own '
+      'transform keys (frame selection ⊥ transform keys), and a key-only '
+      'span has nothing to move', () {
     final (s, a, _) = fixture();
     // Key the position lane at frames 0 and 3 (where the blocks sit).
     s.repository.replaceLayer(
@@ -347,7 +348,7 @@ void main() {
       ),
     );
 
-    // Blocks + keys slide together (+2), ONE undo restores both.
+    // The blocks slide (+2) but the transform keys STAY put.
     s.updateFrameRangeSelectionDrag(
       layerId: a.id,
       anchorIndex: 0,
@@ -358,20 +359,16 @@ void main() {
     final preview = s.dragPreview.value! as BlockMoveDragPreview;
     expect(
       preview.previewLayers[a.id]!.transformTrack.position.keys.keys.toSet(),
-      {2, 5},
-      reason: 'the preview layer carries the shifted track',
+      {0, 3},
+      reason: 'the transform keys do NOT ride the frame move',
     );
     s.endFrameRangeMoveDrag();
-    var moved = s.layers.firstWhere((l) => l.id == a.id);
+    final moved = s.layers.firstWhere((l) => l.id == a.id);
     expect(moved.timeline.containsKey(2), isTrue);
-    expect(moved.transformTrack.position.keys.keys.toSet(), {2, 5});
-    s.undo();
-    moved = s.layers.firstWhere((l) => l.id == a.id);
-    expect(moved.timeline.containsKey(0), isTrue);
     expect(moved.transformTrack.position.keys.keys.toSet(), {0, 3});
 
-    // A span over EMPTY cells that still holds a transform key moves the
-    // key alone (no blocks required). Key a far frame first.
+    // A span over EMPTY cells holding ONLY a transform key can't move —
+    // frame selection no longer picks transform keys up.
     s.repository.replaceLayer(
       layer: s.layers
           .firstWhere((l) => l.id == a.id)
@@ -393,9 +390,11 @@ void main() {
       anchorIndex: 8,
       headIndex: 8,
     );
-    expect(s.beginFrameRangeMoveDrag(), isTrue);
-    s.updateFrameRangeMoveDrag(frameDelta: 3);
-    s.endFrameRangeMoveDrag();
+    expect(
+      s.beginFrameRangeMoveDrag(),
+      isFalse,
+      reason: 'a key-only span has no blocks to move',
+    );
     expect(
       s.layers
           .firstWhere((l) => l.id == a.id)
@@ -404,7 +403,7 @@ void main() {
           .keys
           .keys
           .toSet(),
-      {11},
+      {8},
     );
   });
 
