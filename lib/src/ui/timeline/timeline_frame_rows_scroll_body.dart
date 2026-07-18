@@ -319,6 +319,7 @@ class _TimelineFrameRowsScrollBodyState
             trailingFrameSpacerWidth: widget.trailingFrameSpacerWidth,
             metrics: widget.metrics,
             laneEdit: widget.laneEdit,
+            rangeGesture: widget.rangeGesture,
           );
   }
 
