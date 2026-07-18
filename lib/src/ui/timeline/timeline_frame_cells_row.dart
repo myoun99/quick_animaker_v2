@@ -187,7 +187,7 @@ class TimelineFrameCellsRow extends StatelessWidget {
                 : (frameIndex) {
                     final selection = rangeGesture.selection.value;
                     return selection != null &&
-                        selection.layerId == layer.id &&
+                        selection.coversLayer(layer.id) &&
                         selection.contains(frameIndex);
                   },
           )
@@ -403,6 +403,14 @@ class TimelineFrameCellsRow extends StatelessWidget {
             active: active,
             outsidePlaybackRange: frameIndex >= playbackFrameCount,
             ghost: timelineIndexIsGhost(layer, frameIndex),
+            // A press inside the selection starts a MOVE, never a seek
+            // (UI-R22 #2 — the painter rows' rule, unified).
+            suppressPointerDownSelect: (frame) {
+              final selection = rangeGesture?.selection.value;
+              return selection != null &&
+                  selection.coversLayer(layer.id) &&
+                  selection.contains(frame);
+            },
             exposureState: stateAt(frameIndex),
             exposureBlockSegment: calculateTimelineExposureBlockVisualSegment(
               previous: frameIndex == 0 ? null : stateAt(frameIndex - 1),

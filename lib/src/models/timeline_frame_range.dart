@@ -77,14 +77,36 @@ TimelineFrameRangeSelection? snapFrameRangeToBlocks({
     return null;
   }
 
-  // Expand both edges outward to their covering blocks — ghost or real.
-  final startBlock = coveringDrawingBlockAt(layer.timeline, start);
-  if (startBlock != null) {
-    start = math.min(start, startBlock.startIndex);
-  }
-  final endBlock = coveringDrawingBlockAt(layer.timeline, endExclusive - 1);
-  if (endBlock != null) {
-    endExclusive = math.max(endExclusive, endBlock.endIndexExclusive);
+  // Expand outward until stable: covering blocks (ghost or real) at the
+  // edges, and INSTRUCTION events anywhere in the range (UI-R22 #4 —
+  // covering one cell of a CAM event selects its whole span, the block
+  // rule). Each pass only grows the range, so the loop terminates.
+  var changed = true;
+  while (changed) {
+    changed = false;
+    final startBlock = coveringDrawingBlockAt(layer.timeline, start);
+    if (startBlock != null && startBlock.startIndex < start) {
+      start = startBlock.startIndex;
+      changed = true;
+    }
+    final endBlock = coveringDrawingBlockAt(layer.timeline, endExclusive - 1);
+    if (endBlock != null && endBlock.endIndexExclusive > endExclusive) {
+      endExclusive = endBlock.endIndexExclusive;
+      changed = true;
+    }
+    for (final entry in layer.instructions.entries) {
+      final eventEnd = entry.key + entry.value.length;
+      if (entry.key < endExclusive && eventEnd > start) {
+        if (entry.key < start) {
+          start = entry.key;
+          changed = true;
+        }
+        if (eventEnd > endExclusive) {
+          endExclusive = eventEnd;
+          changed = true;
+        }
+      }
+    }
   }
 
   return TimelineFrameRangeSelection(
