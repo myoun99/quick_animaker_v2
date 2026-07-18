@@ -547,9 +547,18 @@ class TimelineRowCellsPainter extends CustomPainter {
         return;
       }
       final glyph = _glyphPainter(model.glyph, glyphStyleFor(model));
+      // Snap the draw to the PHYSICAL pixel grid (UI-R20 #6): the tile
+      // path blits glyphs at integer physical positions, so the classic
+      // pass must land on the same grid — otherwise the classic↔tile
+      // swap on row activation reads as the text thinning/thickening.
+      final raw = rect.center - Offset(glyph.width / 2, glyph.height / 2);
+      final dpr = devicePixelRatio <= 0 ? 1.0 : devicePixelRatio;
       glyph.paint(
         canvas,
-        rect.center - Offset(glyph.width / 2, glyph.height / 2),
+        Offset(
+          (raw.dx * dpr).roundToDouble() / dpr,
+          (raw.dy * dpr).roundToDouble() / dpr,
+        ),
       );
     }
   }

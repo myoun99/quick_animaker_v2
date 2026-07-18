@@ -73,14 +73,15 @@ TimelineCellStyleColors timelineCellStyleColors({
   };
   // UI-R18 #8: the GRID OVERLAY owns every plain per-cell line now —
   // uncovered cells draw no border of their own, and the paper blocks'
-  // internal (held) seams drop to the shared faint alpha so only the
-  // block START edge keeps definition.
+  // seams (block START included, UI-R20 #7: the dark head silhouette is
+  // gone) all sit on the shared faint alpha.
   final exposureBorderColor = switch (exposureState) {
     TimelineCellExposureState.uncovered ||
     TimelineCellExposureState.markUncovered => Colors.transparent,
-    TimelineCellExposureState.drawingStart => timelineDrawingStartBorderColor,
-    TimelineCellExposureState.held || TimelineCellExposureState.markHeld =>
-      colorScheme.outlineVariant.withValues(alpha: timelineBaseGridAlpha),
+    TimelineCellExposureState.drawingStart ||
+    TimelineCellExposureState.held ||
+    TimelineCellExposureState.markHeld => colorScheme.outlineVariant
+        .withValues(alpha: timelineBaseGridAlpha),
   };
 
   if (!selected) {
