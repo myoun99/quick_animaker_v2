@@ -140,12 +140,18 @@ class PropertyLaneEditCallbacks {
 /// predicate (R2 row filter, a VIEW state); [activeLayerId] is exempt so a
 /// filter can never hide the layer you're editing. [fxEnabledOf] resolves
 /// the session-level fx state the filter's fx-only facet reads.
+///
+/// [collapsedAttachBaseIds] folds ATTACH GROUPS (UI-R20 #9): attach rows
+/// whose base is listed contribute no rows — same VIEW-state contract as
+/// the hidden sections, and the active layer is exempt here too (folding
+/// the group never hides the attach row you're working on).
 List<TimelineDisplayRow> buildTimelineDisplayRows({
   required List<Layer> layers,
   required Set<LayerId> expandedLayerIds,
   required List<PropertyLaneRow> Function(Layer layer) lanesForLayer,
   Set<TimelineSection> hiddenSections = const {},
   TimelineRowFilter rowFilter = TimelineRowFilter.none,
+  Set<LayerId> collapsedAttachBaseIds = const {},
   LayerId? activeLayerId,
   bool Function(LayerId layerId)? fxEnabledOf,
 }) {
@@ -153,6 +159,12 @@ List<TimelineDisplayRow> buildTimelineDisplayRows({
   for (var index = 0; index < layers.length; index += 1) {
     final layer = layers[index];
     if (hiddenSections.contains(timelineSectionForLayerKind(layer.kind))) {
+      continue;
+    }
+    final attachBaseId = layer.attachedToLayerId;
+    if (attachBaseId != null &&
+        layer.id != activeLayerId &&
+        collapsedAttachBaseIds.contains(attachBaseId)) {
       continue;
     }
     if (rowFilter.isActive &&

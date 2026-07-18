@@ -110,6 +110,7 @@ class XSheetTimelineGrid extends StatefulWidget {
     this.onToggleLaneGroup,
     this.hiddenSections = const {},
     this.rowFilter = TimelineRowFilter.none,
+    this.collapsedAttachBaseIds = const {},
     this.dragPreview,
     this.cutEndDrag,
   });
@@ -255,6 +256,11 @@ class XSheetTimelineGrid extends StatefulWidget {
   /// predicate; the active layer is exempt. Shared with the horizontal
   /// timeline (Axis rule).
   final TimelineRowFilter rowFilter;
+
+  /// Bases whose attach group is twirled shut (UI-R20 #9): their attach
+  /// columns drop — the shared view state; the fold toggle lives on the
+  /// horizontal rail.
+  final Set<LayerId> collapsedAttachBaseIds;
 
   /// TRANSPOSED metrics: frameCellWidth = frame row height, layerRowHeight
   /// = layer column width, layerControlsWidth = frame-number rail width.
@@ -714,6 +720,7 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
           lanesForLayer: _lanesFor,
           hiddenSections: widget.hiddenSections,
           rowFilter: widget.rowFilter,
+          collapsedAttachBaseIds: widget.collapsedAttachBaseIds,
           activeLayerId: widget.activeLayerId,
           fxEnabledOf: widget.layerFxEnabledOf,
         );

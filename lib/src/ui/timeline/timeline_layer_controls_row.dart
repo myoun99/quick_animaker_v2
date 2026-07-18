@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
 
+import '../../models/attached_placement.dart';
 import '../../models/layer.dart';
 import '../../models/layer_kind.dart';
 import '../../models/layer_id.dart';
@@ -26,6 +27,9 @@ class TimelineLayerControlsRow extends StatelessWidget {
     this.hasLanes = false,
     this.lanesExpanded = false,
     this.onToggleLanes,
+    this.hasAttachGroup = false,
+    this.attachGroupExpanded = true,
+    this.onToggleAttachGroup,
     this.fxEnabled = true,
     this.onToggleLayerFx,
     this.onionSkinEnabled = false,
@@ -62,6 +66,13 @@ class TimelineLayerControlsRow extends StatelessWidget {
   final bool hasLanes;
   final bool lanesExpanded;
   final ValueChanged<LayerId>? onToggleLanes;
+
+  /// Attach-group twirl (UI-R20 #9): bases carrying attach rows show a
+  /// fold chevron after their name — visible only when the group exists.
+  /// Null [onToggleAttachGroup] hides the twirl UI entirely.
+  final bool hasAttachGroup;
+  final bool attachGroupExpanded;
+  final ValueChanged<LayerId>? onToggleAttachGroup;
 
   /// The AE-style fx switch (session view state): bypasses the layer's
   /// transform/FX on every composite route while off. Null hides it.
@@ -166,33 +177,50 @@ class TimelineLayerControlsRow extends StatelessWidget {
                     alignment: Alignment.centerLeft,
                     child: Row(
                       children: [
-                        // Attach rows (W5) indent under their base with a
-                        // branch glyph — the row reads as part of the
-                        // base's group.
+                        // Attach rows (UI-R20 #10): the placement arrow IS
+                        // the type mark — indented under the base, bending
+                        // up-right when the row attaches above, down-right
+                        // below. No kind icon (the base carries the kind).
                         if (layer.attachedToLayerId != null)
                           Padding(
-                            padding: const EdgeInsets.only(left: 6, right: 2),
-                            child: Icon(
-                              Icons.subdirectory_arrow_right,
-                              key: ValueKey<String>(
-                                'timeline-layer-attach-indent-${layer.id}',
+                            padding: const EdgeInsets.only(left: 6, right: 4),
+                            child: Semantics(
+                              label:
+                                  layer.attachedPlacement ==
+                                      AttachedPlacement.above
+                                  ? 'Attach layer (above)'
+                                  : 'Attach layer (below)',
+                              container: true,
+                              child: ExcludeSemantics(
+                                child: Transform.flip(
+                                  flipY:
+                                      layer.attachedPlacement ==
+                                      AttachedPlacement.above,
+                                  child: Icon(
+                                    Icons.subdirectory_arrow_right,
+                                    key: ValueKey<String>(
+                                      'timeline-layer-attach-arrow-${layer.id}',
+                                    ),
+                                    size: 16,
+                                  ),
+                                ),
                               ),
-                              size: 14,
+                            ),
+                          )
+                        else
+                          Semantics(
+                            label: _semanticLabelForLayerKind(layer.kind),
+                            container: true,
+                            child: ExcludeSemantics(
+                              child: Icon(
+                                layerKindIcon(layer.kind),
+                                key: ValueKey<String>(
+                                  'timeline-layer-kind-icon-${layer.id}',
+                                ),
+                                size: 18,
+                              ),
                             ),
                           ),
-                        Semantics(
-                          label: _semanticLabelForLayerKind(layer.kind),
-                          container: true,
-                          child: ExcludeSemantics(
-                            child: Icon(
-                              layerKindIcon(layer.kind),
-                              key: ValueKey<String>(
-                                'timeline-layer-kind-icon-${layer.id}',
-                              ),
-                              size: 18,
-                            ),
-                          ),
-                        ),
                         const SizedBox(width: 6),
                         // Selection reads by COLOR only (user rule): no
                         // bold flip, so the text never reflows on select.
@@ -202,6 +230,26 @@ class TimelineLayerControlsRow extends StatelessWidget {
                             overflow: TextOverflow.ellipsis,
                           ),
                         ),
+                        // The attach-group twirl (UI-R20 #9), shown only
+                        // when the group exists — same chevron pair as the
+                        // lane twirl.
+                        if (hasAttachGroup && onToggleAttachGroup != null)
+                          InkWell(
+                            key: ValueKey<String>(
+                              'timeline-attach-twirl-${layer.id}',
+                            ),
+                            onTap: () => onToggleAttachGroup!(layer.id),
+                            child: SizedBox(
+                              width: layerLaneToggleSlotWidth,
+                              height: 24,
+                              child: Icon(
+                                attachGroupExpanded
+                                    ? Icons.arrow_drop_down
+                                    : Icons.arrow_right,
+                                size: 16,
+                              ),
+                            ),
+                          ),
                       ],
                     ),
                   ),

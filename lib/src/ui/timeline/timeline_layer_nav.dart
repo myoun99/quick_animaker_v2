@@ -8,10 +8,12 @@ import 'timeline_section_policy.dart';
 /// The DISPLAYED-layer step target for the ↑/↓ layer nav (UI-R20 #14,
 /// TVP-style): walks the rows exactly as the timeline stacks them — the
 /// horizontal display order (camera section on top, drawing cels at the
-/// bottom), with hidden sections and the row filter dropping layers here
-/// exactly like they drop rows there. A filtered view navigates only
-/// what's on screen; on the X-sheet the same walk reads right-to-left
-/// (its columns are the row stack rotated).
+/// bottom), with hidden sections, the row filter and folded attach
+/// groups dropping layers here exactly like they drop rows there (an
+/// open attach group walks, a folded one skips — #14's attach clause). A
+/// filtered view navigates only what's on screen; on the X-sheet the
+/// same walk reads right-to-left (its columns are the row stack
+/// rotated).
 ///
 /// [direction] -1 = the row visually ABOVE (screen-up = earlier in
 /// horizontal display order, the moveSelectionToFilteredLayer rule).
@@ -25,6 +27,7 @@ LayerId? adjacentDisplayedLayerId({
   required int direction,
   Set<TimelineSection> hiddenSections = const {},
   TimelineRowFilter rowFilter = TimelineRowFilter.none,
+  Set<LayerId> collapsedAttachBaseIds = const {},
   bool Function(LayerId layerId)? fxEnabledOf,
 }) {
   // Layer rows only — property lanes aren't selectable layers, so the nav
@@ -35,6 +38,7 @@ LayerId? adjacentDisplayedLayerId({
     lanesForLayer: (_) => const [],
     hiddenSections: hiddenSections,
     rowFilter: rowFilter,
+    collapsedAttachBaseIds: collapsedAttachBaseIds,
     activeLayerId: activeLayerId,
     fxEnabledOf: fxEnabledOf,
   );

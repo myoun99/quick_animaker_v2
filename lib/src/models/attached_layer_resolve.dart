@@ -7,6 +7,7 @@ library;
 
 import 'dart:collection';
 
+import 'attached_placement.dart';
 import 'frame.dart';
 import 'frame_id.dart';
 import 'layer.dart';
@@ -94,6 +95,12 @@ Frame? resolveAttachedFrameAt({
 /// linked base cel replaced by the linked attach cel (unlinked blocks and
 /// orphan links show as empty cells). Read-only display material — the
 /// attach layer's stored timeline stays empty.
+///
+/// Every entry is a GHOST exposure (UI-R20 #8): the row reads as a mirror
+/// of the base — text-only cells, no block chrome, and the timing
+/// affordances stand down like on any derived exposure. Drawing and
+/// playback still treat ghosts as ordinary exposures, so the attach cels
+/// keep editing and compositing through them.
 SplayTreeMap<int, TimelineExposure> attachedDisplayTimeline({
   required Layer attached,
   required Layer base,
@@ -110,7 +117,11 @@ SplayTreeMap<int, TimelineExposure> attachedDisplayTimeline({
     if (linked == null || !ownFrameIds.contains(linked)) {
       continue;
     }
-    timeline[entry.key] = TimelineExposure.drawing(linked, length: length);
+    timeline[entry.key] = TimelineExposure.drawing(
+      linked,
+      length: length,
+      ghost: true,
+    );
   }
   return timeline;
 }
@@ -140,9 +151,20 @@ int attachedGroupEndIndex(LayerId baseId, List<Layer> layers) {
   return end;
 }
 
-/// A fresh attach-row name: `base +1`, `base +2`, … (numbering over the
-/// base's existing attach rows).
-String nextAttachedLayerName(Layer base, List<Layer> layers) {
-  final existing = attachedLayersOf(base.id, layers).length;
-  return '${base.name} +${existing + 1}';
+/// A fresh attach-row name, signed by placement (UI-R20 #11, the
+/// mathematical read): rows stacking ABOVE the base are `+1`, `+2`, …,
+/// rows below are `-1`, `-2`, … — each side numbers its own count.
+String nextAttachedLayerName(
+  Layer base,
+  List<Layer> layers,
+  AttachedPlacement placement,
+) {
+  var existing = 0;
+  for (final layer in attachedLayersOf(base.id, layers)) {
+    if (layer.attachedPlacement == placement) {
+      existing += 1;
+    }
+  }
+  final sign = placement == AttachedPlacement.above ? '+' : '-';
+  return '$sign${existing + 1}';
 }

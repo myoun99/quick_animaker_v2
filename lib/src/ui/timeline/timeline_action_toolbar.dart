@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../models/attached_placement.dart';
 import '../../models/layer_kind.dart';
 import '../cut_command_group.dart';
 import '../editor_session_manager.dart';
@@ -159,6 +160,23 @@ class TimelineActionToolbar extends StatelessWidget {
         keyValue: 'add-layer-kind-instruction',
         label: 'Instruction',
         onSelected: () => session.addLayerOfKind(LayerKind.instruction),
+      ),
+      // Attach layers (W5, UI-R20 #8): the same entrance the Layer menu
+      // has — own cels riding the active layer's timing and FX.
+      const PanelFlyoutDivider(),
+      PanelFlyoutItem(
+        keyValue: 'add-layer-attach-above',
+        label: 'Attach layer above',
+        icon: Icons.north_east,
+        enabled: session.canAddAttachedLayerToActive,
+        onSelected: () => session.addAttachedLayer(AttachedPlacement.above),
+      ),
+      PanelFlyoutItem(
+        keyValue: 'add-layer-attach-below',
+        label: 'Attach layer below',
+        icon: Icons.south_east,
+        enabled: session.canAddAttachedLayerToActive,
+        onSelected: () => session.addAttachedLayer(AttachedPlacement.below),
       ),
     ];
   }

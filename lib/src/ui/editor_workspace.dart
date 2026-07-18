@@ -327,6 +327,21 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
   final ValueNotifier<Set<TimelineSection>> _hiddenTimelineSections =
       ValueNotifier(const <TimelineSection>{});
 
+  /// Bases whose ATTACH GROUP is twirled shut (UI-R20 #9; view state —
+  /// survives tab switches, session-only). Default expanded: a fresh
+  /// attach layer must be visible the moment it's made.
+  final ValueNotifier<Set<LayerId>> _collapsedAttachBaseIds = ValueNotifier(
+    const <LayerId>{},
+  );
+
+  void _toggleAttachGroup(LayerId baseId) {
+    final next = Set<LayerId>.of(_collapsedAttachBaseIds.value);
+    if (!next.remove(baseId)) {
+      next.add(baseId);
+    }
+    _collapsedAttachBaseIds.value = next;
+  }
+
   void _toggleTimelineSection(TimelineSection section) {
     final next = Set<TimelineSection>.of(_hiddenTimelineSections.value);
     if (!next.remove(section)) {
@@ -423,6 +438,7 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
       direction: direction,
       hiddenSections: _hiddenTimelineSections.value,
       rowFilter: _timelineRowFilter.value,
+      collapsedAttachBaseIds: _collapsedAttachBaseIds.value,
       fxEnabledOf: session.isLayerFxEnabled,
     );
     if (target != null) {
@@ -568,6 +584,7 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
     _expandedLaneLayerIds.dispose();
     _expandedTransformGroupLayerIds.dispose();
     _hiddenTimelineSections.dispose();
+    _collapsedAttachBaseIds.dispose();
     _timelineRowFilter.dispose();
     _panelFlash.dispose();
     _timesheetContinuous.dispose();
@@ -934,6 +951,7 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
               _expandedLaneLayerIds,
               _expandedTransformGroupLayerIds,
               _hiddenTimelineSections,
+              _collapsedAttachBaseIds,
               _timelineRowFilter,
             ]),
             builder: (context) => TimelineTabHost(
@@ -960,6 +978,8 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
               onToggleSection: _toggleTimelineSection,
               rowFilter: _timelineRowFilter.value,
               onSetRowFilter: _setTimelineRowFilter,
+              collapsedAttachBaseIds: _collapsedAttachBaseIds.value,
+              onToggleAttachGroup: _toggleAttachGroup,
               // Unified layer controls: the camera row's visibility/opacity
               // drive the same camera-view state as the canvas overlay and
               // the camera panel.

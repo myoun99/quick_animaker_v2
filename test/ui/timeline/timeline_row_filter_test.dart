@@ -151,5 +151,40 @@ void main() {
       );
       expect(rows.map((r) => r.layer.id.value), ['a', 'b', 'c']);
     });
+
+    test('collapsedAttachBaseIds folds a base\'s attach rows out — the '
+        'active attach row excepted (UI-R20 #9)', () {
+      final attachRows = [
+        _layer('base'),
+        Layer(
+          id: const LayerId('up1'),
+          name: '+1',
+          frames: const [],
+          timeline: const {},
+          attachedToLayerId: const LayerId('base'),
+        ),
+        _layer('other'),
+      ];
+      final folded = buildTimelineDisplayRows(
+        layers: attachRows,
+        expandedLayerIds: const {},
+        lanesForLayer: (_) => const [],
+        collapsedAttachBaseIds: {const LayerId('base')},
+      );
+      expect(folded.map((r) => r.layer.id.value), ['base', 'other']);
+
+      final activeExempt = buildTimelineDisplayRows(
+        layers: attachRows,
+        expandedLayerIds: const {},
+        lanesForLayer: (_) => const [],
+        collapsedAttachBaseIds: {const LayerId('base')},
+        activeLayerId: const LayerId('up1'),
+      );
+      expect(activeExempt.map((r) => r.layer.id.value), [
+        'base',
+        'up1',
+        'other',
+      ]);
+    });
   });
 }

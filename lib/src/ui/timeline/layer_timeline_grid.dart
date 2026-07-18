@@ -103,6 +103,8 @@ class LayerTimelineGrid extends StatefulWidget {
     this.sectionRail,
     this.rowFilter = TimelineRowFilter.none,
     this.onSetRowFilter,
+    this.collapsedAttachBaseIds = const {},
+    this.onToggleAttachGroup,
     this.visibilitySoloEnabled = false,
     this.dragPreview,
     this.opacityDragPreview,
@@ -274,6 +276,13 @@ class LayerTimelineGrid extends StatefulWidget {
   /// Applies a row-filter edit (legend solo toggles).
   final ValueChanged<TimelineRowFilter>? onSetRowFilter;
 
+  /// Bases whose attach group is twirled shut (UI-R20 #9): their attach
+  /// rows contribute no display rows; the base row's chevron reflects it.
+  final Set<LayerId> collapsedAttachBaseIds;
+
+  /// The base-row chevron's toggle; null hides the twirl UI.
+  final ValueChanged<LayerId>? onToggleAttachGroup;
+
   /// Whether the visibility solo mode is engaged (legend eye state color).
   final bool visibilitySoloEnabled;
 
@@ -297,6 +306,8 @@ typedef _RailRowMemoInputs = ({
   bool active,
   bool hasLanes,
   bool lanesExpanded,
+  bool hasAttachGroup,
+  bool attachGroupExpanded,
   bool fxEnabled,
   bool onionSkinEnabled,
   double layerRowHeight,
@@ -834,6 +845,10 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
       active: row.layer.id == widget.activeLayerId,
       hasLanes: _lanesFor(row.layer).isNotEmpty,
       lanesExpanded: widget.expandedLaneLayerIds.contains(row.layer.id),
+      hasAttachGroup: _hasAttachGroup(row.layer),
+      attachGroupExpanded: !widget.collapsedAttachBaseIds.contains(
+        row.layer.id,
+      ),
       fxEnabled: widget.layerFxEnabledOf?.call(row.layer.id) ?? true,
       onionSkinEnabled:
           widget.layerOnionSkinEnabledOf?.call(row.layer.id) ?? false,
@@ -859,6 +874,8 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
         a.active == b.active &&
         a.hasLanes == b.hasLanes &&
         a.lanesExpanded == b.lanesExpanded &&
+        a.hasAttachGroup == b.hasAttachGroup &&
+        a.attachGroupExpanded == b.attachGroupExpanded &&
         a.fxEnabled == b.fxEnabled &&
         a.onionSkinEnabled == b.onionSkinEnabled &&
         a.layerRowHeight == b.layerRowHeight &&
@@ -977,9 +994,19 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
       hasLanes: _lanesFor(row.layer).isNotEmpty,
       lanesExpanded: widget.expandedLaneLayerIds.contains(row.layer.id),
       onToggleLanes: widget.onToggleLayerLanes,
+      hasAttachGroup: _hasAttachGroup(row.layer),
+      attachGroupExpanded: !widget.collapsedAttachBaseIds.contains(
+        row.layer.id,
+      ),
+      onToggleAttachGroup: widget.onToggleAttachGroup,
       opacityDragPreview: widget.opacityDragPreview,
     );
   }
+
+  /// Whether [layer] carries attach rows — the base-row twirl shows only
+  /// then (UI-R20 #9).
+  bool _hasAttachGroup(Layer layer) =>
+      widget.layers.any((other) => other.attachedToLayerId == layer.id);
 
   /// The section ZONES over the rail rows' reserved band slots (UI-R7 #2):
   /// one tinted zone per section run — the pre-R5 gutter bracket inside
@@ -1027,6 +1054,7 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
       lanesForLayer: _lanesFor,
       hiddenSections: widget.hiddenSections,
       rowFilter: widget.rowFilter,
+      collapsedAttachBaseIds: widget.collapsedAttachBaseIds,
       activeLayerId: widget.activeLayerId,
       fxEnabledOf: widget.layerFxEnabledOf,
     );

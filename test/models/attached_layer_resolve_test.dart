@@ -51,18 +51,22 @@ void main() {
     expect(at(7), isNull, reason: 'past the base coverage');
   });
 
-  test('the display timeline mirrors the base blocks through the links '
-      '(same starts and lengths; unlinked and orphan blocks stay empty)', () {
+  test('the display timeline mirrors the base blocks through the links as '
+      'GHOST exposures (same starts and lengths; unlinked and orphan '
+      'blocks stay empty)', () {
     final timeline = attachedDisplayTimeline(attached: attached, base: base);
 
     expect(timeline.keys, [0, 5]);
+    // Ghost entries (UI-R20 #8): the attach row reads as a text-only
+    // mirror of the base — no block chrome, timing affordances stand
+    // down; drawing and playback still resolve the cels through them.
     expect(
       timeline[0],
-      const TimelineExposure.drawing(FrameId('a1'), length: 3),
+      const TimelineExposure.drawing(FrameId('a1'), length: 3, ghost: true),
     );
     expect(
       timeline[5],
-      const TimelineExposure.drawing(FrameId('a1'), length: 2),
+      const TimelineExposure.drawing(FrameId('a1'), length: 2, ghost: true),
     );
 
     // An orphan link (cel deleted off the attach layer) shows nothing.
@@ -150,6 +154,14 @@ void main() {
       const LayerId('attach'),
     ]);
     expect(attachedGroupEndIndex(const LayerId('base'), layers), 3);
-    expect(nextAttachedLayerName(base, layers), 'A +3');
+    // Signed, per-side numbering (UI-R20 #11): one above and one below
+    // exist, so the next of each side is +2 / -2.
+    expect(nextAttachedLayerName(base, layers, AttachedPlacement.above), '+2');
+    expect(nextAttachedLayerName(base, layers, AttachedPlacement.below), '-2');
+    expect(
+      nextAttachedLayerName(base, [base], AttachedPlacement.below),
+      '-1',
+      reason: 'each side numbers its own count',
+    );
   });
 }
