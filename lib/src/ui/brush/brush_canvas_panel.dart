@@ -21,6 +21,7 @@ import '../../services/cache_invalidation_executor.dart';
 import '../../services/history_manager.dart';
 import '../canvas/canvas_selection_layer.dart';
 import '../canvas/canvas_viewport_gesture_layer.dart';
+import '../theme/app_theme.dart' show AppColors;
 import '../canvas/interactive_brush_edit_canvas_view.dart';
 import '../canvas/layer_pose_paint.dart';
 import 'brush_canvas_defaults.dart';
@@ -1541,6 +1542,10 @@ class _CanvasViewportBottomBar extends StatelessWidget {
         padding: EdgeInsets.zero,
         iconSize: 18,
         tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+        // UI-R21 #1: the state accent is EXPLICIT ink — the M3 isSelected
+        // default was invisible in this theme, so a rotated/flipped view
+        // never showed on its button. Color only (the selection rule).
+        foregroundColor: isSelected ? AppColors.accent : null,
       ),
       icon: icon,
     );
