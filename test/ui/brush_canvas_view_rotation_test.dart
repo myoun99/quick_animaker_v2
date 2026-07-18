@@ -10,6 +10,7 @@ import 'package:quick_animaker_v2/src/ui/brush/brush_tool_state.dart';
 import 'package:quick_animaker_v2/src/ui/brush/canvas_view_commands.dart';
 import 'package:quick_animaker_v2/src/ui/canvas/canvas_viewport_gesture_layer.dart';
 import 'package:quick_animaker_v2/src/ui/canvas/interactive_brush_edit_canvas_view.dart';
+import 'package:quick_animaker_v2/src/ui/theme/app_theme.dart' show AppColors;
 
 import '../helpers/brush_canvas_fixture.dart';
 
@@ -59,6 +60,43 @@ void main() {
     await tester.tap(finder);
     await tester.pumpAndSettle();
   }
+
+  testWidgets('the rotate/flip buttons carry the STATE ACCENT ink '
+      '(UI-R21 #1): rotated left accents the left button, right the '
+      'right, flips accent while active', (tester) async {
+    await pumpPanel(tester);
+    Color? inkOf(String key) => tester
+        .widget<IconButton>(find.byKey(ValueKey<String>(key)))
+        .style
+        ?.foregroundColor
+        ?.resolve(const {});
+
+    // Straight, unflipped: everything rests on the default ink.
+    for (final key in [
+      'canvas-viewport-rotate-ccw',
+      'canvas-viewport-rotate-cw',
+      'canvas-viewport-flip',
+      'canvas-viewport-flip-vertical',
+    ]) {
+      expect(inkOf(key), isNull, reason: '$key rests unaccented');
+    }
+
+    await tapToolbarButton(tester, 'canvas-viewport-rotate-cw');
+    expect(inkOf('canvas-viewport-rotate-cw'), AppColors.accent);
+    expect(inkOf('canvas-viewport-rotate-ccw'), isNull);
+
+    await tapToolbarButton(tester, 'canvas-viewport-rotate-ccw');
+    await tapToolbarButton(tester, 'canvas-viewport-rotate-ccw');
+    expect(inkOf('canvas-viewport-rotate-ccw'), AppColors.accent);
+    expect(inkOf('canvas-viewport-rotate-cw'), isNull);
+
+    await tapToolbarButton(tester, 'canvas-viewport-flip');
+    expect(inkOf('canvas-viewport-flip'), AppColors.accent);
+    await tapToolbarButton(tester, 'canvas-viewport-flip-vertical');
+    expect(inkOf('canvas-viewport-flip-vertical'), AppColors.accent);
+    await tapToolbarButton(tester, 'canvas-viewport-flip');
+    expect(inkOf('canvas-viewport-flip'), isNull);
+  });
 
   testWidgets('toolbar buttons rotate in 15° steps and toggle the flip', (
     tester,
