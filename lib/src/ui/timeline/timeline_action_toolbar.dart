@@ -8,6 +8,7 @@ import '../editor_session_manager.dart';
 import '../widgets/panel_flyout.dart';
 import '../widgets/split_icon_button.dart';
 import 'timeline_section_policy.dart';
+import 'timeline_sheet_mode.dart' show TimelineSheet;
 
 /// The N-comma input (UI-R17 #7): asks for an exposure count and applies
 /// it to the selection (or the current block). Shared by the toolbar's N
@@ -470,6 +471,25 @@ class TimelineActionToolbar extends StatelessWidget {
                     entriesBuilder: _frameEntries,
                   ),
                 ],
+              ),
+              _groupDivider(context),
+              // Sheet-TEXT mode (UI-R23 feedback #1): notation (the
+              // timesheet shorthand) ↔ data (every covered cell prints
+              // the frame it actually exposes — the audit view). Selected
+              // state reads by COLOR only (the selection rule).
+              IconButton(
+                key: const ValueKey<String>('sheet-data-mode-toggle'),
+                tooltip: TimelineSheet.showsData
+                    ? 'Sheet text: actual data — tap for notation'
+                    : 'Sheet text: notation — tap for actual data',
+                isSelected: TimelineSheet.showsData,
+                onPressed: () =>
+                    TimelineSheet.dataMode.value = !TimelineSheet.showsData,
+                icon: const Icon(Icons.receipt_long_outlined),
+                iconSize: 18,
+                padding: const EdgeInsets.all(5),
+                constraints: const BoxConstraints(minWidth: 30, minHeight: 30),
+                visualDensity: VisualDensity.compact,
               ),
               _groupDivider(context),
               CutCommandGroup(session: session),

@@ -38,6 +38,7 @@ import 'timeline/timeline_row_filter.dart';
 import 'timeline/timeline_section_bracket_rail.dart'
     show TimelineSectionRailCallbacks;
 import 'timeline/timeline_section_policy.dart';
+import 'timeline/timeline_sheet_mode.dart' show TimelineSheet;
 import 'timeline/transform_lane_editing.dart';
 import 'timeline/transform_lane_policy.dart';
 
@@ -792,6 +793,10 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
       listenable: Listenable.merge([
         ?widget.cameraViewEnabled,
         ?widget.cameraDimOpacity,
+        // The sheet-text mode (UI-R23 #1): a flip rebuilds the panel so
+        // painters and memoized rows re-derive the cell text — host-level
+        // so it works under any shell (tests pump HomePage directly).
+        TimelineSheet.dataMode,
       ]),
       builder: (context, _) {
         // Zoom scoping (UI-R6 #4): the toolbar widget is built ONCE per
