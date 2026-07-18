@@ -333,9 +333,19 @@ class _InteractiveBrushEditCanvasViewState
       }
     }
 
+    // The stylus BARREL button (PEN-5: S-Pen side button, Wacom barrel
+    // switch) makes the stroke a TEMPORARY ERASER — the CSP/Photoshop
+    // convention. Detected at pointer-down only: the whole stroke keeps
+    // one blend mode (the settings-snapshot contract).
+    final barrelErase =
+        (event.kind == PointerDeviceKind.stylus ||
+            event.kind == PointerDeviceKind.invertedStylus) &&
+        (event.buttons & kPrimaryButton) != 0 &&
+        (event.buttons & kPrimaryStylusButton) != 0;
+
     if (_multiTouchNavigation ||
         _activeDrawingPointer != null ||
-        !_isPrimaryButton(event.buttons)) {
+        (!_isPrimaryButton(event.buttons) && !barrelErase)) {
       return;
     }
 
@@ -375,24 +385,29 @@ class _InteractiveBrushEditCanvasViewState
     }
 
     _activeDrawingPointer = event.pointer;
-    _activeStrokeInputSettings = widget.inputSettings;
+    // The stroke's settings snapshot — every downstream dab reads it, so
+    // the barrel-eraser substitution here flips the WHOLE stroke.
+    final strokeSettings = barrelErase
+        ? widget.inputSettings.copyWith(erase: true)
+        : widget.inputSettings;
+    _activeStrokeInputSettings = strokeSettings;
     // The overlay must display in the stroke's blend mode (paint vs erase)
     // from the first dab through settling.
-    _overlayModel.erase = widget.inputSettings.erase;
+    _overlayModel.erase = strokeSettings.erase;
     _currentPressure = _normalizedPressure(event);
     widget.onActiveStrokeChanged?.call(true);
     _nextSequence = 0;
     _breakCurrentVisibleSegment = !startsInsideSurface;
     _previousRawCanvasPosition = canvasPosition;
     _lastPenPosition = canvasPosition;
-    final stabilizerStrength = widget.inputSettings.stabilizerStrength;
+    final stabilizerStrength = strokeSettings.stabilizerStrength;
     _stabilizer = stabilizerStrength > 0
         ? StrokeStabilizer(
             ropeLength: stabilizerStrength / widget.viewport.zoom,
             start: canvasPosition,
           )
         : null;
-    _strokeDynamics = BrushStrokeDynamics(settings: widget.inputSettings);
+    _strokeDynamics = BrushStrokeDynamics(settings: strokeSettings);
     _lastDirectionDegrees = null;
     _previousBaseDab = null;
     _resetOverlay();
