@@ -103,6 +103,33 @@ void main() {
     );
   });
 
+  test('folded attach groups drop out of the walk; open groups walk '
+      '(UI-R20 #9/#14)', () {
+    final attachStack = [
+      _layer('base'),
+      Layer(
+        id: const LayerId('up1'),
+        name: '+1',
+        frames: const [],
+        timeline: const {},
+        attachedToLayerId: const LayerId('base'),
+      ),
+      _layer('other'),
+    ];
+    // Visual top-to-bottom: [other, up1, base]. Open: base ↑ → up1.
+    expect(step('base', -1, layers: attachStack), const LayerId('up1'));
+    // Folded: the attach row skips — base ↑ lands on other.
+    expect(
+      adjacentDisplayedLayerId(
+        layers: attachStack,
+        activeLayerId: const LayerId('base'),
+        direction: -1,
+        collapsedAttachBaseIds: {const LayerId('base')},
+      ),
+      const LayerId('other'),
+    );
+  });
+
   test('degenerate inputs are no-ops', () {
     expect(step('a', 0), isNull);
     expect(step('a', 1, layers: const []), isNull);

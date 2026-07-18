@@ -5,6 +5,8 @@ import 'package:quick_animaker_v2/src/models/attached_placement.dart';
 import 'package:quick_animaker_v2/src/models/layer.dart';
 import 'package:quick_animaker_v2/src/models/timeline_coverage.dart'
     show TimelineBlockEdge;
+import 'package:quick_animaker_v2/src/models/timeline_repeat.dart'
+    show timelineIndexIsGhost;
 import 'package:quick_animaker_v2/src/ui/editor_session_manager.dart';
 
 /// W5 attach layers through the session: creation/placement, the attach
@@ -34,22 +36,40 @@ void main() {
     expect(above.attachedPlacement, AttachedPlacement.above);
     expect(above.kind, base.kind);
     expect(above.onTimesheet, isFalse);
-    expect(above.name, '${base.name} +1');
+    // Signed default names (UI-R20 #11): above rows count +1, +2, …
+    expect(above.name, '+1');
     expect(
       cutLayers(s).indexWhere((layer) => layer.id == above.id),
       baseIndexBefore + 1,
     );
 
     // Adding from the attach row targets ITS base (same group); a below
-    // row lands right before the base.
+    // row lands right before the base and counts its own side (-1).
     expect(s.canAddAttachedLayerToActive, isTrue);
     s.addAttachedLayer(AttachedPlacement.below);
     final below = s.activeLayer!;
     expect(below.attachedToLayerId, base.id);
+    expect(below.name, '-1');
     final layers = cutLayers(s);
     final baseIndex = layers.indexWhere((layer) => layer.id == base.id);
     expect(layers[baseIndex - 1].id, below.id);
     expect(layers[baseIndex + 1].id, above.id);
+  });
+
+  test('the attach display clone shows the mirrored blocks as GHOSTS '
+      '(UI-R20 #8) while the brush target still resolves through them', () {
+    final (s, _) = sessionWithBase();
+    s.createDrawingAtCurrentFrame();
+    s.addAttachedLayer(AttachedPlacement.above);
+    final attachId = s.activeLayer!.id;
+    s.createDrawingAtCurrentFrame();
+
+    final clone = s.layers.firstWhere((layer) => layer.id == attachId);
+    expect(timelineIndexIsGhost(clone, 0), isTrue);
+    // Anchor resolve-through (the R19b rule): the ghost cell IS the
+    // attach cel — drawing lands on it.
+    final cutAttach = cutLayers(s).firstWhere((l) => l.id == attachId);
+    expect(s.activeBrushEditorSelection!.frameId, cutAttach.frames.single.id);
   });
 
   test('Create Drawing on an attach row makes a cel + link riding the '

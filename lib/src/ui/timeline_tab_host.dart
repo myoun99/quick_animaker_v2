@@ -63,6 +63,8 @@ class TimelineTabHost extends StatefulWidget {
     this.onToggleSection,
     this.rowFilter = TimelineRowFilter.none,
     this.onSetRowFilter,
+    this.collapsedAttachBaseIds = const {},
+    this.onToggleAttachGroup,
     this.audioFilePicker,
     this.cameraViewEnabled,
     this.cameraDimOpacity,
@@ -104,6 +106,13 @@ class TimelineTabHost extends StatefulWidget {
   /// filter UI.
   final TimelineRowFilter rowFilter;
   final ValueChanged<TimelineRowFilter>? onSetRowFilter;
+
+  /// The attach-group fold state (UI-R20 #9, workspace-owned so it
+  /// survives tab switches): bases listed here render no attach rows; the
+  /// base row's chevron toggles them. Null [onToggleAttachGroup] hides
+  /// the twirl UI.
+  final Set<LayerId> collapsedAttachBaseIds;
+  final ValueChanged<LayerId>? onToggleAttachGroup;
 
   /// Injectable for tests; defaults to the platform open-file dialog.
   final Future<String?> Function()? audioFilePicker;
@@ -968,6 +977,8 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
           onToggleSection: widget.onToggleSection,
           rowFilter: widget.rowFilter,
           onSetRowFilter: widget.onSetRowFilter,
+          collapsedAttachBaseIds: widget.collapsedAttachBaseIds,
+          onToggleAttachGroup: widget.onToggleAttachGroup,
           visibilitySoloEnabled: _session.layerVisibilitySoloEnabled,
           // Master-bar drags (UI-R6 #2): rows' sliders follow the preview
           // channel live; at rest the bar shows the last committed value.

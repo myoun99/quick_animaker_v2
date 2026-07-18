@@ -85,6 +85,8 @@ class TimelinePanel extends StatefulWidget {
     this.sectionRail,
     this.rowFilter = TimelineRowFilter.none,
     this.onSetRowFilter,
+    this.collapsedAttachBaseIds = const {},
+    this.onToggleAttachGroup,
     this.visibilitySoloEnabled = false,
     this.opacityDragPreview,
     this.masterOpacityValue = 1.0,
@@ -273,6 +275,11 @@ class TimelinePanel extends StatefulWidget {
   final TimelineRowFilter rowFilter;
   final ValueChanged<TimelineRowFilter>? onSetRowFilter;
 
+  /// The attach-group fold state (UI-R20 #9), shared by both orientations;
+  /// the toggle chevron renders on the horizontal rail's base rows.
+  final Set<LayerId> collapsedAttachBaseIds;
+  final ValueChanged<LayerId>? onToggleAttachGroup;
+
   /// Whether the visibility solo mode is engaged (legend eye state color).
   final bool visibilitySoloEnabled;
 
@@ -407,6 +414,8 @@ class _TimelinePanelState extends State<TimelinePanel> {
                     sectionRail: widget.sectionRail,
                     rowFilter: widget.rowFilter,
                     onSetRowFilter: widget.onSetRowFilter,
+                    collapsedAttachBaseIds: widget.collapsedAttachBaseIds,
+                    onToggleAttachGroup: widget.onToggleAttachGroup,
                     visibilitySoloEnabled: widget.visibilitySoloEnabled,
                     opacityDragPreview: widget.opacityDragPreview,
                     masterOpacityValue: widget.masterOpacityValue,
@@ -462,6 +471,7 @@ class _TimelinePanelState extends State<TimelinePanel> {
                     onToggleLaneGroup: widget.onToggleLaneGroup,
                     hiddenSections: widget.hiddenSections,
                     rowFilter: widget.rowFilter,
+                    collapsedAttachBaseIds: widget.collapsedAttachBaseIds,
                     cutEndDrag: widget.cutEndDrag,
                   ),
           ),

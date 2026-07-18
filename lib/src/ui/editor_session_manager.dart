@@ -1967,7 +1967,7 @@ class EditorSessionManager extends ChangeNotifier {
     _layerController.addLayer(
       layer: Layer(
         id: layerId,
-        name: nextAttachedLayerName(base, cut.layers),
+        name: nextAttachedLayerName(base, cut.layers, placement),
         frames: const [],
         timeline: const {},
         kind: base.kind,
@@ -3691,8 +3691,9 @@ class EditorSessionManager extends ChangeNotifier {
   /// The movie's content end: the last cut end across every track.
   int get movieContentEndFrame {
     var end = 0;
-    for (final entry
-        in buildStoryboardTimelineLayout(_repository.requireProject())) {
+    for (final entry in buildStoryboardTimelineLayout(
+      _repository.requireProject(),
+    )) {
       if (entry.endFrame > end) {
         end = entry.endFrame;
       }

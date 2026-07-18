@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
 
+import '../../models/attached_layer_resolve.dart';
 import '../../models/cut_id.dart';
 import '../../models/layer.dart';
 import '../../models/layer_id.dart';
@@ -269,12 +270,36 @@ class _TimelineDragPreviewRowGateState
     super.dispose();
   }
 
-  Layer? _resolvePreviewLayer() => widget.useGlobalForm
-      ? timelineDragPreviewGlobalLayerFor(
-          widget.dragPreview?.value,
-          widget.layer.id,
-        )
-      : timelineDragPreviewLayerFor(widget.dragPreview?.value, widget.layer.id);
+  Layer? _resolvePreviewLayer() {
+    if (widget.useGlobalForm) {
+      return timelineDragPreviewGlobalLayerFor(
+        widget.dragPreview?.value,
+        widget.layer.id,
+      );
+    }
+    final direct = timelineDragPreviewLayerFor(
+      widget.dragPreview?.value,
+      widget.layer.id,
+    );
+    if (direct != null) {
+      return direct;
+    }
+    // Attach rows mirror their BASE live (UI-R20 #8): while a drag
+    // previews the base, re-derive the mirrored display timeline from the
+    // previewed base so the attach row follows the pointer, not just the
+    // release commit.
+    final baseId = widget.layer.attachedToLayerId;
+    if (baseId != null) {
+      final previewBase = timelineDragPreviewLayerFor(
+        widget.dragPreview?.value,
+        baseId,
+      );
+      if (previewBase != null) {
+        return attachedDisplayLayer(attached: widget.layer, base: previewBase);
+      }
+    }
+    return null;
+  }
 
   void _handlePreviewChanged() {
     final next = _resolvePreviewLayer();
