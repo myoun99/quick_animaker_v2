@@ -1,7 +1,8 @@
 import 'package:flutter/foundation.dart' show ValueListenable;
-import 'package:flutter/gestures.dart'
-    show DragStartBehavior, PointerDeviceKind;
+import 'package:flutter/gestures.dart' show DragStartBehavior;
 import 'package:flutter/material.dart';
+
+import '../input/app_input_settings.dart' show AppInput;
 
 import '../../models/layer.dart';
 import '../../models/layer_id.dart';
@@ -314,15 +315,11 @@ class _TimelineFrameRangeGestureLayerState
         onTapUp: (_) => widget.callbacks.onTapClear(widget.layer.id),
         child: GestureDetector(
           // Translucent: the cells' pointer-down select keeps firing;
-          // only the pan recognizer competes in the arena.
+          // only the pan recognizer competes in the arena. Touch joins
+          // per the input policy (UI-R22 #6): editing unless the timeline
+          // scroll owns touch.
           behavior: HitTestBehavior.translucent,
-          supportedDevices: const {
-            PointerDeviceKind.mouse,
-            PointerDeviceKind.stylus,
-            PointerDeviceKind.invertedStylus,
-            PointerDeviceKind.touch,
-            PointerDeviceKind.unknown,
-          },
+          supportedDevices: AppInput.timelineEditPanDevices,
           dragStartBehavior: DragStartBehavior.down,
           onPanStart: (details) => _startDrag(details.localPosition),
           onPanUpdate: _updateDrag,

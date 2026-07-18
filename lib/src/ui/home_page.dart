@@ -7,6 +7,7 @@ import '../controllers/default_project_helpers.dart';
 import '../models/project.dart';
 import '../services/persistence/app_language_settings_store.dart';
 import '../services/persistence/app_accent_settings_store.dart';
+import '../services/persistence/app_input_settings_store.dart';
 import '../services/persistence/project_autosave_service.dart';
 import '../services/project_repository.dart';
 import 'brush/brush_tool_state.dart';
@@ -103,6 +104,9 @@ class _HomePageState extends State<HomePage> {
       accentSettingsStore: Platform.environment.containsKey('FLUTTER_TEST')
           ? null
           : AppAccentSettingsStore(),
+      inputSettingsStore: Platform.environment.containsKey('FLUTTER_TEST')
+          ? null
+          : AppInputSettingsStore(),
     );
     // R16-①: undo/redo over a PENDING move session adopts it into history
     // first — an undo never pops out from under the unadopted lift.
