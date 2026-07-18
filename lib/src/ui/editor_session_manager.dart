@@ -4366,6 +4366,12 @@ class EditorSessionManager extends ChangeNotifier {
   Map<int, CameraPose>? _rangeMoveCameraShifted;
   Map<LayerId, Map<int, InstructionEvent>>? _rangeMoveInstructionShifted;
 
+  /// Layer TRANSFORM tracks riding the range move (P3c, #13): every
+  /// spanned cut layer's own-track keys inside the selection shift with
+  /// the same delta the blocks slide.
+  List<Layer>? _rangeMoveTransformSources;
+  Map<LayerId, TransformTrack>? _rangeMoveTransformShifted;
+
   /// The in-flight camera-key preview the cell resolution consults
   /// (exposureStateForLayer): the camera row's cells follow the drag
   /// without the repository moving.
@@ -4390,13 +4396,17 @@ class EditorSessionManager extends ChangeNotifier {
     _rangeMoveInstructionSources = null;
     _rangeMoveCameraShifted = null;
     _rangeMoveInstructionShifted = null;
-    // KEY sources (P3b-2, #2 second half): camera keys and instruction
-    // spans inside the selection move with the blocks — same delta, one
-    // rigid group. SYNCED attach mirrors stay PASSENGERS (P3b-1): the
-    // base's slide carries them by derivation.
+    _rangeMoveTransformSources = null;
+    _rangeMoveTransformShifted = null;
+    // KEY sources (P3b-2, #2 second half): camera keys, instruction
+    // spans AND the layers' own transform-track keys (P3c, #13) inside
+    // the selection move with the blocks — same delta, one rigid group.
+    // SYNCED attach mirrors stay PASSENGERS (P3b-1): the base's slide
+    // carries them by derivation.
     Map<int, CameraPose>? cameraBefore;
     LayerId? cameraLayerId;
     final instructionSources = <Layer>[];
+    final transformSources = <Layer>[];
     bool anyKeyIn(Iterable<int> keys) => keys.any(
       (key) => key >= selection.startIndex && key < selection.endIndexExclusive,
     );
@@ -4411,9 +4421,23 @@ class EditorSessionManager extends ChangeNotifier {
           cameraBefore = Map<int, CameraPose>.of(keyframes);
           cameraLayerId = id;
         }
-      } else if (layer.kind == LayerKind.instruction &&
+        continue;
+      }
+      if (layer.kind == LayerKind.instruction &&
           anyKeyIn(layer.instructions.keys)) {
         instructionSources.add(layer);
+      }
+      // The layer's OWN transform keys ride too (#13) — every cut row
+      // except the camera (its track is the cut's) and attach rows
+      // (their track is inert; the BASE's fx governs).
+      if (!isTrackSeLayerId(id) &&
+          !isAttachedLayer(layer) &&
+          transformTrackHasKeysInRange(
+            layer.transformTrack,
+            selection.startIndex,
+            selection.endIndexExclusive,
+          )) {
+        transformSources.add(layer);
       }
     }
     // Multi-layer spans, SE rows and KEY sources route through the
@@ -4422,7 +4446,8 @@ class EditorSessionManager extends ChangeNotifier {
     if (selection.spanLayerIds.length > 1 ||
         isTrackSeLayerId(selection.layerId) ||
         cameraBefore != null ||
-        instructionSources.isNotEmpty) {
+        instructionSources.isNotEmpty ||
+        transformSources.isNotEmpty) {
       final sources = <({Layer commit, int offset})>[];
       for (final id in selection.spanLayerIds) {
         final display = _rangeLayerById(id);
@@ -4447,7 +4472,8 @@ class EditorSessionManager extends ChangeNotifier {
       }
       if (sources.isEmpty &&
           cameraBefore == null &&
-          instructionSources.isEmpty) {
+          instructionSources.isEmpty &&
+          transformSources.isEmpty) {
         return false;
       }
       _rangeMoveMultiSources = sources;
@@ -4456,6 +4482,9 @@ class EditorSessionManager extends ChangeNotifier {
       _rangeMoveInstructionSources = instructionSources.isEmpty
           ? null
           : instructionSources;
+      _rangeMoveTransformSources = transformSources.isEmpty
+          ? null
+          : transformSources;
       _rangeMoveSelectionBefore = selection;
       return true;
     }
@@ -4545,41 +4574,76 @@ class EditorSessionManager extends ChangeNotifier {
           instructionShifted[layer.id] = shifted;
         }
       }
+      // The layers' own transform keys shift with the same delta (P3c,
+      // #13) — the group header's union follows on commit.
+      final transformShifted = <LayerId, TransformTrack>{};
+      if (!illegal) {
+        for (final layer in _rangeMoveTransformSources ?? const <Layer>[]) {
+          final shifted = shiftTransformKeysInRange(
+            track: layer.transformTrack,
+            rangeStartIndex: selection.startIndex,
+            rangeEndIndexExclusive: selection.endIndexExclusive,
+            frameDelta: frameDelta,
+          );
+          if (shifted == null) {
+            illegal = true;
+            break;
+          }
+          transformShifted[layer.id] = shifted;
+        }
+      }
       _rangeMoveMultiPlans = illegal || plans.isEmpty ? null : plans;
       _rangeMoveCameraShifted = illegal ? null : cameraShifted;
       _rangeMoveInstructionShifted = illegal || instructionShifted.isEmpty
           ? null
           : instructionShifted;
+      _rangeMoveTransformShifted = illegal || transformShifted.isEmpty
+          ? null
+          : transformShifted;
       _cameraKeysDragPreview = illegal ? null : cameraShifted;
       final cameraMarker = illegal || cameraShifted == null
           ? null
           : _layerById(_rangeMoveCameraLayerId!)?.copyWith();
+      Map<LayerId, Layer>? previewLayers;
+      if (!illegal) {
+        previewLayers = {
+          for (final plan in plans)
+            // Track-SE rows preview in their DISPLAY form (UI-R18
+            // #1 seam); commits keep the global form.
+            plan.sourceAfter.id: isTrackSeLayerId(plan.sourceAfter.id)
+                ? trackSeWindow.displayLayer(
+                    rederiveRunBehaviors(
+                      plan.sourceAfter,
+                      cutFrameCount: _activeCutFrameCount,
+                    ),
+                  )
+                : rederiveRunBehaviors(
+                    plan.sourceAfter,
+                    cutFrameCount: _activeCutFrameCount,
+                  ),
+          // Instruction rows preview with their shifted spans —
+          // the cells row renders straight off layer.instructions.
+          for (final entry in instructionShifted.entries)
+            if (_layerById(entry.key) != null)
+              entry.key: _layerById(
+                entry.key,
+              )!.copyWith(instructions: entry.value),
+        };
+        // Shifted transform tracks fold onto whatever preview form the
+        // layer already carries (block-planned or untouched).
+        for (final entry in transformShifted.entries) {
+          final base = previewLayers[entry.key] ?? _layerById(entry.key);
+          if (base != null) {
+            previewLayers[entry.key] = base.copyWith(
+              transformTrack: entry.value,
+            );
+          }
+        }
+      }
       dragPreview.value = illegal
           ? null
           : BlockMoveDragPreview(
-              previewLayers: {
-                for (final plan in plans)
-                  // Track-SE rows preview in their DISPLAY form (UI-R18
-                  // #1 seam); commits keep the global form.
-                  plan.sourceAfter.id: isTrackSeLayerId(plan.sourceAfter.id)
-                      ? trackSeWindow.displayLayer(
-                          rederiveRunBehaviors(
-                            plan.sourceAfter,
-                            cutFrameCount: _activeCutFrameCount,
-                          ),
-                        )
-                      : rederiveRunBehaviors(
-                          plan.sourceAfter,
-                          cutFrameCount: _activeCutFrameCount,
-                        ),
-                // Instruction rows preview with their shifted spans —
-                // the cells row renders straight off layer.instructions.
-                for (final entry in instructionShifted.entries)
-                  if (_layerById(entry.key) != null)
-                    entry.key: _layerById(
-                      entry.key,
-                    )!.copyWith(instructions: entry.value),
-              },
+              previewLayers: previewLayers!,
               cameraCutId: cameraShifted == null ? null : activeCutOrNull?.id,
               cameraKeyframes: cameraShifted,
               cameraMarkerLayer: cameraMarker,
@@ -4610,9 +4674,13 @@ class EditorSessionManager extends ChangeNotifier {
       target = _blockMoveEligible(targetLayerId)
           ? _layerById(targetLayerId)
           : null;
-      // Cross-KIND drops are the UI-R18 #1 safety: an animation range
-      // never lands on a different section's row (and vice versa).
-      if (target != null && target.kind != source.kind) {
+      // Cross-row drops stay within the SAME SECTION (UI-R20 #2 P3b-3:
+      // 행이동도 같은 섹션 내 — animation/storyboard/art interchange
+      // freely now; an animation range still never lands on the SE or
+      // camera sections).
+      if (target != null &&
+          timelineSectionForLayerKind(target.kind) !=
+              timelineSectionForLayerKind(source.kind)) {
         target = null;
       }
     }
@@ -4670,6 +4738,7 @@ class EditorSessionManager extends ChangeNotifier {
     final multiSources = _rangeMoveMultiSources;
     final cameraShifted = _rangeMoveCameraShifted;
     final instructionShifted = _rangeMoveInstructionShifted;
+    final transformShifted = _rangeMoveTransformShifted;
     final landedSelection = frameRangeSelection.value;
     _rangeMoveSourceBefore = null;
     _rangeMoveSelectionBefore = null;
@@ -4682,16 +4751,49 @@ class EditorSessionManager extends ChangeNotifier {
     _rangeMoveInstructionSources = null;
     _rangeMoveCameraShifted = null;
     _rangeMoveInstructionShifted = null;
+    _rangeMoveTransformSources = null;
+    _rangeMoveTransformShifted = null;
     _cameraKeysDragPreview = null;
     dragPreview.value = null;
     if (selection != null && multiSources != null) {
-      // Cross-layer slide commit (UI-R18 #1) + key shifts (P3b-2): one
-      // composite undo across blocks, camera keys and instruction spans.
+      // Cross-layer slide commit (UI-R18 #1) + key shifts (P3b-2/P3c):
+      // one composite undo across blocks, camera keys, instruction spans
+      // and the layers' transform tracks. Shifted tracks FOLD into the
+      // block-planned layer writes; key-only layers commit standalone.
       final cut = activeCutOrNull;
+      final plannedIds = <LayerId>{
+        if (multiPlans != null)
+          for (final plan in multiPlans) plan.sourceAfter.id,
+      };
+      Layer withShiftedTrack(Layer after) {
+        final track = transformShifted?[after.id];
+        return track == null ? after : after.copyWith(transformTrack: track);
+      }
+
       final commands = <Command>[
         if (multiPlans != null)
           for (var i = 0; i < multiPlans.length; i += 1)
-            _multiMoveCommand(multiSources[i].commit, multiPlans[i]),
+            UpdateLayerTimelineCommand(
+              repository: _repository,
+              before: multiSources[i].commit,
+              after: withShiftedTrack(
+                rederiveRunBehaviors(
+                  multiPlans[i].sourceAfter,
+                  cutFrameCount: _activeCutFrameCount,
+                ),
+              ),
+            ),
+        if (transformShifted != null)
+          for (final entry in transformShifted.entries)
+            if (!plannedIds.contains(entry.key) &&
+                _layerById(entry.key) != null)
+              UpdateLayerTimelineCommand(
+                repository: _repository,
+                before: _layerById(entry.key)!,
+                after: _layerById(
+                  entry.key,
+                )!.copyWith(transformTrack: entry.value),
+              ),
         if (instructionShifted != null && cut != null)
           for (final entry in instructionShifted.entries)
             UpdateLayerInstructionsCommand(
@@ -4784,18 +4886,6 @@ class EditorSessionManager extends ChangeNotifier {
     notifyListeners();
   }
 
-  UpdateLayerTimelineCommand _multiMoveCommand(
-    Layer before,
-    DrawingBlockMovePlan plan,
-  ) => UpdateLayerTimelineCommand(
-    repository: _repository,
-    before: before,
-    after: rederiveRunBehaviors(
-      plan.sourceAfter,
-      cutFrameCount: _activeCutFrameCount,
-    ),
-  );
-
   /// Drops an in-flight range-move preview, restoring the selection.
   void cancelFrameRangeMoveDrag() {
     final selection = _rangeMoveSelectionBefore;
@@ -4810,6 +4900,8 @@ class EditorSessionManager extends ChangeNotifier {
     _rangeMoveInstructionSources = null;
     _rangeMoveCameraShifted = null;
     _rangeMoveInstructionShifted = null;
+    _rangeMoveTransformSources = null;
+    _rangeMoveTransformShifted = null;
     _cameraKeysDragPreview = null;
     dragPreview.value = null;
     if (selection != null) {

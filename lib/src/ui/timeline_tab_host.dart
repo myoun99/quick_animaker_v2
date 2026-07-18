@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import '../models/camera_instruction.dart';
 import '../models/layer.dart';
 import '../models/layer_id.dart';
+import '../models/key_range_move.dart' show transformKeyFrameUnion;
 import '../models/layer_kind.dart';
 import 'dialogs/camera_key_dialog.dart';
 import 'dialogs/delete_layer_dialog.dart';
@@ -258,7 +259,13 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
   ) {
     final expanded = widget.expandedTransformGroupLayerIds.contains(layer.id);
     return [
-      transformGroupHeader(expanded: expanded),
+      // The header carries the member lanes' KEY UNION (UI-R20 #13, the
+      // camera row's summary pattern) — one glance shows where the
+      // layer's transform keys sit even while the group is collapsed.
+      transformGroupHeader(
+        expanded: expanded,
+        keyedFrames: transformKeyFrameUnion(_laneTrackOf(layer)),
+      ),
       if (expanded) ...group.where((lane) => !lane.isGroupHeader),
     ];
   }

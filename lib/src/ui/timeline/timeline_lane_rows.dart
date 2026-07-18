@@ -581,7 +581,10 @@ class TimelineLaneFrameRow extends StatelessWidget {
                   markerSize: markerSize,
                   frameCellExtent: cellExtent,
                   axis: axis,
-                  laneEdit: laneEdit,
+                  // Group headers show the KEY UNION (UI-R20 #13) —
+                  // display-only: a union diamond has no single lane to
+                  // edit, so its markers never take drags.
+                  laneEdit: lane.isGroupHeader ? null : laneEdit,
                 ),
               ),
         ],
