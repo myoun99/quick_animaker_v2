@@ -291,10 +291,11 @@ class TimelineFrameCellsRow extends StatelessWidget {
         // The range gesture layer replaces the block-body move handle
         // (UI-R8, TVP style): a pan on the cells SELECTS a frame range —
         // a pan starting inside the current selection MOVES it. Mounted
-        // UNDER the grips so the edges keep comma-drag priority.
-        if (rangeGesture != null &&
-            layerKindHoldsDrawings(layer.kind) &&
-            !layerKindUsesSeSheetCells(layer.kind))
+        // UNDER the grips so the edges keep comma-drag priority. EVERY
+        // layer row mounts it (UI-R20 #2: cells are cells — SE, camera
+        // and instruction rows select too; what a selection can DO stays
+        // kind-gated at the session seams).
+        if (rangeGesture != null)
           TimelineFrameRangeGestureLayer(
             layer: layer,
             frameStartIndex: frameStartIndex,

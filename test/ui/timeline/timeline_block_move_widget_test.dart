@@ -5,6 +5,7 @@ import 'package:quick_animaker_v2/src/models/frame.dart';
 import 'package:quick_animaker_v2/src/models/frame_id.dart';
 import 'package:quick_animaker_v2/src/models/layer.dart';
 import 'package:quick_animaker_v2/src/models/layer_id.dart';
+import 'package:quick_animaker_v2/src/models/layer_kind.dart';
 import 'package:quick_animaker_v2/src/models/timeline_coverage.dart';
 import 'package:quick_animaker_v2/src/models/timeline_exposure.dart';
 import 'package:quick_animaker_v2/src/models/timeline_frame_range.dart';
@@ -95,6 +96,58 @@ void main() {
       ),
     );
   }
+
+  testWidgets('EVERY layer row mounts the range gesture layer — SE, camera '
+      'and instruction rows select too (UI-R20 #2)', (tester) async {
+    final cursor = ValueNotifier<int>(0);
+    final selection = ValueNotifier<TimelineFrameRangeSelection?>(null);
+    addTearDown(cursor.dispose);
+    addTearDown(selection.dispose);
+    final selectUpdates = <(LayerId, int, int)>[];
+
+    await tester.pumpWidget(
+      harness(
+        layers: [
+          blockLayer('layer-a'),
+          blockLayer('se-1').copyWith(kind: LayerKind.se),
+          blockLayer('cam-1').copyWith(kind: LayerKind.camera),
+          blockLayer('instr-1').copyWith(kind: LayerKind.instruction),
+        ],
+        cursor: cursor,
+        rangeHooks: hooks(
+          selection: selection,
+          onSelectUpdate: (layerId, anchor, head) =>
+              selectUpdates.add((layerId, anchor, head)),
+        ),
+      ),
+    );
+
+    for (final id in ['layer-a', 'se-1', 'cam-1', 'instr-1']) {
+      expect(
+        find.byKey(ValueKey<String>('timeline-range-gesture-$id')),
+        findsOneWidget,
+        reason: '$id must carry the gesture layer',
+      );
+    }
+
+    // An SE-ORIGIN drag reports select updates with the SE row's id (the
+    // reported bug: selection could extend INTO SE but never start
+    // there). Start on an EMPTY cell (past the block at [0,4) — the SE
+    // writing overlays sit above the gesture layer over the block span).
+    final seLayer = find.byKey(
+      const ValueKey<String>('timeline-range-gesture-se-1'),
+    );
+    final gesture = await tester.startGesture(
+      tester.getTopLeft(seLayer) + const Offset(24 + 5 * 48, 26),
+      kind: PointerDeviceKind.mouse,
+    );
+    await gesture.moveBy(const Offset(96, 0));
+    await tester.pump();
+    await gesture.up();
+    await tester.pump();
+    expect(selectUpdates, isNotEmpty);
+    expect(selectUpdates.last.$1, const LayerId('se-1'));
+  });
 
   testWidgets('a cell drag reports anchor/head SELECT updates, never a '
       'move', (tester) async {
