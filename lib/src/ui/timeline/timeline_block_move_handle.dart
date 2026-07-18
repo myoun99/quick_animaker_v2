@@ -2,6 +2,7 @@ import 'package:flutter/gestures.dart' show DragStartBehavior;
 import 'package:flutter/material.dart';
 
 import '../input/app_input_settings.dart' show AppInput;
+import '../input/eager_pan_gesture_recognizer.dart';
 
 import '../../models/layer_id.dart';
 import '../../models/timeline_coverage.dart';
@@ -264,22 +265,33 @@ class _TimelineBlockMoveHandleState extends State<TimelineBlockMoveHandle> {
       // NOT opaque: an opaque region would end the stack's hit test here
       // and starve the frame cells below of their tap-select pointer downs.
       opaque: false,
-      child: GestureDetector(
+      child: RawGestureDetector(
         // Translucent: taps have no handler here and fall through to the
         // cells; only the pan recognizer competes in the arena.
         behavior: HitTestBehavior.translucent,
         // Touch joined the set (UI-R17 #6, superseding R12-⑤): stylus
         // pens report as TOUCH on some Windows/tablet drivers, which made
         // block grabs pen-dead there — grid panning stays on the
-        // rulers/scrollbars. Touch follows the input policy (UI-R22 #6).
-        supportedDevices: AppInput.timelineEditPanDevices,
-        // Pixel-exact deltas from the pointer-down point (the camera
-        // overlay rule) — no slop swallowed out of the frame/row math.
-        dragStartBehavior: DragStartBehavior.down,
-        onPanStart: (_) => _startDrag(),
-        onPanUpdate: (details) => _updateDrag(details.delta),
-        onPanEnd: (_) => _endDrag(),
-        onPanCancel: _cancelDrag,
+        // rulers/scrollbars. Touch follows the input policy (UI-R22 #6);
+        // EAGER slop (UI-R22F #2) so slow small drags grab the block
+        // instead of losing the arena to the scroll.
+        gestures: <Type, GestureRecognizerFactory>{
+          EagerPanGestureRecognizer:
+              GestureRecognizerFactoryWithHandlers<EagerPanGestureRecognizer>(
+                () => EagerPanGestureRecognizer(debugOwner: this),
+                (recognizer) {
+                  recognizer.supportedDevices = AppInput.timelineEditPanDevices;
+                  // Pixel-exact deltas from the pointer-down point (the
+                  // camera overlay rule) — no slop swallowed out of the
+                  // frame/row math.
+                  recognizer.dragStartBehavior = DragStartBehavior.down;
+                  recognizer.onStart = (_) => _startDrag();
+                  recognizer.onUpdate = (details) => _updateDrag(details.delta);
+                  recognizer.onEnd = (_) => _endDrag();
+                  recognizer.onCancel = _cancelDrag;
+                },
+              ),
+        },
       ),
     );
 

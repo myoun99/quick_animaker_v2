@@ -5,22 +5,33 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:quick_animaker_v2/src/services/persistence/app_input_settings_store.dart';
 import 'package:quick_animaker_v2/src/ui/input/app_input_settings.dart';
 
-/// UI-R22 #6: ONE owner decides what a touch contact means on the
-/// timeline — edit (default, the R17-⑥ pen-as-touch contract) or scroll.
+/// UI-R22 #6 / UI-R22F #1: ONE owner decides what a touch contact means
+/// on the timeline — scroll (the PRODUCT default) or edit (the R17-⑥
+/// pen-as-touch contract, the corpus baseline via flutter_test_config).
 void main() {
   tearDown(() {
-    AppInput.settings.value = const AppInputSettings();
+    // Back to the CORPUS baseline (OFF), not the product default.
+    AppInput.settings.value = const AppInputSettings(
+      touchTimelineScroll: false,
+    );
+  });
+
+  test('the PRODUCT default dedicates touch to the timeline scroll', () {
+    // The class default is the shipped default (UI-R22F #1) — the test
+    // corpus runs under OFF only because flutter_test_config pins it.
+    expect(const AppInputSettings().touchTimelineScroll, isTrue);
+    expect(AppInputSettings.fromJson(const {}).touchTimelineScroll, isTrue);
   });
 
   test('the edit device set releases touch exactly when the timeline '
       'scroll owns it', () {
-    // Default OFF: touch EDITS like the pen (the R17-⑥ shipped
-    // behavior, unchanged).
+    // Corpus baseline OFF: touch EDITS like the pen (the R17-⑥
+    // contract — the misreported-pen safety net).
     expect(AppInput.touchTimelineScroll, isFalse);
     expect(AppInput.timelineEditPanDevices, contains(PointerDeviceKind.touch));
 
-    // ON: the edit gestures ignore touch — finger pans reach the scroll
-    // viewports uncontested.
+    // ON (the product default): the edit gestures ignore touch — finger
+    // pans reach the scroll viewports uncontested.
     AppInput.settings.value = const AppInputSettings(touchTimelineScroll: true);
     expect(
       AppInput.timelineEditPanDevices,
@@ -31,7 +42,7 @@ void main() {
   });
 
   test('json + store round-trips', () async {
-    const settings = AppInputSettings(touchTimelineScroll: true);
+    const settings = AppInputSettings(touchTimelineScroll: false);
     expect(AppInputSettings.fromJson(settings.toJson()), settings);
 
     final dir = await Directory.systemTemp.createTemp('input');

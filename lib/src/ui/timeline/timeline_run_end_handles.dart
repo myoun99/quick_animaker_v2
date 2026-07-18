@@ -1,7 +1,9 @@
-import 'package:flutter/gestures.dart' show DragStartBehavior;
+import 'package:flutter/gestures.dart'
+    show DragStartBehavior, TapGestureRecognizer;
 import 'package:flutter/material.dart';
 
 import '../input/app_input_settings.dart' show AppInput;
+import '../input/eager_pan_gesture_recognizer.dart';
 
 import '../../models/frame_id.dart';
 import '../../models/layer.dart';
@@ -473,7 +475,7 @@ class _RunEdgeClusterState extends State<_RunEdgeCluster> {
       opaque: false,
       onEnter: (_) => setState(() => _addHovered = true),
       onExit: (_) => setState(() => _addHovered = false),
-      child: GestureDetector(
+      child: RawGestureDetector(
         key: ValueKey<String>(
           '${widget.keyPrefix}-run-add-${_atEnd ? 'end' : 'start'}-'
           '${widget.layerId}-${widget.anchorValue}',
@@ -482,16 +484,32 @@ class _RunEdgeClusterState extends State<_RunEdgeCluster> {
         // Every pointer kind operates the handle (UI-R17 #6): stylus pens
         // report as TOUCH on some Windows/tablet drivers, so the old
         // mouse+stylus allowlist read as "pen dead" there. Touch joins
-        // per the input policy (UI-R22 #6).
-        supportedDevices: AppInput.timelineEditPanDevices,
-        dragStartBehavior: DragStartBehavior.down,
-        // Tap = add ONE cel (UI-R17 #4); a drag keeps the count-preview
-        // flow.
-        onTap: _tapAdd,
-        onPanStart: (_) => _startAdd(),
-        onPanUpdate: (details) => _updateAdd(details.delta),
-        onPanEnd: (_) => _endAdd(),
-        onPanCancel: _cancelAdd,
+        // per the input policy (UI-R22 #6); EAGER slop (UI-R22F #2) so a
+        // slow [+] drag never loses the arena to the scroll.
+        gestures: <Type, GestureRecognizerFactory>{
+          // Tap = add ONE cel (UI-R17 #4); a drag keeps the count-preview
+          // flow.
+          TapGestureRecognizer:
+              GestureRecognizerFactoryWithHandlers<TapGestureRecognizer>(
+                () => TapGestureRecognizer(debugOwner: this),
+                (recognizer) {
+                  recognizer.supportedDevices = AppInput.timelineEditPanDevices;
+                  recognizer.onTap = _tapAdd;
+                },
+              ),
+          EagerPanGestureRecognizer:
+              GestureRecognizerFactoryWithHandlers<EagerPanGestureRecognizer>(
+                () => EagerPanGestureRecognizer(debugOwner: this),
+                (recognizer) {
+                  recognizer.supportedDevices = AppInput.timelineEditPanDevices;
+                  recognizer.dragStartBehavior = DragStartBehavior.down;
+                  recognizer.onStart = (_) => _startAdd();
+                  recognizer.onUpdate = (details) => _updateAdd(details.delta);
+                  recognizer.onEnd = (_) => _endAdd();
+                  recognizer.onCancel = _cancelAdd;
+                },
+              ),
+        },
         child: Center(
           child: Text(
             '+',

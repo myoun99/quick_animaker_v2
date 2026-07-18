@@ -157,7 +157,11 @@ void main() {
       'selects (UI-R22 #6: the scroll owns touch then)', (tester) async {
     AppInput.settings.value = const AppInputSettings(touchTimelineScroll: true);
     addTearDown(() {
-      AppInput.settings.value = const AppInputSettings();
+      // Back to the CORPUS baseline (flutter_test_config pins OFF; the
+      // class default is ON since UI-R22F).
+      AppInput.settings.value = const AppInputSettings(
+        touchTimelineScroll: false,
+      );
     });
     final cursor = ValueNotifier<int>(0);
     final selection = ValueNotifier<TimelineFrameRangeSelection?>(null);
@@ -191,6 +195,67 @@ void main() {
       selectUpdates,
       isEmpty,
       reason: 'touch belongs to the scroll while the toggle is ON',
+    );
+  });
+
+  testWidgets('a SLOW SMALL pen drag SELECTS — it must not lose the arena '
+      'to the scroll (UI-R22F #2: eager slop, no fast/slow split)', (
+    tester,
+  ) async {
+    final cursor = ValueNotifier<int>(0);
+    final selection = ValueNotifier<TimelineFrameRangeSelection?>(null);
+    addTearDown(cursor.dispose);
+    addTearDown(selection.dispose);
+    final selectUpdates = <(LayerId, int, int)>[];
+
+    await tester.pumpWidget(
+      harness(
+        layers: [blockLayer('layer-a')],
+        cursor: cursor,
+        rangeHooks: hooks(
+          selection: selection,
+          onSelectUpdate: (layerId, anchor, head) =>
+              selectUpdates.add((layerId, anchor, head)),
+        ),
+      ),
+    );
+
+    List<double> scrollOffsets() => tester
+        .stateList<ScrollableState>(
+          find.byType(Scrollable, skipOffstage: false),
+        )
+        .map((state) => state.position.pixels)
+        .toList();
+    final offsetsBefore = scrollOffsets();
+
+    // 6 × 4px stylus creeps = 24px total: past the viewport recognizers'
+    // ~18px hit slop but UNDER the old ~36px pan slop — exactly the drag
+    // the horizontal scroll used to steal (fast big drags selected, slow
+    // small ones scrolled: the "random" split this pins away).
+    final gestureLayer = find.byKey(
+      const ValueKey<String>('timeline-range-gesture-layer-a'),
+    );
+    final gesture = await tester.startGesture(
+      tester.getTopLeft(gestureLayer) + const Offset(24 + 5 * 48, 26),
+      kind: PointerDeviceKind.stylus,
+    );
+    for (var step = 0; step < 6; step += 1) {
+      await gesture.moveBy(const Offset(4, 0));
+      await tester.pump();
+    }
+    await gesture.up();
+    await tester.pump();
+
+    expect(
+      selectUpdates,
+      isNotEmpty,
+      reason: 'the slow pen drag must range-select, never scroll',
+    );
+    expect(selectUpdates.last.$1, const LayerId('layer-a'));
+    expect(
+      scrollOffsets(),
+      offsetsBefore,
+      reason: 'no viewport may have consumed the pen drag',
     );
   });
 
