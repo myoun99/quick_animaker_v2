@@ -369,8 +369,8 @@ void main() {
       baseFrameLinks: {const FrameId('frame-1'): FrameId('frame-$marker')},
     );
 
-    test('a FREE attach row composites from its OWN timeline (UI-R21 #3) '
-        'while still riding the base eye cascade', () {
+    test('a FREE attach row composites from its OWN timeline (UI-R21 #3), '
+        'independent of the base eye (UI-R24 #5)', () {
       Layer freeRow({bool baseVisible = true}) => Layer(
         id: const LayerId('free'),
         name: '+1',
@@ -391,13 +391,14 @@ void main() {
       );
       expect(plan.map(markerOf), [9], reason: 'own timeline resolves');
 
-      // The base's eye still cascades over BOTH attach modes.
+      // Hiding the base hides ONLY the base's own picture (UI-R24 #5):
+      // the attach row keeps compositing under its own eye.
       final hidden = planCutFrameComposite(
         cut: cut([baseLayer(isVisible: false), freeRow()]),
         frameIndex: 5,
         surfaceResolver: resolver,
       );
-      expect(hidden, isEmpty);
+      expect(hidden.map(markerOf), [9]);
     });
 
     test('attach rows composite in list order around their base — '
@@ -459,14 +460,18 @@ void main() {
       expect(plan[1].opacity, 1.0);
     });
 
-    test('hiding the base hides its attach rows; each row own eye still '
-        'hides it alone; dangling links contribute nothing', () {
+    test('VISIBILITY is per-row independent (UI-R24 #5): hiding the base '
+        'hides only the base; each row\'s own eye hides it alone; '
+        'dangling links contribute nothing', () {
+      // The base's eye no longer cascades: its synced attach row still
+      // composites (the cell links resolve through the base's TIMELINE,
+      // which visibility does not touch).
       final baseHidden = planCutFrameComposite(
         cut: cut([baseLayer(isVisible: false), attachRow('above', 3)]),
         frameIndex: 0,
         surfaceResolver: resolver,
       );
-      expect(baseHidden, isEmpty);
+      expect(baseHidden.map(markerOf), [3]);
 
       final rowHidden = planCutFrameComposite(
         cut: cut([baseLayer(), attachRow('above', 3, isVisible: false)]),

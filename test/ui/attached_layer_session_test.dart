@@ -7,7 +7,11 @@ import 'package:quick_animaker_v2/src/models/layer.dart';
 import 'package:quick_animaker_v2/src/models/timeline_coverage.dart'
     show TimelineBlockEdge;
 import 'package:quick_animaker_v2/src/models/timeline_repeat.dart'
-    show timelineIndexIsGhost;
+    show
+        TimelineRunEdgeMode,
+        TimelineRunEdgeSide,
+        runBehaviorOwningGhostAt,
+        timelineIndexIsGhost;
 import 'package:quick_animaker_v2/src/ui/editor_session_manager.dart';
 
 /// W5 attach layers through the session: creation/placement, the attach
@@ -176,6 +180,38 @@ void main() {
       hasLength(3),
       reason: 'the moved-in base cel auto-mirrors like any other',
     );
+  });
+
+  test('the mirror reprints the base\'s run-edge NOTATION (UI-R24 #2): a '
+      'hold edge\'s dashes resolve on the display clone, and the mirror '
+      'prints the BASE\'s cel name (name follows the owner)', () {
+    final (s, base) = sessionWithBase();
+    s.createDrawingAtCurrentFrame();
+    // Name the base cel '1' and author a HOLD run edge after it.
+    expect(s.renameSelectedFrame('1'), isNull);
+    s.setRunEdgeBehavior(
+      layerId: base.id,
+      blockStartIndex: 0,
+      side: TimelineRunEdgeSide.end,
+      mode: TimelineRunEdgeMode.hold,
+    );
+    s.selectLayer(base.id);
+    s.addAttachedLayer(AttachedPlacement.above);
+    final attachId = s.activeLayer!.id;
+
+    // The display clone mirrors the hold ghost WITH its owner id and the
+    // base's runBehaviors, so the cells painter resolves the dash mode.
+    final clone = s.layers.firstWhere((l) => l.id == attachId);
+    expect(clone.timeline[1]!.ghost, isTrue);
+    expect(
+      runBehaviorOwningGhostAt(clone, 1)?.mode,
+      TimelineRunEdgeMode.hold,
+      reason: 'the mirror resolves the base\'s hold mode (the ----- dash)',
+    );
+
+    // The mirror prints the BASE's name — never its own unnamed cel's ○.
+    expect(s.frameNameForLayer(clone, 0), '1');
+    expect(s.frameNameForLayer(clone, 1), '1');
   });
 
   test('the eager mirror preserves the base HOLD notation (UI-R23 #8): a '

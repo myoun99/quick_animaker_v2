@@ -98,7 +98,7 @@ void main() {
     expect(plan, isNull);
   });
 
-  test('a source row mapping off the lattice voids the move', () {
+  test('a CONTENT row mapping off the lattice voids the move', () {
     final a = drawingLayer('a', {0: ('a0', 1)});
     final b = drawingLayer('b', {0: ('b0', 1)});
     final plan = planMultiRowRangeMove(
@@ -110,6 +110,28 @@ void main() {
       rowDelta: 1, // b -> off the bottom
     );
     expect(plan, isNull);
+  });
+
+  test('EMPTY rows in the span never block (UI-R24 #3): only the frames '
+      'inside the selection move — an empty last row needs no landing', () {
+    final a = drawingLayer('a', {0: ('a0', 1)});
+    final b = drawingLayer('b', {}); // selected but empty
+    final plan = planMultiRowRangeMove(
+      orderedLayers: [a, b],
+      sourceLayerIds: const [LayerId('a'), LayerId('b')],
+      rangeStartIndex: 0,
+      rangeEndIndexExclusive: 1,
+      frameDelta: 0,
+      rowDelta: 1, // b would map off the bottom — but it carries nothing
+    );
+    expect(plan, isNotNull);
+    expect(plan!.layersAfter[const LayerId('a')]!.timeline.keys, isEmpty);
+    expect(
+      plan.layersAfter[const LayerId('b')]!.timeline[0]!.frameId,
+      const FrameId('a0'),
+    );
+    // The empty row contributed nothing — no rekeys from it.
+    expect(plan.rekeys.map((r) => r.from).toSet(), {const LayerId('a')});
   });
 
   test('a landing below frame 0 voids the move', () {

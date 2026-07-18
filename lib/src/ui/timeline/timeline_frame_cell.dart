@@ -5,7 +5,6 @@ import '../../models/layer.dart';
 import '../../models/layer_id.dart';
 import '../../models/layer_kind.dart';
 import '../input/app_input_settings.dart' show AppInput;
-import '../theme/app_theme.dart';
 import 'timeline_cell_exposure_state.dart';
 import 'timeline_cell_style.dart';
 import 'timeline_exposure_block_visual.dart';
@@ -180,9 +179,13 @@ class TimelineFrameCell extends StatelessWidget {
               ),
               style: TextStyle(
                 // Camera key-summary markers read like the lane key
-                // diamonds: accent, dimmed outside the playback range.
+                // diamonds (UI-R24 #9): the frame-block WHITE body —
+                // selection speaks through the accent outline layers, not
+                // the glyph. Dimmed outside the playback range.
                 color: cameraSummaryCell && exposureState.isCovered
-                    ? AppColors.accent.withValues(alpha: dimmed ? 0.55 : 1)
+                    ? timelineDrawingStartColor.withValues(
+                        alpha: dimmed ? 0.55 : 1,
+                      )
                     : timelineCellUsesDrawingInk(effectiveExposureState)
                     ? (dimmed
                           ? timelineDrawingInkColor.withValues(alpha: 0.55)

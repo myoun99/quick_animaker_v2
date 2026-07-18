@@ -124,10 +124,11 @@ class CutFrameCompositeEntry {
 /// exposure + the cell link, the POSE and the animated-opacity sample come
 /// from the BASE's transform track (fx shared — the base's fx switch
 /// governs both), while the eye, static opacity and cels stay the attach
-/// layer's own. Hiding the base hides its attach layers too (they are part
-/// of the base's group); dangling links contribute nothing. The layer list
-/// keeps attach layers adjacent to their base, so plain list order already
-/// yields [below…, base, above…].
+/// layer's own. VISIBILITY is fully independent (UI-R24 #5): hiding the
+/// base hides ONLY the base's own picture — its attach rows keep
+/// compositing under their own eyes. Dangling links contribute nothing.
+/// The layer list keeps attach layers adjacent to their base, so plain
+/// list order already yields [below…, base, above…].
 ///
 /// Layers in [fxBypassedLayerIds] compose with their FX ignored — identity
 /// pose and no animated opacity (the layer-label fx switch, session view
@@ -149,11 +150,9 @@ List<CutFrameCompositeEntry> resolveCutFrameCompositeEntries({
       // Dangling attach link (base gone): the row contributes nothing.
       continue;
     }
-    // The base's eye cascades over its attach layers; each row's own eye
-    // and static opacity gate it individually.
-    if (base != null && !base.isVisible) {
-      continue;
-    }
+    // Each row's OWN eye and static opacity gate it — the base's eye
+    // never cascades (UI-R24 #5: hiding the base hides only the base's
+    // own picture; its attach rows stay independent).
     if (!layer.isVisible || layer.opacity <= 0) {
       continue;
     }

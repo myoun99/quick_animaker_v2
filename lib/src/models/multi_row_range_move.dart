@@ -68,6 +68,9 @@ MultiRowRangeMovePlan? planMultiRowRangeMove({
 
   // Gather each source row's selected blocks + travelling cels, validating
   // the block-snap and the link-safety of every cel that would travel.
+  // Rows with NOTHING selected contribute nothing and need no target
+  // mapping (UI-R24 #3: the selection's empty parts never block the move —
+  // only the frames inside it travel).
   final selectedByLayer = <LayerId, List<TimelineDrawingBlock>>{};
   final framesByLayer = <LayerId, List<Frame>>{};
   final frameIdsByLayer = <LayerId, Set<FrameId>>{};
@@ -75,13 +78,9 @@ MultiRowRangeMovePlan? planMultiRowRangeMove({
   for (final sourceId in sourceLayerIds) {
     final sourceIndex = indexById[sourceId];
     if (sourceIndex == null) {
-      return null;
+      continue; // Off the lattice — carries nothing (empty rows only; the
+      // caller keeps content-bearing ineligible rows out).
     }
-    final targetIndex = sourceIndex + rowDelta;
-    if (targetIndex < 0 || targetIndex >= orderedLayers.length) {
-      return null;
-    }
-    sourceIndexes.add(sourceIndex);
     final source = orderedLayers[sourceIndex];
     final base = ghostFree(source);
     final selected = <TimelineDrawingBlock>[];
@@ -98,6 +97,14 @@ MultiRowRangeMovePlan? planMultiRowRangeMove({
         return null; // The range was not block-snapped on this row.
       }
     }
+    if (selected.isEmpty) {
+      continue; // An empty row rides along without mapping anywhere.
+    }
+    final targetIndex = sourceIndex + rowDelta;
+    if (targetIndex < 0 || targetIndex >= orderedLayers.length) {
+      return null;
+    }
+    sourceIndexes.add(sourceIndex);
     final frameIds = <FrameId>{for (final block in selected) block.frameId};
     // A cel referenced from OUTSIDE the moved set stays put (link intact) —
     // the whole move is rejected rather than splitting the link.
@@ -128,7 +135,7 @@ MultiRowRangeMovePlan? planMultiRowRangeMove({
     frameIdsByLayer[sourceId] = frameIds;
   }
 
-  if (selectedByLayer.values.every((blocks) => blocks.isEmpty)) {
+  if (selectedByLayer.isEmpty) {
     return null; // Nothing but empty cells across every row.
   }
 

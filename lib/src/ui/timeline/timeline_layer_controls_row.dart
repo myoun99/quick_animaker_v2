@@ -103,6 +103,9 @@ class TimelineLayerControlsRow extends StatelessWidget {
     final row = InkWell(
       key: ValueKey<String>('timeline-layer-row-${layer.id}'),
       onTap: () => onSelectLayer(layer.id),
+      // No hover glow on the ROW surface (UI-R24 #6): selection speaks
+      // through the background alone; only the buttons may brighten.
+      hoverColor: Colors.transparent,
       child: Container(
         // The section bracket occupies the leading gutter beside the rail.
         width: metrics.layerControlsWidth - metrics.sectionLabelGutterWidth,
@@ -169,46 +172,47 @@ class TimelineLayerControlsRow extends StatelessWidget {
                 onMarkSelected: onLayerMarkSelected,
               ),
               const SizedBox(width: layerControlChipGap),
-              Expanded(
-                child: InkWell(
-                  key: ValueKey<String>('timeline-layer-name-${layer.id}'),
-                  onTap: () => onSelectLayer(layer.id),
-                  child: Align(
-                    alignment: Alignment.centerLeft,
-                    child: Row(
-                      children: [
+              // The TYPE BUTTON (UI-R24 #7): the kind icon — or the attach
+              // placement arrow — in its OWN fixed slot, a control
+              // separate from the name (function TBD; tap selects for
+              // now, and button hover feedback is welcome here). One slot
+              // for every row kind, so attach rows align with the rest
+              // (UI-R24 #8 — the old arrow indent is gone).
+              InkWell(
+                key: ValueKey<String>('timeline-layer-type-button-${layer.id}'),
+                onTap: () => onSelectLayer(layer.id),
+                child: SizedBox(
+                  width: 22,
+                  height: 24,
+                  child: Center(
+                    child: layer.attachedToLayerId != null
                         // Attach rows (UI-R20 #10): the placement arrow IS
-                        // the type mark — indented under the base, bending
-                        // up-right when the row attaches above, down-right
-                        // below. No kind icon (the base carries the kind).
-                        if (layer.attachedToLayerId != null)
-                          Padding(
-                            padding: const EdgeInsets.only(left: 6, right: 4),
-                            child: Semantics(
-                              label:
-                                  layer.attachedPlacement ==
-                                      AttachedPlacement.above
-                                  ? 'Attach layer (above)'
-                                  : 'Attach layer (below)',
-                              container: true,
-                              child: ExcludeSemantics(
-                                child: Transform.flip(
-                                  flipY:
-                                      layer.attachedPlacement ==
-                                      AttachedPlacement.above,
-                                  child: Icon(
-                                    Icons.subdirectory_arrow_right,
-                                    key: ValueKey<String>(
-                                      'timeline-layer-attach-arrow-${layer.id}',
-                                    ),
-                                    size: 16,
+                        // the type mark — bending up-right when the row
+                        // attaches above, down-right below. No kind icon
+                        // (the base carries the kind).
+                        ? Semantics(
+                            label:
+                                layer.attachedPlacement ==
+                                    AttachedPlacement.above
+                                ? 'Attach layer (above)'
+                                : 'Attach layer (below)',
+                            container: true,
+                            child: ExcludeSemantics(
+                              child: Transform.flip(
+                                flipY:
+                                    layer.attachedPlacement ==
+                                    AttachedPlacement.above,
+                                child: Icon(
+                                  Icons.subdirectory_arrow_right,
+                                  key: ValueKey<String>(
+                                    'timeline-layer-attach-arrow-${layer.id}',
                                   ),
+                                  size: 16,
                                 ),
                               ),
                             ),
                           )
-                        else
-                          Semantics(
+                        : Semantics(
                             label: _semanticLabelForLayerKind(layer.kind),
                             container: true,
                             child: ExcludeSemantics(
@@ -221,7 +225,20 @@ class TimelineLayerControlsRow extends StatelessWidget {
                               ),
                             ),
                           ),
-                        const SizedBox(width: 6),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 4),
+              Expanded(
+                child: InkWell(
+                  key: ValueKey<String>('timeline-layer-name-${layer.id}'),
+                  onTap: () => onSelectLayer(layer.id),
+                  // No hover glow on the NAME either (UI-R24 #6).
+                  hoverColor: Colors.transparent,
+                  child: Align(
+                    alignment: Alignment.centerLeft,
+                    child: Row(
+                      children: [
                         // Selection reads by COLOR only (user rule): no
                         // bold flip, so the text never reflows on select.
                         Flexible(
