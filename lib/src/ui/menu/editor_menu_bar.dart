@@ -12,6 +12,7 @@ import '../dialogs/delete_layer_dialog.dart';
 import '../dialogs/language_settings_dialog.dart';
 import '../dialogs/accent_settings_dialog.dart';
 import '../dialogs/input_settings_dialog.dart';
+import '../debug/input_inspector.dart';
 import '../dialogs/project_background_dialog.dart';
 import '../dialogs/rename_cut_dialog.dart';
 import '../dialogs/rename_layer_dialog.dart';
@@ -332,6 +333,18 @@ class EditorMenuBar extends StatelessWidget {
       label: 'Input Settings…',
       onPressed: () {
         unawaited(showInputSettingsDialog(context, session: session));
+      },
+    ),
+    // The pen program's diagnosis overlay (PEN-1): toggles the live
+    // pointer-event readout — kind/pressure/tilt straight from the
+    // platform, the driver-vs-app separator.
+    _item(
+      id: 'edit-input-inspector',
+      label: InputInspector.visible.value
+          ? 'Hide Input Inspector'
+          : 'Input Inspector',
+      onPressed: () {
+        InputInspector.visible.value = !InputInspector.visible.value;
       },
     ),
   ];

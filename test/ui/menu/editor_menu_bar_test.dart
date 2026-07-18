@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:quick_animaker_v2/src/services/project_repository.dart';
+import 'package:quick_animaker_v2/src/ui/debug/input_inspector.dart';
 import 'package:quick_animaker_v2/src/ui/home_page.dart';
 
 /// The top menu bar (W2): every submenu lists its commands, enablement
@@ -193,5 +194,38 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.byType(AboutDialog), findsOneWidget);
+  });
+
+  testWidgets('Edit: Input Inspector toggles the diagnosis overlay (PEN-1)', (
+    tester,
+  ) async {
+    addTearDown(InputInspector.reset);
+    await pumpHome(tester);
+
+    // The Edit menu is long — the inspector entry sits at the bottom and
+    // needs scrolling into the menu panel's view first.
+    Future<void> tapInspectorItem() async {
+      final item = find.byKey(
+        const ValueKey<String>('menu-edit-input-inspector'),
+      );
+      await tester.ensureVisible(item);
+      await tester.pumpAndSettle();
+      await tester.tap(item);
+      await tester.pumpAndSettle();
+    }
+
+    await openMenu(tester, 'menu-edit');
+    await tapInspectorItem();
+    expect(
+      find.byKey(const ValueKey<String>('input-inspector-card')),
+      findsOneWidget,
+    );
+
+    await openMenu(tester, 'menu-edit');
+    await tapInspectorItem();
+    expect(
+      find.byKey(const ValueKey<String>('input-inspector-card')),
+      findsNothing,
+    );
   });
 }
