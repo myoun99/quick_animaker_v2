@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import '../../models/layer.dart';
 import '../../models/layer_id.dart';
 import '../../models/layer_kind.dart';
+import '../input/app_input_settings.dart' show AppInput;
 import '../theme/app_theme.dart';
 import 'timeline_cell_exposure_state.dart';
 import 'timeline_cell_style.dart';
@@ -210,7 +211,10 @@ class TimelineFrameCell extends StatelessWidget {
       // pointer down bypasses the arena, keeping single-tap selection
       // instant on every layer kind.
       onPointerDown: (event) {
-        if ((event.buttons == 0 || (event.buttons & kPrimaryButton) != 0) &&
+        // Touch-scroll ON: a finger press is pure scroll — it never seeks
+        // (UI-R23 feedback #2); pen/mouse keep the instant select.
+        if (AppInput.timelineCellPressSeeks(event.kind) &&
+            (event.buttons == 0 || (event.buttons & kPrimaryButton) != 0) &&
             !(suppressPointerDownSelect?.call(frameIndex) ?? false)) {
           select();
         }

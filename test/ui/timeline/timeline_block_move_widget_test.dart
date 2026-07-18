@@ -503,6 +503,82 @@ void main() {
     expect(seeks, [6]);
   });
 
+  testWidgets('with touch-timeline-scroll ON, a TOUCH press never SEEKS '
+      '(UI-R23 feedback #2: the first scroll touch kept moving the '
+      'playhead) — painter and sparse rows alike; pen/mouse still seek '
+      'and OFF keeps touch-as-pen', (tester) async {
+    AppInput.settings.value = const AppInputSettings(touchTimelineScroll: true);
+    addTearDown(() {
+      AppInput.settings.value = const AppInputSettings(
+        touchTimelineScroll: false,
+      );
+    });
+    final cursor = ValueNotifier<int>(0);
+    final selection = ValueNotifier<TimelineFrameRangeSelection?>(null);
+    addTearDown(cursor.dispose);
+    addTearDown(selection.dispose);
+    final seeks = <int>[];
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: LayerTimelineGrid(
+            layers: [
+              blockLayer('anim-1'), // painter row
+              blockLayer('se-1').copyWith(kind: LayerKind.se), // sparse row
+            ],
+            activeLayerId: const LayerId('anim-1'),
+            frameCursor: cursor,
+            playbackFrameCount: 24,
+            exposureStateForLayer: stateFor,
+            onSelectLayer: (_) {},
+            onSelectFrame: seeks.add,
+            onAddLayer: () {},
+            onToggleLayerVisibility: (_) {},
+            onLayerOpacityChanged: (_, _) {},
+            onToggleLayerTimesheet: (_) {},
+            onLayerMarkSelected: (_, _) {},
+            rangeHooks: hooks(selection: selection),
+            metrics: const TimelineGridMetrics(
+              frameCellWidth: 48,
+              layerRowHeight: 52,
+            ),
+          ),
+        ),
+      ),
+    );
+
+    Future<void> press(String layerId, {required PointerDeviceKind kind}) {
+      final layerGesture = find.byKey(
+        ValueKey<String>('timeline-range-gesture-$layerId'),
+      );
+      return tester
+          .startGesture(
+            tester.getTopLeft(layerGesture) + const Offset(24 + 2 * 48, 26),
+            kind: kind,
+          )
+          .then((g) => g.up())
+          .then((_) => tester.pump());
+    }
+
+    // TOUCH press = pure scroll intent: no seek on either row shape.
+    await press('anim-1', kind: PointerDeviceKind.touch);
+    await press('se-1', kind: PointerDeviceKind.touch);
+    expect(seeks, isEmpty, reason: 'touch must not move the playhead');
+
+    // Pen and mouse keep the instant seek.
+    await press('anim-1', kind: PointerDeviceKind.stylus);
+    await press('se-1', kind: PointerDeviceKind.mouse);
+    expect(seeks, [2, 2]);
+
+    // Toggle OFF (touch-as-pen, R17-⑥): touch seeks again.
+    AppInput.settings.value = const AppInputSettings(
+      touchTimelineScroll: false,
+    );
+    await press('anim-1', kind: PointerDeviceKind.touch);
+    expect(seeks, [2, 2, 2]);
+  });
+
   testWidgets('a cell drag reports anchor/head SELECT updates, never a '
       'move', (tester) async {
     final selectUpdates = <(LayerId, int, int)>[];
