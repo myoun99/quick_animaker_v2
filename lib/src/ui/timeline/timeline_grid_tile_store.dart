@@ -125,7 +125,11 @@ class TimelineGridTileStore {
         entry.playbackFrameCount == painter.playbackFrameCount &&
         identical(entry.frameNameForLayer, painter.frameNameForLayer) &&
         entry.spanEndIndexExclusive == spanEndIndexExclusive &&
-        entry.devicePixelRatio == devicePixelRatio) {
+        entry.devicePixelRatio == devicePixelRatio &&
+        // A sheet-mode flip changes the CELL TEXT itself (UI-R23 #1) —
+        // that is content, not look: drop to the classic paint so the
+        // right text shows immediately.
+        entry.sheetDataMode == painter.sheetDataMode) {
       return entry.image;
     }
     return null;
@@ -157,6 +161,7 @@ class TimelineGridTileStore {
         baseTextStyle: request.painter.baseTextStyle,
         spanEndIndexExclusive: request.spanEndIndexExclusive,
         devicePixelRatio: request.devicePixelRatio,
+        sheetDataMode: request.painter.sheetDataMode,
         image: image,
       );
       while (_entries.length > capacity) {
@@ -476,6 +481,7 @@ class _TileEntry {
     required this.baseTextStyle,
     required this.spanEndIndexExclusive,
     required this.devicePixelRatio,
+    required this.sheetDataMode,
     required this.image,
   });
 
@@ -489,6 +495,11 @@ class _TileEntry {
   final TextStyle baseTextStyle;
   final int spanEndIndexExclusive;
   final double devicePixelRatio;
+
+  /// The sheet-text mode the tile's glyphs were baked under (UI-R23
+  /// feedback #1): notation and data sheets print different cell text.
+  final bool sheetDataMode;
+
   final ui.Image image;
 
   /// The `shouldRepaint` identity, tile edition: any changed look fact
@@ -508,7 +519,8 @@ class _TileEntry {
         identical(frameNameForLayer, painter.frameNameForLayer) &&
         baseTextStyle == painter.baseTextStyle &&
         this.spanEndIndexExclusive == spanEndIndexExclusive &&
-        this.devicePixelRatio == devicePixelRatio;
+        this.devicePixelRatio == devicePixelRatio &&
+        sheetDataMode == painter.sheetDataMode;
   }
 }
 
