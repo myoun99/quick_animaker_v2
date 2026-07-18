@@ -59,22 +59,40 @@ DrawingBlockMovePlan? planDrawingBlockMove({
   required int blockStartIndex,
   required int frameDelta,
 }) {
-  final entry = source.timeline[blockStartIndex];
+  // Plan on ghost-free timelines: derived repeat/hold ghosts neither move
+  // nor obstruct, and (sharing the moved cel's frameId) must never count
+  // as an external link — the caller re-derives the run behaviors after
+  // the slide (UI-R23 #5, matching planDrawingRangeMove).
+  SplayTreeMap<int, TimelineExposure> baseTimeline(Layer layer) {
+    final base = SplayTreeMap<int, TimelineExposure>();
+    layer.timeline.forEach((index, entry) {
+      if (!(entry.isDrawing && entry.ghost)) {
+        base[index] = entry;
+      }
+    });
+    return base;
+  }
+
+  final sameLayer = source.id == target.id;
+  final sourceBase = baseTimeline(source);
+  final targetBase = sameLayer ? sourceBase : baseTimeline(target);
+
+  final entry = sourceBase[blockStartIndex];
   if (entry == null || !entry.isDrawing) {
     return null;
   }
-  final sameLayer = source.id == target.id;
   if (sameLayer && frameDelta == 0) {
     return null;
   }
   final length = entry.length!;
 
   // Cross-layer: the cel travels with the block. Linked cels (the same
-  // frame exposed by another entry) stay: rejecting keeps the link intact.
+  // frame exposed by another REAL entry) stay: rejecting keeps the link
+  // intact.
   Frame? movedFrame;
   if (!sameLayer) {
     final frameId = entry.frameId!;
-    for (final candidate in source.timeline.entries) {
+    for (final candidate in sourceBase.entries) {
       if (candidate.key != blockStartIndex &&
           candidate.value.isDrawing &&
           candidate.value.frameId == frameId) {
@@ -95,7 +113,7 @@ DrawingBlockMovePlan? planDrawingBlockMove({
   // Every other drawing block on the target timeline (the moved block's own
   // entry is ignored when sliding within the source layer).
   final others = [
-    for (final block in drawingBlocks(target.timeline))
+    for (final block in drawingBlocks(targetBase))
       if (!(sameLayer && block.startIndex == blockStartIndex)) block,
   ];
 
@@ -122,7 +140,7 @@ DrawingBlockMovePlan? planDrawingBlockMove({
   }
 
   SplayTreeMap<int, TimelineExposure> targetTimelineAfter() {
-    final timeline = SplayTreeMap<int, TimelineExposure>.of(target.timeline);
+    final timeline = SplayTreeMap<int, TimelineExposure>.of(targetBase);
     if (sameLayer) {
       timeline.remove(blockStartIndex);
     }
@@ -144,7 +162,7 @@ DrawingBlockMovePlan? planDrawingBlockMove({
   }
 
   final frameId = entry.frameId!;
-  final sourceTimeline = SplayTreeMap<int, TimelineExposure>.of(source.timeline)
+  final sourceTimeline = SplayTreeMap<int, TimelineExposure>.of(sourceBase)
     ..remove(blockStartIndex);
   return DrawingBlockMovePlan(
     sourceAfter: source.copyWith(
@@ -240,7 +258,10 @@ DrawingBlockMovePlan? planDrawingRangeMove({
   final movedFrameIds = <FrameId>[];
   if (!sameLayer) {
     final frameIds = <FrameId>{for (final block in moved) block.frameId};
-    for (final candidate in source.timeline.entries) {
+    // Read the ghost-FREE base: derived repeat/hold ghosts share the moved
+    // block's frameId but are not real links — counting them here voided
+    // every cross-row move of a repeat/hold-edge block (UI-R23 #5).
+    for (final candidate in sourceBase.entries) {
       if (movedStarts.contains(candidate.key)) {
         continue;
       }

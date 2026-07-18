@@ -62,10 +62,11 @@ class TimelineFrameRangeSelection {
 
 /// Snaps a raw dragged span to WHOLE exposure blocks (UI-R8 user rule: a
 /// selection half-covering a block extends through it — blocks never
-/// split). GHOST blocks snap exactly like real ones (UI-R20 #5 / P3b:
-/// every cell is selectable — repeat instances and synced attach mirrors
-/// included); what a selection can DO to a ghost stands down at each
-/// op's own seam (move plans are ghost-free, delete skips ghost starts).
+/// split). GHOST exposures are TEXT-ONLY now (UI-R23 #6: repeat/hold
+/// instances and synced attach mirrors "aren't blocks, they only carry
+/// text") — they never extend a selection, reading as empty cells for the
+/// snap. A raw span may still land on ghost cells; the move plans stay
+/// ghost-free so those cells just ride along.
 TimelineFrameRangeSelection? snapFrameRangeToBlocks({
   required Layer layer,
   required int anchorIndex,
@@ -77,20 +78,25 @@ TimelineFrameRangeSelection? snapFrameRangeToBlocks({
     return null;
   }
 
-  // Expand outward until stable: covering blocks (ghost or real) at the
-  // edges, and INSTRUCTION events anywhere in the range (UI-R22 #4 —
-  // covering one cell of a CAM event selects its whole span, the block
-  // rule). Each pass only grows the range, so the loop terminates.
+  // Expand outward until stable: covering REAL blocks at the edges (ghost
+  // exposures are text-only and never extend the span, UI-R23 #6), and
+  // INSTRUCTION events anywhere in the range (UI-R22 #4 — covering one
+  // cell of a CAM event selects its whole span, the block rule). Each pass
+  // only grows the range, so the loop terminates.
   var changed = true;
   while (changed) {
     changed = false;
     final startBlock = coveringDrawingBlockAt(layer.timeline, start);
-    if (startBlock != null && startBlock.startIndex < start) {
+    if (startBlock != null &&
+        !startBlock.entry.ghost &&
+        startBlock.startIndex < start) {
       start = startBlock.startIndex;
       changed = true;
     }
     final endBlock = coveringDrawingBlockAt(layer.timeline, endExclusive - 1);
-    if (endBlock != null && endBlock.endIndexExclusive > endExclusive) {
+    if (endBlock != null &&
+        !endBlock.entry.ghost &&
+        endBlock.endIndexExclusive > endExclusive) {
       endExclusive = endBlock.endIndexExclusive;
       changed = true;
     }
