@@ -648,6 +648,7 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
               trailingFrameSpacerWidth: plan.trailingFrameSpacerWidth,
               metrics: _metrics,
               laneEdit: widget.laneEdit,
+              rangeGesture: _rangeGesture,
             );
     }
     // PRO-TIMELINE scrolling (UI-R15→R16, transposed): the cells column

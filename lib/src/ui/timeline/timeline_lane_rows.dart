@@ -5,6 +5,8 @@ import '../../models/layer.dart';
 import '../theme/app_theme.dart' show instantMenuAnimation;
 import 'layer_label_controls.dart' show LayerSectionBandCell;
 import 'property_lane_model.dart';
+import 'timeline_frame_range_gesture.dart'
+    show TimelineFrameRangeGestureLayer, TimelineRangeGestureCallbacks;
 import 'timeline_grid_metrics.dart';
 
 /// The label cell of one property lane: an AE-style property name, the
@@ -500,6 +502,7 @@ class TimelineLaneFrameRow extends StatelessWidget {
     required this.trailingFrameSpacerWidth,
     required this.metrics,
     this.laneEdit,
+    this.rangeGesture,
     this.axis = Axis.horizontal,
     this.keyPrefix = 'timeline',
   });
@@ -512,6 +515,13 @@ class TimelineLaneFrameRow extends StatelessWidget {
   final double trailingFrameSpacerWidth;
   final TimelineGridMetrics metrics;
   final PropertyLaneEditCallbacks? laneEdit;
+
+  /// Range selection on the lane BAND (UI-R22 #3): a pan on the band
+  /// selects on the OWNING LAYER — cells are cells, lanes included. The
+  /// key markers keep pointer priority (they sit above the gesture
+  /// layer), so marker drags stay marker drags. Null keeps the band
+  /// display-only.
+  final TimelineRangeGestureCallbacks? rangeGesture;
 
   /// Frame-axis direction; the marker/menu behavior is shared, only the
   /// band's composition transposes.
@@ -555,6 +565,22 @@ class TimelineLaneFrameRow extends StatelessWidget {
       child: Stack(
         clipBehavior: Clip.none,
         children: [
+          // The band-wide range gesture (UI-R22 #3), UNDER the markers:
+          // pans on empty band select on the OWNING layer; marker drags
+          // keep their arena priority above.
+          if (rangeGesture != null)
+            TimelineFrameRangeGestureLayer(
+              key: ValueKey<String>(
+                '$keyPrefix-lane-range-gesture-${layer.id}-${lane.laneId}',
+              ),
+              layer: layer,
+              frameStartIndex: frameStartIndex,
+              leadingFrameSpacerWidth: 0,
+              frameCellExtent: cellExtent,
+              crossAxisExtent: crossExtent,
+              callbacks: rangeGesture!,
+              axis: axis,
+            ),
           for (final frame in lane.keyedFrames)
             if (frame >= frameStartIndex && frame < frameEndIndexExclusive)
               Positioned(

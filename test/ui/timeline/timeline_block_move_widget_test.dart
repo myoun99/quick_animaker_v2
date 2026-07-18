@@ -12,6 +12,7 @@ import 'package:quick_animaker_v2/src/models/timeline_frame_range.dart';
 
 import 'timeline_cell_probe.dart';
 import 'package:quick_animaker_v2/src/ui/timeline/layer_timeline_grid.dart';
+import 'package:quick_animaker_v2/src/ui/timeline/property_lane_model.dart';
 import 'package:quick_animaker_v2/src/ui/timeline/timeline_cell_exposure_state.dart';
 import 'package:quick_animaker_v2/src/ui/timeline/timeline_drag_preview.dart';
 import 'package:quick_animaker_v2/src/ui/timeline/timeline_frame_range_gesture.dart';
@@ -150,6 +151,71 @@ void main() {
     expect(selectUpdates.last.$1, const LayerId('se-1'));
   });
 
+  testWidgets('a drag on a LANE BAND selects on the OWNING layer '
+      '(UI-R22 #3: cells are cells, lanes included)', (tester) async {
+    final cursor = ValueNotifier<int>(0);
+    final selection = ValueNotifier<TimelineFrameRangeSelection?>(null);
+    addTearDown(cursor.dispose);
+    addTearDown(selection.dispose);
+    final selectUpdates = <(LayerId, int, int)>[];
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: LayerTimelineGrid(
+            layers: [blockLayer('layer-a')],
+            activeLayerId: const LayerId('layer-a'),
+            frameCursor: cursor,
+            playbackFrameCount: 24,
+            exposureStateForLayer: stateFor,
+            onSelectLayer: (_) {},
+            onSelectFrame: (_) {},
+            onAddLayer: () {},
+            onToggleLayerVisibility: (_) {},
+            onLayerOpacityChanged: (_, _) {},
+            onToggleLayerTimesheet: (_) {},
+            onLayerMarkSelected: (_, _) {},
+            expandedLaneLayerIds: {const LayerId('layer-a')},
+            lanesForLayer: (_) => [
+              const PropertyLaneRow(
+                laneId: 'position',
+                label: 'Position',
+                keyedFrames: {2},
+              ),
+            ],
+            rangeHooks: hooks(
+              selection: selection,
+              onSelectUpdate: (layerId, anchor, head) =>
+                  selectUpdates.add((layerId, anchor, head)),
+            ),
+            metrics: const TimelineGridMetrics(
+              frameCellWidth: 48,
+              layerRowHeight: 52,
+            ),
+          ),
+        ),
+      ),
+    );
+
+    final laneGesture = find.byKey(
+      const ValueKey<String>('timeline-lane-range-gesture-layer-a-position'),
+    );
+    expect(laneGesture, findsOneWidget);
+
+    // Drag on empty band cells (past the key at 2): selects on layer-a.
+    final gesture = await tester.startGesture(
+      tester.getTopLeft(laneGesture) + const Offset(5 * 48 + 24, 26),
+      kind: PointerDeviceKind.mouse,
+    );
+    await gesture.moveBy(const Offset(96, 0));
+    await gesture.up();
+    await tester.pump();
+
+    expect(selectUpdates, isNotEmpty);
+    expect(selectUpdates.last.$1, const LayerId('layer-a'));
+    expect(selectUpdates.first.$2, 5, reason: 'anchor = the pressed cell');
+  });
+
   testWidgets('the gesture layer SURVIVES mid-drag preview rebuilds that '
       'change the row\'s overlay count (UI-R22 #1: the SE row-change '
       'used to commit the move under the pointer)', (tester) async {
@@ -167,10 +233,7 @@ void main() {
     addTearDown(dragPreview.dispose);
     var ended = 0;
     final se1 = blockLayer('se-1').copyWith(kind: LayerKind.se);
-    final se2 = blockLayer(
-      'se-2',
-      start: 10,
-    ).copyWith(kind: LayerKind.se);
+    final se2 = blockLayer('se-2', start: 10).copyWith(kind: LayerKind.se);
 
     await tester.pumpWidget(
       MaterialApp(
