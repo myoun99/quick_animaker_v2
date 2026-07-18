@@ -61,6 +61,13 @@ class ProjectRepository {
     updateProject((project) => project.copyWith(background: background));
   }
 
+  /// The movie's trailing gap (UI-R20 #3).
+  void updateTrailingFrames(int trailingFrames) {
+    updateProject(
+      (project) => project.copyWith(trailingFrames: trailingFrames),
+    );
+  }
+
   void addTrack(Track track) {
     updateProject((project) {
       return project.copyWith(tracks: [...project.tracks, track]);

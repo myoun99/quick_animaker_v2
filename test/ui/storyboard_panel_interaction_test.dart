@@ -560,11 +560,12 @@ void main() {
       expect(ends, 2);
     });
 
-    testWidgets('the strips carry a draggable cut-end line (UI-R18 #15): '
-        'dragging it end-trims the boundary cut', (tester) async {
-      final begins = <(CutId, TimelineBlockEdge)>[];
+    testWidgets('the end line drags the MOVIE length (UI-R20 #3) — the '
+        'trailing gap, never a cut trim', (tester) async {
+      var begins = 0;
       final updates = <int>[];
       var ends = 0;
+      final trims = <CutId>[];
 
       await _pumpStoryboardPanel(
         tester,
@@ -576,7 +577,16 @@ void main() {
         onCutSelected: (_) {},
         cutTrim: StoryboardCutTrimCallbacks(
           onBegin: (cutId, edge) {
-            begins.add((cutId, edge));
+            trims.add(cutId);
+            return true;
+          },
+          onUpdate: (_) {},
+          onEnd: () {},
+          onCancel: () {},
+        ),
+        movieEnd: StoryboardMovieEndCallbacks(
+          onBegin: () {
+            begins += 1;
             return true;
           },
           onUpdate: updates.add,
@@ -599,11 +609,12 @@ void main() {
       await gesture.up();
       await tester.pumpAndSettle();
 
-      // The boundary-defining LAST cut end-trims: +32px at 8 px/frame.
-      expect(begins, [(const CutId('cut-b'), TimelineBlockEdge.end)]);
+      // +32px at 8 px/frame = the movie grows 4 frames of trailing gap.
+      expect(begins, 1);
       expect(updates, isNotEmpty);
       expect(updates.last, 4);
       expect(ends, 1);
+      expect(trims, isEmpty, reason: 'no cut is ever trimmed by the end line');
     });
 
     testWidgets('dropping a block onto itself does not reorder', (
@@ -1229,6 +1240,7 @@ Future<void> _pumpStoryboardPanel(
   StoryboardCutTrimCallbacks? cutTrim,
   StoryboardCutMoveCallbacks? cutMove,
   StoryboardCutSelectCallbacks? cutSelect,
+  StoryboardMovieEndCallbacks? movieEnd,
   ValueChanged<TrackId>? onSelectTrack,
   int? playheadGlobalFrame,
   ValueChanged<int>? onSeekGlobalFrame,
@@ -1255,6 +1267,7 @@ Future<void> _pumpStoryboardPanel(
           cutTrim: cutTrim,
           cutMove: cutMove,
           cutSelect: cutSelect,
+          movieEnd: movieEnd,
           onSelectTrack: onSelectTrack,
           playheadFrame: playheadGlobalFrame == null
               ? null
