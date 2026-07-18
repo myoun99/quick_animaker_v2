@@ -114,6 +114,70 @@ void main() {
     expect(base.id, isNotNull); // base untouched throughout
   });
 
+  test('ALWAYS-MIRROR (UI-R23 #7 v2): a base cel created AFTER the attach '
+      'row exists auto-mirrors in the same write — and undo/redo of the '
+      'base creation replays the identical mirror ids', () {
+    final (s, base) = sessionWithBase();
+    s.createDrawingAtCurrentFrame(); // base cel at 0
+    s.addAttachedLayer(AttachedPlacement.above);
+    final attachId = s.activeLayer!.id;
+    expect(
+      cutLayers(s).firstWhere((l) => l.id == attachId).frames,
+      hasLength(1),
+    );
+
+    // The BASE gains a second cel while the attach row already exists:
+    // the mirror follows in the very same edit — no manual step.
+    s.selectLayer(base.id);
+    s.selectFrameIndex(3);
+    s.createDrawingAtCurrentFrame();
+    var attached = cutLayers(s).firstWhere((l) => l.id == attachId);
+    expect(attached.frames, hasLength(2));
+    expect(attached.baseFrameLinks, hasLength(2));
+    final links = Map.of(attached.baseFrameLinks);
+    List<int> mirrorDisplayKeys() => s.layers
+        .firstWhere((l) => l.id == attachId)
+        .timeline
+        .keys
+        .toList();
+    expect(mirrorDisplayKeys(), [0, 3]);
+
+    // Undo the base creation: the mirror cel stays as an ORPHAN link
+    // (audio-clip semantics — it comes back with the cel), but the
+    // DERIVED display mirrors only what the base exposes now.
+    s.undo();
+    expect(mirrorDisplayKeys(), [0]);
+
+    // Redo: the base cel returns and the SAME orphaned mirror cel + link
+    // resume (no duplicate minting — the invariant is adds-only).
+    s.redo();
+    attached = cutLayers(s).firstWhere((l) => l.id == attachId);
+    expect(attached.baseFrameLinks, links);
+    expect(attached.frames, hasLength(2));
+    expect(mirrorDisplayKeys(), [0, 3]);
+
+    // A cel arriving on the base via a CROSS-ROW MOVE mirrors too.
+    s.addLayer();
+    final otherId = s.activeLayer!.id;
+    s.selectLayer(otherId);
+    s.selectFrameIndex(6);
+    s.createDrawingAtCurrentFrame();
+    s.updateFrameRangeSelectionDrag(
+      layerId: otherId,
+      anchorIndex: 6,
+      headIndex: 6,
+    );
+    expect(s.beginFrameRangeMoveDrag(), isTrue);
+    s.updateFrameRangeMoveDrag(frameDelta: 0, targetLayerId: base.id);
+    s.endFrameRangeMoveDrag();
+    attached = cutLayers(s).firstWhere((l) => l.id == attachId);
+    expect(
+      attached.frames,
+      hasLength(3),
+      reason: 'the moved-in base cel auto-mirrors like any other',
+    );
+  });
+
   test('the eager mirror preserves the base HOLD notation (UI-R23 #8): a '
       'held base cel mirrors as ONE block of the same length, never a '
       'restarted per-frame cel', () {
