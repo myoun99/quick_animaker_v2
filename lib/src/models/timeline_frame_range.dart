@@ -4,7 +4,6 @@ import '../core/collection_equality.dart';
 import 'layer.dart';
 import 'layer_id.dart';
 import 'timeline_coverage.dart';
-import 'timeline_repeat.dart';
 
 /// One layer's selected frame RANGE (UI-R8, TVP-style): [startIndex,
 /// endIndexExclusive) snapped to whole exposure blocks. View state — never
@@ -62,9 +61,11 @@ class TimelineFrameRangeSelection {
 }
 
 /// Snaps a raw dragged span to WHOLE exposure blocks (UI-R8 user rule: a
-/// selection half-covering a block extends through it — blocks never split).
-/// Ghost repeat instances are excluded: a selection starting inside a ghost
-/// is void (null), and a selection running into one clamps just before it.
+/// selection half-covering a block extends through it — blocks never
+/// split). GHOST blocks snap exactly like real ones (UI-R20 #5 / P3b:
+/// every cell is selectable — repeat instances and synced attach mirrors
+/// included); what a selection can DO to a ghost stands down at each
+/// op's own seam (move plans are ghost-free, delete skips ghost starts).
 TimelineFrameRangeSelection? snapFrameRangeToBlocks({
   required Layer layer,
   required int anchorIndex,
@@ -76,36 +77,16 @@ TimelineFrameRangeSelection? snapFrameRangeToBlocks({
     return null;
   }
 
-  if (timelineIndexIsGhost(layer, start)) {
-    return null;
-  }
-
-  // Expand both edges outward to their covering blocks.
+  // Expand both edges outward to their covering blocks — ghost or real.
   final startBlock = coveringDrawingBlockAt(layer.timeline, start);
-  if (startBlock != null && !startBlock.entry.ghost) {
+  if (startBlock != null) {
     start = math.min(start, startBlock.startIndex);
   }
   final endBlock = coveringDrawingBlockAt(layer.timeline, endExclusive - 1);
-  if (endBlock != null && !endBlock.entry.ghost) {
+  if (endBlock != null) {
     endExclusive = math.max(endExclusive, endBlock.endIndexExclusive);
   }
 
-  // Clamp before the first ghost entry the range would swallow.
-  for (final entry in layer.timeline.entries) {
-    if (entry.key < start) {
-      continue;
-    }
-    if (entry.key >= endExclusive) {
-      break;
-    }
-    if (entry.value.isDrawing && entry.value.ghost) {
-      endExclusive = entry.key;
-      break;
-    }
-  }
-  if (endExclusive <= start) {
-    return null;
-  }
   return TimelineFrameRangeSelection(
     layerId: layer.id,
     startIndex: start,

@@ -172,6 +172,53 @@ void main() {
     expect(s.canAddAttachedLayerToActive, isTrue);
   });
 
+  test('SYNCED attach mirrors join range selection (P3b-1): the mirror '
+      'snaps to the base blocks, a base+mirror span moves with the mirror '
+      'as a PASSENGER, and a mirror-only move refuses', () {
+    final (s, base) = sessionWithBase();
+    s.createDrawingAtCurrentFrame(); // base cel at 0, length 1
+    s.addAttachedLayer(AttachedPlacement.above);
+    final attachId = s.activeLayer!.id;
+    s.createDrawingAtCurrentFrame(); // linked attach cel riding block 0
+
+    // A drag ON the mirror row selects, snapped to the mirrored block.
+    s.updateFrameRangeSelectionDrag(
+      layerId: attachId,
+      anchorIndex: 0,
+      headIndex: 0,
+    );
+    var selection = s.frameRangeSelection.value;
+    expect(selection, isNotNull);
+    expect(selection!.layerId, attachId);
+    expect(selection.startIndex, 0);
+    expect(selection.endIndexExclusive, 1);
+
+    // Mirror-only selection: nothing of its own to move.
+    expect(s.beginFrameRangeMoveDrag(), isFalse);
+
+    // A span across base + mirror MOVES: the base slides, the mirror
+    // follows by derivation (passenger — it never refuses the move).
+    s.updateFrameRangeSelectionDrag(
+      layerId: base.id,
+      anchorIndex: 0,
+      headIndex: 0,
+      headLayerId: attachId,
+    );
+    selection = s.frameRangeSelection.value;
+    expect(selection!.spanLayerIds, containsAll([base.id, attachId]));
+    expect(s.beginFrameRangeMoveDrag(), isTrue);
+    s.updateFrameRangeMoveDrag(frameDelta: 3);
+    s.endFrameRangeMoveDrag();
+
+    final movedBase = cutLayers(s).firstWhere((l) => l.id == base.id);
+    expect(movedBase.timeline.containsKey(3), isTrue);
+    expect(movedBase.timeline.containsKey(0), isFalse);
+    // The mirror followed to the landing.
+    final mirror = s.layers.firstWhere((l) => l.id == attachId);
+    expect(mirror.timeline.containsKey(3), isTrue);
+    expect(mirror.timeline[3]!.ghost, isTrue);
+  });
+
   test('deleting the base cascades over BOTH attach modes in one undo', () {
     final (s, base) = sessionWithBase();
     s.addAttachedLayer(AttachedPlacement.above, mode: AttachedMode.free);
