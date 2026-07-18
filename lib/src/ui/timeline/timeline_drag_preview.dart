@@ -2,6 +2,8 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
 
 import '../../models/attached_layer_resolve.dart';
+import '../../models/camera_pose.dart';
+import '../../models/cut_camera.dart';
 import '../../models/cut_id.dart';
 import '../../models/layer.dart';
 import '../../models/layer_id.dart';
@@ -55,18 +57,44 @@ class ExposureEdgeDragPreview extends TimelineDragPreview {
 /// pointer position resolves to a LEGAL landing (otherwise the channel
 /// clears and the block shows at its committed spot).
 class BlockMoveDragPreview extends TimelineDragPreview {
-  const BlockMoveDragPreview({required this.previewLayers});
+  const BlockMoveDragPreview({
+    required this.previewLayers,
+    this.cameraCutId,
+    this.cameraKeyframes,
+    this.cameraMarkerLayer,
+  });
 
   final Map<LayerId, Layer> previewLayers;
+
+  /// KEY-RANGE moves (P3b-2): the previewed CAMERA keyframes for
+  /// [cameraCutId] ride along when the selection spans the camera row.
+  /// The cells resolve them through the session (exposureStateForLayer
+  /// consults the drag's preview keys); [cameraMarkerLayer] is a fresh
+  /// clone per step whose only job is tripping the camera row's gate.
+  final CutId? cameraCutId;
+  final Map<int, CameraPose>? cameraKeyframes;
+  final Layer? cameraMarkerLayer;
 
   @override
   bool operator ==(Object other) =>
       other is BlockMoveDragPreview &&
-      mapEquals(other.previewLayers, previewLayers);
+      mapEquals(other.previewLayers, previewLayers) &&
+      other.cameraCutId == cameraCutId &&
+      mapEquals(other.cameraKeyframes, cameraKeyframes) &&
+      identical(other.cameraMarkerLayer, cameraMarkerLayer);
 
   @override
-  int get hashCode => Object.hashAllUnordered(
-    previewLayers.entries.map((e) => Object.hash(e.key, e.value)),
+  int get hashCode => Object.hash(
+    Object.hashAllUnordered(
+      previewLayers.entries.map((e) => Object.hash(e.key, e.value)),
+    ),
+    cameraCutId,
+    cameraKeyframes == null
+        ? null
+        : Object.hashAllUnordered(
+            cameraKeyframes!.entries.map((e) => Object.hash(e.key, e.value)),
+          ),
+    identityHashCode(cameraMarkerLayer),
   );
 }
 
@@ -125,6 +153,11 @@ Layer? timelineDragPreviewLayerFor(
     return preview.previewLayer;
   }
   if (preview is BlockMoveDragPreview) {
+    // The camera MARKER (P3b-2): a fresh clone per step trips the camera
+    // row's gate; the cells re-derive through the session's preview keys.
+    if (preview.cameraMarkerLayer?.id == layerId) {
+      return preview.cameraMarkerLayer;
+    }
     return preview.previewLayers[layerId];
   }
   return null;
@@ -176,8 +209,32 @@ Project projectWithTimelineDragPreview(
       return _projectWithLayersSubstituted(project, {
         previewLayer.id: previewLayer,
       });
-    case BlockMoveDragPreview(:final previewLayers):
-      return _projectWithLayersSubstituted(project, previewLayers);
+    case BlockMoveDragPreview(
+      :final previewLayers,
+      :final cameraCutId,
+      :final cameraKeyframes,
+    ):
+      final substituted = _projectWithLayersSubstituted(project, previewLayers);
+      if (cameraCutId == null || cameraKeyframes == null) {
+        return substituted;
+      }
+      // The camera keys' preview reaches the project views too (the
+      // storyboard/sheet substitution precedent).
+      return substituted.copyWith(
+        tracks: [
+          for (final track in substituted.tracks)
+            track.copyWith(
+              cuts: [
+                for (final cut in track.cuts)
+                  cut.id == cameraCutId
+                      ? cut.copyWith(
+                          camera: CutCamera(keyframes: cameraKeyframes),
+                        )
+                      : cut,
+              ],
+            ),
+        ],
+      );
     case MovieEndDragPreview(:final trailingFrames):
       return project.copyWith(trailingFrames: trailingFrames);
   }

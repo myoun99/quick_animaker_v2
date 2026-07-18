@@ -30,6 +30,7 @@ import '../models/frame.dart';
 import '../models/frame_id.dart';
 import '../models/layer.dart';
 import '../models/layer_id.dart';
+import '../models/key_range_move.dart';
 import '../models/layer_kind.dart';
 import '../models/layer_mark.dart';
 import '../models/layer_section_defaults.dart';
@@ -73,7 +74,9 @@ import '../services/command.dart';
 import '../services/commands/attached_cel_command.dart';
 import '../services/commands/cut_command_coordinator.dart';
 import '../services/commands/rekey_brush_frames_command.dart';
+import '../services/commands/update_cut_camera_command.dart';
 import '../services/commands/update_layer_fill_reference_command.dart';
+import '../services/commands/update_layer_instructions_command.dart';
 import '../services/commands/update_layer_mark_command.dart';
 import '../services/commands/update_layer_timeline_command.dart';
 import '../services/commands/update_layer_timesheet_command.dart';
@@ -4354,6 +4357,20 @@ class EditorSessionManager extends ChangeNotifier {
   List<({Layer commit, int offset})>? _rangeMoveMultiSources;
   List<DrawingBlockMovePlan>? _rangeMoveMultiPlans;
 
+  /// KEY sources riding the range move (P3b-2, #2 second half): the
+  /// camera row's keyframe snapshot and the spanned instruction rows —
+  /// their keys shift with the same delta the blocks slide.
+  Map<int, CameraPose>? _rangeMoveCameraBefore;
+  LayerId? _rangeMoveCameraLayerId;
+  List<Layer>? _rangeMoveInstructionSources;
+  Map<int, CameraPose>? _rangeMoveCameraShifted;
+  Map<LayerId, Map<int, InstructionEvent>>? _rangeMoveInstructionShifted;
+
+  /// The in-flight camera-key preview the cell resolution consults
+  /// (exposureStateForLayer): the camera row's cells follow the drag
+  /// without the repository moving.
+  Map<int, CameraPose>? _cameraKeysDragPreview;
+
   /// Starts moving the CURRENT frame-range selection; returns false when
   /// there is none (or its row stands down).
   ///
@@ -4366,26 +4383,46 @@ class EditorSessionManager extends ChangeNotifier {
     if (selection == null || !_rangeSelectionEligible(selection.layerId)) {
       return false;
     }
-    // Key rows (camera/instruction, cut-owned SE) SELECT but their keys
-    // don't range-MOVE yet — a span containing one refuses the move
-    // whole (all-or-nothing; the key-move seam is P3b-2). SYNCED attach
-    // mirrors are PASSENGERS instead (P3b-1): nothing of their own to
-    // move — the base's slide carries the mirror — so they neither
-    // refuse nor plan (the source assembly below skips all-ghost rows).
-    bool refusesMove(LayerId id) =>
-        !_isSyncedAttachedLayerId(id) &&
-        !_blockMoveEligible(id) &&
-        !isTrackSeLayerId(id);
-    if (selection.spanLayerIds.any(refusesMove)) {
-      return false;
-    }
     _rangeMoveMultiSources = null;
     _rangeMoveMultiPlans = null;
-    // Multi-layer spans AND single SE rows route through the frame-axis
-    // slide (UI-R18 #1): per-layer plans on the COMMIT forms; row-change
-    // drops stay the single-anim path below.
+    _rangeMoveCameraBefore = null;
+    _rangeMoveCameraLayerId = null;
+    _rangeMoveInstructionSources = null;
+    _rangeMoveCameraShifted = null;
+    _rangeMoveInstructionShifted = null;
+    // KEY sources (P3b-2, #2 second half): camera keys and instruction
+    // spans inside the selection move with the blocks — same delta, one
+    // rigid group. SYNCED attach mirrors stay PASSENGERS (P3b-1): the
+    // base's slide carries them by derivation.
+    Map<int, CameraPose>? cameraBefore;
+    LayerId? cameraLayerId;
+    final instructionSources = <Layer>[];
+    bool anyKeyIn(Iterable<int> keys) => keys.any(
+      (key) => key >= selection.startIndex && key < selection.endIndexExclusive,
+    );
+    for (final id in selection.spanLayerIds) {
+      final layer = _layerById(id);
+      if (layer == null) {
+        continue;
+      }
+      if (layer.kind == LayerKind.camera) {
+        final keyframes = activeCutOrNull?.camera.keyframes;
+        if (keyframes != null && anyKeyIn(keyframes.keys)) {
+          cameraBefore = Map<int, CameraPose>.of(keyframes);
+          cameraLayerId = id;
+        }
+      } else if (layer.kind == LayerKind.instruction &&
+          anyKeyIn(layer.instructions.keys)) {
+        instructionSources.add(layer);
+      }
+    }
+    // Multi-layer spans, SE rows and KEY sources route through the
+    // frame-axis slide (UI-R18 #1): per-layer plans on the COMMIT forms;
+    // row-change drops stay the single-anim path below.
     if (selection.spanLayerIds.length > 1 ||
-        isTrackSeLayerId(selection.layerId)) {
+        isTrackSeLayerId(selection.layerId) ||
+        cameraBefore != null ||
+        instructionSources.isNotEmpty) {
       final sources = <({Layer commit, int offset})>[];
       for (final id in selection.spanLayerIds) {
         final display = _rangeLayerById(id);
@@ -4408,10 +4445,17 @@ class EditorSessionManager extends ChangeNotifier {
           ));
         }
       }
-      if (sources.isEmpty) {
+      if (sources.isEmpty &&
+          cameraBefore == null &&
+          instructionSources.isEmpty) {
         return false;
       }
       _rangeMoveMultiSources = sources;
+      _rangeMoveCameraBefore = cameraBefore;
+      _rangeMoveCameraLayerId = cameraLayerId;
+      _rangeMoveInstructionSources = instructionSources.isEmpty
+          ? null
+          : instructionSources;
       _rangeMoveSelectionBefore = selection;
       return true;
     }
@@ -4450,7 +4494,11 @@ class EditorSessionManager extends ChangeNotifier {
     if (selection != null && multiSources != null) {
       // Cross-layer slide (UI-R18 #1): every spanned layer plans the SAME
       // frame delta on itself; any illegal landing clears the whole
-      // preview (all-or-nothing, the single-layer discipline).
+      // preview (all-or-nothing, the single-layer discipline). KEY
+      // sources (P3b-2) join the same contract: camera keys and
+      // instruction spans shift by the same delta or the whole move
+      // voids.
+      var illegal = false;
       final plans = <DrawingBlockMovePlan>[];
       for (final source in multiSources) {
         final plan = planDrawingRangeMove(
@@ -4461,13 +4509,52 @@ class EditorSessionManager extends ChangeNotifier {
           frameDelta: frameDelta,
         );
         if (plan == null) {
+          illegal = true;
           plans.clear();
           break;
         }
         plans.add(plan);
       }
-      _rangeMoveMultiPlans = plans.isEmpty ? null : plans;
-      dragPreview.value = plans.isEmpty
+      if (multiSources.isEmpty && frameDelta == 0) {
+        illegal = true;
+      }
+      final cameraBefore = _rangeMoveCameraBefore;
+      Map<int, CameraPose>? cameraShifted;
+      if (!illegal && cameraBefore != null) {
+        cameraShifted = shiftCameraKeysInRange(
+          keyframes: cameraBefore,
+          rangeStartIndex: selection.startIndex,
+          rangeEndIndexExclusive: selection.endIndexExclusive,
+          frameDelta: frameDelta,
+        );
+        illegal = cameraShifted == null;
+      }
+      final instructionShifted = <LayerId, Map<int, InstructionEvent>>{};
+      if (!illegal) {
+        for (final layer in _rangeMoveInstructionSources ?? const <Layer>[]) {
+          final shifted = shiftInstructionEventsInRange(
+            events: layer.instructions,
+            rangeStartIndex: selection.startIndex,
+            rangeEndIndexExclusive: selection.endIndexExclusive,
+            frameDelta: frameDelta,
+          );
+          if (shifted == null) {
+            illegal = true;
+            break;
+          }
+          instructionShifted[layer.id] = shifted;
+        }
+      }
+      _rangeMoveMultiPlans = illegal || plans.isEmpty ? null : plans;
+      _rangeMoveCameraShifted = illegal ? null : cameraShifted;
+      _rangeMoveInstructionShifted = illegal || instructionShifted.isEmpty
+          ? null
+          : instructionShifted;
+      _cameraKeysDragPreview = illegal ? null : cameraShifted;
+      final cameraMarker = illegal || cameraShifted == null
+          ? null
+          : _layerById(_rangeMoveCameraLayerId!)?.copyWith();
+      dragPreview.value = illegal
           ? null
           : BlockMoveDragPreview(
               previewLayers: {
@@ -4485,9 +4572,19 @@ class EditorSessionManager extends ChangeNotifier {
                           plan.sourceAfter,
                           cutFrameCount: _activeCutFrameCount,
                         ),
+                // Instruction rows preview with their shifted spans —
+                // the cells row renders straight off layer.instructions.
+                for (final entry in instructionShifted.entries)
+                  if (_layerById(entry.key) != null)
+                    entry.key: _layerById(
+                      entry.key,
+                    )!.copyWith(instructions: entry.value),
               },
+              cameraCutId: cameraShifted == null ? null : activeCutOrNull?.id,
+              cameraKeyframes: cameraShifted,
+              cameraMarkerLayer: cameraMarker,
             );
-      if (plans.isEmpty) {
+      if (dragPreview.value == null) {
         frameRangeSelection.value = selection;
       } else {
         final newStart = selection.startIndex + frameDelta;
@@ -4571,6 +4668,8 @@ class EditorSessionManager extends ChangeNotifier {
     final plan = _rangeMovePlan;
     final multiPlans = _rangeMoveMultiPlans;
     final multiSources = _rangeMoveMultiSources;
+    final cameraShifted = _rangeMoveCameraShifted;
+    final instructionShifted = _rangeMoveInstructionShifted;
     final landedSelection = frameRangeSelection.value;
     _rangeMoveSourceBefore = null;
     _rangeMoveSelectionBefore = null;
@@ -4578,22 +4677,48 @@ class EditorSessionManager extends ChangeNotifier {
     _rangeMovePlan = null;
     _rangeMoveMultiSources = null;
     _rangeMoveMultiPlans = null;
+    _rangeMoveCameraBefore = null;
+    _rangeMoveCameraLayerId = null;
+    _rangeMoveInstructionSources = null;
+    _rangeMoveCameraShifted = null;
+    _rangeMoveInstructionShifted = null;
+    _cameraKeysDragPreview = null;
     dragPreview.value = null;
     if (selection != null && multiSources != null) {
-      // Cross-layer slide commit (UI-R18 #1): one composite undo.
-      if (multiPlans == null) {
+      // Cross-layer slide commit (UI-R18 #1) + key shifts (P3b-2): one
+      // composite undo across blocks, camera keys and instruction spans.
+      final cut = activeCutOrNull;
+      final commands = <Command>[
+        if (multiPlans != null)
+          for (var i = 0; i < multiPlans.length; i += 1)
+            _multiMoveCommand(multiSources[i].commit, multiPlans[i]),
+        if (instructionShifted != null && cut != null)
+          for (final entry in instructionShifted.entries)
+            UpdateLayerInstructionsCommand(
+              repository: _repository,
+              cutId: cut.id,
+              layerId: entry.key,
+              instructions: entry.value,
+              description: 'Move instruction keys',
+            ),
+        if (cameraShifted != null && cut != null)
+          UpdateCutCameraCommand(
+            repository: _repository,
+            cutId: cut.id,
+            camera: CutCamera(keyframes: cameraShifted),
+            description: 'Move camera keys',
+          ),
+      ];
+      if (commands.isEmpty) {
         frameRangeSelection.value = selection;
         return;
       }
       _historyManager.execute(
-        multiPlans.length == 1
-            ? _multiMoveCommand(multiSources.single.commit, multiPlans.single)
+        commands.length == 1
+            ? commands.single
             : CompositeCommand(
                 description: 'Move frame range',
-                commands: [
-                  for (var i = 0; i < multiPlans.length; i += 1)
-                    _multiMoveCommand(multiSources[i].commit, multiPlans[i]),
-                ],
+                commands: commands,
               ),
       );
       frameRangeSelection.value = landedSelection;
@@ -4680,6 +4805,12 @@ class EditorSessionManager extends ChangeNotifier {
     _rangeMovePlan = null;
     _rangeMoveMultiSources = null;
     _rangeMoveMultiPlans = null;
+    _rangeMoveCameraBefore = null;
+    _rangeMoveCameraLayerId = null;
+    _rangeMoveInstructionSources = null;
+    _rangeMoveCameraShifted = null;
+    _rangeMoveInstructionShifted = null;
+    _cameraKeysDragPreview = null;
     dragPreview.value = null;
     if (selection != null) {
       frameRangeSelection.value = selection;
@@ -5867,7 +5998,15 @@ class EditorSessionManager extends ChangeNotifier {
 
   TimelineCellExposureState exposureStateForLayer(Layer layer, int frameIndex) {
     if (layer.kind == LayerKind.camera) {
-      // The camera row's cells mirror the cut's camera keyframes.
+      // The camera row's cells mirror the cut's camera keyframes — or
+      // the in-flight key-range move's preview keys (P3b-2), so the row
+      // follows the drag while the repository stays untouched.
+      final previewKeys = _cameraKeysDragPreview;
+      if (previewKeys != null) {
+        return previewKeys.containsKey(frameIndex)
+            ? TimelineCellExposureState.drawingStart
+            : TimelineCellExposureState.uncovered;
+      }
       return activeCutOrNull?.camera.keyframeAt(frameIndex) != null
           ? TimelineCellExposureState.drawingStart
           : TimelineCellExposureState.uncovered;
