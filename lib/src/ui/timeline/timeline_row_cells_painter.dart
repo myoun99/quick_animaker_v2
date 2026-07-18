@@ -9,6 +9,7 @@ import '../../models/layer.dart';
 import '../../models/layer_id.dart';
 import '../../models/layer_kind.dart';
 import '../../models/timeline_repeat.dart';
+import '../input/app_input_settings.dart' show AppInput;
 import 'timeline_cell_exposure_state.dart';
 import 'timeline_cell_style.dart';
 import 'timeline_exposure_block_visual.dart';
@@ -703,6 +704,11 @@ Widget timelineRowCellsPaintArea({
     // Selection rides the raw pointer down (never the arena — see the
     // TimelineFrameCell latency note).
     onPointerDown: (event) {
+      // Touch-scroll ON: a finger press is pure scroll — it never seeks
+      // (UI-R23 feedback #2); pen/mouse keep the instant select.
+      if (!AppInput.timelineCellPressSeeks(event.kind)) {
+        return;
+      }
       if (event.buttons == 0 || (event.buttons & kPrimaryButton) != 0) {
         final frameIndex = painter.frameIndexAt(event.localPosition);
         // A press INSIDE the frame-range selection initiates a MOVE — it

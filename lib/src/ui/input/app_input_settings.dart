@@ -117,4 +117,12 @@ abstract final class AppInput {
     PointerDeviceKind.unknown,
     if (!touchTimelineScroll) PointerDeviceKind.touch,
   };
+
+  /// Whether a CELL press of [kind] may SEEK the playhead (UI-R23
+  /// feedback #2): with touch-scroll ON a finger on the grid is pure
+  /// scroll — its press-down must not move the frame index (the first
+  /// scroll touch kept re-seeking). Pen/mouse always seek; with the
+  /// toggle OFF touch seeks like a pen (the R17-⑥ contract).
+  static bool timelineCellPressSeeks(PointerDeviceKind kind) =>
+      kind != PointerDeviceKind.touch || !touchTimelineScroll;
 }
