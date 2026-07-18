@@ -6,6 +6,18 @@ project(qa_engine LANGUAGES C)
 
 add_library(qa_engine SHARED qa_engine.c)
 
+# The Wintab sidecar (pen program, PEN-2) — Windows only: talks to the
+# tablet driver directly through wintab32.dll (loaded dynamically at
+# runtime; building needs no vendor SDK). Same bundle-beside-the-exe +
+# dart:ffi consumption pattern as qa_engine, absence = graceful.
+if(WIN32)
+  add_library(qa_tablet SHARED qa_tablet_win.c)
+  set_target_properties(qa_tablet PROPERTIES
+    C_STANDARD 99
+    C_STANDARD_REQUIRED ON
+  )
+endif()
+
 set_target_properties(qa_engine PROPERTIES
   C_STANDARD 99
   C_STANDARD_REQUIRED ON

@@ -19,29 +19,57 @@ import 'package:flutter/gestures.dart' show PointerDeviceKind;
 /// OFF (the touch-as-pen contract `tester.drag` was written under);
 /// scroll-behavior suites opt into ON explicitly.
 class AppInputSettings {
-  const AppInputSettings({this.touchTimelineScroll = true});
+  const AppInputSettings({
+    this.touchTimelineScroll = true,
+    this.tabletService = TabletService.standard,
+  });
 
   final bool touchTimelineScroll;
 
-  AppInputSettings copyWith({bool? touchTimelineScroll}) => AppInputSettings(
+  /// Which tablet backend feeds pen data (PEN-2, the CSP-style dual
+  /// service — Windows only; other platforms ignore it):
+  /// - [TabletService.standard] (the DEFAULT): the OS pointer pipeline
+  ///   exactly as today.
+  /// - [TabletService.wintab]: the Wintab sidecar additionally streams
+  ///   the DRIVER's pressure/tilt and overrides brush pressure — the
+  ///   escape hatch for drivers whose OS path misreports the pen.
+  final TabletService tabletService;
+
+  AppInputSettings copyWith({
+    bool? touchTimelineScroll,
+    TabletService? tabletService,
+  }) => AppInputSettings(
     touchTimelineScroll: touchTimelineScroll ?? this.touchTimelineScroll,
+    tabletService: tabletService ?? this.tabletService,
   );
 
-  Map<String, dynamic> toJson() => {'touchTimelineScroll': touchTimelineScroll};
+  Map<String, dynamic> toJson() => {
+    'touchTimelineScroll': touchTimelineScroll,
+    'tabletService': tabletService.name,
+  };
 
   static AppInputSettings fromJson(Map<String, dynamic> json) =>
       AppInputSettings(
         touchTimelineScroll: json['touchTimelineScroll'] as bool? ?? true,
+        tabletService:
+            TabletService.values.asNameMap()[json['tabletService']] ??
+            TabletService.standard,
       );
 
   @override
   bool operator ==(Object other) =>
       other is AppInputSettings &&
-      other.touchTimelineScroll == touchTimelineScroll;
+      other.touchTimelineScroll == touchTimelineScroll &&
+      other.tabletService == tabletService;
 
   @override
-  int get hashCode => touchTimelineScroll.hashCode;
+  int get hashCode => Object.hash(touchTimelineScroll, tabletService);
 }
+
+/// The tablet backend choice (PEN-2). CSP's '사용할 태블릿 서비스'
+/// analogue: standard = the OS pointer path ('Tablet PC'), wintab = the
+/// driver-direct sidecar.
+enum TabletService { standard, wintab }
 
 /// The LIVE input policy (the accent-settings pattern): the app root
 /// rebuilds off the notifier; the session restores/persists it.

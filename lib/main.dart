@@ -1,10 +1,14 @@
 import 'package:flutter/material.dart';
 
+import 'src/services/input/wintab_pen_service.dart';
 import 'src/ui/home_page.dart';
 import 'src/ui/input/app_input_settings.dart' show AppInput;
 import 'src/ui/theme/app_theme.dart';
 
 void main() {
+  // The Wintab sidecar (PEN-2) follows the input settings for its whole
+  // life; without the DLL/driver it stays permanently idle.
+  WintabPenService.instance.bind();
   runApp(const QuickAnimakerApp());
 }
 
