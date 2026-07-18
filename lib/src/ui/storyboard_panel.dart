@@ -111,6 +111,26 @@ class StoryboardCutMoveCallbacks {
   final VoidCallback onCancel;
 }
 
+/// Movie-end drag hooks (UI-R20 #3): the storyboard's end line edits the
+/// MOVIE's final length — the project's trailing gap past the last cut —
+/// never the cuts themselves (session begin/update/end/cancelMovieEndDrag;
+/// live preview through the drag channel, ONE undo on release).
+class StoryboardMovieEndCallbacks {
+  const StoryboardMovieEndCallbacks({
+    required this.onBegin,
+    required this.onUpdate,
+    required this.onEnd,
+    required this.onCancel,
+  });
+
+  final bool Function() onBegin;
+
+  /// Reports the cumulative whole-frame delta since drag start.
+  final ValueChanged<int> onUpdate;
+  final VoidCallback onEnd;
+  final VoidCallback onCancel;
+}
+
 /// Cut RANGE-selection hooks (UI-R18 #1): a horizontal drag on an
 /// UNSELECTED cut paints a contiguous run selection (anchor = the pressed
 /// cut's ordinal, head follows the pointer across the track); a drag that
@@ -150,6 +170,7 @@ class StoryboardPanel extends StatefulWidget {
     this.cutTrim,
     this.cutMove,
     this.cutSelect,
+    this.movieEnd,
     this.pixelsPerFrame = 8,
     this.showSeconds = false,
     this.projectFps = 24,
@@ -269,6 +290,10 @@ class StoryboardPanel extends StatefulWidget {
   /// the selection slide (through [cutMove]); null keeps every body drag
   /// a direct slide.
   final StoryboardCutSelectCallbacks? cutSelect;
+
+  /// Movie-end drag hooks (UI-R20 #3); null hides the end grip (the line
+  /// still shows).
+  final StoryboardMovieEndCallbacks? movieEnd;
 
   /// Frame-axis zoom, owned by the host (the panel header's shared zoom
   /// slider drives it).
@@ -484,6 +509,7 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
     final position = _horizontalController.position;
     final next = endlessTrailingFrames(
       baseFrameCount: _totalFrames(
+        widget.project,
         buildStoryboardTimelineLayout(widget.project),
       ),
       currentTrailingFrames: _endlessTrailingFrames,
@@ -532,6 +558,7 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
     }
     final next = endlessTrailingFrames(
       baseFrameCount: _totalFrames(
+        widget.project,
         buildStoryboardTimelineLayout(widget.project),
       ),
       currentTrailingFrames: _endlessTrailingFrames,
@@ -598,14 +625,20 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
     return width + StoryboardPanel._timelineTrailingPadding;
   }
 
-  int _totalFrames(List<StoryboardTimelineLayoutEntry> entries) {
+  /// The MOVIE length in frames (UI-R20 #3): the cuts' content end plus
+  /// the project's trailing gap — the end line sits here, and dragging
+  /// it edits the trailing gap (never the cuts).
+  int _totalFrames(
+    Project project,
+    List<StoryboardTimelineLayoutEntry> entries,
+  ) {
     var total = 0;
     for (final entry in entries) {
       if (entry.endFrame > total) {
         total = entry.endFrame;
       }
     }
-    return total;
+    return total + project.trailingFrames;
   }
 
   /// The ACTIVE cut when it lives on [track]; null otherwise (the rail's
@@ -636,20 +669,6 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
       }
     }
     return null;
-  }
-
-  /// The cut whose end DEFINES the content end (max endFrame across all
-  /// tracks; first on tie) — the end-line drag's subject (UI-R18 #15).
-  CutId? _endBoundaryCutId(List<StoryboardTimelineLayoutEntry> layoutEntries) {
-    CutId? cutId;
-    var best = -1;
-    for (final entry in layoutEntries) {
-      if (entry.endFrame > best) {
-        best = entry.endFrame;
-        cutId = entry.cutId;
-      }
-    }
-    return cutId;
   }
 
   /// The shared lane substrate speaks Layer; the V track's cut-level lanes
@@ -1225,7 +1244,7 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
   List<List<Widget>> _seStripRowsByTrack() {
     final layoutEntries = buildStoryboardTimelineLayout(widget.project);
     final scale = _scale;
-    final contentWidth = _contentWidthFor(layoutEntries, scale);
+    final contentWidth = _contentWidthFor(widget.project, layoutEntries, scale);
     return [
       for (var index = 0; index < widget.project.tracks.length; index++)
         _seStripRowsForTrack(
@@ -1258,10 +1277,13 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
   /// growth listener keeps chasing (the block term keeps its grip
   /// overhang; cells simply materialize under it once).
   double _contentWidthFor(
+    Project project,
     List<StoryboardTimelineLayoutEntry> layoutEntries,
     TimelineScale scale,
   ) {
-    final renderedFrames = _renderedFramesFor(_totalFrames(layoutEntries));
+    final renderedFrames = _renderedFramesFor(
+      _totalFrames(project, layoutEntries),
+    );
     return math.max(
       _timelineContentWidth(layoutEntries, scale),
       scale.leftForFrame(renderedFrames),
@@ -1276,12 +1298,12 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
     final colorScheme = Theme.of(context).colorScheme;
     final layoutEntries = buildStoryboardTimelineLayout(project);
     final scale = _scale;
-    final totalFrames = _totalFrames(layoutEntries);
+    final totalFrames = _totalFrames(project, layoutEntries);
     // Endless frame axis (UI-R12 #16): cells cover the view — the cuts,
     // whatever the viewport needs to read papered, and whatever the ruler
     // edge-drag has materialized. No resting runway beyond that.
     final renderedFrames = _renderedFramesFor(totalFrames);
-    final contentWidth = _contentWidthFor(layoutEntries, scale);
+    final contentWidth = _contentWidthFor(project, layoutEntries, scale);
     // The playhead + green bar repaint through their own listenables (the
     // cursor-layer pattern) — the ruler's overlay PAINTER and the playhead
     // overlay subscribe below, nothing else in this build does.
@@ -1568,15 +1590,15 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
                                                   ),
                                                 ),
                                         ),
-                                      // The cut-end boundary through the
-                                      // STRIPS (UI-R18 #15): the ruler's
+                                      // The MOVIE-END line through the
+                                      // STRIPS (UI-R20 #3): the ruler's
                                       // red line extended vertically, and
-                                      // draggable — the end line IS the
-                                      // content end, so the drag end-trims
-                                      // the boundary-defining LAST cut
-                                      // (the panel's internal preview
-                                      // substitution makes the line and
-                                      // the blocks follow live).
+                                      // draggable — it edits the movie's
+                                      // FINAL LENGTH (the project's
+                                      // trailing gap), never the cuts;
+                                      // the panel's internal preview
+                                      // substitution makes it follow
+                                      // live.
                                       if (totalFrames > 0)
                                         Positioned(
                                           key: const ValueKey<String>(
@@ -1593,16 +1615,13 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
                                           ),
                                         ),
                                       if (totalFrames > 0 &&
-                                          widget.cutTrim != null)
+                                          widget.movieEnd != null)
                                         _StoryboardEndLineHandle(
                                           left:
                                               scale.leftForFrame(totalFrames) -
                                               5,
-                                          cutId: _endBoundaryCutId(
-                                            layoutEntries,
-                                          ),
                                           pixelsPerFrame: scale.pixelsPerFrame,
-                                          cutTrim: widget.cutTrim!,
+                                          movieEnd: widget.movieEnd!,
                                         ),
                                     ],
                                   ),
@@ -3347,24 +3366,20 @@ class _CutFxToggleButton extends StatelessWidget {
   }
 }
 
-/// The end line's drag grip (UI-R18 #15): a 12px strip over the strips'
-/// cut-end boundary line; dragging it end-trims the boundary-defining cut
-/// through the shared trim channel — live preview, ONE undo on release
-/// (the timeline end-line drag's storyboard sibling).
+/// The end line's drag grip (UI-R18 #15 → UI-R20 #3): a 12px strip over
+/// the strips' movie-end line; dragging it edits the movie's FINAL
+/// LENGTH (the project's trailing gap) through the session channel —
+/// live preview, ONE undo on release. It never touches the cuts.
 class _StoryboardEndLineHandle extends StatefulWidget {
   const _StoryboardEndLineHandle({
     required this.left,
-    required this.cutId,
     required this.pixelsPerFrame,
-    required this.cutTrim,
+    required this.movieEnd,
   });
 
   final double left;
-
-  /// The cut whose end sits on the boundary; null (no cuts) disables.
-  final CutId? cutId;
   final double pixelsPerFrame;
-  final StoryboardCutTrimCallbacks cutTrim;
+  final StoryboardMovieEndCallbacks movieEnd;
 
   @override
   State<_StoryboardEndLineHandle> createState() =>
@@ -3376,9 +3391,7 @@ class _StoryboardEndLineHandleState extends State<_StoryboardEndLineHandle> {
   bool _dragging = false;
 
   void _start() {
-    final cutId = widget.cutId;
-    if (cutId == null ||
-        !widget.cutTrim.onBegin(cutId, TimelineBlockEdge.end)) {
+    if (!widget.movieEnd.onBegin()) {
       return;
     }
     _dragging = true;
@@ -3390,7 +3403,7 @@ class _StoryboardEndLineHandleState extends State<_StoryboardEndLineHandle> {
       return;
     }
     _dx += delta;
-    widget.cutTrim.onUpdate((_dx / widget.pixelsPerFrame).round());
+    widget.movieEnd.onUpdate((_dx / widget.pixelsPerFrame).round());
   }
 
   void _end() {
@@ -3398,7 +3411,7 @@ class _StoryboardEndLineHandleState extends State<_StoryboardEndLineHandle> {
       return;
     }
     _dragging = false;
-    widget.cutTrim.onEnd();
+    widget.movieEnd.onEnd();
   }
 
   void _cancel() {
@@ -3406,7 +3419,7 @@ class _StoryboardEndLineHandleState extends State<_StoryboardEndLineHandle> {
       return;
     }
     _dragging = false;
-    widget.cutTrim.onCancel();
+    widget.movieEnd.onCancel();
   }
 
   @override

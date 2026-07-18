@@ -386,6 +386,14 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
                 onDrag: _session.updateStoryboardCutSelectionDrag,
                 onClear: _session.clearStoryboardCutSelection,
               ),
+              // The end line edits the MOVIE length (UI-R20 #3): the
+              // project's trailing gap, never the cuts.
+              movieEnd: StoryboardMovieEndCallbacks(
+                onBegin: _session.beginMovieEndDrag,
+                onUpdate: _session.updateMovieEndDrag,
+                onEnd: _session.endMovieEndDrag,
+                onCancel: _session.cancelMovieEndDrag,
+              ),
               playheadFrame: _playheadGlobalFrame,
               cacheProgress: _session.prerenderScheduler.progress,
               onSeekGlobalFrame: (frame) =>

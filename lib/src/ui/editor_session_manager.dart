@@ -76,6 +76,7 @@ import '../services/commands/update_layer_fill_reference_command.dart';
 import '../services/commands/update_layer_mark_command.dart';
 import '../services/commands/update_layer_timeline_command.dart';
 import '../services/commands/update_layer_timesheet_command.dart';
+import '../services/commands/update_project_trailing_frames_command.dart';
 import '../services/onion_skin_plan.dart';
 import '../services/persistence/project_autosave_service.dart';
 import '../services/persistence/qap_file_service.dart';
@@ -3680,6 +3681,66 @@ class EditorSessionManager extends ChangeNotifier {
     _cutTrimEdge = null;
     _cutTrimOrder = null;
     _cutTrimIndex = null;
+    dragPreview.value = null;
+  }
+
+  // --- Movie-end drag (UI-R20 #3) -------------------------------------------
+
+  int? _movieEndBeforeTrailing;
+
+  /// The movie's content end: the last cut end across every track.
+  int get movieContentEndFrame {
+    var end = 0;
+    for (final entry
+        in buildStoryboardTimelineLayout(_repository.requireProject())) {
+      if (entry.endFrame > end) {
+        end = entry.endFrame;
+      }
+    }
+    return end;
+  }
+
+  /// Starts an end-line drag (UI-R20 #3): the line edits the movie's
+  /// FINAL LENGTH — the project's trailing gap past the last cut — never
+  /// the cuts themselves (the tail gap is as first-class as any other
+  /// gap on this timeline).
+  bool beginMovieEndDrag() {
+    _movieEndBeforeTrailing = _repository.requireProject().trailingFrames;
+    return true;
+  }
+
+  /// Applies the cumulative frame delta as a live preview (the movie end
+  /// never dips below the content end: the trailing gap clamps at 0).
+  void updateMovieEndDrag(int cumulativeDelta) {
+    final before = _movieEndBeforeTrailing;
+    if (before == null) {
+      return;
+    }
+    final next = math.max(0, before + cumulativeDelta);
+    dragPreview.value = next == before
+        ? null
+        : MovieEndDragPreview(trailingFrames: next);
+  }
+
+  void endMovieEndDrag() {
+    final before = _movieEndBeforeTrailing;
+    final preview = dragPreview.value;
+    _movieEndBeforeTrailing = null;
+    dragPreview.value = null;
+    if (before == null || preview is! MovieEndDragPreview) {
+      return;
+    }
+    _historyManager.execute(
+      UpdateProjectTrailingFramesCommand(
+        repository: _repository,
+        trailingFrames: preview.trailingFrames,
+      ),
+    );
+    notifyListeners();
+  }
+
+  void cancelMovieEndDrag() {
+    _movieEndBeforeTrailing = null;
     dragPreview.value = null;
   }
 

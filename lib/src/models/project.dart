@@ -22,9 +22,11 @@ class Project {
     this.timesheetInfo = TimesheetInfo.empty,
     CameraInstructionSet? cameraInstructions,
     List<MediaAsset> mediaAssets = const [],
+    int trailingFrames = 0,
   }) : tracks = List.unmodifiable(tracks),
        cameraInstructions = cameraInstructions ?? CameraInstructionSet.standard,
-       mediaAssets = immutableMediaAssetList(mediaAssets);
+       mediaAssets = immutableMediaAssetList(mediaAssets),
+       trailingFrames = trailingFrames < 0 ? 0 : trailingFrames;
 
   final ProjectId id;
   final String name;
@@ -32,6 +34,13 @@ class Project {
   final DateTime createdAt;
   final int fps;
   final CanvasSize cameraSize;
+
+  /// The movie's TRAILING GAP (UI-R20 #3): extra frames past the last
+  /// cut's end — the storyboard end line drags THIS, so the final length
+  /// is authored independently of the cuts (gaps are first-class on this
+  /// timeline, the tail included). The movie end = the cuts' content end
+  /// + this.
+  final int trailingFrames;
 
   /// The paper/background color (R10-⑥): canvas paper, playback gap fill
   /// and export backing. Transparent = display-only checkerboard.
@@ -69,6 +78,7 @@ class Project {
     TimesheetInfo? timesheetInfo,
     CameraInstructionSet? cameraInstructions,
     List<MediaAsset>? mediaAssets,
+    int? trailingFrames,
   }) {
     return Project(
       id: id ?? this.id,
@@ -81,6 +91,7 @@ class Project {
       timesheetInfo: timesheetInfo ?? this.timesheetInfo,
       cameraInstructions: cameraInstructions ?? this.cameraInstructions,
       mediaAssets: mediaAssets ?? this.mediaAssets,
+      trailingFrames: trailingFrames ?? this.trailingFrames,
     );
   }
 
@@ -96,6 +107,7 @@ class Project {
     'timesheetInfo': timesheetInfo.toJson(),
     'cameraInstructions': cameraInstructions.toJson(),
     'mediaAssets': mediaAssets.map((asset) => asset.toJson()).toList(),
+    if (trailingFrames != 0) 'trailingFrames': trailingFrames,
   };
 
   factory Project.fromJson(Map<String, dynamic> json) {
@@ -134,6 +146,7 @@ class Project {
               json['cameraInstructions'] as Map<String, dynamic>,
             ),
       mediaAssets: reconciledMediaAssets(storedAssets, tracks),
+      trailingFrames: (json['trailingFrames'] as int?) ?? 0,
     );
   }
 
@@ -150,7 +163,8 @@ class Project {
           other.background == background &&
           other.timesheetInfo == timesheetInfo &&
           other.cameraInstructions == cameraInstructions &&
-          listEquals(other.mediaAssets, mediaAssets);
+          listEquals(other.mediaAssets, mediaAssets) &&
+          other.trailingFrames == trailingFrames;
 
   @override
   int get hashCode => Object.hash(
@@ -164,6 +178,7 @@ class Project {
     timesheetInfo,
     cameraInstructions,
     Object.hashAll(mediaAssets),
+    trailingFrames,
   );
 
   @override

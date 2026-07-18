@@ -98,6 +98,22 @@ class CutTrimDragPreview extends TimelineDragPreview {
   );
 }
 
+/// A movie-end drag in flight (UI-R20 #3): the previewed TRAILING GAP —
+/// the storyboard substitutes it into its project view so the end line
+/// (and the ruler's content end) follow the pointer live.
+class MovieEndDragPreview extends TimelineDragPreview {
+  const MovieEndDragPreview({required this.trailingFrames});
+
+  final int trailingFrames;
+
+  @override
+  bool operator ==(Object other) =>
+      other is MovieEndDragPreview && other.trailingFrames == trailingFrames;
+
+  @override
+  int get hashCode => trailingFrames.hashCode;
+}
+
 /// The preview layer for [layerId], or null when [preview] does not target
 /// it.
 Layer? timelineDragPreviewLayerFor(
@@ -161,6 +177,8 @@ Project projectWithTimelineDragPreview(
       });
     case BlockMoveDragPreview(:final previewLayers):
       return _projectWithLayersSubstituted(project, previewLayers);
+    case MovieEndDragPreview(:final trailingFrames):
+      return project.copyWith(trailingFrames: trailingFrames);
   }
 }
 
