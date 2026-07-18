@@ -13,11 +13,13 @@ import 'package:quick_animaker_v2/src/ui/home_page.dart';
 /// gesture layer (whose dispose would commit the move under the still-
 /// pressed pointer, the R12-③ slot-key rule), and wandering over an
 /// incompatible section then back onto an SE row resumes the move.
+///
+/// UI-R23 #10: an incompatible hover no longer snaps back — it HOLDS the
+/// last valid landing; either way nothing commits until release.
 void main() {
   testWidgets('an SE row move commits ONLY on release — an incompatible '
-      'hover clears the preview but the gesture resumes on return', (
-    tester,
-  ) async {
+      'hover holds the last valid landing and the gesture resumes on '
+      'return', (tester) async {
     ProjectRepository? repository;
     await tester.pumpWidget(
       MaterialApp(home: HomePage(onRepositoryCreated: (r) => repository = r)),

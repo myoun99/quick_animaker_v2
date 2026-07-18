@@ -4602,14 +4602,12 @@ class EditorSessionManager extends ChangeNotifier {
     int frameDelta,
     LayerId targetLayerId,
   ) {
-    void clearAsIllegal() {
-      _rangeMoveMultiPlans = null;
-      _rangeMoveCameraShifted = null;
-      _rangeMoveInstructionShifted = null;
-      _rangeMoveTransformShifted = null;
-      _cameraKeysDragPreview = null;
-      dragPreview.value = null;
-      frameRangeSelection.value = selection;
+    void keepLastValid() {
+      // UI-R23 #10: a blocked / incompatible landing KEEPS the last valid
+      // preview and outline — the move "stops at the last legal spot" and
+      // resumes when a legal row returns, uniform across every source kind
+      // (the R22-B snap-back-to-origin is retired). Nothing to mutate: the
+      // stored last-valid plan and the live preview stand.
     }
 
     void followOutline() {
@@ -4633,7 +4631,7 @@ class EditorSessionManager extends ChangeNotifier {
       final sourceGlobal = trackSeGlobalLayerById(selection.layerId);
       final targetGlobal = trackSeGlobalLayerById(targetLayerId);
       if (sourceGlobal == null || targetGlobal == null) {
-        clearAsIllegal();
+        keepLastValid();
         return true;
       }
       final offset =
@@ -4647,7 +4645,7 @@ class EditorSessionManager extends ChangeNotifier {
         frameDelta: frameDelta,
       );
       if (plan == null) {
-        clearAsIllegal();
+        keepLastValid();
         return true;
       }
       _rangeMoveSeRowChange = (
@@ -4679,7 +4677,7 @@ class EditorSessionManager extends ChangeNotifier {
         frameDelta: frameDelta,
       );
       if (plan == null) {
-        clearAsIllegal();
+        keepLastValid();
         return true;
       }
       _rangeMoveInstructionRowChange = (
@@ -4700,11 +4698,12 @@ class EditorSessionManager extends ChangeNotifier {
       return true;
     }
     // SE / instruction sources hovering an INCOMPATIBLE row: the drop is
-    // illegal — preview clears until a legal row (the cross-section
-    // discipline). Every other source falls through to the plain slide
-    // (the camera key drag keeps ignoring row wander, P3b-2).
+    // illegal — the last valid preview HOLDS until a legal row returns
+    // (UI-R23 #10, the cross-section discipline). Every other source falls
+    // through to the plain slide (the camera key drag keeps ignoring row
+    // wander, P3b-2).
     if (sourceIsSe || sourceIsInstruction) {
-      clearAsIllegal();
+      keepLastValid();
       return true;
     }
     return false;
@@ -4722,18 +4721,20 @@ class EditorSessionManager extends ChangeNotifier {
       // ROW-CHANGE drops within the SE / camera sections (P3b-4, 같은
       // 섹션 행이동): a single-row track-SE selection may land on a
       // sibling SE row, an instruction selection on a sibling
-      // instruction row — the handler owns the step then (cross-kind
-      // hovers clear the preview like any illegal landing).
-      _rangeMoveSeRowChange = null;
-      _rangeMoveInstructionRowChange = null;
+      // instruction row — the handler owns the step then (an incompatible
+      // hover HOLDS the last valid landing, UI-R23 #10).
       if (targetLayerId != null &&
           targetLayerId != selection.layerId &&
           selection.spanLayerIds.length == 1 &&
           _updateRangeRowChangeDrag(selection, frameDelta, targetLayerId)) {
         return;
       }
+      // Falling to the plain slide: any prior SE/instruction row-change
+      // plan is stale now (the slide, not the row change, is last valid).
+      _rangeMoveSeRowChange = null;
+      _rangeMoveInstructionRowChange = null;
       // Cross-layer slide (UI-R18 #1): every spanned layer plans the SAME
-      // frame delta on itself; any illegal landing clears the whole
+      // frame delta on itself; any illegal landing HOLDS the last valid
       // preview (all-or-nothing, the single-layer discipline). KEY
       // sources (P3b-2) join the same contract: camera keys and
       // instruction spans shift by the same delta or the whole move
@@ -4803,74 +4804,70 @@ class EditorSessionManager extends ChangeNotifier {
           transformShifted[layer.id] = shifted;
         }
       }
-      _rangeMoveMultiPlans = illegal || plans.isEmpty ? null : plans;
-      _rangeMoveCameraShifted = illegal ? null : cameraShifted;
-      _rangeMoveInstructionShifted = illegal || instructionShifted.isEmpty
+      if (illegal) {
+        // UI-R23 #10: a blocked landing HOLDS the last valid preview,
+        // outline and stored plans — no snap-back to the origin.
+        return;
+      }
+      _rangeMoveMultiPlans = plans.isEmpty ? null : plans;
+      _rangeMoveCameraShifted = cameraShifted;
+      _rangeMoveInstructionShifted = instructionShifted.isEmpty
           ? null
           : instructionShifted;
-      _rangeMoveTransformShifted = illegal || transformShifted.isEmpty
+      _rangeMoveTransformShifted = transformShifted.isEmpty
           ? null
           : transformShifted;
-      _cameraKeysDragPreview = illegal ? null : cameraShifted;
-      final cameraMarker = illegal || cameraShifted == null
+      _cameraKeysDragPreview = cameraShifted;
+      final cameraMarker = cameraShifted == null
           ? null
           : _layerById(_rangeMoveCameraLayerId!)?.copyWith();
-      Map<LayerId, Layer>? previewLayers;
-      if (!illegal) {
-        previewLayers = {
-          for (final plan in plans)
-            // Track-SE rows preview in their DISPLAY form (UI-R18
-            // #1 seam); commits keep the global form.
-            plan.sourceAfter.id: isTrackSeLayerId(plan.sourceAfter.id)
-                ? trackSeWindow.displayLayer(
-                    rederiveRunBehaviors(
-                      plan.sourceAfter,
-                      cutFrameCount: _activeCutFrameCount,
-                    ),
-                  )
-                : rederiveRunBehaviors(
+      final previewLayers = <LayerId, Layer>{
+        for (final plan in plans)
+          // Track-SE rows preview in their DISPLAY form (UI-R18
+          // #1 seam); commits keep the global form.
+          plan.sourceAfter.id: isTrackSeLayerId(plan.sourceAfter.id)
+              ? trackSeWindow.displayLayer(
+                  rederiveRunBehaviors(
                     plan.sourceAfter,
                     cutFrameCount: _activeCutFrameCount,
                   ),
-          // Instruction rows preview with their shifted spans —
-          // the cells row renders straight off layer.instructions.
-          for (final entry in instructionShifted.entries)
-            if (_layerById(entry.key) != null)
-              entry.key: _layerById(
-                entry.key,
-              )!.copyWith(instructions: entry.value),
-        };
-        // Shifted transform tracks fold onto whatever preview form the
-        // layer already carries (block-planned or untouched).
-        for (final entry in transformShifted.entries) {
-          final base = previewLayers[entry.key] ?? _layerById(entry.key);
-          if (base != null) {
-            previewLayers[entry.key] = base.copyWith(
-              transformTrack: entry.value,
-            );
-          }
-        }
-      }
-      dragPreview.value = illegal
-          ? null
-          : BlockMoveDragPreview(
-              previewLayers: previewLayers!,
-              cameraCutId: cameraShifted == null ? null : activeCutOrNull?.id,
-              cameraKeyframes: cameraShifted,
-              cameraMarkerLayer: cameraMarker,
-            );
-      if (dragPreview.value == null) {
-        frameRangeSelection.value = selection;
-      } else {
-        final newStart = selection.startIndex + frameDelta;
-        if (newStart >= 0) {
-          frameRangeSelection.value = TimelineFrameRangeSelection(
-            layerId: selection.layerId,
-            startIndex: newStart,
-            endIndexExclusive: selection.endIndexExclusive + frameDelta,
-            layerIds: selection.layerIds,
+                )
+              : rederiveRunBehaviors(
+                  plan.sourceAfter,
+                  cutFrameCount: _activeCutFrameCount,
+                ),
+        // Instruction rows preview with their shifted spans —
+        // the cells row renders straight off layer.instructions.
+        for (final entry in instructionShifted.entries)
+          if (_layerById(entry.key) != null)
+            entry.key: _layerById(
+              entry.key,
+            )!.copyWith(instructions: entry.value),
+      };
+      // Shifted transform tracks fold onto whatever preview form the
+      // layer already carries (block-planned or untouched).
+      for (final entry in transformShifted.entries) {
+        final base = previewLayers[entry.key] ?? _layerById(entry.key);
+        if (base != null) {
+          previewLayers[entry.key] = base.copyWith(
+            transformTrack: entry.value,
           );
         }
+      }
+      dragPreview.value = BlockMoveDragPreview(
+        previewLayers: previewLayers,
+        cameraCutId: cameraShifted == null ? null : activeCutOrNull?.id,
+        cameraKeyframes: cameraShifted,
+        cameraMarkerLayer: cameraMarker,
+      );
+      final newStart = selection.startIndex + frameDelta;
+      if (newStart >= 0) {
+        frameRangeSelection.value = TimelineFrameRangeSelection(
+          layerId: selection.layerId,
+          startIndex: newStart,
+          endIndexExclusive: selection.endIndexExclusive + frameDelta,
+          layerIds: selection.layerIds,
+        );
       }
       return;
     }
@@ -4904,38 +4901,36 @@ class EditorSessionManager extends ChangeNotifier {
             rangeEndIndexExclusive: selection.endIndexExclusive,
             frameDelta: frameDelta,
           );
+    if (plan == null) {
+      // UI-R23 #10: a blocked / incompatible landing HOLDS the last valid
+      // preview, outline and plan — the move stops at the last legal spot
+      // and resumes on a legal return (no snap-back to the origin).
+      return;
+    }
     _rangeMovePlan = plan;
-    dragPreview.value = plan == null
-        ? null
-        : BlockMoveDragPreview(
-            previewLayers: {
-              plan.sourceAfter.id: rederiveRunBehaviors(
-                plan.sourceAfter,
-                cutFrameCount: _activeCutFrameCount,
-              ),
-              if (plan.targetAfter != null)
-                plan.targetAfter!.id: rederiveRunBehaviors(
-                  plan.targetAfter!,
-                  cutFrameCount: _activeCutFrameCount,
-                ),
-            },
-          );
+    dragPreview.value = BlockMoveDragPreview(
+      previewLayers: {
+        plan.sourceAfter.id: rederiveRunBehaviors(
+          plan.sourceAfter,
+          cutFrameCount: _activeCutFrameCount,
+        ),
+        if (plan.targetAfter != null)
+          plan.targetAfter!.id: rederiveRunBehaviors(
+            plan.targetAfter!,
+            cutFrameCount: _activeCutFrameCount,
+          ),
+      },
+    );
     // The selection outline follows the previewed landing live.
-    if (plan != null) {
-      final landedLayerId = plan.isCrossLayer
-          ? plan.targetAfter!.id
-          : source.id;
-      final startShift = plan.destinationStartIndex - groupStart;
-      final newStart = selection.startIndex + startShift;
-      if (newStart >= 0) {
-        frameRangeSelection.value = TimelineFrameRangeSelection(
-          layerId: landedLayerId,
-          startIndex: newStart,
-          endIndexExclusive: selection.endIndexExclusive + startShift,
-        );
-      }
-    } else {
-      frameRangeSelection.value = selection;
+    final landedLayerId = plan.isCrossLayer ? plan.targetAfter!.id : source.id;
+    final startShift = plan.destinationStartIndex - groupStart;
+    final newStart = selection.startIndex + startShift;
+    if (newStart >= 0) {
+      frameRangeSelection.value = TimelineFrameRangeSelection(
+        layerId: landedLayerId,
+        startIndex: newStart,
+        endIndexExclusive: selection.endIndexExclusive + startShift,
+      );
     }
   }
 

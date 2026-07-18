@@ -715,4 +715,43 @@ void main() {
     expect(bAfter.timeline[0]!.ghost, isFalse);
     expect(aAfter.timeline.containsKey(0), isFalse);
   });
+
+  test('a blocked / incompatible landing HOLDS the last valid preview '
+      '(UI-R23 #10): a row-move stops at the last legal spot and resumes on '
+      'return — it never snaps back to the origin', () {
+    final s = EditorSessionManager(initialProject: createDefaultProject());
+    s.createDrawingAtCurrentFrame();
+    final aId = s.activeLayer!.id;
+    s.addLayer();
+    final bId = s.activeLayer!.id;
+    final camId = s.layers.firstWhere((l) => l.kind == LayerKind.camera).id;
+
+    s.selectLayer(aId);
+    s.updateFrameRangeSelectionDrag(layerId: aId, anchorIndex: 0, headIndex: 0);
+    expect(s.beginFrameRangeMoveDrag(), isTrue);
+
+    // A valid drop on B: preview + outline follow to B.
+    s.updateFrameRangeMoveDrag(frameDelta: 0, targetLayerId: bId);
+    expect(s.dragPreview.value, isNotNull);
+    expect(s.frameRangeSelection.value!.layerId, bId);
+
+    // Wander onto the incompatible camera section: the last valid landing
+    // HOLDS (preview stays, outline stays on B) — no snap-back to A.
+    s.updateFrameRangeMoveDrag(frameDelta: 0, targetLayerId: camId);
+    expect(
+      s.dragPreview.value,
+      isNotNull,
+      reason: 'a blocked hover keeps the last valid preview',
+    );
+    expect(s.frameRangeSelection.value!.layerId, bId);
+
+    // Return to B resumes cleanly; the release commits on B.
+    s.updateFrameRangeMoveDrag(frameDelta: 0, targetLayerId: bId);
+    expect(s.frameRangeSelection.value!.layerId, bId);
+    s.endFrameRangeMoveDrag();
+    final aAfter = s.layers.firstWhere((l) => l.id == aId);
+    final bAfter = s.layers.firstWhere((l) => l.id == bId);
+    expect(bAfter.timeline.containsKey(0), isTrue);
+    expect(aAfter.timeline.containsKey(0), isFalse);
+  });
 }
