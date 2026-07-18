@@ -2033,17 +2033,39 @@ class EditorSessionManager extends ChangeNotifier {
                   )
                   .length
         : attachedGroupEndIndex(base.id, cut.layers);
+    // UI-R23 #7: a SYNCED attach row is a FULL mirror the moment it is
+    // created — one empty cel + base link per base cel, so every mirror
+    // cell is editable at once (was: lazily created on first draw). Its
+    // own [timeline] stays empty; the derived display mirrors the base.
+    final frames = <Frame>[];
+    final baseFrameLinks = <FrameId, FrameId>{};
+    if (mode == AttachedMode.synced) {
+      for (final entry in base.timeline.entries) {
+        final baseFrameId = entry.value.frameId;
+        if (!entry.value.isDrawing ||
+            entry.value.ghost ||
+            baseFrameId == null ||
+            baseFrameLinks.containsKey(baseFrameId)) {
+          continue;
+        }
+        _frameSequence += 1;
+        final celId = FrameId(_nextFrameId(layerId));
+        frames.add(Frame(id: celId, duration: 1, strokes: const []));
+        baseFrameLinks[baseFrameId] = celId;
+      }
+    }
     _layerController.addLayer(
       layer: Layer(
         id: layerId,
         name: nextAttachedLayerName(base, cut.layers, placement),
-        frames: const [],
+        frames: frames,
         timeline: const {},
         kind: base.kind,
         onTimesheet: false,
         attachedToLayerId: base.id,
         attachedPlacement: placement,
         attachedMode: mode,
+        baseFrameLinks: baseFrameLinks,
       ),
       insertionIndex: insertionIndex,
     );

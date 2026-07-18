@@ -73,37 +73,79 @@ void main() {
     expect(s.activeBrushEditorSelection!.frameId, cutAttach.frames.single.id);
   });
 
-  test('Create Drawing on an attach row makes a cel + link riding the '
-      'base exposure; one per base cel; one undo removes it', () {
+  test('a SYNCED attach row EAGERLY mirrors every base cel at creation '
+      '(UI-R23 #7): one cel + link per base cel up front, no lazy Create '
+      'Drawing, and one undo removes the whole row', () {
     final (s, base) = sessionWithBase();
-    // Give the BASE an exposed cel at the playhead first (the default
-    // layer starts empty).
+    // Give the BASE two exposed cels (frames 0 and 2).
     s.createDrawingAtCurrentFrame();
+    s.selectFrameIndex(2);
+    s.createDrawingAtCurrentFrame();
+    s.selectFrameIndex(0);
+
     s.addAttachedLayer(AttachedPlacement.above);
     final attachId = s.activeLayer!.id;
 
-    // The base exposes a cel at frame 0 now — creatable.
-    expect(s.canCreateDrawingAtCurrentFrame, isTrue);
-    s.createDrawingAtCurrentFrame();
-
+    // The mirror is FULL the moment the row is created: one own cel + base
+    // link per base cel, and the synced row still owns no timeline of its
+    // own (the display derives it).
     final attached = cutLayers(s).firstWhere((layer) => layer.id == attachId);
+    expect(attached.frames, hasLength(2));
+    expect(attached.baseFrameLinks, hasLength(2));
+    expect(attached.timeline, isEmpty);
+
+    // Every base cel is already mirrored — nothing left to lazily create.
+    expect(s.canCreateDrawingAtCurrentFrame, isFalse);
+    s.selectFrameIndex(2);
+    expect(s.canCreateDrawingAtCurrentFrame, isFalse);
+    s.selectFrameIndex(0);
+
+    // The mirror cel at the playhead resolves as the brush target (its own
+    // independent pixels, riding the base's exposure).
+    expect(s.selectedFrame!.id, s.activeBrushEditorSelection!.frameId);
+    expect(
+      attached.baseFrameLinks.values,
+      contains(s.selectedFrame!.id),
+    );
+
+    // ONE undo removes the whole attach row (cels + links together).
+    s.undo();
+    expect(cutLayers(s).any((l) => l.id == attachId), isFalse);
+    expect(base.id, isNotNull); // base untouched throughout
+  });
+
+  test('the eager mirror preserves the base HOLD notation (UI-R23 #8): a '
+      'held base cel mirrors as ONE block of the same length, never a '
+      'restarted per-frame cel', () {
+    final (s, base) = sessionWithBase();
+    // Base cel at 0, stretched to a 3-frame hold via a comma drag.
+    s.createDrawingAtCurrentFrame();
+    s.beginExposureEdgeDrag(
+      layerId: base.id,
+      blockStartIndex: 0,
+      edge: TimelineBlockEdge.end,
+    );
+    s.updateExposureEdgeDrag(2);
+    s.endExposureEdgeDrag();
+    expect(
+      cutLayers(s).firstWhere((l) => l.id == base.id).timeline[0]!.length,
+      3,
+    );
+
+    s.selectLayer(base.id);
+    s.addAttachedLayer(AttachedPlacement.above);
+    final attachId = s.activeLayer!.id;
+
+    // ONE own cel for the whole held region — not three restarted cels.
+    final attached = cutLayers(s).firstWhere((l) => l.id == attachId);
     expect(attached.frames, hasLength(1));
     expect(attached.baseFrameLinks, hasLength(1));
 
-    // The display clone resolves the linked cel at the playhead — the
-    // brush target rides the base's exposure.
-    expect(s.selectedFrame!.id, attached.frames.single.id);
-    expect(s.activeBrushEditorSelection!.frameId, attached.frames.single.id);
-
-    // The base cel is linked now: no second cel on the same exposure.
-    expect(s.canCreateDrawingAtCurrentFrame, isFalse);
-
-    // ONE undo removes cel + link together.
-    s.undo();
-    final restored = cutLayers(s).firstWhere((layer) => layer.id == attachId);
-    expect(restored.frames, isEmpty);
-    expect(restored.baseFrameLinks, isEmpty);
-    expect(base.id, isNotNull); // base untouched throughout
+    // The derived mirror shows a single block whose length matches the
+    // base's hold (the hold/run notation is preserved, not restarted).
+    final display = s.layers.firstWhere((l) => l.id == attachId);
+    expect(display.timeline.keys.toList(), [0]);
+    expect(display.timeline[0]!.length, 3);
   });
 
   test('a FREE attach row (UI-R21 #3) authors its own timeline like a '
