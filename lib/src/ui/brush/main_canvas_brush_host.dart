@@ -49,6 +49,8 @@ class MainCanvasBrushHost extends StatefulWidget {
     this.contentOverride,
     this.fitFocusRect,
     this.sampleColorAt,
+    this.onTemporaryToolHold,
+    this.onTemporaryToolRelease,
     this.onEyedropperPick,
     this.onAltColorPick,
     this.fillDabAt,
@@ -108,6 +110,10 @@ class MainCanvasBrushHost extends StatefulWidget {
   /// Forwarded to [BrushCanvasPanel]: the P5 eyedropper's composite sampler
   /// and pick handlers, and the P6 fill dab builder.
   final int? Function(CanvasPoint point)? sampleColorAt;
+
+  /// PEN-7a mapped-hold pass-through (canvas right/wheel mappings).
+  final void Function(CanvasTool tool)? onTemporaryToolHold;
+  final void Function({required bool keep})? onTemporaryToolRelease;
   final ValueChanged<int>? onEyedropperPick;
   final ValueChanged<int>? onAltColorPick;
   final BrushDab? Function(CanvasPoint point, int color)? fillDabAt;
@@ -199,6 +205,8 @@ class _MainCanvasBrushHostState extends State<MainCanvasBrushHost> {
       contentOverride: contentOverride,
       fitFocusRect: widget.fitFocusRect,
       sampleColorAt: widget.sampleColorAt,
+      onTemporaryToolHold: widget.onTemporaryToolHold,
+      onTemporaryToolRelease: widget.onTemporaryToolRelease,
       onEyedropperPick: widget.onEyedropperPick,
       onAltColorPick: widget.onAltColorPick,
       fillDabAt: widget.fillDabAt,

@@ -34,6 +34,31 @@ void main() {
     );
   });
 
+  test('the canvas pointer mappings default right=eyedropper/wheel=pan '
+      'and round-trip (PEN-7a)', () {
+    const defaults = AppInputSettings();
+    expect(defaults.canvasRightClick.action, CanvasPointerAction.eyedropper);
+    expect(
+      defaults.canvasRightClick.release,
+      CanvasPointerRelease.returnToTool,
+    );
+    expect(defaults.canvasWheelClick.action, CanvasPointerAction.pan);
+    // Old settings files (no field) get the defaults.
+    expect(
+      AppInputSettings.fromJson(const {}).canvasRightClick.action,
+      CanvasPointerAction.eyedropper,
+    );
+
+    const custom = AppInputSettings(
+      canvasRightClick: CanvasPointerMapping(
+        action: CanvasPointerAction.eraser,
+        release: CanvasPointerRelease.keep,
+      ),
+      canvasWheelClick: CanvasPointerMapping(action: CanvasPointerAction.none),
+    );
+    expect(AppInputSettings.fromJson(custom.toJson()), custom);
+  });
+
   test('tabletService json round-trips and defaults to standard', () {
     expect(const AppInputSettings().tabletService, TabletService.standard);
     // Old settings files (no field) stay standard.

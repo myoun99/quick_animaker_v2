@@ -87,6 +87,10 @@ class EditorCanvasArea extends StatefulWidget {
 }
 
 class _EditorCanvasAreaState extends State<EditorCanvasArea> {
+  /// The tool held BEFORE a mapped-hold session (PEN-7a); null = no hold
+  /// live. `??=` keeps the first origin if events ever double-fire.
+  CanvasTool? _heldOriginalTool;
+
   CanvasViewport _canvasViewport = CanvasViewport();
 
   @override
@@ -311,6 +315,26 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
               onAltColorPick: (color) => widget.onBrushToolStateChanged?.call(
                 widget.brushToolState.value.copyWith(color: color),
               ),
+              // PEN-7a: the mapped hold temporarily switches the TOOL —
+              // the user's design: reuse the one tool-switch path so the
+              // cursor, panels and per-tool settings memory all follow.
+              // Release springs back (default) or keeps the switched
+              // tool, per the mapping.
+              onTemporaryToolHold: (tool) {
+                _heldOriginalTool ??= widget.brushToolState.value.tool;
+                widget.onBrushToolStateChanged?.call(
+                  widget.brushToolState.value.copyWith(tool: tool),
+                );
+              },
+              onTemporaryToolRelease: ({required keep}) {
+                final original = _heldOriginalTool;
+                _heldOriginalTool = null;
+                if (!keep && original != null) {
+                  widget.onBrushToolStateChanged?.call(
+                    widget.brushToolState.value.copyWith(tool: original),
+                  );
+                }
+              },
               // P6 fill: the flood region as ONE mask dab; the panel commits it
               // through the stroke funnel onto the active layer's frame.
               selectionMaskOptions: widget.selectionMaskOptions,

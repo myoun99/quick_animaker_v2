@@ -9,7 +9,8 @@ import 'package:flutter/services.dart';
 
 import '../../models/bitmap_surface.dart';
 import '../../services/input/pen_sidecars.dart';
-import '../input/app_input_settings.dart' show AppInput;
+import '../brush/brush_tool_state.dart' show CanvasTool;
+import '../input/app_input_settings.dart';
 import '../../models/bitmap_tile.dart';
 import '../../models/brush_dab.dart';
 import '../../models/brush_edit_session_state.dart';
@@ -100,6 +101,8 @@ class InteractiveBrushEditCanvasView extends StatefulWidget {
     this.showTransparentBackground = true,
     this.onActiveStrokeChanged,
     this.onAltPick,
+    this.onTemporaryToolHold,
+    this.onTemporaryToolRelease,
     this.fillDabAt,
     CanvasViewport? viewport,
   }) : viewport = viewport ?? CanvasViewport();
@@ -117,6 +120,12 @@ class InteractiveBrushEditCanvasView extends StatefulWidget {
   /// Alt+pointer-down picks a color instead of starting a stroke (P5's
   /// temporary eyedropper); null disables the shortcut.
   final ValueChanged<CanvasPoint>? onAltPick;
+
+  /// PEN-7a mapped-hold session: a secondary-button press switched the
+  /// tool temporarily — the shell mirrors it on the tool notifier so the
+  /// cursor/panels follow, and restores (or keeps) on release.
+  final void Function(CanvasTool tool)? onTemporaryToolHold;
+  final void Function({required bool keep})? onTemporaryToolRelease;
 
   /// FILL mode (R22-A): non-null while the fill tool is active — a
   /// primary tap builds the flood's stamp dab here and the view runs it
@@ -157,6 +166,13 @@ class _InteractiveBrushEditCanvasViewState
   /// pressure report a zero range and are treated as full pressure, so a
   /// mouse draws exactly as before.
   double _currentPressure = 1.0;
+
+  /// The live mapped-hold session (PEN-7a): a secondary-button press
+  /// whose canvas mapping switched the tool temporarily. One at a time;
+  /// eyedropper holds pick continuously through the move stream.
+  int? _mappedHoldPointer;
+  CanvasPointerRelease? _mappedHoldRelease;
+  bool _mappedHoldIsEyedropper = false;
 
   /// Placement dynamics (scatter/jitter/direction rotation) for the active
   /// stroke; created at pointer-down from the stroke's settings snapshot.
@@ -333,19 +349,53 @@ class _InteractiveBrushEditCanvasViewState
       }
     }
 
-    // The stylus BARREL button (PEN-5: S-Pen side button, Wacom barrel
-    // switch) makes the stroke a TEMPORARY ERASER — the CSP/Photoshop
-    // convention. Detected at pointer-down only: the whole stroke keeps
-    // one blend mode (the settings-snapshot contract).
-    final barrelErase =
-        (event.kind == PointerDeviceKind.stylus ||
-            event.kind == PointerDeviceKind.invertedStylus) &&
-        (event.buttons & kPrimaryButton) != 0 &&
-        (event.buttons & kPrimaryStylusButton) != 0;
+    // PEN-7a: the CANVAS mapping for standard secondary inputs. Pen
+    // side/barrel buttons, the S-Pen button and the mouse right button
+    // all arrive as the RIGHT-CLICK bit; the pen upper button and the
+    // wheel click as the MIDDLE bit. On canvas the user assigns what
+    // they do (Input Settings ▸ Canvas); everywhere else the OS meaning
+    // of the input rules untouched. The hold temporarily switches the
+    // TOOL (the shared tool-switch path — cursor/panels follow free);
+    // release springs back or keeps it per the mapping.
+    var mappedErase = false;
+    final mapping = _mappedPointerActionFor(event);
+    if (mapping != null) {
+      if (_multiTouchNavigation ||
+          _activeDrawingPointer != null ||
+          _mappedHoldPointer != null) {
+        return;
+      }
+      switch (mapping.action) {
+        case CanvasPointerAction.none:
+        // Pan belongs to the panel's viewport gesture layer — this view
+        // only stands down so no stroke competes with it.
+        case CanvasPointerAction.pan:
+          return;
+        case CanvasPointerAction.eyedropper:
+          _mappedHoldPointer = event.pointer;
+          _mappedHoldRelease = mapping.release;
+          _mappedHoldIsEyedropper = true;
+          widget.onTemporaryToolHold?.call(CanvasTool.eyedropper);
+          final pickPosition = _canvasPositionFromLocal(event.localPosition);
+          if (_isInsideSurface(pickPosition)) {
+            widget.onAltPick?.call(pickPosition);
+          }
+          return;
+        case CanvasPointerAction.eraser:
+          mappedErase = true;
+          _mappedHoldPointer = event.pointer;
+          _mappedHoldRelease = mapping.release;
+          _mappedHoldIsEyedropper = false;
+          widget.onTemporaryToolHold?.call(CanvasTool.eraser);
+        // Falls through into the normal stroke start below with the
+        // erase-substituted settings snapshot.
+      }
+    }
 
-    if (_multiTouchNavigation ||
-        _activeDrawingPointer != null ||
-        (!_isPrimaryButton(event.buttons) && !barrelErase)) {
+    if (!mappedErase &&
+        (_multiTouchNavigation ||
+            _activeDrawingPointer != null ||
+            !_isPrimaryButton(event.buttons))) {
       return;
     }
 
@@ -386,8 +436,8 @@ class _InteractiveBrushEditCanvasViewState
 
     _activeDrawingPointer = event.pointer;
     // The stroke's settings snapshot — every downstream dab reads it, so
-    // the barrel-eraser substitution here flips the WHOLE stroke.
-    final strokeSettings = barrelErase
+    // the mapped-eraser substitution here flips the WHOLE stroke.
+    final strokeSettings = mappedErase
         ? widget.inputSettings.copyWith(erase: true)
         : widget.inputSettings;
     _activeStrokeInputSettings = strokeSettings;
@@ -443,6 +493,15 @@ class _InteractiveBrushEditCanvasViewState
   }
 
   void _handlePointerMove(PointerMoveEvent event) {
+    // A held eyedropper mapping picks LIVE along the whole drag (PEN-7a:
+    // '누르는 동안 해당 색을 뽑는다').
+    if (event.pointer == _mappedHoldPointer && _mappedHoldIsEyedropper) {
+      final pickPosition = _canvasPositionFromLocal(event.localPosition);
+      if (_isInsideSurface(pickPosition)) {
+        widget.onAltPick?.call(pickPosition);
+      }
+      return;
+    }
     if (event.pointer != _activeDrawingPointer) {
       return;
     }
@@ -572,6 +631,7 @@ class _InteractiveBrushEditCanvasViewState
 
   void _handlePointerUp(PointerUpEvent event) {
     _forgetTouchPointer(event.pointer);
+    _releaseMappedHold(event.pointer);
     if (event.pointer != _activeDrawingPointer) {
       return;
     }
@@ -657,6 +717,7 @@ class _InteractiveBrushEditCanvasViewState
 
   void _handlePointerCancel(PointerCancelEvent event) {
     _forgetTouchPointer(event.pointer);
+    _releaseMappedHold(event.pointer);
     if (event.pointer != _activeDrawingPointer) {
       return;
     }
@@ -670,6 +731,35 @@ class _InteractiveBrushEditCanvasViewState
     if (_activeTouchPointers.isEmpty) {
       _multiTouchNavigation = false;
     }
+  }
+
+  /// The canvas mapping row for a secondary-button press (PEN-7a); null =
+  /// not a mapped press (primary drawing input, or touch).
+  CanvasPointerMapping? _mappedPointerActionFor(PointerDownEvent event) {
+    if (event.kind == PointerDeviceKind.touch) {
+      return null;
+    }
+    final settings = AppInput.settings.value;
+    if ((event.buttons & kSecondaryButton) != 0) {
+      return settings.canvasRightClick;
+    }
+    if ((event.buttons & kTertiaryButton) != 0) {
+      return settings.canvasWheelClick;
+    }
+    return null;
+  }
+
+  /// Ends an active mapped hold (pointer up/cancel): tells the shell to
+  /// spring the tool back or keep it, per the mapping.
+  void _releaseMappedHold(int pointer) {
+    if (pointer != _mappedHoldPointer) {
+      return;
+    }
+    final keep = _mappedHoldRelease == CanvasPointerRelease.keep;
+    _mappedHoldPointer = null;
+    _mappedHoldRelease = null;
+    _mappedHoldIsEyedropper = false;
+    widget.onTemporaryToolRelease?.call(keep: keep);
   }
 
   bool _isInsideSurface(CanvasPoint localPosition) {

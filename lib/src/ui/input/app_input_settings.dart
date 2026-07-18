@@ -25,7 +25,21 @@ class AppInputSettings {
     this.touchTimelineScroll = true,
     this.tabletService = TabletService.standard,
     this.pressureCurveGamma = 1.0,
+    this.canvasRightClick = const CanvasPointerMapping(
+      action: CanvasPointerAction.eyedropper,
+    ),
+    this.canvasWheelClick = const CanvasPointerMapping(
+      action: CanvasPointerAction.pan,
+    ),
   });
+
+  /// The canvas mapping for the RIGHT-CLICK bit (PEN-7a): pen side/
+  /// barrel button, S-Pen button, mouse right button — one row for all.
+  final CanvasPointerMapping canvasRightClick;
+
+  /// The canvas mapping for the WHEEL/MIDDLE bit: pen upper button,
+  /// mouse wheel click.
+  final CanvasPointerMapping canvasWheelClick;
 
   final bool touchTimelineScroll;
 
@@ -50,16 +64,22 @@ class AppInputSettings {
     bool? touchTimelineScroll,
     TabletService? tabletService,
     double? pressureCurveGamma,
+    CanvasPointerMapping? canvasRightClick,
+    CanvasPointerMapping? canvasWheelClick,
   }) => AppInputSettings(
     touchTimelineScroll: touchTimelineScroll ?? this.touchTimelineScroll,
     tabletService: tabletService ?? this.tabletService,
     pressureCurveGamma: pressureCurveGamma ?? this.pressureCurveGamma,
+    canvasRightClick: canvasRightClick ?? this.canvasRightClick,
+    canvasWheelClick: canvasWheelClick ?? this.canvasWheelClick,
   );
 
   Map<String, dynamic> toJson() => {
     'touchTimelineScroll': touchTimelineScroll,
     'tabletService': tabletService.name,
     'pressureCurveGamma': pressureCurveGamma,
+    'canvasRightClick': canvasRightClick.toJson(),
+    'canvasWheelClick': canvasWheelClick.toJson(),
   };
 
   static AppInputSettings fromJson(Map<String, dynamic> json) =>
@@ -70,6 +90,16 @@ class AppInputSettings {
             TabletService.standard,
         pressureCurveGamma:
             (json['pressureCurveGamma'] as num?)?.toDouble() ?? 1.0,
+        canvasRightClick: CanvasPointerMapping.fromJson(
+          json['canvasRightClick'],
+          fallback: const CanvasPointerMapping(
+            action: CanvasPointerAction.eyedropper,
+          ),
+        ),
+        canvasWheelClick: CanvasPointerMapping.fromJson(
+          json['canvasWheelClick'],
+          fallback: const CanvasPointerMapping(action: CanvasPointerAction.pan),
+        ),
       );
 
   @override
@@ -77,17 +107,89 @@ class AppInputSettings {
       other is AppInputSettings &&
       other.touchTimelineScroll == touchTimelineScroll &&
       other.tabletService == tabletService &&
-      other.pressureCurveGamma == pressureCurveGamma;
+      other.pressureCurveGamma == pressureCurveGamma &&
+      other.canvasRightClick == canvasRightClick &&
+      other.canvasWheelClick == canvasWheelClick;
 
   @override
-  int get hashCode =>
-      Object.hash(touchTimelineScroll, tabletService, pressureCurveGamma);
+  int get hashCode => Object.hash(
+    touchTimelineScroll,
+    tabletService,
+    pressureCurveGamma,
+    canvasRightClick,
+    canvasWheelClick,
+  );
 }
 
 /// The tablet backend choice (PEN-2). CSP's '사용할 태블릿 서비스'
 /// analogue: standard = the OS pointer path ('Tablet PC'), wintab = the
 /// driver-direct sidecar.
 enum TabletService { standard, wintab }
+
+/// What a STANDARD secondary input does on the CANVAS (PEN-7a) — the
+/// app's one in-house mapping layer. Everywhere else follows the
+/// driver/OS meaning of the input untouched; on canvas the user assigns
+/// it. Pen side/barrel buttons, the S-Pen button and the mouse right
+/// button all arrive as the SAME right-click bit, so one row governs
+/// them all (and the wheel/upper-button bit gets its own row).
+enum CanvasPointerAction { eyedropper, eraser, pan, none }
+
+/// What happens when the held mapping ends (PEN-7a): the hold
+/// temporarily SWITCHES THE TOOL (the shared tool-switch path — cursor,
+/// panels and per-tool settings all follow for free); release either
+/// springs back to the original tool (the default) or keeps the
+/// switched tool armed.
+enum CanvasPointerRelease { returnToTool, keep }
+
+/// One canvas mapping row: the action plus its release behavior.
+class CanvasPointerMapping {
+  const CanvasPointerMapping({
+    required this.action,
+    this.release = CanvasPointerRelease.returnToTool,
+  });
+
+  final CanvasPointerAction action;
+  final CanvasPointerRelease release;
+
+  CanvasPointerMapping copyWith({
+    CanvasPointerAction? action,
+    CanvasPointerRelease? release,
+  }) => CanvasPointerMapping(
+    action: action ?? this.action,
+    release: release ?? this.release,
+  );
+
+  Map<String, dynamic> toJson() => {
+    'action': action.name,
+    'release': release.name,
+  };
+
+  static CanvasPointerMapping fromJson(
+    Object? json, {
+    required CanvasPointerMapping fallback,
+  }) {
+    if (json is! Map) {
+      return fallback;
+    }
+    return CanvasPointerMapping(
+      action:
+          CanvasPointerAction.values.asNameMap()[json['action']] ??
+          fallback.action,
+      release:
+          CanvasPointerRelease.values.asNameMap()[json['release']] ??
+          fallback.release,
+    );
+  }
+
+  @override
+  bool operator ==(Object other) =>
+      other is CanvasPointerMapping &&
+      other.action == action &&
+      other.release == release;
+
+  @override
+  int get hashCode => Object.hash(action, release);
+}
 
 /// The LIVE input policy (the accent-settings pattern): the app root
 /// rebuilds off the notifier; the session restores/persists it.

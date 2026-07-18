@@ -13,11 +13,14 @@ import 'package:quick_animaker_v2/src/models/dirty_region.dart';
 import 'package:quick_animaker_v2/src/models/tile_coord.dart';
 import 'package:quick_animaker_v2/src/models/brush_dab.dart';
 import 'package:quick_animaker_v2/src/models/brush_edit_session_state.dart';
+import 'package:quick_animaker_v2/src/models/canvas_point.dart';
 import 'package:quick_animaker_v2/src/models/canvas_size.dart';
 import 'package:quick_animaker_v2/src/models/canvas_surface_state.dart';
 import 'package:quick_animaker_v2/src/models/canvas_viewport.dart';
 import 'package:quick_animaker_v2/src/models/frame_id.dart';
 import 'package:quick_animaker_v2/src/models/layer_id.dart';
+import 'package:quick_animaker_v2/src/ui/brush/brush_tool_state.dart'
+    show CanvasTool;
 import 'package:quick_animaker_v2/src/ui/canvas/brush_edit_canvas_input_settings.dart';
 import 'package:quick_animaker_v2/src/ui/canvas/brush_edit_canvas_view.dart';
 import 'package:quick_animaker_v2/src/ui/canvas/interactive_brush_edit_canvas_view.dart';
@@ -828,65 +831,176 @@ void main() {
       },
     );
 
-    testWidgets('the stylus BARREL button makes the stroke a temporary ERASER '
-        '(PEN-5: S-Pen side button / Wacom barrel)', (tester) async {
-      final results = <List<BrushDab>>[];
-      await tester.pumpWidget(
-        _app(
-          _view(
-            _sessionState(width: 200, height: 16),
-            results.add,
-            inputSettings: const BrushEditCanvasInputSettings(size: 8),
+    // PEN-7a: the CANVAS mapping owns what secondary buttons do — the pen
+    // barrel / S-Pen button / mouse right button all route as
+    // 'right-click', defaulting to a held EYEDROPPER (live picks, tool
+    // springs back on release).
+    group('canvas pointer mappings (PEN-7a)', () {
+      tearDown(() {
+        AppInput.settings.value = const AppInputSettings(
+          touchTimelineScroll: false,
+        );
+      });
+
+      Future<void> barrelStroke(WidgetTester tester) async {
+        tester.binding.handlePointerEvent(
+          PointerDownEvent(
+            pointer: 7,
+            kind: PointerDeviceKind.stylus,
+            position: canvasGlobalOffset(tester, const Offset(2, 1)),
+            buttons: kPrimaryButton | kPrimaryStylusButton,
+            pressure: 1,
+            pressureMin: 0,
+            pressureMax: 1,
           ),
-        ),
-      );
+        );
+        await tester.pump();
+        tester.binding.handlePointerEvent(
+          PointerMoveEvent(
+            pointer: 7,
+            kind: PointerDeviceKind.stylus,
+            position: canvasGlobalOffset(tester, const Offset(40, 1)),
+            buttons: kPrimaryButton | kPrimaryStylusButton,
+            pressure: 1,
+            pressureMin: 0,
+            pressureMax: 1,
+          ),
+        );
+        await tester.pump();
+        tester.binding.handlePointerEvent(
+          PointerUpEvent(
+            pointer: 7,
+            kind: PointerDeviceKind.stylus,
+            position: canvasGlobalOffset(tester, const Offset(40, 1)),
+          ),
+        );
+        await tester.pump();
+      }
 
-      // Barrel stroke: contact + primary stylus button.
-      tester.binding.handlePointerEvent(
-        PointerDownEvent(
-          pointer: 7,
-          kind: PointerDeviceKind.stylus,
-          position: canvasGlobalOffset(tester, const Offset(2, 1)),
-          buttons: kPrimaryButton | kPrimaryStylusButton,
-          pressure: 1,
-          pressureMin: 0,
-          pressureMax: 1,
-        ),
-      );
-      await tester.pump();
-      tester.binding.handlePointerEvent(
-        PointerMoveEvent(
-          pointer: 7,
-          kind: PointerDeviceKind.stylus,
-          position: canvasGlobalOffset(tester, const Offset(40, 1)),
-          buttons: kPrimaryButton | kPrimaryStylusButton,
-          pressure: 1,
-          pressureMin: 0,
-          pressureMax: 1,
-        ),
-      );
-      await tester.pump();
-      tester.binding.handlePointerEvent(
-        PointerUpEvent(
-          pointer: 7,
-          kind: PointerDeviceKind.stylus,
-          position: canvasGlobalOffset(tester, const Offset(40, 1)),
-        ),
-      );
-      await tester.pump();
+      testWidgets('the default right-click mapping is a HELD eyedropper: '
+          'live picks, no stroke, tool springs back', (tester) async {
+        final results = <List<BrushDab>>[];
+        final picks = <CanvasPoint>[];
+        final holds = <CanvasTool>[];
+        final releases = <bool>[];
+        await tester.pumpWidget(
+          _app(
+            _view(
+              _sessionState(width: 200, height: 16),
+              results.add,
+              inputSettings: const BrushEditCanvasInputSettings(size: 8),
+              onAltPick: picks.add,
+              onTemporaryToolHold: holds.add,
+              onTemporaryToolRelease: ({required keep}) => releases.add(keep),
+            ),
+          ),
+        );
 
-      expect(results, hasLength(1));
-      expect(
-        results.single.map((dab) => dab.erase).toSet(),
-        {true},
-        reason: 'the whole barrel stroke erases',
-      );
+        await barrelStroke(tester);
 
-      // A plain follow-up stroke paints again (the substitution lives
-      // on the per-stroke snapshot only).
-      await dragCanvas(tester, const [Offset(2, 8), Offset(30, 8)]);
-      expect(results, hasLength(2));
-      expect(results.last.map((dab) => dab.erase).toSet(), {false});
+        expect(results, isEmpty, reason: 'a mapped hold never strokes');
+        expect(picks, isNotEmpty, reason: 'picks at down AND along the drag');
+        expect(picks.length, greaterThanOrEqualTo(2));
+        expect(holds, [CanvasTool.eyedropper]);
+        expect(releases, [false], reason: 'returnToTool = spring back');
+      });
+
+      testWidgets('a mouse RIGHT drag routes the same mapping', (tester) async {
+        final results = <List<BrushDab>>[];
+        final picks = <CanvasPoint>[];
+        await tester.pumpWidget(
+          _app(
+            _view(
+              _sessionState(width: 200, height: 16),
+              results.add,
+              onAltPick: picks.add,
+            ),
+          ),
+        );
+
+        final gesture = await tester.startGesture(
+          canvasGlobalOffset(tester, const Offset(2, 1)),
+          kind: PointerDeviceKind.mouse,
+          buttons: kSecondaryMouseButton,
+        );
+        await gesture.moveTo(canvasGlobalOffset(tester, const Offset(30, 1)));
+        await tester.pump();
+        await gesture.up();
+        await tester.pump();
+
+        expect(results, isEmpty);
+        expect(picks, isNotEmpty);
+      });
+
+      testWidgets('mapped ERASER erases the whole stroke and "keep" holds '
+          'the switched tool', (tester) async {
+        AppInput.settings.value = const AppInputSettings(
+          touchTimelineScroll: false,
+          canvasRightClick: CanvasPointerMapping(
+            action: CanvasPointerAction.eraser,
+            release: CanvasPointerRelease.keep,
+          ),
+        );
+        final results = <List<BrushDab>>[];
+        final holds = <CanvasTool>[];
+        final releases = <bool>[];
+        await tester.pumpWidget(
+          _app(
+            _view(
+              _sessionState(width: 200, height: 16),
+              results.add,
+              inputSettings: const BrushEditCanvasInputSettings(size: 8),
+              onTemporaryToolHold: holds.add,
+              onTemporaryToolRelease: ({required keep}) => releases.add(keep),
+            ),
+          ),
+        );
+
+        await barrelStroke(tester);
+
+        expect(results, hasLength(1));
+        expect(
+          results.single.map((dab) => dab.erase).toSet(),
+          {true},
+          reason: 'the whole mapped stroke erases',
+        );
+        expect(holds, [CanvasTool.eraser]);
+        expect(releases, [true], reason: 'keep = stay on the eraser');
+
+        // A plain follow-up stroke paints again (the substitution lives
+        // on the per-stroke snapshot only).
+        await dragCanvas(tester, const [Offset(2, 8), Offset(30, 8)]);
+        expect(results, hasLength(2));
+        expect(results.last.map((dab) => dab.erase).toSet(), {false});
+      });
+
+      testWidgets('mapped NONE swallows the press entirely', (tester) async {
+        AppInput.settings.value = const AppInputSettings(
+          touchTimelineScroll: false,
+          canvasRightClick: CanvasPointerMapping(
+            action: CanvasPointerAction.none,
+          ),
+        );
+        final results = <List<BrushDab>>[];
+        final picks = <CanvasPoint>[];
+        final holds = <CanvasTool>[];
+        await tester.pumpWidget(
+          _app(
+            _view(
+              _sessionState(width: 200, height: 16),
+              results.add,
+              onAltPick: picks.add,
+              onTemporaryToolHold: holds.add,
+            ),
+          ),
+        );
+
+        await barrelStroke(tester);
+
+        expect(results, isEmpty);
+        expect(picks, isEmpty);
+        expect(holds, isEmpty);
+      });
     });
 
     testWidgets('pen pressure is ignored when the size toggle is off', (
@@ -1187,6 +1301,9 @@ InteractiveBrushEditCanvasView _view(
   BrushEditCanvasInputSettings inputSettings =
       const BrushEditCanvasInputSettings(),
   CanvasViewport? viewport,
+  ValueChanged<CanvasPoint>? onAltPick,
+  void Function(CanvasTool tool)? onTemporaryToolHold,
+  void Function({required bool keep})? onTemporaryToolRelease,
 }) {
   return InteractiveBrushEditCanvasView(
     sessionState: sessionState,
@@ -1194,6 +1311,9 @@ InteractiveBrushEditCanvasView _view(
     frameId: const FrameId('frame-a'),
     inputSettings: inputSettings,
     viewport: viewport,
+    onAltPick: onAltPick,
+    onTemporaryToolHold: onTemporaryToolHold,
+    onTemporaryToolRelease: onTemporaryToolRelease,
     // Tests observe the committed source dabs; the exact pre-rasterized
     // stroke pixels travel alongside them in the commit data.
     onSourceStrokeCommitted: (strokeData) => onResult(strokeData.sourceDabs),

@@ -4,6 +4,7 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/widgets.dart';
 
 import '../../models/canvas_viewport.dart';
+import '../input/app_input_settings.dart';
 import '../../models/viewport_point.dart';
 
 /// Viewport pan/zoom input for the canvas panel, independent of what the
@@ -130,7 +131,7 @@ class _CanvasViewportGestureLayerState
       return;
     }
 
-    if (event.buttons != kMiddleMouseButton ||
+    if (!_startsMappedPan(event.buttons) ||
         _panPointer != null ||
         widget.strokeActive) {
       return;
@@ -138,6 +139,24 @@ class _CanvasViewportGestureLayerState
     _panPointer = event.pointer;
     _panStartLocalPosition = event.localPosition;
     _panStartViewport = widget.viewport;
+  }
+
+  /// Whether this button chord starts a viewport PAN (PEN-7a): any
+  /// pressed secondary bit whose CANVAS mapping says pan — the wheel/
+  /// middle bit (default mapping) or the right bit when assigned. The
+  /// pen tip's contact bit rides along on stylus presses, so the check
+  /// is per-bit, not equality.
+  bool _startsMappedPan(int buttons) {
+    final settings = AppInput.settings.value;
+    if ((buttons & kTertiaryButton) != 0 &&
+        settings.canvasWheelClick.action == CanvasPointerAction.pan) {
+      return true;
+    }
+    if ((buttons & kSecondaryButton) != 0 &&
+        settings.canvasRightClick.action == CanvasPointerAction.pan) {
+      return true;
+    }
+    return false;
   }
 
   void _handlePointerMove(PointerMoveEvent event) {
