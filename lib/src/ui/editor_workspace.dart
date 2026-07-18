@@ -82,6 +82,7 @@ class EditorWorkspace extends StatefulWidget {
     this.canvasViewCommands,
     this.canvasSelectionCommands,
     this.layerNav,
+    this.onInvokeAction,
   });
 
   final EditorSessionManager session;
@@ -102,6 +103,9 @@ class EditorWorkspace extends StatefulWidget {
   /// the handler because it owns the timeline view state (row filter,
   /// hidden sections) the displayed-row walk must respect.
   final TimelineLayerNavCommands? layerNav;
+
+  /// PEN-7b: the shell's action funnel for the canvas flip touch slot.
+  final void Function(String actionId)? onInvokeAction;
 
   /// Injectable preset persistence; defaults to the app-data preset file.
   final BrushPresetFileService? presetFileService;
@@ -708,6 +712,7 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
           keepAlive: true,
           builder: (context) => EditorCanvasArea(
             key: _canvasAreaKey,
+            onInvokeAction: widget.onInvokeAction,
             session: widget.session,
             brushToolState: _brushTool,
             onBrushToolStateChanged: (state) => _brushTool.value = state,

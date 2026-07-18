@@ -80,6 +80,10 @@ class BrushCanvasPanel extends StatefulWidget {
     this.sampleColorAt,
     this.onTemporaryToolHold,
     this.onTemporaryToolRelease,
+    this.onInvokeAction,
+    this.onBrushSizeDragStart,
+    this.onBrushSizeDragUpdate,
+    this.onBrushSizeDragEnd,
     this.onEyedropperPick,
     this.onAltColorPick,
     this.fillDabAt,
@@ -173,6 +177,14 @@ class BrushCanvasPanel extends StatefulWidget {
   /// mappings) — threaded through to the workspace's tool notifier.
   final void Function(CanvasTool tool)? onTemporaryToolHold;
   final void Function({required bool keep})? onTemporaryToolRelease;
+
+  /// PEN-7b: control-mode touch slots — the flip action funnel and the
+  /// brush-size drag protocol.
+  final void Function(String actionId)? onInvokeAction;
+  final VoidCallback? onBrushSizeDragStart;
+  final void Function(double upwardDelta, {required bool snap})?
+  onBrushSizeDragUpdate;
+  final VoidCallback? onBrushSizeDragEnd;
 
   /// Builds the fill-region dab for a tap (P6); the panel commits it
   /// through the exact stroke funnel. Null disables the fill tool.
@@ -522,6 +534,13 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel> {
                       viewport: _viewport,
                       onViewportChanged: _setViewport,
                       rotationEnabled: widget.allowViewRotation,
+                      // PEN-7b: the control-mode touch slots — flip
+                      // dispatches shell actions, brush size drives the
+                      // tool state (both threaded from the workspace).
+                      onInvokeAction: widget.onInvokeAction,
+                      onBrushSizeDragStart: widget.onBrushSizeDragStart,
+                      onBrushSizeDragUpdate: widget.onBrushSizeDragUpdate,
+                      onBrushSizeDragEnd: widget.onBrushSizeDragEnd,
                       strokeActive:
                           _strokeActive ||
                           _selectionDragActive ||

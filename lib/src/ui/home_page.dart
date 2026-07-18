@@ -158,29 +158,31 @@ class _HomePageState extends State<HomePage> {
   void _invokeAction(String actionId) {
     switch (actionId) {
       case EditorActionIds.framePrevious:
-        // A live selection claims the arrow keys as nudges (PS
-        // arbitration); the comma/period bindings always flip. Nudges
-        // stand down while a stroke is live (R16-③: rewriting the lift
-        // under the pen froze both).
+        // PEN-7c: the one-frame step (Ctrl+arrows / comma) — always a
+        // frame flip, never a nudge.
+        _session.selectPreviousFrame();
+      case EditorActionIds.frameNext:
+        _session.selectNextFrame();
+      case EditorActionIds.drawingPrevious:
+        // A live selection claims the PLAIN arrow keys as nudges (PS
+        // arbitration — the arbitration follows the KEYS, which walk
+        // drawings since PEN-7c). Nudges stand down while a stroke is
+        // live (R16-③: rewriting the lift under the pen froze both).
         if (_canvasSelectionCommands.hasSelection) {
           if (!_session.brushInputActive.value) {
             _canvasSelectionCommands.nudge(-1, 0);
           }
         } else {
-          _session.selectPreviousFrame();
+          _session.selectPreviousDrawing();
         }
-      case EditorActionIds.frameNext:
+      case EditorActionIds.drawingNext:
         if (_canvasSelectionCommands.hasSelection) {
           if (!_session.brushInputActive.value) {
             _canvasSelectionCommands.nudge(1, 0);
           }
         } else {
-          _session.selectNextFrame();
+          _session.selectNextDrawing();
         }
-      case EditorActionIds.drawingPrevious:
-        _session.selectPreviousDrawing();
-      case EditorActionIds.drawingNext:
-        _session.selectNextDrawing();
       case EditorActionIds.playbackToggle:
         final playback = _session.playback;
         if (playback.isActive && playback.isPlaying) {
@@ -399,6 +401,7 @@ class _HomePageState extends State<HomePage> {
                           canvasViewCommands: _canvasViewCommands,
                           canvasSelectionCommands: _canvasSelectionCommands,
                           layerNav: _timelineLayerNav,
+                          onInvokeAction: _invokeAction,
                         ),
                       ),
                     ],

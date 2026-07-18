@@ -610,9 +610,7 @@ Future<void> _expectTimelineActionKeys(WidgetTester tester) async {
 void _withTouchScroll() {
   AppInput.settings.value = const AppInputSettings(touchTimelineScroll: true);
   addTearDown(() {
-    AppInput.settings.value = const AppInputSettings(
-      touchTimelineScroll: false,
-    );
+    AppInput.settings.value = AppInputSettings.testCorpusBaseline;
   });
 }
 

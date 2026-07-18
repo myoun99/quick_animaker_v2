@@ -34,7 +34,11 @@ void main() {
     await tester.pumpAndSettle();
     expect(counterText(tester), '2');
 
+    // PEN-7c: Ctrl+arrows are the ONE-FRAME step now (plain arrows walk
+    // drawings).
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.controlLeft);
     await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.controlLeft);
     await tester.pumpAndSettle();
     expect(counterText(tester), '3');
 
@@ -42,7 +46,8 @@ void main() {
     await tester.pumpAndSettle();
     expect(counterText(tester), '2');
 
-    // Clamped at the cut start.
+    // A PLAIN arrow walks to the drawing (the block at frame 1), and the
+    // comma stays clamped at the cut start.
     await tester.sendKeyEvent(LogicalKeyboardKey.arrowLeft);
     await tester.sendKeyEvent(LogicalKeyboardKey.comma);
     await tester.pumpAndSettle();

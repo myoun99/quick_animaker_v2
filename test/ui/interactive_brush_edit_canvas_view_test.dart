@@ -798,9 +798,7 @@ void main() {
           pressureCurveGamma: 2.0,
         );
         addTearDown(() {
-          AppInput.settings.value = const AppInputSettings(
-            touchTimelineScroll: false,
-          );
+          AppInput.settings.value = AppInputSettings.testCorpusBaseline;
         });
 
         final results = <List<BrushDab>>[];
@@ -837,9 +835,7 @@ void main() {
     // springs back on release).
     group('canvas pointer mappings (PEN-7a)', () {
       tearDown(() {
-        AppInput.settings.value = const AppInputSettings(
-          touchTimelineScroll: false,
-        );
+        AppInput.settings.value = AppInputSettings.testCorpusBaseline;
       });
 
       Future<void> barrelStroke(WidgetTester tester) async {
@@ -936,6 +932,9 @@ void main() {
           'the switched tool', (tester) async {
         AppInput.settings.value = const AppInputSettings(
           touchTimelineScroll: false,
+          // The follow-up stroke below drags with TOUCH — keep the
+          // corpus draw contract for it.
+          canvasTouchMode: CanvasTouchMode.draw,
           canvasRightClick: CanvasPointerMapping(
             action: CanvasPointerAction.eraser,
             release: CanvasPointerRelease.keep,

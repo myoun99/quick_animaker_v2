@@ -31,7 +31,68 @@ class AppInputSettings {
     this.canvasWheelClick = const CanvasPointerMapping(
       action: CanvasPointerAction.pan,
     ),
+    this.canvasTouchMode = CanvasTouchMode.control,
+    this.touchDragOneFinger = CanvasTouchDragAction.flip,
+    this.touchDragTwoFingers = CanvasTouchDragAction.navigate,
+    this.touchDragThreeFingers = CanvasTouchDragAction.brushSize,
+    this.extraFingerModifier = true,
+    this.navigationRotationEnabled = true,
+    this.navigationModifierRotationLock = false,
+    this.rotationSnapDegrees = 15,
+    this.zoomSnapPercents = defaultZoomSnapPercents,
+    this.brushSizeSnaps = defaultBrushSizeSnaps,
   });
+
+  /// What touch means on the canvas (PEN-7b): screen control (default)
+  /// or drawing. Touch-only form factors force draw at the policy level
+  /// ([AppInput.effectiveCanvasTouchMode]).
+  final CanvasTouchMode canvasTouchMode;
+
+  /// The finger-count drag slots (PEN-7b), all user-assignable.
+  final CanvasTouchDragAction touchDragOneFinger;
+  final CanvasTouchDragAction touchDragTwoFingers;
+  final CanvasTouchDragAction touchDragThreeFingers;
+
+  /// The +1-finger modifier globally (PEN-7b): ON by default; OFF for
+  /// users who dislike late fingers changing a locked gesture at all.
+  final bool extraFingerModifier;
+
+  /// Navigate-action composition: rotation entirely off = two fingers
+  /// pan+zoom only (the canvas rotate buttons/shortcut stay separate).
+  final bool navigationRotationEnabled;
+
+  /// What the modifier does to ROTATION during navigate: snap to
+  /// [rotationSnapDegrees] multiples (default) or LOCK at the angle the
+  /// modifier landed on (pure pan+snap-zoom).
+  final bool navigationModifierRotationLock;
+
+  /// Snap tables (PEN-7b) — every list user-editable.
+  final double rotationSnapDegrees;
+  final List<double> zoomSnapPercents;
+  final List<double> brushSizeSnaps;
+
+  static const List<double> defaultZoomSnapPercents = [
+    50,
+    75,
+    100,
+    125,
+    150,
+    200,
+    300,
+    400,
+  ];
+  static const List<double> defaultBrushSizeSnaps = [2, 4, 8, 16, 32, 64];
+
+  /// The TEST-CORPUS baseline (see test/flutter_test_config.dart): the
+  /// corpus was written under touch-as-pen — timeline touch EDITS and
+  /// canvas touch DRAWS. Product defaults differ (scroll/control); the
+  /// suites asserting those opt in explicitly. Every test that mutates
+  /// [AppInput.settings] must tearDown-reset to THIS, never to
+  /// `AppInputSettings()`.
+  static const AppInputSettings testCorpusBaseline = AppInputSettings(
+    touchTimelineScroll: false,
+    canvasTouchMode: CanvasTouchMode.draw,
+  );
 
   /// The canvas mapping for the RIGHT-CLICK bit (PEN-7a): pen side/
   /// barrel button, S-Pen button, mouse right button — one row for all.
@@ -66,12 +127,34 @@ class AppInputSettings {
     double? pressureCurveGamma,
     CanvasPointerMapping? canvasRightClick,
     CanvasPointerMapping? canvasWheelClick,
+    CanvasTouchMode? canvasTouchMode,
+    CanvasTouchDragAction? touchDragOneFinger,
+    CanvasTouchDragAction? touchDragTwoFingers,
+    CanvasTouchDragAction? touchDragThreeFingers,
+    bool? extraFingerModifier,
+    bool? navigationRotationEnabled,
+    bool? navigationModifierRotationLock,
+    double? rotationSnapDegrees,
+    List<double>? zoomSnapPercents,
+    List<double>? brushSizeSnaps,
   }) => AppInputSettings(
     touchTimelineScroll: touchTimelineScroll ?? this.touchTimelineScroll,
     tabletService: tabletService ?? this.tabletService,
     pressureCurveGamma: pressureCurveGamma ?? this.pressureCurveGamma,
     canvasRightClick: canvasRightClick ?? this.canvasRightClick,
     canvasWheelClick: canvasWheelClick ?? this.canvasWheelClick,
+    canvasTouchMode: canvasTouchMode ?? this.canvasTouchMode,
+    touchDragOneFinger: touchDragOneFinger ?? this.touchDragOneFinger,
+    touchDragTwoFingers: touchDragTwoFingers ?? this.touchDragTwoFingers,
+    touchDragThreeFingers: touchDragThreeFingers ?? this.touchDragThreeFingers,
+    extraFingerModifier: extraFingerModifier ?? this.extraFingerModifier,
+    navigationRotationEnabled:
+        navigationRotationEnabled ?? this.navigationRotationEnabled,
+    navigationModifierRotationLock:
+        navigationModifierRotationLock ?? this.navigationModifierRotationLock,
+    rotationSnapDegrees: rotationSnapDegrees ?? this.rotationSnapDegrees,
+    zoomSnapPercents: zoomSnapPercents ?? this.zoomSnapPercents,
+    brushSizeSnaps: brushSizeSnaps ?? this.brushSizeSnaps,
   );
 
   Map<String, dynamic> toJson() => {
@@ -80,27 +163,73 @@ class AppInputSettings {
     'pressureCurveGamma': pressureCurveGamma,
     'canvasRightClick': canvasRightClick.toJson(),
     'canvasWheelClick': canvasWheelClick.toJson(),
+    'canvasTouchMode': canvasTouchMode.name,
+    'touchDragOneFinger': touchDragOneFinger.name,
+    'touchDragTwoFingers': touchDragTwoFingers.name,
+    'touchDragThreeFingers': touchDragThreeFingers.name,
+    'extraFingerModifier': extraFingerModifier,
+    'navigationRotationEnabled': navigationRotationEnabled,
+    'navigationModifierRotationLock': navigationModifierRotationLock,
+    'rotationSnapDegrees': rotationSnapDegrees,
+    'zoomSnapPercents': zoomSnapPercents,
+    'brushSizeSnaps': brushSizeSnaps,
   };
 
-  static AppInputSettings fromJson(Map<String, dynamic> json) =>
-      AppInputSettings(
-        touchTimelineScroll: json['touchTimelineScroll'] as bool? ?? true,
-        tabletService:
-            TabletService.values.asNameMap()[json['tabletService']] ??
-            TabletService.standard,
-        pressureCurveGamma:
-            (json['pressureCurveGamma'] as num?)?.toDouble() ?? 1.0,
-        canvasRightClick: CanvasPointerMapping.fromJson(
-          json['canvasRightClick'],
-          fallback: const CanvasPointerMapping(
-            action: CanvasPointerAction.eyedropper,
-          ),
-        ),
-        canvasWheelClick: CanvasPointerMapping.fromJson(
-          json['canvasWheelClick'],
-          fallback: const CanvasPointerMapping(action: CanvasPointerAction.pan),
-        ),
-      );
+  static List<double> _doubleList(Object? json, List<double> fallback) {
+    if (json is! List) {
+      return fallback;
+    }
+    final values = <double>[
+      for (final entry in json)
+        if (entry is num) entry.toDouble(),
+    ];
+    return values.isEmpty ? fallback : values;
+  }
+
+  static AppInputSettings fromJson(
+    Map<String, dynamic> json,
+  ) => AppInputSettings(
+    touchTimelineScroll: json['touchTimelineScroll'] as bool? ?? true,
+    tabletService:
+        TabletService.values.asNameMap()[json['tabletService']] ??
+        TabletService.standard,
+    pressureCurveGamma: (json['pressureCurveGamma'] as num?)?.toDouble() ?? 1.0,
+    canvasRightClick: CanvasPointerMapping.fromJson(
+      json['canvasRightClick'],
+      fallback: const CanvasPointerMapping(
+        action: CanvasPointerAction.eyedropper,
+      ),
+    ),
+    canvasWheelClick: CanvasPointerMapping.fromJson(
+      json['canvasWheelClick'],
+      fallback: const CanvasPointerMapping(action: CanvasPointerAction.pan),
+    ),
+    canvasTouchMode:
+        CanvasTouchMode.values.asNameMap()[json['canvasTouchMode']] ??
+        CanvasTouchMode.control,
+    touchDragOneFinger:
+        CanvasTouchDragAction.values.asNameMap()[json['touchDragOneFinger']] ??
+        CanvasTouchDragAction.flip,
+    touchDragTwoFingers:
+        CanvasTouchDragAction.values.asNameMap()[json['touchDragTwoFingers']] ??
+        CanvasTouchDragAction.navigate,
+    touchDragThreeFingers:
+        CanvasTouchDragAction.values
+            .asNameMap()[json['touchDragThreeFingers']] ??
+        CanvasTouchDragAction.brushSize,
+    extraFingerModifier: json['extraFingerModifier'] as bool? ?? true,
+    navigationRotationEnabled:
+        json['navigationRotationEnabled'] as bool? ?? true,
+    navigationModifierRotationLock:
+        json['navigationModifierRotationLock'] as bool? ?? false,
+    rotationSnapDegrees:
+        (json['rotationSnapDegrees'] as num?)?.toDouble() ?? 15,
+    zoomSnapPercents: _doubleList(
+      json['zoomSnapPercents'],
+      defaultZoomSnapPercents,
+    ),
+    brushSizeSnaps: _doubleList(json['brushSizeSnaps'], defaultBrushSizeSnaps),
+  );
 
   @override
   bool operator ==(Object other) =>
@@ -109,7 +238,17 @@ class AppInputSettings {
       other.tabletService == tabletService &&
       other.pressureCurveGamma == pressureCurveGamma &&
       other.canvasRightClick == canvasRightClick &&
-      other.canvasWheelClick == canvasWheelClick;
+      other.canvasWheelClick == canvasWheelClick &&
+      other.canvasTouchMode == canvasTouchMode &&
+      other.touchDragOneFinger == touchDragOneFinger &&
+      other.touchDragTwoFingers == touchDragTwoFingers &&
+      other.touchDragThreeFingers == touchDragThreeFingers &&
+      other.extraFingerModifier == extraFingerModifier &&
+      other.navigationRotationEnabled == navigationRotationEnabled &&
+      other.navigationModifierRotationLock == navigationModifierRotationLock &&
+      other.rotationSnapDegrees == rotationSnapDegrees &&
+      listEquals(other.zoomSnapPercents, zoomSnapPercents) &&
+      listEquals(other.brushSizeSnaps, brushSizeSnaps);
 
   @override
   int get hashCode => Object.hash(
@@ -118,6 +257,16 @@ class AppInputSettings {
     pressureCurveGamma,
     canvasRightClick,
     canvasWheelClick,
+    canvasTouchMode,
+    touchDragOneFinger,
+    touchDragTwoFingers,
+    touchDragThreeFingers,
+    extraFingerModifier,
+    navigationRotationEnabled,
+    navigationModifierRotationLock,
+    rotationSnapDegrees,
+    Object.hashAll(zoomSnapPercents),
+    Object.hashAll(brushSizeSnaps),
   );
 }
 
@@ -191,6 +340,34 @@ class CanvasPointerMapping {
   int get hashCode => Object.hash(action, release);
 }
 
+/// What a TOUCH contact means on the CANVAS (PEN-7b):
+/// - [control] (the DEFAULT): fingers operate the SCREEN — the assigned
+///   finger-count gestures (flip/navigate/brush size) — and never draw.
+///   The pen draws.
+/// - [draw]: a single finger draws like the pen (the touch-only form
+///   factors — iPhone — force this; two fingers still navigate).
+enum CanvasTouchMode { control, draw }
+
+/// The drag action a finger-count slot performs on canvas (PEN-7b) —
+/// every slot is user-assignable; the action owns its axes AND its
+/// +1-finger modifier meaning, so reassignment carries both.
+enum CanvasTouchDragAction {
+  /// 파라파라: horizontal = previous/next DRAWING (the plain-arrow
+  /// actions), vertical = layer up/down. Modifier = one-frame steps.
+  flip,
+
+  /// Pan+zoom+rotate (one finger degrades to pan-only naturally).
+  /// Modifier = constrain: zoom snaps to the list; rotation snaps or
+  /// locks per [AppInputSettings.navigationModifierRotationLock].
+  navigate,
+
+  /// Vertical = brush size (horizontal deliberately unmapped). Modifier
+  /// = snap to the size list.
+  brushSize,
+
+  none,
+}
+
 /// The LIVE input policy (the accent-settings pattern): the app root
 /// rebuilds off the notifier; the session restores/persists it.
 abstract final class AppInput {
@@ -198,6 +375,62 @@ abstract final class AppInput {
       ValueNotifier<AppInputSettings>(const AppInputSettings());
 
   static bool get touchTimelineScroll => settings.value.touchTimelineScroll;
+
+  /// Test hook: forces the touch-only form-factor answer.
+  static bool? debugTouchOnlyFormFactorOverride;
+
+  /// iPhone-class devices (iOS, phone-sized) have NO pen — touch must
+  /// draw there regardless of the stored preference (PEN-7b capability
+  /// rule: 아이폰=그리기 강제).
+  static bool get touchOnlyFormFactor {
+    final override = debugTouchOnlyFormFactorOverride;
+    if (override != null) {
+      return override;
+    }
+    if (defaultTargetPlatform != TargetPlatform.iOS) {
+      return false;
+    }
+    final view = PlatformDispatcher.instance.implicitView;
+    if (view == null) {
+      return false;
+    }
+    final shortestSide = view.physicalSize.shortestSide / view.devicePixelRatio;
+    return shortestSide < 600;
+  }
+
+  /// The EFFECTIVE canvas touch mode (PEN-7b): the stored preference,
+  /// except touch-only form factors always draw.
+  static CanvasTouchMode get effectiveCanvasTouchMode => touchOnlyFormFactor
+      ? CanvasTouchMode.draw
+      : settings.value.canvasTouchMode;
+
+  /// The drag action assigned to a finger-count slot (3+ fingers share
+  /// the three-finger slot).
+  static CanvasTouchDragAction touchDragActionFor(int fingerCount) {
+    final value = settings.value;
+    if (fingerCount <= 1) {
+      return value.touchDragOneFinger;
+    }
+    if (fingerCount == 2) {
+      return value.touchDragTwoFingers;
+    }
+    return value.touchDragThreeFingers;
+  }
+
+  /// Nearest-value snapping against a user-editable list (PEN-7b) —
+  /// shared by the navigate constraints and the brush-size drag.
+  static double snapToList(double value, List<double> snaps) {
+    if (snaps.isEmpty) {
+      return value;
+    }
+    var best = snaps.first;
+    for (final candidate in snaps) {
+      if ((candidate - value).abs() < (best - value).abs()) {
+        best = candidate;
+      }
+    }
+    return best;
+  }
 
   /// The pen pressure response curve (PEN-3): output = input^gamma.
   /// Gamma 1 short-circuits so the default path costs nothing.

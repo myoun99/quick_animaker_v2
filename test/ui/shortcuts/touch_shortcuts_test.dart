@@ -78,7 +78,8 @@ void main() {
   });
 
   group('touch bindings', () {
-    test('defaults: two-finger tap = undo, three-finger tap = redo', () {
+    test('defaults: two-finger tap = undo, three-finger tap = redo, '
+        'four-finger tap = play/pause (PEN-7b)', () {
       final bindings = EditorShortcutBindings();
       addTearDown(bindings.dispose);
       expect(
@@ -91,7 +92,7 @@ void main() {
       );
       expect(
         bindings.actionIdForTouchGesture(TouchGesture.fourFingerTap),
-        isNull,
+        EditorActionIds.playbackToggle,
       );
     });
 

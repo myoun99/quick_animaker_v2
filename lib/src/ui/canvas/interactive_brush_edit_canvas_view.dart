@@ -333,6 +333,13 @@ class _InteractiveBrushEditCanvasViewState
     // synchronous cost).
     _flushPendingStrokeCommit();
     if (event.kind == PointerDeviceKind.touch) {
+      // PEN-7b: in SCREEN-CONTROL touch mode fingers never draw — the
+      // panel's gesture layer owns every touch (flip/navigate/brush
+      // size). Draw mode (touch-only form factors force it) keeps the
+      // full touch-as-pen behavior below.
+      if (AppInput.effectiveCanvasTouchMode == CanvasTouchMode.control) {
+        return;
+      }
       _activeTouchPointers.add(event.pointer);
       if (_activeTouchPointers.length >= 2) {
         _multiTouchNavigation = true;

@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
@@ -9,6 +11,7 @@ import '../services/canvas_flood_fill.dart';
 import '../services/canvas_selection.dart' show SelectionMaskOptions;
 import 'brush/brush_tool_state.dart';
 import 'dev_profile.dart';
+import 'input/app_input_settings.dart' show AppInput;
 import 'brush/canvas_selection_commands.dart';
 import 'brush/canvas_view_commands.dart';
 import 'canvas/viewport_canvas_transform.dart';
@@ -45,9 +48,14 @@ class EditorCanvasArea extends StatefulWidget {
     this.expandedLaneLayerIds,
     this.fillOptions,
     this.selectionMaskOptions,
+    this.onInvokeAction,
   });
 
   final EditorSessionManager session;
+
+  /// PEN-7b: the shell's action funnel — the flip touch slot fires the
+  /// same registry ids as the arrow keys.
+  final void Function(String actionId)? onInvokeAction;
 
   /// The active brush tool + settings (workspace-owned; the tools and
   /// brush-settings panels write it).
@@ -90,6 +98,11 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
   /// The tool held BEFORE a mapped-hold session (PEN-7a); null = no hold
   /// live. `??=` keeps the first origin if events ever double-fire.
   CanvasTool? _heldOriginalTool;
+
+  /// The brush size at the start of a 3-finger size drag (PEN-7b); the
+  /// drag maps EXPONENTIALLY from here (120px per doubling) so the feel
+  /// is uniform at every size.
+  double? _brushSizeDragStartSize;
 
   CanvasViewport _canvasViewport = CanvasViewport();
 
@@ -335,6 +348,29 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
                   );
                 }
               },
+              // PEN-7b: the control-mode touch slots — the flip funnel
+              // comes from the shell; the brush-size drag lands here
+              // (this widget owns the tool state channel).
+              onInvokeAction: widget.onInvokeAction,
+              onBrushSizeDragStart: () =>
+                  _brushSizeDragStartSize = widget.brushToolState.value.size,
+              onBrushSizeDragUpdate: (upwardDelta, {required snap}) {
+                final start = _brushSizeDragStartSize;
+                if (start == null) {
+                  return;
+                }
+                var next = start * math.pow(2, upwardDelta / 120).toDouble();
+                if (snap) {
+                  next = AppInput.snapToList(
+                    next,
+                    AppInput.settings.value.brushSizeSnaps,
+                  );
+                }
+                widget.onBrushToolStateChanged?.call(
+                  widget.brushToolState.value.copyWith(size: next),
+                );
+              },
+              onBrushSizeDragEnd: () => _brushSizeDragStartSize = null,
               // P6 fill: the flood region as ONE mask dab; the panel commits it
               // through the stroke funnel onto the active layer's frame.
               selectionMaskOptions: widget.selectionMaskOptions,
