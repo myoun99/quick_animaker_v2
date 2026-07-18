@@ -109,6 +109,7 @@ class LayerTimelineGrid extends StatefulWidget {
     this.masterOpacityValue = 1.0,
     this.seSpillInLayerIds = const {},
     this.cutEndDrag,
+    this.memoAux = const TimelineRowMemoAux(),
   });
 
   final List<Layer> layers;
@@ -123,6 +124,10 @@ class LayerTimelineGrid extends StatefulWidget {
   /// grip that end-trims the ACTIVE cut through the session's trim
   /// channel; the line follows the live preview. Null = display-only.
   final TimelineCutEndDragCallbacks? cutEndDrag;
+
+  /// Sparse-row memo identity tokens (UI-R20 #4) — see
+  /// [TimelineFrameRowsScrollBody.memoAux].
+  final TimelineRowMemoAux memoAux;
 
   /// Track-SE rows whose display clone starts with a spill-in block
   /// (UI-R7 #6: `~` at the cut start, start grip stands down).
@@ -1546,6 +1551,7 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                                                     laneEdit: widget.laneEdit,
                                                     seSpillInLayerIds: widget
                                                         .seSpillInLayerIds,
+                                                    memoAux: widget.memoAux,
                                                   ),
                                                   // UI-R13 #7: the
                                                   // beat lines span

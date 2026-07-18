@@ -13,6 +13,7 @@ import 'se_audio_lane.dart' show AudioOffsetDragCallbacks;
 import 'timeline_cell_exposure_state.dart';
 import 'timeline_cut_end_handle.dart';
 import 'timeline_drag_preview.dart';
+import 'timeline_frame_rows_scroll_body.dart' show TimelineRowMemoAux;
 import 'timeline_exposure_comma_drag_policy.dart';
 import 'timeline_frame_range_gesture.dart';
 import 'timeline_grid_metrics.dart';
@@ -90,6 +91,7 @@ class TimelinePanel extends StatefulWidget {
     this.dragPreview,
     this.seSpillInLayerIds = const {},
     this.cutEndDrag,
+    this.memoAux = const TimelineRowMemoAux(),
   });
 
   final List<Layer> layers;
@@ -103,6 +105,9 @@ class TimelinePanel extends StatefulWidget {
   /// cut-end boundary grows a grip that end-trims the ACTIVE cut and the
   /// line follows the live trim preview. Null = display-only.
   final TimelineCutEndDragCallbacks? cutEndDrag;
+
+  /// Sparse-row memo identity tokens (UI-R20 #4).
+  final TimelineRowMemoAux memoAux;
 
   /// Track-SE rows whose display clone starts with a spill-in block
   /// (UI-R7 #6: `~` at the cut start, start grip stands down).
@@ -407,6 +412,7 @@ class _TimelinePanelState extends State<TimelinePanel> {
                     masterOpacityValue: widget.masterOpacityValue,
                     seSpillInLayerIds: widget.seSpillInLayerIds,
                     cutEndDrag: widget.cutEndDrag,
+                    memoAux: widget.memoAux,
                   )
                 : XSheetTimelineGrid(
                     layers: xsheetLayerDisplayOrder(widget.layers),

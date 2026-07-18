@@ -24,6 +24,7 @@ import '../models/timeline_coverage.dart' show TimelineBlockEdge;
 import 'timeline/camera_key_edit.dart';
 import 'timeline/property_lane_model.dart';
 import 'timeline/timeline_cut_end_handle.dart';
+import 'timeline/timeline_frame_rows_scroll_body.dart' show TimelineRowMemoAux;
 import 'timeline/se_audio_lane.dart';
 import 'timeline/timeline_action_toolbar.dart';
 import 'timeline/timeline_frame_range_gesture.dart';
@@ -680,6 +681,32 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
     );
   }
 
+  /// Camera display-copy cache (UI-R20 #4): the per-build copyWith used
+  /// to churn the camera layer's identity on EVERY host rebuild, so the
+  /// camera row (rail + cells) missed its identity memos and rebuilt per
+  /// session notify. Same source + same overlay state = the SAME copy.
+  Layer? _cameraCopySource;
+  bool? _cameraCopyVisible;
+  double? _cameraCopyOpacity;
+  Layer? _cameraCopy;
+
+  Layer _cameraDisplayLayer(Layer layer, bool? visible, double? opacity) {
+    if (identical(_cameraCopySource, layer) &&
+        _cameraCopyVisible == visible &&
+        _cameraCopyOpacity == opacity) {
+      return _cameraCopy!;
+    }
+    final copy = layer.copyWith(
+      isVisible: visible ?? layer.isVisible,
+      opacity: opacity ?? layer.opacity,
+    );
+    _cameraCopySource = layer;
+    _cameraCopyVisible = visible;
+    _cameraCopyOpacity = opacity;
+    _cameraCopy = copy;
+    return copy;
+  }
+
   /// Layers as DISPLAYED (unified layer controls): the camera row mirrors
   /// the camera-view overlay state on its visibility icon and opacity
   /// slider — the same notifiers the canvas and the camera panel share.
@@ -692,10 +719,7 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
     return [
       for (final layer in _session.layers)
         layer.kind == LayerKind.camera
-            ? layer.copyWith(
-                isVisible: view?.value ?? layer.isVisible,
-                opacity: dim?.value ?? layer.opacity,
-              )
+            ? _cameraDisplayLayer(layer, view?.value, dim?.value)
             : layer,
     ];
   }
@@ -805,6 +829,12 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
           // end-trims the ACTIVE cut through the storyboard's trim
           // channel — live preview, ONE undo on release.
           cutEndDrag: _cutEndDragCallbacks(),
+          // Sparse-row memo identities (UI-R20 #4): camera/instruction
+          // rows re-enter the row memo, invalidated exactly by these.
+          memoAux: TimelineRowMemoAux(
+            cameraTrack: _session.activeCutOrNull?.camera.track,
+            instructionDefs: _session.cameraInstructionSet,
+          ),
           onActivateCell: _activateCellEditor,
           instructionDefById: (instructionId) =>
               _session.cameraInstructionSet.defById(instructionId),
