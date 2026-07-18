@@ -2,10 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:quick_animaker_v2/src/models/canvas_viewport.dart';
+import 'package:quick_animaker_v2/src/models/layer_id.dart';
 import 'package:quick_animaker_v2/src/ui/brush/brush_tool_state.dart';
 import 'package:quick_animaker_v2/src/ui/brush/main_canvas_brush_host.dart';
 import 'package:quick_animaker_v2/src/ui/brush/tools_panel.dart';
 import 'package:quick_animaker_v2/src/ui/home_page.dart';
+import 'package:quick_animaker_v2/src/ui/timeline/timeline_layer_controls_row.dart';
 
 /// P1: the app-level shortcut layer end to end — flipping, tools, undo,
 /// the text-field bare-letter guard and live re-recording through the
@@ -201,6 +203,49 @@ void main() {
       find.byKey(const ValueKey<String>('canvas-playback-view')),
     );
     await tester.pumpAndSettle();
+  });
+
+  testWidgets('↑/↓ walk the displayed layer rows when no canvas selection '
+      'is live (UI-R20 #14)', (tester) async {
+    await pumpHome(tester);
+    // The rail rows in visual top-to-bottom order: the default stack shows
+    // [camera, instructions, se2, se1, drawing] with the drawing layer
+    // active at the BOTTOM.
+    List<TimelineLayerControlsRow> rails() => tester
+        .widgetList<TimelineLayerControlsRow>(
+          find.byType(TimelineLayerControlsRow),
+        )
+        .toList();
+    LayerId activeId() => rails().singleWhere((r) => r.active).layer.id;
+
+    final order = [for (final rail in rails()) rail.layer.id];
+    expect(order.length, 5);
+    expect(activeId(), order.last, reason: 'drawing layer starts active');
+
+    // Clamped at the bottom row: ↓ has nowhere to go.
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
+    await tester.pumpAndSettle();
+    expect(activeId(), order.last);
+
+    // ↑ climbs the visual stack one row at a time.
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowUp);
+    await tester.pumpAndSettle();
+    expect(activeId(), order[3]);
+
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowUp);
+    await tester.pumpAndSettle();
+    expect(activeId(), order[2]);
+
+    // Clamped at the top row.
+    for (var i = 0; i < order.length; i += 1) {
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowUp);
+    }
+    await tester.pumpAndSettle();
+    expect(activeId(), order.first);
+
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
+    await tester.pumpAndSettle();
+    expect(activeId(), order[1]);
   });
 
   testWidgets('the Keyboard Shortcuts dialog re-records a binding LIVE '
