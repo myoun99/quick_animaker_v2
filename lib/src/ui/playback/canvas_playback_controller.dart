@@ -151,6 +151,18 @@ class CanvasPlaybackController extends ChangeNotifier {
     _vsync = null;
   }
 
+  /// The run's TOTAL frames: the playlist's content plus — for the
+  /// all-cuts scope — the movie's TRAILING GAP (UI-R20 #3: the final
+  /// length is authored past the last cut; those frames play as the
+  /// gap void, exactly like mid-track gaps).
+  int _playbackTotalFrames(List<StoryboardTimelineLayoutEntry> playlist) {
+    final base = playlistTotalFrames(playlist);
+    if (base == 0 || _scope != PlaybackScope.allCuts) {
+      return base;
+    }
+    return base + resolveProject().trailingFrames;
+  }
+
   void play({required PlaybackScope scope, int? startGlobalFrame}) {
     final playlist = _buildPlaylist(scope);
     if (playlistTotalFrames(playlist) == 0) {
@@ -161,7 +173,7 @@ class CanvasPlaybackController extends ChangeNotifier {
     _resetDropAccounting();
     _currentGlobalFrame = (startGlobalFrame ?? 0).clamp(
       0,
-      playlistTotalFrames(playlist) - 1,
+      _playbackTotalFrames(playlist) - 1,
     );
     onPlaylistWarmRequested?.call(playlist, scope, _currentGlobalFrame);
     _isPlaying = true;
@@ -196,7 +208,7 @@ class CanvasPlaybackController extends ChangeNotifier {
     if (playlist == null) {
       return;
     }
-    final total = playlistTotalFrames(playlist);
+    final total = _playbackTotalFrames(playlist);
     if (total == 0) {
       return;
     }
@@ -320,7 +332,7 @@ class CanvasPlaybackController extends ChangeNotifier {
     if (playlist == null) {
       return;
     }
-    final total = playlistTotalFrames(playlist);
+    final total = _playbackTotalFrames(playlist);
     var frame = _baseGlobalFrame + elapsedToGlobalFrame(elapsed, resolveFps());
     // Dropped-frame accounting on the raw (pre-wrap) frame: any advance of
     // more than one frame between ticks means rendering fell behind. The
