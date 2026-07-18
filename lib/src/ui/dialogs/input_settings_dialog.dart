@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' show defaultTargetPlatform;
 import 'package:flutter/material.dart';
 
 import '../editor_session_manager.dart';
@@ -49,6 +50,49 @@ class _InputSettingsDialog extends StatelessWidget {
                   settings.copyWith(touchTimelineScroll: enabled),
                 ),
               ),
+              // The CSP-style tablet service switch (PEN-2) — Windows
+              // only: other platforms have a single native pen path.
+              if (defaultTargetPlatform == TargetPlatform.windows) ...[
+                const Divider(height: 16),
+                Text(
+                  'Tablet service',
+                  style: Theme.of(context).textTheme.labelLarge,
+                ),
+                RadioGroup<TabletService>(
+                  groupValue: settings.tabletService,
+                  onChanged: (service) => session.setInputSettings(
+                    settings.copyWith(tabletService: service),
+                  ),
+                  child: const Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      RadioListTile<TabletService>(
+                        key: ValueKey<String>('settings-tablet-standard'),
+                        contentPadding: EdgeInsets.zero,
+                        dense: true,
+                        title: Text('Standard (default)'),
+                        subtitle: Text(
+                          'The OS pointer pipeline (Windows Ink) — right '
+                          'for up-to-date drivers and built-in pens.',
+                        ),
+                        value: TabletService.standard,
+                      ),
+                      RadioListTile<TabletService>(
+                        key: ValueKey<String>('settings-tablet-wintab'),
+                        contentPadding: EdgeInsets.zero,
+                        dense: true,
+                        title: Text('Wintab'),
+                        subtitle: Text(
+                          'Reads pressure straight from the tablet driver '
+                          '— the escape hatch when the pen arrives without '
+                          'pressure or as touch/mouse.',
+                        ),
+                        value: TabletService.wintab,
+                      ),
+                    ],
+                  ),
+                ),
+              ],
             ],
           ),
           actions: [

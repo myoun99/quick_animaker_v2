@@ -1,6 +1,8 @@
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 
+import '../../native/qa_tablet_bridge.dart' show QaTabletPacket;
+import '../../services/input/wintab_pen_service.dart';
 import '../theme/app_theme.dart' show AppColors;
 
 /// The cross-platform INPUT INSPECTOR (pen program, PEN-1).
@@ -242,6 +244,28 @@ class _InspectorCard extends StatelessWidget {
                         '${InputInspector.peakPressure.toStringAsFixed(2)}',
                         key: const ValueKey<String>('input-inspector-peak'),
                         style: rowStyle.copyWith(color: AppColors.accent),
+                      ),
+                      // The DRIVER-side stream (PEN-2): visible exactly
+                      // while the Wintab sidecar delivers — pointer vs
+                      // driver pressure side by side is the whole
+                      // misreport diagnosis.
+                      ValueListenableBuilder<QaTabletPacket?>(
+                        valueListenable: WintabPenService.instance.latest,
+                        builder: (context, packet, _) => packet == null
+                            ? const SizedBox.shrink()
+                            : Padding(
+                                padding: const EdgeInsets.only(left: 6),
+                                child: Text(
+                                  'wt p='
+                                  '${packet.pressure.toStringAsFixed(2)}',
+                                  key: const ValueKey<String>(
+                                    'input-inspector-wintab',
+                                  ),
+                                  style: rowStyle.copyWith(
+                                    color: AppColors.accent2,
+                                  ),
+                                ),
+                              ),
                       ),
                       const SizedBox(width: 4),
                       IconButton(

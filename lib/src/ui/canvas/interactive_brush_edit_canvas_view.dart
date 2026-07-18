@@ -8,6 +8,7 @@ import 'package:flutter/scheduler.dart';
 import 'package:flutter/services.dart';
 
 import '../../models/bitmap_surface.dart';
+import '../../services/input/wintab_pen_service.dart';
 import '../../models/bitmap_tile.dart';
 import '../../models/brush_dab.dart';
 import '../../models/brush_edit_session_state.dart';
@@ -611,8 +612,7 @@ class _InteractiveBrushEditCanvasViewState
     }
   }
 
-  ({List<BrushDab> dabs, BrushLiveStrokeRasterizer? rasterizer})?
-  _pendingPenUp;
+  ({List<BrushDab> dabs, BrushLiveStrokeRasterizer? rasterizer})? _pendingPenUp;
 
   void _flushPendingStrokeCommit({
     void Function(BrushStrokeCommitData data)? commit,
@@ -730,7 +730,17 @@ class _InteractiveBrushEditCanvasViewState
   /// pressure range on some platforms while always reporting 0.0 — trusting
   /// it made pressure-sized strokes invisible — and touch pressure is
   /// unreliable across devices, so both paint at full pressure.
+  ///
+  /// Wintab sidecar (PEN-2): while the user has picked the Wintab tablet
+  /// service and the driver stream is LIVE, the driver's pressure wins for
+  /// EVERY kind — that is the point of the switch: a pen the OS pipeline
+  /// misreports (touch, or mouse with Ink unchecked) paints with real
+  /// pressure anyway. Stale/absent stream falls through unchanged.
   double _normalizedPressure(PointerEvent event) {
+    final wintab = WintabPenService.instance.freshContactPressure();
+    if (wintab != null) {
+      return wintab;
+    }
     if (event.kind != PointerDeviceKind.stylus &&
         event.kind != PointerDeviceKind.invertedStylus) {
       return 1.0;

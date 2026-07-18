@@ -4,6 +4,8 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:quick_animaker_v2/src/models/bitmap_surface.dart';
+import 'package:quick_animaker_v2/src/native/qa_tablet_bridge.dart';
+import 'package:quick_animaker_v2/src/services/input/wintab_pen_service.dart';
 import 'package:quick_animaker_v2/src/models/bitmap_tile.dart';
 import 'package:quick_animaker_v2/src/models/brush_bitmap_materialization_history_state.dart';
 import 'package:quick_animaker_v2/src/models/dirty_region.dart';
@@ -728,6 +730,58 @@ void main() {
         expect(results, hasLength(1));
         expect(results.single.map((dab) => dab.size).toSet(), {8.0});
         expect(results.single.map((dab) => dab.opacity).toSet(), {1.0});
+      },
+    );
+
+    testWidgets(
+      'a LIVE Wintab stream overrides pressure for every kind (PEN-2: the '
+      'misreported-pen escape hatch)',
+      (tester) async {
+        final service = WintabPenService.instance;
+        addTearDown(service.debugReset);
+        service.debugPollOverride = () => const [];
+        service.start();
+
+        final results = <List<BrushDab>>[];
+        await tester.pumpWidget(
+          _app(
+            _view(
+              _sessionState(width: 200, height: 16),
+              results.add,
+              inputSettings: const BrushEditCanvasInputSettings(
+                size: 8,
+                pressureSize: true,
+              ),
+            ),
+          ),
+        );
+
+        // The driver reports half pressure; the pointer stream arrives as
+        // TOUCH with none (the classic misreport) — the driver wins.
+        service.debugInjectPacket(
+          const QaTabletPacket(
+            pressure: 0.5,
+            tiltAzimuthDegrees: 0,
+            altitude: 1,
+            timeMs: 1,
+            buttons: 1,
+          ),
+        );
+        await _pressureStroke(
+          tester,
+          canvasPoints: const [Offset(2, 1), Offset(40, 1)],
+          pressure: 1.0,
+          kind: PointerDeviceKind.touch,
+        );
+
+        expect(results, hasLength(1));
+        for (final dab in results.single) {
+          expect(dab.size, closeTo(4.0, 1e-6));
+        }
+
+        // The poll timer must die BEFORE the binding's pending-timer
+        // invariant check (which runs ahead of tearDown callbacks).
+        service.debugReset();
       },
     );
 
