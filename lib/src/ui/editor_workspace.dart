@@ -40,6 +40,7 @@ import 'keyed_keep_alive_stack.dart';
 import 'sliced_value_listenable_builder.dart';
 import 'storyboard_cut_thumbnail_store.dart';
 import 'storyboard_playhead_mapping.dart';
+import 'timeline/timeline_layer_nav.dart';
 import 'timeline/timeline_row_filter.dart';
 import 'timeline/timeline_section_policy.dart';
 import '../models/onion_skin_settings.dart';
@@ -80,6 +81,7 @@ class EditorWorkspace extends StatefulWidget {
     this.brushTool,
     this.canvasViewCommands,
     this.canvasSelectionCommands,
+    this.layerNav,
   });
 
   final EditorSessionManager session;
@@ -95,6 +97,11 @@ class EditorWorkspace extends StatefulWidget {
 
   /// The shell-owned selection shortcut channel (P9, Ctrl+D + nudges).
   final CanvasSelectionCommands? canvasSelectionCommands;
+
+  /// The shell-owned ↑/↓ layer-nav channel (UI-R20 #14): this state binds
+  /// the handler because it owns the timeline view state (row filter,
+  /// hidden sections) the displayed-row walk must respect.
+  final TimelineLayerNavCommands? layerNav;
 
   /// Injectable preset persistence; defaults to the app-data preset file.
   final BrushPresetFileService? presetFileService;
@@ -400,6 +407,27 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
       relay: _layout,
       layoutReset: _resetWorkspaceLayout,
     );
+    widget.layerNav?.bind(_stepDisplayedLayer);
+  }
+
+  /// ↑/↓ layer nav (UI-R20 #14): steps the active layer through the rows
+  /// the timeline DISPLAYS. The inputs must mirror what this state hands
+  /// the timeline tab (row filter, hidden sections, fx resolver) — a
+  /// facet joining the display policy joins here too, or the keys and the
+  /// screen disagree.
+  void _stepDisplayedLayer(int direction) {
+    final session = widget.session;
+    final target = adjacentDisplayedLayerId(
+      layers: session.layers,
+      activeLayerId: session.activeLayerId,
+      direction: direction,
+      hiddenSections: _hiddenTimelineSections.value,
+      rowFilter: _timelineRowFilter.value,
+      fxEnabledOf: session.isLayerFxEnabled,
+    );
+    if (target != null) {
+      session.selectLayer(target);
+    }
   }
 
   /// Window > Reset Workspace Layout: back to the factory docks, extents
@@ -547,6 +575,7 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
     _timesheetInkEnabled.dispose();
     _timesheetInk.dispose();
     _draggingTab.dispose();
+    widget.layerNav?.unbind();
     widget.panelsMenu?.detach();
     _layoutSaveTimer?.cancel();
     _layout.removeListener(_scheduleLayoutSave);

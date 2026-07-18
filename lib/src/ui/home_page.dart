@@ -24,6 +24,7 @@ import 'shortcuts/editor_shortcut_bindings.dart';
 import 'shortcuts/shortcut_settings_store.dart';
 import 'timeline/timeline_action_toolbar.dart'
     show showTimelineCommaCountDialog;
+import 'timeline/timeline_layer_nav.dart' show TimelineLayerNavCommands;
 
 /// The editor shell: a slim top menu strip (menu bar + quick actions —
 /// the AppBar retired so the editor keeps the vertical space) plus the
@@ -63,6 +64,11 @@ class _HomePageState extends State<HomePage> {
   /// here; without a live selection the arrows keep flipping frames.
   final CanvasSelectionCommands _canvasSelectionCommands =
       CanvasSelectionCommands();
+
+  /// The ↑/↓ layer-nav channel (UI-R20 #14): without a live selection the
+  /// vertical arrows walk the timeline's DISPLAYED layer rows; the
+  /// workspace binds the handler (it owns the row filter view state).
+  final TimelineLayerNavCommands _timelineLayerNav = TimelineLayerNavCommands();
 
   /// The customizable shortcut bindings (P1): registry defaults + the
   /// user's persisted overrides. Persistence is disabled under
@@ -194,13 +200,24 @@ class _HomePageState extends State<HomePage> {
         _brushTool.value = _brushTool.value.copyWith(tool: CanvasTool.move);
       case EditorActionIds.selectionDeselect:
         _canvasSelectionCommands.deselect();
+      // With a live selection ↑/↓ nudge; otherwise they walk the
+      // displayed layer rows (TVP layer nav, UI-R20 #14) — the same
+      // dispatch-level arbitration the horizontal arrows use.
       case EditorActionIds.selectionNudgeUp:
-        if (!_session.brushInputActive.value) {
-          _canvasSelectionCommands.nudge(0, -1);
+        if (_canvasSelectionCommands.hasSelection) {
+          if (!_session.brushInputActive.value) {
+            _canvasSelectionCommands.nudge(0, -1);
+          }
+        } else {
+          _timelineLayerNav.step(-1);
         }
       case EditorActionIds.selectionNudgeDown:
-        if (!_session.brushInputActive.value) {
-          _canvasSelectionCommands.nudge(0, 1);
+        if (_canvasSelectionCommands.hasSelection) {
+          if (!_session.brushInputActive.value) {
+            _canvasSelectionCommands.nudge(0, 1);
+          }
+        } else {
+          _timelineLayerNav.step(1);
         }
       case EditorActionIds.selectionFreeTransform:
         _canvasSelectionCommands.beginTransform();
@@ -348,6 +365,7 @@ class _HomePageState extends State<HomePage> {
                         brushTool: _brushTool,
                         canvasViewCommands: _canvasViewCommands,
                         canvasSelectionCommands: _canvasSelectionCommands,
+                        layerNav: _timelineLayerNav,
                       ),
                     ),
                   ],

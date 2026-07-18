@@ -188,18 +188,19 @@ final List<EditorActionDefinition> editorActionDefinitions = [
       SingleActivator(LogicalKeyboardKey.keyD, control: true),
     ],
   ),
-  // Left/right nudges share the arrow keys with frame flipping: with a
-  // live selection the arrows NUDGE, otherwise they flip (dispatch-level
-  // arbitration — Photoshop behavior). Up/down are selection-only.
+  // The arrow keys are shared, with dispatch-level arbitration: with a
+  // live selection they NUDGE (Photoshop behavior); otherwise left/right
+  // flip frames and up/down walk the timeline's DISPLAYED layer rows
+  // (TVP layer nav, UI-R20 #14).
   const EditorActionDefinition(
     id: EditorActionIds.selectionNudgeUp,
-    label: 'Nudge Selection Up',
+    label: 'Nudge Selection / Layer Up',
     category: 'Selection',
     defaultActivators: [SingleActivator(LogicalKeyboardKey.arrowUp)],
   ),
   const EditorActionDefinition(
     id: EditorActionIds.selectionNudgeDown,
-    label: 'Nudge Selection Down',
+    label: 'Nudge Selection / Layer Down',
     category: 'Selection',
     defaultActivators: [SingleActivator(LogicalKeyboardKey.arrowDown)],
   ),
