@@ -1740,6 +1740,22 @@ class _XSheetFrameCellsColumn extends StatelessWidget {
       child: Stack(
         key: ValueKey<String>('xsheet-frame-column-area-${layer.id}'),
         children: [
+          // Sparse columns' PAPER underlay (UI-R21 #2, transposed — the
+          // painter columns carry theirs inside the paint area): surface
+          // base + the active wash, column-wide.
+          if (!timelineRowUsesCellsPainter(layer.kind)) ...[
+            Positioned.fill(
+              child: ColoredBox(color: Theme.of(context).colorScheme.surface),
+            ),
+            if (active)
+              Positioned.fill(
+                child: ColoredBox(
+                  color: timelineActiveRowWashColor(
+                    Theme.of(context).colorScheme,
+                  ),
+                ),
+              ),
+          ],
           // Dense drawing columns paint as ONE CustomPaint (UI-R9 #12b,
           // transposed); sparse kinds keep the widget cells.
           if (timelineRowUsesCellsPainter(layer.kind))

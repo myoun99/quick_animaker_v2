@@ -513,31 +513,28 @@ void main() {
     expect(selected, isNotEmpty);
   });
 
-  test('cell style keeps drawing cells neutral and blank cells muted', () {
+  test('cell style keeps drawing cells neutral; blank cells paint NOTHING '
+      '(the column underlay owns the paper, UI-R21 #2)', () {
     const colorScheme = ColorScheme.light();
 
     final drawingStart = timelineCellStyleColors(
       colorScheme: colorScheme,
       exposureState: TimelineCellExposureState.drawingStart,
-      active: true,
       selected: false,
     );
     final heldDrawing = timelineCellStyleColors(
       colorScheme: colorScheme,
       exposureState: TimelineCellExposureState.held,
-      active: true,
       selected: false,
     );
     final uncovered = timelineCellStyleColors(
       colorScheme: colorScheme,
       exposureState: TimelineCellExposureState.uncovered,
-      active: true,
       selected: false,
     );
     final selectedDrawing = timelineCellStyleColors(
       colorScheme: colorScheme,
       exposureState: TimelineCellExposureState.held,
-      active: true,
       selected: true,
     );
 
@@ -547,7 +544,7 @@ void main() {
     // UI-R20 #7: the block head's dark silhouette is GONE — the start
     // seam sits on the same faint grid ink as the held seams.
     expect(drawingStart.border, heldDrawing.border);
-    expect(uncovered.background, isNot(heldDrawing.background));
+    expect(uncovered.background, Colors.transparent);
     expect(selectedDrawing.border, timelineSelectedFrameBorderColor);
     expect(selectedDrawing.background, isNot(heldDrawing.background));
   });

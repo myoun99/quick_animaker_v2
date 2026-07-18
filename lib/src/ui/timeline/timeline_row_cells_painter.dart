@@ -65,7 +65,6 @@ TextPainter _glyphPainter(String text, TextStyle style) =>
 class TimelineRowCellsPainter extends CustomPainter {
   TimelineRowCellsPainter({
     required this.layer,
-    required this.active,
     required this.playbackFrameCount,
     required this.frameStartIndex,
     required this.frameEndIndexExclusive,
@@ -88,7 +87,6 @@ class TimelineRowCellsPainter extends CustomPainter {
        );
 
   final Layer layer;
-  final bool active;
   final int playbackFrameCount;
 
   final int frameStartIndex;
@@ -294,7 +292,6 @@ class TimelineRowCellsPainter extends CustomPainter {
       exposureState: model.ghost
           ? TimelineCellExposureState.uncovered
           : model.exposureState,
-      active: active,
       selected: false,
     );
     final washDim = model.ghost
@@ -587,7 +584,6 @@ class TimelineRowCellsPainter extends CustomPainter {
   @override
   bool shouldRepaint(covariant TimelineRowCellsPainter oldDelegate) =>
       !identical(oldDelegate.layer, layer) ||
-      oldDelegate.active != active ||
       oldDelegate.playbackFrameCount != playbackFrameCount ||
       oldDelegate.frameStartIndex != frameStartIndex ||
       oldDelegate.frameEndIndexExclusive != frameEndIndexExclusive ||
@@ -674,7 +670,6 @@ Widget timelineRowCellsPaintArea({
 }) {
   final painter = TimelineRowCellsPainter(
     layer: layer,
-    active: active,
     playbackFrameCount: playbackFrameCount,
     frameStartIndex: frameStartIndex,
     frameEndIndexExclusive: frameEndIndexExclusive,
@@ -735,9 +730,26 @@ Widget timelineRowCellsPaintArea({
         child: SizedBox(
           width: axis == Axis.horizontal ? totalMainExtent : crossAxisExtent,
           height: axis == Axis.horizontal ? crossAxisExtent : totalMainExtent,
-          child: CustomPaint(
-            key: ValueKey<String>('$keyPrefix-row-cells-${layer.id}'),
-            painter: painter,
+          // The row's PAPER underlay (UI-R21 #2): the surface base and
+          // the active-row wash live HERE, row-wide — the cell substrate
+          // paints transparent empties and carries no active state, so
+          // switching the active layer re-rasters NOTHING (the wash is
+          // one ColoredBox on a row that was rebuilding anyway).
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              ColoredBox(color: Theme.of(context).colorScheme.surface),
+              if (active)
+                ColoredBox(
+                  color: timelineActiveRowWashColor(
+                    Theme.of(context).colorScheme,
+                  ),
+                ),
+              CustomPaint(
+                key: ValueKey<String>('$keyPrefix-row-cells-${layer.id}'),
+                painter: painter,
+              ),
+            ],
           ),
         ),
       ),

@@ -141,6 +141,22 @@ class TimelineFrameCellsRow extends StatelessWidget {
     return Stack(
       key: ValueKey<String>('timeline-frame-row-area-${layer.id}'),
       children: [
+        // Sparse rows' PAPER underlay (UI-R21 #2, the painter rows carry
+        // theirs inside the paint area): surface base + the active wash,
+        // row-wide — cells paint transparent empties now.
+        if (!timelineRowUsesCellsPainter(layer.kind)) ...[
+          Positioned.fill(
+            child: ColoredBox(color: Theme.of(context).colorScheme.surface),
+          ),
+          if (active)
+            Positioned.fill(
+              child: ColoredBox(
+                color: timelineActiveRowWashColor(
+                  Theme.of(context).colorScheme,
+                ),
+              ),
+            ),
+        ],
         // The dense drawing rows paint their cells as ONE CustomPaint
         // (UI-R9 #12b hybrid painterization); the sparse kinds (SE /
         // instruction / camera) keep the per-cell widget renderer their

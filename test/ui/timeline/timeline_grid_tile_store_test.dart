@@ -44,12 +44,11 @@ void main() {
 
   TimelineRowCellsPainter painterFor(
     Layer layer, {
-    bool active = false,
     TimelineGridTileStore? store,
+    TextStyle baseTextStyle = const TextStyle(fontSize: 11),
   }) {
     return TimelineRowCellsPainter(
       layer: layer,
-      active: active,
       playbackFrameCount: 24,
       frameStartIndex: 0,
       frameEndIndexExclusive: 40,
@@ -58,7 +57,7 @@ void main() {
       crossAxisExtent: 28,
       exposureStateForLayer: stateFor,
       colorScheme: const ColorScheme.dark(),
-      baseTextStyle: const TextStyle(fontSize: 11),
+      baseTextStyle: baseTextStyle,
       tileStore: store,
     );
   }
@@ -110,20 +109,16 @@ void main() {
     expect(covered[6], 5, reason: 'corner mask');
     expect(covered[5], timelineGridQ8(6), reason: 'radius 6 in q8');
 
-    // Uncovered cells still fill their (flat, borderless) background —
-    // exactly what the classic painter draws: 4 cells × one 8-word
-    // square rrectFill, no strokes.
+    // Uncovered cells emit NOTHING (UI-R21 #2): empties are transparent
+    // — the row underlay owns the paper, so an empty span is zero ops
+    // and the tile stays fully transparent there.
     final empty = timelineGridSubstrateOps(
       painter: painter,
       spanStartIndex: 8,
       spanEndIndexExclusive: 12,
       devicePixelRatio: 1.0,
     );
-    expect(empty.length, 4 * 8);
-    for (var cell = 0; cell < 4; cell += 1) {
-      expect(empty[cell * 8], TimelineGridTileOp.rrectFill);
-      expect(empty[cell * 8 + 6], 0, reason: 'no rounded corners');
-    }
+    expect(empty, isEmpty);
   });
 
   test('T3: tiles carry the FOREGROUND ink too — the drawing cell\'s ○ '
@@ -250,13 +245,20 @@ void main() {
     await Future<void>.delayed(const Duration(milliseconds: 30));
     expect(landings, hits);
 
-    // A LOOK-only change (active row) keeps showing the STALE tile
-    // while the fresh raster lands (UI-R20 #6: no classic-pass flicker
-    // on activation) — same content, different tint.
-    final activePainter = painterFor(layer, active: true, store: store);
+    // A LOOK-only change (the base text style here) keeps showing the
+    // STALE tile while the fresh raster lands (UI-R20 #6: no
+    // classic-pass flicker) — same content, different look. The ACTIVE
+    // flag is no such lever anymore: it left the raster entirely
+    // (UI-R21 #2, the row underlay owns the wash), so activation is a
+    // guaranteed tile HIT by construction.
+    final stylePainter = painterFor(
+      layer,
+      store: store,
+      baseTextStyle: const TextStyle(fontSize: 12),
+    );
     expect(
       store.tileFor(
-        painter: activePainter,
+        painter: stylePainter,
         spanStartIndex: 0,
         spanEndIndexExclusive: 4,
         devicePixelRatio: 2.0,
@@ -268,7 +270,7 @@ void main() {
       await Future<void>.delayed(const Duration(milliseconds: 5));
     }
     final fresh = store.tileFor(
-      painter: activePainter,
+      painter: stylePainter,
       spanStartIndex: 0,
       spanEndIndexExclusive: 4,
       devicePixelRatio: 2.0,
