@@ -278,6 +278,65 @@ PropertyKeyInterpolation _keptInterpolation<T>(
       PropertyKeyInterpolation.linear;
 }
 
+/// Shifts EVERY key of ONE lane inside [rangeStartIndex,
+/// [rangeEndIndexExclusive]) by [frameDelta] — the lane-scoped range move
+/// (UI-R23 #3 part 2): rigid group, one delta, all-or-nothing. Null when
+/// nothing moves, a landing dips below 0, or a landing collides with an
+/// UNSHIFTED key on the same lane (the block discipline: nothing merges
+/// silently). Other lanes are untouched — the lane selection owns exactly
+/// its own keys.
+TransformTrack? transformTrackWithLaneKeysShifted(
+  TransformTrack track, {
+  required String laneId,
+  required int rangeStartIndex,
+  required int rangeEndIndexExclusive,
+  required int frameDelta,
+}) {
+  if (frameDelta == 0) {
+    return null;
+  }
+  PropertyTrack<T>? shifted<T>(PropertyTrack<T> lane) {
+    final moved = <int>{
+      for (final frame in lane.keys.keys)
+        if (frame >= rangeStartIndex && frame < rangeEndIndexExclusive) frame,
+    };
+    if (moved.isEmpty) {
+      return null;
+    }
+    final next = <int, PropertyKey<T>>{
+      for (final entry in lane.keys.entries)
+        if (!moved.contains(entry.key)) entry.key: entry.value,
+    };
+    for (final frame in moved) {
+      final landing = frame + frameDelta;
+      if (landing < 0 || next.containsKey(landing)) {
+        return null;
+      }
+      next[landing] = lane.keys[frame]!;
+    }
+    return PropertyTrack(keys: next);
+  }
+
+  switch (laneId) {
+    case 'anchor-point':
+      final next = shifted(track.anchorPoint);
+      return next == null ? null : track.copyWith(anchorPoint: next);
+    case 'position':
+      final next = shifted(track.position);
+      return next == null ? null : track.copyWith(position: next);
+    case 'scale':
+      final next = shifted(track.scale);
+      return next == null ? null : track.copyWith(scale: next);
+    case 'rotation':
+      final next = shifted(track.rotation);
+      return next == null ? null : track.copyWith(rotation: next);
+    case 'opacity':
+      final next = shifted(track.opacity);
+      return next == null ? null : track.copyWith(opacity: next);
+  }
+  return null;
+}
+
 /// The lane's keyed frames — the keyframe navigator's ◀/▶ jump targets.
 Set<int> transformLaneKeyFrames(TransformTrack track, String laneId) {
   return switch (laneId) {

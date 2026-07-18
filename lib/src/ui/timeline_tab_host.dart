@@ -940,6 +940,26 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
               onCancel: _session.cancelFrameRangeMoveDrag,
             ),
           ),
+          // The LANE selection domain (UI-R23 #3 part 2): a lane-band pan
+          // selects on that (layer, lane); a pan inside the selection
+          // moves ONLY that lane's keys — frame selection ⊥ transform
+          // keys, mutually exclusive domains.
+          laneRange: TimelineLaneRangeCallbacks(
+            selection: _session.laneRangeSelection,
+            onSelectUpdate: (layerId, laneId, anchorIndex, headIndex) =>
+                _session.updateLaneRangeSelectionDrag(
+                  layerId: layerId,
+                  laneId: laneId,
+                  anchorIndex: anchorIndex,
+                  headIndex: headIndex,
+                ),
+            onTapClear: _session.clearLaneRangeSelection,
+            onMoveBegin: _session.beginLaneRangeMoveDrag,
+            onMoveUpdate: (frameDelta) =>
+                _session.updateLaneRangeMoveDrag(frameDelta: frameDelta),
+            onMoveEnd: _session.endLaneRangeMoveDrag,
+            onMoveCancel: _session.cancelLaneRangeMoveDrag,
+          ),
           // The TVP run-edge cluster (UI-R9 #10): [+] drags new one-frame
           // drawings onto a run; the property tag sets the edge's
           // None/Hold/Repeat mode (ghosts fill to the cut boundary).

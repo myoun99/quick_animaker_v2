@@ -64,6 +64,7 @@ class TimelinePanel extends StatefulWidget {
     this.onToggleLayerMuted,
     this.commaDrag,
     this.rangeHooks,
+    this.laneRange,
     this.runEdit,
     this.isFrameCached,
     required this.orientation,
@@ -210,6 +211,10 @@ class TimelinePanel extends StatefulWidget {
   /// The frame-range select/move hooks (UI-R8), shared by both
   /// orientations; null keeps rows display-only.
   final TimelineFrameRangeHooks? rangeHooks;
+
+  /// The LANE selection domain's gesture bundle (UI-R23 #3 part 2),
+  /// shared by both orientations; null keeps lane bands display-only.
+  final TimelineLaneRangeCallbacks? laneRange;
 
   /// The run-edge [+]/[↻] handle hooks (UI-R8), both orientations; null
   /// hides the handles.
@@ -400,6 +405,7 @@ class _TimelinePanelState extends State<TimelinePanel> {
                     displayedOnionSkinOn: widget.displayedOnionSkinOn,
                     commaDrag: widget.commaDrag,
                     rangeHooks: widget.rangeHooks,
+                    laneRange: widget.laneRange,
                     runEdit: widget.runEdit,
                     isFrameCached: widget.isFrameCached,
                     metrics: horizontalMetrics,
@@ -461,6 +467,7 @@ class _TimelinePanelState extends State<TimelinePanel> {
                     onToggleLayerFx: widget.onToggleLayerFx,
                     commaDrag: widget.commaDrag,
                     rangeHooks: widget.rangeHooks,
+                    laneRange: widget.laneRange,
                     runEdit: widget.runEdit,
                     isFrameCached: widget.isFrameCached,
                     metrics: xsheetMetrics,

@@ -60,6 +60,53 @@ class TimelineFrameRangeSelection {
       '$endIndexExclusive), span: $spanLayerIds)';
 }
 
+/// ONE property lane's selected frame RANGE (UI-R23 #3 part 2): the
+/// (layer, lane)-scoped selection domain — INDEPENDENT of the layer's
+/// frame-range selection (frame selection ⊥ transform keys; the two are
+/// mutually exclusive, starting one clears the other). Raw cells, no
+/// block snapping (lane keys are points). View state — never persisted.
+class TimelineLaneSelection {
+  const TimelineLaneSelection({
+    required this.layerId,
+    required this.laneId,
+    required this.startIndex,
+    required this.endIndexExclusive,
+  }) : assert(endIndexExclusive > startIndex, 'Range must cover frames.');
+
+  final LayerId layerId;
+
+  /// The lane id [transformPropertyLanes] emits ('position', 'scale', …).
+  final String laneId;
+  final int startIndex;
+  final int endIndexExclusive;
+
+  int get lengthFrames => endIndexExclusive - startIndex;
+
+  bool contains(int frameIndex) =>
+      frameIndex >= startIndex && frameIndex < endIndexExclusive;
+
+  bool coversLane(LayerId layer, String lane) =>
+      layer == layerId && lane == laneId;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is TimelineLaneSelection &&
+          other.layerId == layerId &&
+          other.laneId == laneId &&
+          other.startIndex == startIndex &&
+          other.endIndexExclusive == endIndexExclusive;
+
+  @override
+  int get hashCode =>
+      Object.hash(layerId, laneId, startIndex, endIndexExclusive);
+
+  @override
+  String toString() =>
+      'TimelineLaneSelection($layerId/$laneId, [$startIndex, '
+      '$endIndexExclusive))';
+}
+
 /// Snaps a raw dragged span to WHOLE exposure blocks (UI-R8 user rule: a
 /// selection half-covering a block extends through it — blocks never
 /// split). GHOST exposures are TEXT-ONLY now (UI-R23 #6: repeat/hold

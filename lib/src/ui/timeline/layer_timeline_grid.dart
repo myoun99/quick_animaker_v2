@@ -89,6 +89,7 @@ class LayerTimelineGrid extends StatefulWidget {
     this.onToggleLayerMuted,
     this.commaDrag,
     this.rangeHooks,
+    this.laneRange,
     this.runEdit,
     this.isFrameCached,
     this.metrics = TimelineGridMetrics.defaults,
@@ -233,6 +234,10 @@ class LayerTimelineGrid extends StatefulWidget {
   /// forwards frame delta + target layer to the session. Null keeps rows
   /// display-only.
   final TimelineFrameRangeHooks? rangeHooks;
+
+  /// The LANE selection domain's gesture bundle (UI-R23 #3 part 2); null
+  /// keeps the lane bands display-only.
+  final TimelineLaneRangeCallbacks? laneRange;
 
   /// The run-edge [+]/[↻] handle hooks (UI-R8); null hides the handles.
   final TimelineRunEditCallbacks? runEdit;
@@ -1575,6 +1580,7 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                                                         .onSetAudioClipGain,
                                                     commaDrag: widget.commaDrag,
                                                     rangeGesture: rangeGesture,
+                                                    laneRange: widget.laneRange,
                                                     runEdit: widget.runEdit,
                                                     laneEdit: widget.laneEdit,
                                                     seSpillInLayerIds: widget

@@ -701,6 +701,60 @@ void main() {
       expect(removed.position.keyAt(4), isNull);
     });
 
+    test('lane-range shift (UI-R23 #3 part 2) moves ONLY the named lane\'s '
+        'keys in range; landings below 0 or on an unshifted key void', () {
+      final track = TransformTrack.empty().copyWith(
+        position: PropertyTrack<CanvasPoint>()
+            .withKey(2, CanvasPoint(x: 1, y: 1))
+            .withKey(8, CanvasPoint(x: 9, y: 9)),
+        scale: PropertyTrack<double>().withKey(2, 1.5),
+      );
+
+      final shifted = transformTrackWithLaneKeysShifted(
+        track,
+        laneId: 'position',
+        rangeStartIndex: 0,
+        rangeEndIndexExclusive: 4,
+        frameDelta: 3,
+      )!;
+      expect(shifted.position.keys.keys.toSet(), {5, 8});
+      expect(shifted.scale.keys.keys.toSet(), {2}, reason: 'other lanes stay');
+
+      // Landing on the UNSHIFTED key at 8 voids (nothing merges silently).
+      expect(
+        transformTrackWithLaneKeysShifted(
+          track,
+          laneId: 'position',
+          rangeStartIndex: 0,
+          rangeEndIndexExclusive: 4,
+          frameDelta: 6,
+        ),
+        isNull,
+      );
+      // Below frame 0 voids.
+      expect(
+        transformTrackWithLaneKeysShifted(
+          track,
+          laneId: 'position',
+          rangeStartIndex: 0,
+          rangeEndIndexExclusive: 4,
+          frameDelta: -3,
+        ),
+        isNull,
+      );
+      // No keys in range = nothing to move.
+      expect(
+        transformTrackWithLaneKeysShifted(
+          track,
+          laneId: 'rotation',
+          rangeStartIndex: 0,
+          rangeEndIndexExclusive: 4,
+          frameDelta: 1,
+        ),
+        isNull,
+      );
+    });
+
     test('move keeps value + interpolation and overwrites the target', () {
       final track = TransformTrack.empty().copyWith(
         scale: PropertyTrack<double>()

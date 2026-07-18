@@ -343,3 +343,197 @@ class _TimelineFrameRangeGestureLayerState
     );
   }
 }
+
+/// The LANE bands' gesture bundle (UI-R23 #3 part 2): the (layer, lane)
+/// selection domain — a band pan SELECTS on that lane, a pan starting
+/// inside the lane selection MOVES its keys along the frame axis. Fully
+/// independent of the cells' [TimelineRangeGestureCallbacks].
+class TimelineLaneRangeCallbacks {
+  const TimelineLaneRangeCallbacks({
+    required this.selection,
+    required this.onSelectUpdate,
+    required this.onTapClear,
+    required this.onMoveBegin,
+    required this.onMoveUpdate,
+    required this.onMoveEnd,
+    required this.onMoveCancel,
+  });
+
+  /// The session's live LANE selection (read at press to pick the mode).
+  final ValueListenable<TimelineLaneSelection?> selection;
+
+  final void Function(
+    LayerId layerId,
+    String laneId,
+    int anchorIndex,
+    int headIndex,
+  )
+  onSelectUpdate;
+
+  /// A plain tap on the band: clears the lane selection.
+  final VoidCallback onTapClear;
+
+  final bool Function() onMoveBegin;
+  final void Function(int frameDelta) onMoveUpdate;
+  final VoidCallback onMoveEnd;
+  final VoidCallback onMoveCancel;
+}
+
+/// The band-wide gesture layer for ONE property lane (UI-R23 #3 part 2)
+/// — the lane counterpart of [TimelineFrameRangeGestureLayer]: same
+/// EAGER pan (UI-R22F #2), same device policy, same dispose-commits rule
+/// (R12-③); frame axis only (lanes never row-change).
+class TimelineLaneRangeGestureLayer extends StatefulWidget {
+  const TimelineLaneRangeGestureLayer({
+    super.key,
+    required this.layer,
+    required this.laneId,
+    required this.frameStartIndex,
+    required this.leadingFrameSpacerWidth,
+    required this.frameCellExtent,
+    required this.callbacks,
+    this.axis = Axis.horizontal,
+  });
+
+  final Layer layer;
+  final String laneId;
+  final int frameStartIndex;
+  final double leadingFrameSpacerWidth;
+  final double frameCellExtent;
+  final TimelineLaneRangeCallbacks callbacks;
+  final Axis axis;
+
+  @override
+  State<TimelineLaneRangeGestureLayer> createState() =>
+      _TimelineLaneRangeGestureLayerState();
+}
+
+class _TimelineLaneRangeGestureLayerState
+    extends State<TimelineLaneRangeGestureLayer> {
+  _RangeDragMode _mode = _RangeDragMode.none;
+  int _anchorIndex = 0;
+  double _mainDelta = 0;
+  int _lastFrames = 0;
+
+  int _frameAt(Offset localPosition) {
+    final main = widget.axis == Axis.horizontal
+        ? localPosition.dx
+        : localPosition.dy;
+    final cell =
+        ((main - widget.leadingFrameSpacerWidth) / widget.frameCellExtent)
+            .floor();
+    final frame = widget.frameStartIndex + cell;
+    return frame < 0 ? 0 : frame;
+  }
+
+  void _startDrag(Offset localPosition) {
+    final frame = _frameAt(localPosition);
+    final selection = widget.callbacks.selection.value;
+    final insideSelection =
+        selection != null &&
+        selection.coversLane(widget.layer.id, widget.laneId) &&
+        selection.contains(frame);
+    if (insideSelection && widget.callbacks.onMoveBegin()) {
+      _mode = _RangeDragMode.move;
+      _mainDelta = 0;
+      _lastFrames = 0;
+      return;
+    }
+    _mode = _RangeDragMode.select;
+    _anchorIndex = frame;
+    widget.callbacks.onSelectUpdate(
+      widget.layer.id,
+      widget.laneId,
+      frame,
+      frame,
+    );
+  }
+
+  void _updateDrag(DragUpdateDetails details) {
+    switch (_mode) {
+      case _RangeDragMode.none:
+        return;
+      case _RangeDragMode.select:
+        widget.callbacks.onSelectUpdate(
+          widget.layer.id,
+          widget.laneId,
+          _anchorIndex,
+          _frameAt(details.localPosition),
+        );
+      case _RangeDragMode.move:
+        _mainDelta += widget.axis == Axis.horizontal
+            ? details.delta.dx
+            : details.delta.dy;
+        final frames = commaDragFrameDelta(
+          accumulatedDelta: _mainDelta,
+          frameCellExtent: widget.frameCellExtent,
+        );
+        if (frames == _lastFrames) {
+          return;
+        }
+        _lastFrames = frames;
+        widget.callbacks.onMoveUpdate(frames);
+    }
+  }
+
+  void _endDrag() {
+    final mode = _mode;
+    _mode = _RangeDragMode.none;
+    if (mode == _RangeDragMode.move) {
+      widget.callbacks.onMoveEnd();
+    }
+  }
+
+  void _cancelDrag() {
+    final mode = _mode;
+    _mode = _RangeDragMode.none;
+    if (mode == _RangeDragMode.move) {
+      widget.callbacks.onMoveCancel();
+    }
+  }
+
+  @override
+  void dispose() {
+    // A mid-drag unmount commits the move AFTER the frame rather than
+    // leaking an open session (the R12-③ rule).
+    if (_mode == _RangeDragMode.move) {
+      final callbacks = widget.callbacks;
+      WidgetsBinding.instance.addPostFrameCallback(
+        (_) => callbacks.onMoveEnd(),
+      );
+    }
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Positioned.fill(
+      key: ValueKey<String>(
+        'timeline-lane-range-layer-${widget.layer.id}-${widget.laneId}',
+      ),
+      child: GestureDetector(
+        behavior: HitTestBehavior.translucent,
+        onTapUp: (_) => widget.callbacks.onTapClear(),
+        child: RawGestureDetector(
+          behavior: HitTestBehavior.translucent,
+          gestures: <Type, GestureRecognizerFactory>{
+            EagerPanGestureRecognizer:
+                GestureRecognizerFactoryWithHandlers<EagerPanGestureRecognizer>(
+                  () => EagerPanGestureRecognizer(debugOwner: this),
+                  (recognizer) {
+                    recognizer.supportedDevices =
+                        AppInput.timelineEditPanDevices;
+                    recognizer.dragStartBehavior = DragStartBehavior.down;
+                    recognizer.onStart = (details) =>
+                        _startDrag(details.localPosition);
+                    recognizer.onUpdate = _updateDrag;
+                    recognizer.onEnd = (_) => _endDrag();
+                    recognizer.onCancel = _cancelDrag;
+                  },
+                ),
+          },
+        ),
+      ),
+    );
+  }
+}
