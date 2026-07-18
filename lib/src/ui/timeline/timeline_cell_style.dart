@@ -19,7 +19,9 @@ class TimelineCellStyleColors {
 const Color timelineDrawingHeldColor = Color(0xFFE9E7E2);
 const Color timelineDrawingStartColor = timelineDrawingHeldColor;
 const Color timelineDrawingStartBorderColor = AppColors.hairlineStrong;
-const Color timelineSelectedFrameBorderColor = AppColors.accent;
+
+/// LIVE accent read (UI-R22 #5): the selection ink follows accent 1.
+Color get timelineSelectedFrameBorderColor => AppColors.accent;
 
 /// Ink for glyphs (frame names, marks) sitting on the near-white drawing
 /// blocks; the usual light on-surface text would vanish there.

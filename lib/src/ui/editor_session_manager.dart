@@ -7,6 +7,9 @@ import 'package:flutter/foundation.dart';
 import '../controllers/default_layer_helpers.dart';
 import '../models/app_language.dart';
 import '../services/persistence/app_language_settings_store.dart';
+import '../services/persistence/app_accent_settings_store.dart';
+import 'theme/app_accents.dart';
+import 'theme/app_theme.dart' show AppColors;
 import '../controllers/editing_session_state.dart';
 import '../controllers/layer_controller.dart';
 import '../controllers/timeline_controller.dart';
@@ -111,11 +114,14 @@ class EditorSessionManager extends ChangeNotifier {
     required Project initialProject,
     AudioPeaksStore? audioPeaksStore,
     AppLanguageSettingsStore? languageSettingsStore,
+    AppAccentSettingsStore? accentSettingsStore,
   }) : _editingSession = EditingSessionState.forProject(initialProject),
        _injectedAudioPeaksStore = audioPeaksStore,
        _languageSettingsStore = languageSettingsStore,
+       _accentSettingsStore = accentSettingsStore,
        _repository = ProjectRepository(initialProject: initialProject) {
     unawaited(_restoreLanguageSettings());
+    unawaited(_restoreAccentSettings());
     _historyManager = HistoryManager();
     _cutCommandCoordinator = CutCommandCoordinator(
       repository: _repository,
@@ -161,6 +167,31 @@ class EditorSessionManager extends ChangeNotifier {
     }
     languageSettings.value = settings;
     final store = _languageSettingsStore;
+    if (store != null) {
+      unawaited(store.save(settings));
+    }
+  }
+
+  // --- Accent settings (UI-R22 #5) ------------------------------------------
+
+  /// Injectable persistence; null (tests) keeps the in-memory defaults.
+  final AppAccentSettingsStore? _accentSettingsStore;
+
+  /// The LIVE accents live app-wide on [AppColors.accentSettings] (the
+  /// theme root rebuilds off it); the session only restores/persists.
+  Future<void> _restoreAccentSettings() async {
+    final restored = await _accentSettingsStore?.load();
+    if (restored != null) {
+      AppColors.accentSettings.value = restored;
+    }
+  }
+
+  void setAccentSettings(AppAccentSettings settings) {
+    if (settings == AppColors.accentSettings.value) {
+      return;
+    }
+    AppColors.accentSettings.value = settings;
+    final store = _accentSettingsStore;
     if (store != null) {
       unawaited(store.save(settings));
     }

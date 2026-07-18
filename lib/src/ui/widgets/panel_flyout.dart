@@ -159,7 +159,7 @@ Future<void> showPanelFlyout(
                 ),
                 if (entry.checked == true) ...[
                   const SizedBox(width: 8),
-                  const Icon(Icons.check, size: 14, color: AppColors.accent),
+                  Icon(Icons.check, size: 14, color: AppColors.accent),
                 ],
               ],
             ),

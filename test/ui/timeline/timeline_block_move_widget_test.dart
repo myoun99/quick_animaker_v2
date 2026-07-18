@@ -11,6 +11,7 @@ import 'package:quick_animaker_v2/src/models/timeline_exposure.dart';
 import 'package:quick_animaker_v2/src/models/timeline_frame_range.dart';
 
 import 'timeline_cell_probe.dart';
+import 'package:quick_animaker_v2/src/ui/theme/app_theme.dart' show AppColors;
 import 'package:quick_animaker_v2/src/ui/timeline/layer_timeline_grid.dart';
 import 'package:quick_animaker_v2/src/ui/timeline/property_lane_model.dart';
 import 'package:quick_animaker_v2/src/ui/timeline/timeline_cell_exposure_state.dart';
@@ -214,6 +215,32 @@ void main() {
     expect(selectUpdates, isNotEmpty);
     expect(selectUpdates.last.$1, const LayerId('layer-a'));
     expect(selectUpdates.first.$2, 5, reason: 'anchor = the pressed cell');
+
+    // Selected key markers ring in ACCENT 2 (UI-R22 #5): cover the key
+    // at frame 2 and the marker's border flips to the accent-2 stroke.
+    Border markerBorder() {
+      final container = tester.widget<Container>(
+        find
+            .descendant(
+              of: find.byKey(
+                const ValueKey<String>('timeline-lane-key-layer-a-position-2'),
+              ),
+              matching: find.byType(Container),
+            )
+            .first,
+      );
+      return (container.decoration! as BoxDecoration).border! as Border;
+    }
+
+    expect(markerBorder().top.color, isNot(AppColors.accent2));
+    selection.value = const TimelineFrameRangeSelection(
+      layerId: LayerId('layer-a'),
+      startIndex: 0,
+      endIndexExclusive: 4,
+    );
+    await tester.pump();
+    expect(markerBorder().top.color, AppColors.accent2);
+    expect(markerBorder().top.width, 2);
   });
 
   testWidgets('the gesture layer SURVIVES mid-drag preview rebuilds that '
