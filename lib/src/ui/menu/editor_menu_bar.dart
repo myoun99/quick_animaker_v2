@@ -4,6 +4,7 @@ import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show Clipboard, ClipboardData;
 
+import '../../models/attached_mode.dart';
 import '../../models/attached_placement.dart';
 import '../../services/persistence/project_autosave_service.dart';
 import '../dialogs/canvas_size_dialog.dart';
@@ -459,17 +460,39 @@ class EditorMenuBar extends StatelessWidget {
 
   List<Widget> _layerItems(BuildContext context) => [
     _item(id: 'layer-add', label: 'Add Layer', onPressed: session.addLayer),
-    // Attach layers (W5): own cels riding the active layer's timing + FX.
+    // Attach layers (W5 / UI-R21 #3): own cels riding the base's FX.
+    // FREE = own timeline like a normal layer; SYNCED = the ghost mirror
+    // riding the base's exposures.
+    _item(
+      id: 'layer-add-attach-free-above',
+      label: 'Add Attach Free Layer Above',
+      onPressed: session.canAddAttachedLayerToActive
+          ? () => session.addAttachedLayer(
+              AttachedPlacement.above,
+              mode: AttachedMode.free,
+            )
+          : null,
+    ),
+    _item(
+      id: 'layer-add-attach-free-below',
+      label: 'Add Attach Free Layer Below',
+      onPressed: session.canAddAttachedLayerToActive
+          ? () => session.addAttachedLayer(
+              AttachedPlacement.below,
+              mode: AttachedMode.free,
+            )
+          : null,
+    ),
     _item(
       id: 'layer-add-attach-above',
-      label: 'Add Attach Layer Above',
+      label: 'Add Attach Synced Layer Above',
       onPressed: session.canAddAttachedLayerToActive
           ? () => session.addAttachedLayer(AttachedPlacement.above)
           : null,
     ),
     _item(
       id: 'layer-add-attach-below',
-      label: 'Add Attach Layer Below',
+      label: 'Add Attach Synced Layer Below',
       onPressed: session.canAddAttachedLayerToActive
           ? () => session.addAttachedLayer(AttachedPlacement.below)
           : null,

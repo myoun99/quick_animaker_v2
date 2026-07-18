@@ -1,6 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:quick_animaker_v2/src/controllers/default_project_helpers.dart';
 import 'package:quick_animaker_v2/src/models/attached_layer_resolve.dart';
+import 'package:quick_animaker_v2/src/models/attached_mode.dart';
 import 'package:quick_animaker_v2/src/models/attached_placement.dart';
 import 'package:quick_animaker_v2/src/models/layer.dart';
 import 'package:quick_animaker_v2/src/models/timeline_coverage.dart'
@@ -103,6 +104,98 @@ void main() {
     expect(restored.frames, isEmpty);
     expect(restored.baseFrameLinks, isEmpty);
     expect(base.id, isNotNull); // base untouched throughout
+  });
+
+  test('a FREE attach row (UI-R21 #3) authors its own timeline like a '
+      'normal drawing layer — create/cut/mark/delete/comma all live, no '
+      'cell links, no ghost mirror', () {
+    final (s, base) = sessionWithBase();
+    s.createDrawingAtCurrentFrame(); // base cel at 0 (not required, but real)
+    s.addAttachedLayer(AttachedPlacement.above, mode: AttachedMode.free);
+    final attachId = s.activeLayer!.id;
+    expect(
+      cutLayers(s).firstWhere((l) => l.id == attachId).attachedMode,
+      AttachedMode.free,
+    );
+
+    // Normal authoring path: a cel with a plain timeline entry, NO link.
+    expect(s.canCreateDrawingAtCurrentFrame, isTrue);
+    s.createDrawingAtCurrentFrame();
+    final attached = cutLayers(s).firstWhere((l) => l.id == attachId);
+    expect(attached.frames, hasLength(1));
+    expect(attached.baseFrameLinks, isEmpty);
+    expect(attached.timeline[0]?.isDrawing, isTrue);
+
+    // The display list hands back the REAL layer — no clone, no ghosts.
+    final display = s.layers.firstWhere((l) => l.id == attachId);
+    expect(identical(display, attached), isTrue);
+    expect(timelineIndexIsGhost(display, 0), isFalse);
+
+    // Timing edits behave like any drawing layer. A COMMA DRAG stretches
+    // the block to length 3 (the old attach standdown refused the begin):
+    expect(
+      s.beginExposureEdgeDrag(
+        layerId: attachId,
+        blockStartIndex: 0,
+        edge: TimelineBlockEdge.end,
+      ),
+      isTrue,
+    );
+    s.updateExposureEdgeDrag(2);
+    s.endExposureEdgeDrag();
+    expect(
+      cutLayers(s).firstWhere((l) => l.id == attachId).timeline[0]!.length,
+      3,
+    );
+
+    // Breakdown marks live INSIDE a block (normal rule) and the covering
+    // cel deletes from anywhere on it — both gates open now.
+    s.selectFrameIndex(1);
+    expect(s.canToggleMarkAtCurrentFrame, isTrue);
+    expect(s.canDeleteCellAtCurrentFrame, isTrue);
+    s.selectFrameIndex(0);
+
+    // Range selection + move are open too (the synced mirror stands down
+    // until the ghost-snap rework).
+    s.updateFrameRangeSelectionDrag(
+      layerId: attachId,
+      anchorIndex: 0,
+      headIndex: 0,
+    );
+    expect(s.frameRangeSelection.value, isNotNull);
+    expect(s.beginFrameRangeMoveDrag(), isTrue);
+    s.cancelFrameRangeMoveDrag();
+
+    // Still an ATTACH row structurally: no nesting base, cascades with
+    // the base's delete, and adding from it targets ITS base.
+    expect(canCarryAttachedLayers(attached), isFalse);
+    expect(s.canAddAttachedLayerToActive, isTrue);
+  });
+
+  test('deleting the base cascades over BOTH attach modes in one undo', () {
+    final (s, base) = sessionWithBase();
+    s.addAttachedLayer(AttachedPlacement.above, mode: AttachedMode.free);
+    final freeId = s.activeLayer!.id;
+    s.addAttachedLayer(AttachedPlacement.below);
+    final syncedId = s.activeLayer!.id;
+
+    s.selectLayer(base.id);
+    s.addLayer(); // second standalone drawing layer = base deletable
+    s.selectLayer(base.id);
+    s.deleteActiveLayer();
+    final after = cutLayers(s).map((l) => l.id).toList();
+    expect(after.contains(freeId), isFalse);
+    expect(after.contains(syncedId), isFalse);
+
+    s.undo();
+    final restored = cutLayers(s).map((l) => l.id).toList();
+    expect(restored.contains(freeId), isTrue);
+    expect(restored.contains(syncedId), isTrue);
+    expect(
+      cutLayers(s).firstWhere((l) => l.id == freeId).attachedMode,
+      AttachedMode.free,
+      reason: 'the mode survives the cascade undo',
+    );
   });
 
   test('attach rows own no timing: exposure/mark/cell edits and comma '

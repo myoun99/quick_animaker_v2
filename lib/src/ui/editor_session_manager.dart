@@ -11,6 +11,7 @@ import '../controllers/editing_session_state.dart';
 import '../controllers/layer_controller.dart';
 import '../controllers/timeline_controller.dart';
 import '../models/attached_layer_resolve.dart';
+import '../models/attached_mode.dart';
 import '../models/attached_placement.dart';
 import '../models/bitmap_surface.dart';
 import '../models/audio_clip.dart';
@@ -1935,10 +1936,15 @@ class EditorSessionManager extends ChangeNotifier {
   }
 
   /// Adds an ATTACH LAYER riding the active layer (or the active attach
-  /// row's base): own cels/eye/opacity/mark, the base's timing and FX;
-  /// [placement] picks above or below the base's picture. Selected on
-  /// creation; excluded from the timesheet by default.
-  void addAttachedLayer(AttachedPlacement placement) {
+  /// row's base): own cels/eye/opacity, the base's FX; [placement] picks
+  /// above or below the base's picture. [mode] picks the timing contract
+  /// (UI-R21 #3): synced = the W5 ghost mirror riding the base's
+  /// exposures; free = authors its own timeline like a normal drawing
+  /// layer. Selected on creation; excluded from the timesheet by default.
+  void addAttachedLayer(
+    AttachedPlacement placement, {
+    AttachedMode mode = AttachedMode.synced,
+  }) {
     if (!canAddAttachedLayerToActive) {
       return;
     }
@@ -1974,6 +1980,7 @@ class EditorSessionManager extends ChangeNotifier {
         onTimesheet: false,
         attachedToLayerId: base.id,
         attachedPlacement: placement,
+        attachedMode: mode,
       ),
       insertionIndex: insertionIndex,
     );
@@ -2932,10 +2939,11 @@ class EditorSessionManager extends ChangeNotifier {
     if (layer == null || !layerKindHoldsDrawings(layer.kind)) {
       return false;
     }
-    // Attach rows (W5): "Create Drawing" makes a cel RIDING the base's
-    // exposed cel at the playhead — possible only where the base shows a
-    // cel that has no link on this row yet.
-    if (isAttachedLayer(layer)) {
+    // SYNCED attach rows (W5): "Create Drawing" makes a cel RIDING the
+    // base's exposed cel at the playhead — possible only where the base
+    // shows a cel that has no link on this row yet. FREE attach rows
+    // (UI-R21 #3) fall through to the normal authoring path below.
+    if (isSyncedAttachedLayer(layer)) {
       return _attachTargetBaseFrameIdAt(layer) != null;
     }
 
@@ -2977,9 +2985,10 @@ class EditorSessionManager extends ChangeNotifier {
     if (layer == null ||
         copiedFrame == null ||
         layer.id != copiedFrame.layerId ||
-        // Attach rows own no timeline — linked reuse happens through the
-        // BASE's links (link the base cel instead).
-        isAttachedLayer(layer)) {
+        // SYNCED attach rows own no timeline — linked reuse happens
+        // through the BASE's links (link the base cel instead). Free
+        // attach rows author normally (UI-R21 #3).
+        isSyncedAttachedLayer(layer)) {
       return false;
     }
 
@@ -3020,10 +3029,11 @@ class EditorSessionManager extends ChangeNotifier {
   /// current cell (and the rest of the old hold) becomes empty.
   bool get canCutExposureAtCurrentFrame {
     final layer = activeLayer;
-    // Attach rows have no timing of their own (the base owns it).
+    // SYNCED attach rows have no timing of their own (the base owns it);
+    // free attach rows cut exposures like any drawing layer (UI-R21 #3).
     if (layer == null ||
         !layerKindHoldsDrawings(layer.kind) ||
-        isAttachedLayer(layer)) {
+        isSyncedAttachedLayer(layer)) {
       return false;
     }
 
@@ -3040,7 +3050,7 @@ class EditorSessionManager extends ChangeNotifier {
     }
 
     _frameSequence += 1;
-    if (isAttachedLayer(layer)) {
+    if (isSyncedAttachedLayer(layer)) {
       final baseFrameId = _attachTargetBaseFrameIdAt(layer);
       if (baseFrameId == null) {
         return;
@@ -3186,9 +3196,9 @@ class EditorSessionManager extends ChangeNotifier {
     required TimelineBlockEdge edge,
     bool blockStartIsGlobal = false,
   }) {
-    // Attach rows own no timing — no comma grips (the BASE's grips move
-    // both, W5).
-    if (_isAttachedLayerId(layerId)) {
+    // SYNCED attach rows own no timing — no comma grips (the BASE's
+    // grips move both, W5); free attach rows drag like normal (UI-R21).
+    if (_isSyncedAttachedLayerId(layerId)) {
       return false;
     }
     if (isTrackSeLayerId(layerId)) {
@@ -4020,7 +4030,9 @@ class EditorSessionManager extends ChangeNotifier {
   /// a plain drawing-section layer. Track-SE rows live on the global axis
   /// with audio attached and attach rows own no timing — both stand down.
   bool _blockMoveEligible(LayerId layerId) {
-    if (_isAttachedLayerId(layerId) || isTrackSeLayerId(layerId)) {
+    // Synced attach rows own no timing; FREE attach rows move blocks
+    // like any drawing layer (UI-R21 #3).
+    if (_isSyncedAttachedLayerId(layerId) || isTrackSeLayerId(layerId)) {
       return false;
     }
     final layer = _layerById(layerId);
@@ -4043,7 +4055,9 @@ class EditorSessionManager extends ChangeNotifier {
   /// seam). Attach rows stand down until the ghost-snap rework lets
   /// their all-ghost mirrors join (P3b).
   bool _rangeSelectionEligible(LayerId layerId) {
-    if (_isAttachedLayerId(layerId)) {
+    // SYNCED attach mirrors wait for the ghost-snap rework (P3b); free
+    // attach rows select like any drawing row (UI-R21 #3).
+    if (_isSyncedAttachedLayerId(layerId)) {
       return false;
     }
     if (isTrackSeLayerId(layerId)) {
@@ -4938,15 +4952,17 @@ class EditorSessionManager extends ChangeNotifier {
     return null;
   }
 
-  /// Whether [layerId] names one of the active cut's ATTACH rows (W5).
-  bool _isAttachedLayerId(LayerId layerId) {
+  /// Whether [layerId] names one of the active cut's SYNCED attach rows —
+  /// the timing standdowns key off THIS (free attach rows author their
+  /// own timeline like any drawing layer, UI-R21 #3).
+  bool _isSyncedAttachedLayerId(LayerId layerId) {
     final cut = activeCutOrNull;
     if (cut == null) {
       return false;
     }
     for (final layer in cut.layers) {
       if (layer.id == layerId) {
-        return isAttachedLayer(layer);
+        return isSyncedAttachedLayer(layer);
       }
     }
     return false;
@@ -4954,10 +4970,11 @@ class EditorSessionManager extends ChangeNotifier {
 
   bool get canToggleMarkAtCurrentFrame {
     final layer = activeLayer;
-    // Attach rows carry no cell marks (the base's sheet row does).
+    // SYNCED attach rows carry no cell marks (the base's sheet row
+    // does); free attach rows mark like normal (UI-R21 #3).
     if (layer == null ||
         !layerKindHoldsDrawings(layer.kind) ||
-        isAttachedLayer(layer)) {
+        isSyncedAttachedLayer(layer)) {
       return false;
     }
 
@@ -4996,9 +5013,10 @@ class EditorSessionManager extends ChangeNotifier {
       return true;
     }
     final layer = activeLayer;
-    // Attach rows: cel removal is out of v1 scope (delete the row or undo
-    // the creation) — cells are display material here.
-    if (layer == null || isAttachedLayer(layer)) {
+    // SYNCED attach rows: cel removal is out of v1 scope (delete the row
+    // or undo the creation) — cells are display material there. Free
+    // attach rows delete cells like normal (UI-R21 #3).
+    if (layer == null || isSyncedAttachedLayer(layer)) {
       return false;
     }
 
@@ -5195,7 +5213,8 @@ class EditorSessionManager extends ChangeNotifier {
       return;
     }
     final layer = activeLayer;
-    if (layer == null || isAttachedLayer(layer)) {
+    // Synced attach rows own no timing (free rows retime normally).
+    if (layer == null || isSyncedAttachedLayer(layer)) {
       return;
     }
     final block = coveringDrawingBlockAt(
