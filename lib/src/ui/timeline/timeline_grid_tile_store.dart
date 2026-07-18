@@ -89,13 +89,21 @@ class TimelineGridTileStore {
       }
     }
     // Cold or stale: schedule ONE raster per key (the newest look wins —
-    // a stale in-flight request re-checks at drain time).
+    // a stale in-flight request re-checks at drain time). The queue is
+    // CAPPED (UI-R20 #4): a scrollbar teleport requests dozens of spans
+    // per frame and most are passed before their raster would land —
+    // dropping the OLDEST keeps the drain working on what is actually
+    // on screen now.
+    _pending.remove(key);
     _pending[key] = _TileRequest(
       painter: painter,
       spanStartIndex: spanStartIndex,
       spanEndIndexExclusive: spanEndIndexExclusive,
       devicePixelRatio: devicePixelRatio,
     );
+    while (_pending.length > 32) {
+      _pending.remove(_pending.keys.first);
+    }
     if (!_drainScheduled) {
       _drainScheduled = true;
       // Off the paint phase; microtasks run before the next frame, so a

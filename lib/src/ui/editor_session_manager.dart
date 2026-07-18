@@ -462,11 +462,38 @@ class EditorSessionManager extends ChangeNotifier {
     return null;
   }
 
+  /// Display-clone cache (UI-R20 #4): the clones used to be rebuilt on
+  /// EVERY read, so every session notify handed the grids fresh Layer
+  /// identities — defeating all the identity-keyed row memos and
+  /// rebuilding every SE row per notify (the "selecting a layer got slow
+  /// after adding dialogue" regression). Keyed per SE layer: same source
+  /// layer + same window = the SAME clone instance back.
+  final Map<LayerId, (Layer, int, int, Layer)> _seDisplayCloneCache = {};
+
+  Layer _trackSeDisplayCloneFor(TrackSeWindow window, Layer layer) {
+    final cached = _seDisplayCloneCache[layer.id];
+    if (cached != null &&
+        identical(cached.$1, layer) &&
+        cached.$2 == window.cutStartFrame &&
+        cached.$3 == window.cutDurationFrames) {
+      return cached.$4;
+    }
+    final display = window.displayLayer(layer);
+    _seDisplayCloneCache[layer.id] = (
+      layer,
+      window.cutStartFrame,
+      window.cutDurationFrames,
+      display,
+    );
+    return display;
+  }
+
   /// The track's SE rows as cut-local display clones for the active cut.
   List<Layer> get trackSeDisplayLayers {
     final window = trackSeWindow;
     return [
-      for (final layer in activeTrack.seLayers) window.displayLayer(layer),
+      for (final layer in activeTrack.seLayers)
+        _trackSeDisplayCloneFor(window, layer),
     ];
   }
 

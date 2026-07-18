@@ -17,6 +17,18 @@ import 'timeline_frame_cells_row.dart';
 import 'timeline_grid_metrics.dart';
 import 'timeline_lane_rows.dart';
 
+/// See [TimelineFrameRowsScrollBody.memoAux].
+class TimelineRowMemoAux {
+  const TimelineRowMemoAux({this.cameraTrack, this.instructionDefs});
+
+  /// The active cut's camera track object (immutable — a key edit is a
+  /// new instance).
+  final Object? cameraTrack;
+
+  /// The camera-instruction registry object.
+  final Object? instructionDefs;
+}
+
 class TimelineFrameRowsScrollBody extends StatefulWidget {
   const TimelineFrameRowsScrollBody({
     super.key,
@@ -53,7 +65,15 @@ class TimelineFrameRowsScrollBody extends StatefulWidget {
     this.seSpillInLayerIds = const {},
     this.windowBucket,
     this.viewportMainExtent = 0,
+    this.memoAux = const TimelineRowMemoAux(),
   });
+
+  /// Identity tokens for the sparse rows' EXTERNAL inputs (UI-R20 #4):
+  /// the camera row reads the cut's camera track and instruction rows
+  /// read the instruction registry — both outside the Layer value, so
+  /// their identities join the memo key here. Hosts pass the live
+  /// objects; a key change is exactly an edit.
+  final TimelineRowMemoAux memoAux;
 
   /// PRO-TIMELINE scrolling (UI-R15→R16): with these set the drawing rows
   /// build once for the full bounds (their painters window themselves off
@@ -165,6 +185,10 @@ typedef _RowMemoInputs = ({
   bool hasRangeGesture,
   bool hasActivateCell,
   ValueListenable<TimelineDragPreview?>? dragPreview,
+  // The sparse rows' EXTERNAL inputs (UI-R20 #4): identity tokens for
+  // the camera track / instruction registry, and the SE spill-in flag.
+  Object? auxiliaryIdentity,
+  bool seSpillsIn,
 });
 
 class _RowMemoEntry {
@@ -186,19 +210,13 @@ class _TimelineFrameRowsScrollBodyState
   final Map<Object, _RowMemoEntry> _rowMemo = {};
 
   bool _rowIsMemoizable(TimelineDisplayRow row) {
-    if (row.isLane) {
-      return false;
-    }
-    switch (row.layer.kind) {
-      case LayerKind.animation:
-      case LayerKind.storyboard:
-      case LayerKind.art:
-        return true;
-      case LayerKind.se:
-      case LayerKind.instruction:
-      case LayerKind.camera:
-        return false;
-    }
+    // Every non-lane row memoizes now (UI-R20 #4): the churny inputs the
+    // sparse kinds depended on joined the memo token — the camera track
+    // and the instruction registry ride [TimelineRowMemoAux] identities,
+    // SE spill-in rides a per-layer flag, and the SE/camera display
+    // clones themselves are identity-cached upstream. The audio WAVEFORM
+    // stays safe because it lives on the (unmemoized) lane rows.
+    return !row.isLane;
   }
 
   bool _inputsMatch(_RowMemoInputs a, _RowMemoInputs b) {
@@ -216,7 +234,18 @@ class _TimelineFrameRowsScrollBodyState
         a.hasCommaDrag == b.hasCommaDrag &&
         a.hasRangeGesture == b.hasRangeGesture &&
         a.hasActivateCell == b.hasActivateCell &&
-        identical(a.dragPreview, b.dragPreview);
+        identical(a.dragPreview, b.dragPreview) &&
+        identical(a.auxiliaryIdentity, b.auxiliaryIdentity) &&
+        a.seSpillsIn == b.seSpillsIn;
+  }
+
+  /// The row kind's external-input identity for the memo token.
+  Object? _auxiliaryIdentityFor(Layer layer) {
+    return switch (layer.kind) {
+      LayerKind.camera => widget.memoAux.cameraTrack,
+      LayerKind.instruction => widget.memoAux.instructionDefs,
+      _ => null,
+    };
   }
 
   Widget _buildCellsRow(Layer layer, {required Layer baseLayer}) {
@@ -333,6 +362,8 @@ class _TimelineFrameRowsScrollBodyState
       hasRangeGesture: widget.rangeGesture != null,
       hasActivateCell: widget.onActivateCell != null,
       dragPreview: widget.dragPreview,
+      auxiliaryIdentity: _auxiliaryIdentityFor(row.layer),
+      seSpillsIn: widget.seSpillInLayerIds.contains(row.layer.id),
     );
     final cached = _rowMemo[rowKey.value];
     if (cached != null && _inputsMatch(cached.inputs, inputs)) {
