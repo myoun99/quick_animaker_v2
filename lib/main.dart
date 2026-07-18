@@ -12,10 +12,15 @@ class QuickAnimakerApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'QuickAnimaker',
-      theme: buildAppTheme(),
-      home: const HomePage(),
+    // The theme rides the LIVE accent settings (UI-R22 #5): changing
+    // accent 1/2 rebuilds the app under a fresh scheme.
+    return ValueListenableBuilder(
+      valueListenable: AppColors.accentSettings,
+      builder: (context, _, _) => MaterialApp(
+        title: 'QuickAnimaker',
+        theme: buildAppTheme(),
+        home: const HomePage(),
+      ),
     );
   }
 }

@@ -6,6 +6,7 @@ import '../../models/frame_id.dart';
 import '../../models/layer.dart';
 import '../../models/layer_id.dart';
 import '../../models/timeline_repeat.dart';
+import '../theme/app_theme.dart' show AppColors;
 import '../widgets/panel_flyout.dart';
 import 'timeline_exposure_comma_drag_policy.dart';
 import 'timeline_frame_coordinate_policy.dart';
@@ -166,14 +167,14 @@ List<Widget> timelineRowRunEndHandles({
       final left = edgeX(spanStart);
       final extent = edgeX(spanEnd) - left;
       // The pattern span reads at a glance now (UI-R19 #2): a light wash
-      // over the repeated cels plus a firm outline — the old faint
-      // hairline was easy to miss entirely.
+      // over the repeated cels plus a firm outline — in ACCENT 2 (UI-R22
+      // #5), the program's secondary highlight.
       final outline = IgnorePointer(
         child: DecoratedBox(
           decoration: BoxDecoration(
-            color: const Color(0xFFE57373).withValues(alpha: 0.10),
+            color: AppColors.accent2.withValues(alpha: 0.10),
             border: Border.all(
-              color: const Color(0xFFE57373).withValues(alpha: 0.85),
+              color: AppColors.accent2.withValues(alpha: 0.85),
               width: 2,
             ),
             borderRadius: const BorderRadius.all(Radius.circular(6)),

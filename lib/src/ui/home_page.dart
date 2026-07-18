@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import '../controllers/default_project_helpers.dart';
 import '../models/project.dart';
 import '../services/persistence/app_language_settings_store.dart';
+import '../services/persistence/app_accent_settings_store.dart';
 import '../services/persistence/project_autosave_service.dart';
 import '../services/project_repository.dart';
 import 'brush/brush_tool_state.dart';
@@ -93,11 +94,15 @@ class _HomePageState extends State<HomePage> {
     final project = widget.initialProject ?? createDefaultProject();
     _session = EditorSessionManager(
       initialProject: project,
-      // Language settings persist app-side (UI-R10 #7); FLUTTER_TEST keeps
-      // widget tests off the developer's saved file.
+      // Language + accent settings persist app-side (UI-R10 #7 /
+      // UI-R22 #5); FLUTTER_TEST keeps widget tests off the developer's
+      // saved files.
       languageSettingsStore: Platform.environment.containsKey('FLUTTER_TEST')
           ? null
           : AppLanguageSettingsStore(),
+      accentSettingsStore: Platform.environment.containsKey('FLUTTER_TEST')
+          ? null
+          : AppAccentSettingsStore(),
     );
     // R16-①: undo/redo over a PENDING move session adopts it into history
     // first — an undo never pops out from under the unadopted lift.

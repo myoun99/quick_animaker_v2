@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import 'app_accents.dart';
+
 /// The app-wide dark palette (TVPaint/OpenToonz-style flat charcoal).
 ///
 /// Every UI color that is not derived from [ColorScheme] at build time should
@@ -7,8 +9,18 @@ import 'package:flutter/material.dart';
 /// place. The accent is deliberately a single hue used sparingly: playhead,
 /// selection, active states.
 abstract final class AppColors {
-  /// Accent (teal) — selection, playhead, active toggles.
-  static const Color accent = Color(0xFF4FA8A0);
+  /// The LIVE accent settings (UI-R22 #5): the app root rebuilds its
+  /// theme off this notifier; the session restores/persists it.
+  static final ValueNotifier<AppAccentSettings> accentSettings =
+      ValueNotifier<AppAccentSettings>(const AppAccentSettings());
+
+  /// Accent 1 — selection, playhead, active toggles (default teal;
+  /// customizable, UI-R22 #5).
+  static Color get accent => accentSettings.value.accent;
+
+  /// Accent 2 — the SECONDARY highlight (repeat pattern spans, selected
+  /// union diamonds): the complement of accent 1 unless overridden.
+  static Color get accent2 => accentSettings.value.accent2;
 
   /// Darkest backdrop: canvas surround, scaffold background.
   static const Color backdrop = Color(0xFF141517);
@@ -47,16 +59,18 @@ const AnimationStyle instantMenuAnimation = AnimationStyle(
 );
 
 ColorScheme _buildColorScheme() {
-  return const ColorScheme(
+  // Non-const: the accent is LIVE now (UI-R22 #5) — the app root
+  // rebuilds the theme when the accent settings change.
+  return ColorScheme(
     brightness: Brightness.dark,
     primary: AppColors.accent,
-    onPrimary: Color(0xFF10201E),
-    primaryContainer: Color(0xFF27443F),
-    onPrimaryContainer: Color(0xFFA5D6D0),
+    onPrimary: const Color(0xFF10201E),
+    primaryContainer: const Color(0xFF27443F),
+    onPrimaryContainer: const Color(0xFFA5D6D0),
     secondary: AppColors.accent,
-    onSecondary: Color(0xFF10201E),
-    secondaryContainer: Color(0xFF2A3A38),
-    onSecondaryContainer: Color(0xFFA5D6D0),
+    onSecondary: const Color(0xFF10201E),
+    secondaryContainer: const Color(0xFF2A3A38),
+    onSecondaryContainer: const Color(0xFFA5D6D0),
     error: AppColors.danger,
     onError: Color(0xFF2B1212),
     surface: AppColors.surface,
@@ -136,9 +150,7 @@ ThemeData buildAppTheme() {
         return AppColors.hairlineStrong;
       }),
       trackColor: const WidgetStatePropertyAll<Color>(Colors.transparent),
-      trackBorderColor: const WidgetStatePropertyAll<Color>(
-        Colors.transparent,
-      ),
+      trackBorderColor: const WidgetStatePropertyAll<Color>(Colors.transparent),
       crossAxisMargin: 2,
       mainAxisMargin: 2,
     ),

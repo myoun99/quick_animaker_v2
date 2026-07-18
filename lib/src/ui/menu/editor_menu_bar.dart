@@ -10,6 +10,7 @@ import '../../services/persistence/project_autosave_service.dart';
 import '../dialogs/canvas_size_dialog.dart';
 import '../dialogs/delete_layer_dialog.dart';
 import '../dialogs/language_settings_dialog.dart';
+import '../dialogs/accent_settings_dialog.dart';
 import '../dialogs/project_background_dialog.dart';
 import '../dialogs/rename_cut_dialog.dart';
 import '../dialogs/rename_layer_dialog.dart';
@@ -316,6 +317,13 @@ class EditorMenuBar extends StatelessWidget {
       label: 'Language Settings…',
       onPressed: () {
         unawaited(showLanguageSettingsDialog(context, session: session));
+      },
+    ),
+    _item(
+      id: 'edit-accent-settings',
+      label: 'Accent Colors…',
+      onPressed: () {
+        unawaited(showAccentSettingsDialog(context, session: session));
       },
     ),
   ];

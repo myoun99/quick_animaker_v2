@@ -2,7 +2,9 @@ import 'package:flutter/gestures.dart' show DragStartBehavior;
 import 'package:flutter/material.dart';
 
 import '../../models/layer.dart';
-import '../theme/app_theme.dart' show instantMenuAnimation;
+import '../../models/timeline_frame_range.dart'
+    show TimelineFrameRangeSelection;
+import '../theme/app_theme.dart' show AppColors, instantMenuAnimation;
 import 'layer_label_controls.dart' show LayerSectionBandCell;
 import 'property_lane_model.dart';
 import 'timeline_frame_range_gesture.dart'
@@ -543,6 +545,48 @@ class TimelineLaneFrameRow extends StatelessWidget {
     final hitSize = (markerSize + 8).clamp(14.0, crossExtent).toDouble();
     final horizontal = axis == Axis.horizontal;
 
+    List<Widget> markerChildren(TimelineFrameRangeSelection? selection) => [
+      for (final frame in lane.keyedFrames)
+        if (frame >= frameStartIndex && frame < frameEndIndexExclusive)
+          Positioned(
+            left: horizontal
+                ? (frame - frameStartIndex) * cellExtent +
+                      cellExtent / 2 -
+                      hitSize / 2
+                : crossExtent / 2 - hitSize / 2,
+            top: horizontal
+                ? crossExtent / 2 - hitSize / 2
+                : (frame - frameStartIndex) * cellExtent +
+                      cellExtent / 2 -
+                      hitSize / 2,
+            width: hitSize,
+            height: hitSize,
+            child: _LaneKeyMarker(
+              key: ValueKey<String>(
+                '$keyPrefix-lane-key-${layer.id}-${lane.laneId}-$frame',
+              ),
+              layer: layer,
+              lane: lane,
+              frame: frame,
+              hold: lane.holdOutFrames.contains(frame),
+              markerSize: markerSize,
+              frameCellExtent: cellExtent,
+              axis: axis,
+              // Selected markers ring in ACCENT 2 (UI-R22 #5) — the
+              // union diamonds included.
+              selected:
+                  selection != null &&
+                  selection.coversLayer(layer.id) &&
+                  selection.contains(frame),
+              // Group headers show the KEY UNION (UI-R20 #13) —
+              // display-only: a union diamond has no single lane to
+              // edit, so its markers never take drags.
+              laneEdit: lane.isGroupHeader ? null : laneEdit,
+            ),
+          ),
+    ];
+
+    final selectionListenable = rangeGesture?.selection;
     final band = DecoratedBox(
       decoration: BoxDecoration(
         color: colorScheme.surfaceContainerLow.withValues(alpha: 0.6),
@@ -581,38 +625,18 @@ class TimelineLaneFrameRow extends StatelessWidget {
               callbacks: rangeGesture!,
               axis: axis,
             ),
-          for (final frame in lane.keyedFrames)
-            if (frame >= frameStartIndex && frame < frameEndIndexExclusive)
-              Positioned(
-                left: horizontal
-                    ? (frame - frameStartIndex) * cellExtent +
-                          cellExtent / 2 -
-                          hitSize / 2
-                    : crossExtent / 2 - hitSize / 2,
-                top: horizontal
-                    ? crossExtent / 2 - hitSize / 2
-                    : (frame - frameStartIndex) * cellExtent +
-                          cellExtent / 2 -
-                          hitSize / 2,
-                width: hitSize,
-                height: hitSize,
-                child: _LaneKeyMarker(
-                  key: ValueKey<String>(
-                    '$keyPrefix-lane-key-${layer.id}-${lane.laneId}-$frame',
-                  ),
-                  layer: layer,
-                  lane: lane,
-                  frame: frame,
-                  hold: lane.holdOutFrames.contains(frame),
-                  markerSize: markerSize,
-                  frameCellExtent: cellExtent,
-                  axis: axis,
-                  // Group headers show the KEY UNION (UI-R20 #13) —
-                  // display-only: a union diamond has no single lane to
-                  // edit, so its markers never take drags.
-                  laneEdit: lane.isGroupHeader ? null : laneEdit,
-                ),
+          // Markers follow the LIVE selection (value-only — no row
+          // rebuild) so the accent-2 rings track drags per step.
+          if (selectionListenable == null)
+            ...markerChildren(null)
+          else
+            ValueListenableBuilder(
+              valueListenable: selectionListenable,
+              builder: (context, selection, _) => Stack(
+                clipBehavior: Clip.none,
+                children: markerChildren(selection),
               ),
+            ),
         ],
       ),
     );
@@ -650,6 +674,7 @@ class _LaneKeyMarker extends StatefulWidget {
     required this.frameCellExtent,
     required this.axis,
     required this.laneEdit,
+    this.selected = false,
   });
 
   final Layer layer;
@@ -660,6 +685,11 @@ class _LaneKeyMarker extends StatefulWidget {
   final double frameCellExtent;
   final Axis axis;
   final PropertyLaneEditCallbacks? laneEdit;
+
+  /// Inside the live frame-range selection (UI-R22 #5): the marker rings
+  /// in ACCENT 2 so selected keys — union diamonds included — read at a
+  /// glance.
+  final bool selected;
 
   @override
   State<_LaneKeyMarker> createState() => _LaneKeyMarkerState();
@@ -758,7 +788,12 @@ class _LaneKeyMarkerState extends State<_LaneKeyMarker> {
         color: _dragging
             ? colorScheme.primary.withValues(alpha: 0.6)
             : colorScheme.primary,
-        border: Border.all(color: colorScheme.surface, width: 1),
+        // Selected keys ring in ACCENT 2 (UI-R22 #5) — a silhouette
+        // stroke, color only (the selection rule).
+        border: Border.all(
+          color: widget.selected ? AppColors.accent2 : colorScheme.surface,
+          width: widget.selected ? 2 : 1,
+        ),
       ),
     );
     // AE convention: linear keys read as diamonds, hold keys as squares.
