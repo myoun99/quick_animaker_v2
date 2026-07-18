@@ -8,9 +8,7 @@ import 'package:quick_animaker_v2/src/ui/input/app_input_settings.dart';
 void main() {
   tearDown(() {
     WintabPenService.instance.debugReset();
-    AppInput.settings.value = const AppInputSettings(
-      touchTimelineScroll: false,
-    );
+    AppInput.settings.value = AppInputSettings.testCorpusBaseline;
   });
 
   test('the pressure curve: gamma 1 is identity, soft lifts, hard lowers, '

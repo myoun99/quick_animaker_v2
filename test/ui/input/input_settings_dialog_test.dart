@@ -10,9 +10,7 @@ import 'package:quick_animaker_v2/src/ui/input/app_input_settings.dart';
 /// only — the CSP-style dual backend).
 void main() {
   tearDown(() {
-    AppInput.settings.value = const AppInputSettings(
-      touchTimelineScroll: false,
-    );
+    AppInput.settings.value = AppInputSettings.testCorpusBaseline;
   });
 
   Future<EditorSessionManager> pumpDialog(WidgetTester tester) async {

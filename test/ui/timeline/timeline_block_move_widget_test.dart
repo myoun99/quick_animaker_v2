@@ -159,9 +159,7 @@ void main() {
     addTearDown(() {
       // Back to the CORPUS baseline (flutter_test_config pins OFF; the
       // class default is ON since UI-R22F).
-      AppInput.settings.value = const AppInputSettings(
-        touchTimelineScroll: false,
-      );
+      AppInput.settings.value = AppInputSettings.testCorpusBaseline;
     });
     final cursor = ValueNotifier<int>(0);
     final selection = ValueNotifier<TimelineFrameRangeSelection?>(null);
@@ -541,9 +539,7 @@ void main() {
       'and OFF keeps touch-as-pen', (tester) async {
     AppInput.settings.value = const AppInputSettings(touchTimelineScroll: true);
     addTearDown(() {
-      AppInput.settings.value = const AppInputSettings(
-        touchTimelineScroll: false,
-      );
+      AppInput.settings.value = AppInputSettings.testCorpusBaseline;
     });
     final cursor = ValueNotifier<int>(0);
     final selection = ValueNotifier<TimelineFrameRangeSelection?>(null);
@@ -604,9 +600,7 @@ void main() {
     expect(seeks, [2, 2]);
 
     // Toggle OFF (touch-as-pen, R17-⑥): touch seeks again.
-    AppInput.settings.value = const AppInputSettings(
-      touchTimelineScroll: false,
-    );
+    AppInput.settings.value = AppInputSettings.testCorpusBaseline;
     await press('anim-1', kind: PointerDeviceKind.touch);
     expect(seeks, [2, 2, 2]);
   });

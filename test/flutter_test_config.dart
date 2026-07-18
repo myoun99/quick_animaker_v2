@@ -12,9 +12,9 @@ import 'package:quick_animaker_v2/src/ui/input/app_input_settings.dart';
 /// (touch scrolling, touch released by edit gestures) opt in explicitly.
 ///
 /// Tests that flip the value themselves must tearDown-reset to THIS
-/// baseline (`AppInputSettings(touchTimelineScroll: false)`), not to the
+/// baseline (`AppInputSettings.testCorpusBaseline`), not to the
 /// product default `AppInputSettings()`.
 Future<void> testExecutable(FutureOr<void> Function() testMain) async {
-  AppInput.settings.value = const AppInputSettings(touchTimelineScroll: false);
+  AppInput.settings.value = AppInputSettings.testCorpusBaseline;
   await testMain();
 }

@@ -11,9 +11,7 @@ import 'package:quick_animaker_v2/src/ui/input/app_input_settings.dart';
 void main() {
   tearDown(() {
     // Back to the CORPUS baseline (OFF), not the product default.
-    AppInput.settings.value = const AppInputSettings(
-      touchTimelineScroll: false,
-    );
+    AppInput.settings.value = AppInputSettings.testCorpusBaseline;
   });
 
   test('the PRODUCT default dedicates touch to the timeline scroll', () {

@@ -113,6 +113,146 @@ class _InputSettingsDialog extends StatelessWidget {
                     settings.copyWith(canvasWheelClick: mapping),
                   ),
                 ),
+                // PEN-7b: the CANVAS TOUCH system — mode, the
+                // finger-count drag slots (all assignable), the
+                // +1-finger modifier and the snap tables.
+                const Divider(height: 16),
+                Text(
+                  'Canvas touch',
+                  style: Theme.of(context).textTheme.labelLarge,
+                ),
+                _EnumDropdownRow<CanvasTouchMode>(
+                  rowKey: 'settings-canvas-touch-mode',
+                  label: 'Touch',
+                  value: settings.canvasTouchMode,
+                  values: CanvasTouchMode.values,
+                  labelOf: (mode) => switch (mode) {
+                    CanvasTouchMode.control => 'Screen control (default)',
+                    CanvasTouchMode.draw => 'Draw',
+                  },
+                  onChanged: (mode) => session.setInputSettings(
+                    settings.copyWith(canvasTouchMode: mode),
+                  ),
+                ),
+                _EnumDropdownRow<CanvasTouchDragAction>(
+                  rowKey: 'settings-touch-slot-1',
+                  label: '1-finger drag',
+                  value: settings.touchDragOneFinger,
+                  values: CanvasTouchDragAction.values,
+                  labelOf: _dragActionLabel,
+                  onChanged: (action) => session.setInputSettings(
+                    settings.copyWith(touchDragOneFinger: action),
+                  ),
+                ),
+                _EnumDropdownRow<CanvasTouchDragAction>(
+                  rowKey: 'settings-touch-slot-2',
+                  label: '2-finger drag',
+                  value: settings.touchDragTwoFingers,
+                  values: CanvasTouchDragAction.values,
+                  labelOf: _dragActionLabel,
+                  onChanged: (action) => session.setInputSettings(
+                    settings.copyWith(touchDragTwoFingers: action),
+                  ),
+                ),
+                _EnumDropdownRow<CanvasTouchDragAction>(
+                  rowKey: 'settings-touch-slot-3',
+                  label: '3-finger drag',
+                  value: settings.touchDragThreeFingers,
+                  values: CanvasTouchDragAction.values,
+                  labelOf: _dragActionLabel,
+                  onChanged: (action) => session.setInputSettings(
+                    settings.copyWith(touchDragThreeFingers: action),
+                  ),
+                ),
+                SwitchListTile(
+                  key: const ValueKey<String>('settings-extra-finger'),
+                  contentPadding: EdgeInsets.zero,
+                  dense: true,
+                  title: const Text('Extra-finger modifier'),
+                  subtitle: const Text(
+                    'A finger added DURING a gesture constrains it — '
+                    'snap zoom/rotation/size, fine frame steps.',
+                  ),
+                  value: settings.extraFingerModifier,
+                  onChanged: (enabled) => session.setInputSettings(
+                    settings.copyWith(extraFingerModifier: enabled),
+                  ),
+                ),
+                SwitchListTile(
+                  key: const ValueKey<String>('settings-nav-rotation'),
+                  contentPadding: EdgeInsets.zero,
+                  dense: true,
+                  title: const Text('Two-finger rotation'),
+                  subtitle: const Text(
+                    'OFF: the navigate gesture pans and zooms only '
+                    '(the rotate buttons/shortcut stay).',
+                  ),
+                  value: settings.navigationRotationEnabled,
+                  onChanged: (enabled) => session.setInputSettings(
+                    settings.copyWith(navigationRotationEnabled: enabled),
+                  ),
+                ),
+                SwitchListTile(
+                  key: const ValueKey<String>('settings-nav-rot-lock'),
+                  contentPadding: EdgeInsets.zero,
+                  dense: true,
+                  title: const Text('Modifier locks rotation'),
+                  subtitle: const Text(
+                    'ON: the extra finger FREEZES the angle (pure pan + '
+                    'snapped zoom). OFF (default): it snaps the angle.',
+                  ),
+                  value: settings.navigationModifierRotationLock,
+                  onChanged: settings.navigationRotationEnabled
+                      ? (enabled) => session.setInputSettings(
+                          settings.copyWith(
+                            navigationModifierRotationLock: enabled,
+                          ),
+                        )
+                      : null,
+                ),
+                _SnapListField(
+                  fieldKey: 'settings-snap-rotation',
+                  label: 'Rotation snap (°)',
+                  text: settings.rotationSnapDegrees.toStringAsFixed(0),
+                  onSubmitted: (text) {
+                    final value = double.tryParse(text.trim());
+                    if (value != null && value > 0) {
+                      session.setInputSettings(
+                        settings.copyWith(rotationSnapDegrees: value),
+                      );
+                    }
+                  },
+                ),
+                _SnapListField(
+                  fieldKey: 'settings-snap-zoom',
+                  label: 'Zoom snaps (%)',
+                  text: settings.zoomSnapPercents
+                      .map((value) => value.toStringAsFixed(0))
+                      .join(', '),
+                  onSubmitted: (text) {
+                    final values = _parseDoubleList(text);
+                    if (values.isNotEmpty) {
+                      session.setInputSettings(
+                        settings.copyWith(zoomSnapPercents: values),
+                      );
+                    }
+                  },
+                ),
+                _SnapListField(
+                  fieldKey: 'settings-snap-size',
+                  label: 'Brush size snaps (px)',
+                  text: settings.brushSizeSnaps
+                      .map((value) => value.toStringAsFixed(0))
+                      .join(', '),
+                  onSubmitted: (text) {
+                    final values = _parseDoubleList(text);
+                    if (values.isNotEmpty) {
+                      session.setInputSettings(
+                        settings.copyWith(brushSizeSnaps: values),
+                      );
+                    }
+                  },
+                ),
                 // The CSP-style tablet service switch (PEN-2) — Windows
                 // only: other platforms have a single native pen path.
                 if (defaultTargetPlatform == TargetPlatform.windows) ...[
@@ -168,6 +308,111 @@ class _InputSettingsDialog extends StatelessWidget {
           ],
         );
       },
+    );
+  }
+}
+
+String _dragActionLabel(CanvasTouchDragAction action) => switch (action) {
+  CanvasTouchDragAction.flip => 'Flip (frames / layers)',
+  CanvasTouchDragAction.navigate => 'Screen (pan · zoom · rotate)',
+  CanvasTouchDragAction.brushSize => 'Brush size',
+  CanvasTouchDragAction.none => 'None',
+};
+
+List<double> _parseDoubleList(String text) => [
+  for (final part in text.split(','))
+    if (double.tryParse(part.trim()) case final value? when value > 0) value,
+];
+
+/// A compact labeled enum dropdown row (PEN-7b touch settings).
+class _EnumDropdownRow<T> extends StatelessWidget {
+  const _EnumDropdownRow({
+    required this.rowKey,
+    required this.label,
+    required this.value,
+    required this.values,
+    required this.labelOf,
+    required this.onChanged,
+  });
+
+  final String rowKey;
+  final String label;
+  final T value;
+  final List<T> values;
+  final String Function(T value) labelOf;
+  final ValueChanged<T> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(top: 4),
+      child: Row(
+        children: [
+          Expanded(child: Text(label, style: const TextStyle(fontSize: 12))),
+          DropdownButton<T>(
+            key: ValueKey<String>(rowKey),
+            value: value,
+            isDense: true,
+            items: [
+              for (final entry in values)
+                DropdownMenuItem(
+                  value: entry,
+                  child: Text(
+                    labelOf(entry),
+                    style: const TextStyle(fontSize: 12),
+                  ),
+                ),
+            ],
+            onChanged: (next) => next == null ? null : onChanged(next),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// A snap-list text row (PEN-7b): comma-separated values, committed on
+/// submit; invalid input leaves the stored list untouched.
+class _SnapListField extends StatelessWidget {
+  const _SnapListField({
+    required this.fieldKey,
+    required this.label,
+    required this.text,
+    required this.onSubmitted,
+  });
+
+  final String fieldKey;
+  final String label;
+  final String text;
+  final ValueChanged<String> onSubmitted;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(top: 4),
+      child: Row(
+        children: [
+          Expanded(child: Text(label, style: const TextStyle(fontSize: 12))),
+          SizedBox(
+            width: 180,
+            height: 28,
+            child: TextField(
+              key: ValueKey<String>(fieldKey),
+              controller: TextEditingController(text: text),
+              style: const TextStyle(fontSize: 12),
+              decoration: const InputDecoration(
+                isDense: true,
+                contentPadding: EdgeInsets.symmetric(
+                  horizontal: 6,
+                  vertical: 4,
+                ),
+                border: OutlineInputBorder(),
+              ),
+              onSubmitted: onSubmitted,
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

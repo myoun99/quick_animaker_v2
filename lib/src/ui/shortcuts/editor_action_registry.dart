@@ -75,13 +75,16 @@ abstract final class EditorActionIds {
 /// and transport follow PS/CSP convention.
 final List<EditorActionDefinition> editorActionDefinitions = [
   // Arrows are the PRIMARY flip keys (R10-⑧ — the primary shows as the
-  // menu shortcut label); comma/period stay as the desk-muscle aliases.
+  // PEN-7c: plain arrows walk DRAWINGS (block-to-block — the animator's
+  // flip unit); Ctrl+arrows step ONE frame (the fine unit). Comma/period
+  // keep the frame-step desk-muscle aliases; everything rebinds in the
+  // shortcut settings as always.
   const EditorActionDefinition(
     id: EditorActionIds.framePrevious,
     label: 'Previous Frame',
     category: 'Navigation',
     defaultActivators: [
-      SingleActivator(LogicalKeyboardKey.arrowLeft),
+      SingleActivator(LogicalKeyboardKey.arrowLeft, control: true),
       SingleActivator(LogicalKeyboardKey.comma),
     ],
   ),
@@ -90,7 +93,7 @@ final List<EditorActionDefinition> editorActionDefinitions = [
     label: 'Next Frame',
     category: 'Navigation',
     defaultActivators: [
-      SingleActivator(LogicalKeyboardKey.arrowRight),
+      SingleActivator(LogicalKeyboardKey.arrowRight, control: true),
       SingleActivator(LogicalKeyboardKey.period),
     ],
   ),
@@ -99,6 +102,7 @@ final List<EditorActionDefinition> editorActionDefinitions = [
     label: 'Previous Drawing',
     category: 'Navigation',
     defaultActivators: [
+      SingleActivator(LogicalKeyboardKey.arrowLeft),
       SingleActivator(LogicalKeyboardKey.comma, control: true),
     ],
   ),
@@ -107,6 +111,7 @@ final List<EditorActionDefinition> editorActionDefinitions = [
     label: 'Next Drawing',
     category: 'Navigation',
     defaultActivators: [
+      SingleActivator(LogicalKeyboardKey.arrowRight),
       SingleActivator(LogicalKeyboardKey.period, control: true),
     ],
   ),
@@ -114,6 +119,9 @@ final List<EditorActionDefinition> editorActionDefinitions = [
     id: EditorActionIds.playbackToggle,
     label: 'Play / Pause',
     category: 'Playback',
+    // PEN-7b: four-finger tap = play/pause (the Callipeg convention the
+    // user picked), beside the 2-tap undo / 3-tap redo family.
+    defaultTouchGesture: 'fourFingerTap',
     defaultActivators: [SingleActivator(LogicalKeyboardKey.space)],
   ),
   const EditorActionDefinition(

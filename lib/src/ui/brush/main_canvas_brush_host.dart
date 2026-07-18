@@ -51,6 +51,10 @@ class MainCanvasBrushHost extends StatefulWidget {
     this.sampleColorAt,
     this.onTemporaryToolHold,
     this.onTemporaryToolRelease,
+    this.onInvokeAction,
+    this.onBrushSizeDragStart,
+    this.onBrushSizeDragUpdate,
+    this.onBrushSizeDragEnd,
     this.onEyedropperPick,
     this.onAltColorPick,
     this.fillDabAt,
@@ -114,6 +118,13 @@ class MainCanvasBrushHost extends StatefulWidget {
   /// PEN-7a mapped-hold pass-through (canvas right/wheel mappings).
   final void Function(CanvasTool tool)? onTemporaryToolHold;
   final void Function({required bool keep})? onTemporaryToolRelease;
+
+  /// PEN-7b: control-mode touch slot pass-throughs.
+  final void Function(String actionId)? onInvokeAction;
+  final VoidCallback? onBrushSizeDragStart;
+  final void Function(double upwardDelta, {required bool snap})?
+  onBrushSizeDragUpdate;
+  final VoidCallback? onBrushSizeDragEnd;
   final ValueChanged<int>? onEyedropperPick;
   final ValueChanged<int>? onAltColorPick;
   final BrushDab? Function(CanvasPoint point, int color)? fillDabAt;
@@ -207,6 +218,10 @@ class _MainCanvasBrushHostState extends State<MainCanvasBrushHost> {
       sampleColorAt: widget.sampleColorAt,
       onTemporaryToolHold: widget.onTemporaryToolHold,
       onTemporaryToolRelease: widget.onTemporaryToolRelease,
+      onInvokeAction: widget.onInvokeAction,
+      onBrushSizeDragStart: widget.onBrushSizeDragStart,
+      onBrushSizeDragUpdate: widget.onBrushSizeDragUpdate,
+      onBrushSizeDragEnd: widget.onBrushSizeDragEnd,
       onEyedropperPick: widget.onEyedropperPick,
       onAltColorPick: widget.onAltColorPick,
       fillDabAt: widget.fillDabAt,
