@@ -489,7 +489,11 @@ class EditorSessionManager extends ChangeNotifier {
     _copiedFrame = null;
     clearFrameRangeSelection();
     _rebuildActiveCutControllers(
-      preferredActiveLayerId: preferredActiveLayerId,
+      // The ACTIVE layer survives cut commands by default (UI-R20 #1:
+      // adding a camera key must not throw the selection to the bottom
+      // row) — commands that switch cuts fall back naturally because the
+      // old layer fails the has-layer check.
+      preferredActiveLayerId: preferredActiveLayerId ?? activeLayerId,
       preferredFrameIndex:
           preferredFrameIndex ?? _timelineController.currentFrameIndex,
     );
@@ -605,7 +609,13 @@ class EditorSessionManager extends ChangeNotifier {
     if (cut == null) {
       return false;
     }
-    return cut.layers.any((layer) => layer.id == layerId);
+    if (cut.layers.any((layer) => layer.id == layerId)) {
+      return true;
+    }
+    // Track-SE rows are selectable layers too (W4): their selection
+    // survives cut commands the same way (UI-R20 #1).
+    return isTrackSeLayerId(layerId) &&
+        activeTrack.seLayers.any((layer) => layer.id == layerId);
   }
 
   // --- Cut commands -------------------------------------------------------

@@ -250,7 +250,9 @@ void main() {
     await Future<void>.delayed(const Duration(milliseconds: 30));
     expect(landings, hits);
 
-    // A changed look (active row) is STALE: miss now, fresh tile lands.
+    // A LOOK-only change (active row) keeps showing the STALE tile
+    // while the fresh raster lands (UI-R20 #6: no classic-pass flicker
+    // on activation) — same content, different tint.
     final activePainter = painterFor(layer, active: true, store: store);
     expect(
       store.tileFor(
@@ -259,19 +261,33 @@ void main() {
         spanEndIndexExclusive: 4,
         devicePixelRatio: 2.0,
       ),
-      isNull,
+      same(image),
+      reason: 'stale-while-revalidate for look-only changes',
     );
     while (landings == hits) {
       await Future<void>.delayed(const Duration(milliseconds: 5));
     }
+    final fresh = store.tileFor(
+      painter: activePainter,
+      spanStartIndex: 0,
+      spanEndIndexExclusive: 4,
+      devicePixelRatio: 2.0,
+    );
+    expect(fresh, isNotNull);
+    expect(identical(fresh, image), isFalse, reason: 'the re-raster landed');
+
+    // A CONTENT change (new layer instance) must NOT reuse the stale
+    // tile — edits show correct cells immediately via the classic pass.
+    final editedPainter = painterFor(blockLayer(), store: store);
     expect(
       store.tileFor(
-        painter: activePainter,
+        painter: editedPainter,
         spanStartIndex: 0,
         spanEndIndexExclusive: 4,
         devicePixelRatio: 2.0,
       ),
-      isNotNull,
+      isNull,
+      reason: 'content staleness falls back to the classic paint',
     );
   });
 }

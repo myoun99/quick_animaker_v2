@@ -2346,7 +2346,9 @@ void main() {
     expect(heldDrawing.background, timelineDrawingHeldColor);
     expect(drawingStart.background, timelineDrawingStartColor);
     expect(drawingStart.background, heldDrawing.background);
-    expect(drawingStart.border, timelineDrawingStartBorderColor);
+    // UI-R20 #7: the block head's dark silhouette is GONE — the start
+    // seam sits on the same faint grid ink as the held seams.
+    expect(drawingStart.border, heldDrawing.border);
     expect(markHeld.background, heldDrawing.background);
     expect(uncovered.background, isNot(heldDrawing.background));
     expect(selectedDrawing.border, timelineSelectedFrameBorderColor);

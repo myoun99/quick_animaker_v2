@@ -102,6 +102,23 @@ class TimelineGridTileStore {
       // tile can land within a frame or two.
       scheduleMicrotask(_drain);
     }
+    // LOOK-only staleness (UI-R20 #6): the CONTENT is the same layer at
+    // the same geometry — only active/scheme flipped. Keep showing the
+    // stale tile until the fresh raster lands (a 1-2 frame tint lag)
+    // instead of dropping to the classic pass, whose per-frame text
+    // rendering swap reads as glyphs thinning/thickening on activation.
+    // Content changes (a NEW layer instance) still return null so edits
+    // show correct cells immediately.
+    if (entry != null &&
+        identical(entry.layer, painter.layer) &&
+        entry.frameCellExtent == painter.frameCellExtent &&
+        entry.crossAxisExtent == painter.crossAxisExtent &&
+        entry.playbackFrameCount == painter.playbackFrameCount &&
+        identical(entry.frameNameForLayer, painter.frameNameForLayer) &&
+        entry.spanEndIndexExclusive == spanEndIndexExclusive &&
+        entry.devicePixelRatio == devicePixelRatio) {
+      return entry.image;
+    }
     return null;
   }
 
