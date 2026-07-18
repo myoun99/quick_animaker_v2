@@ -4055,11 +4055,8 @@ class EditorSessionManager extends ChangeNotifier {
   /// seam). Attach rows stand down until the ghost-snap rework lets
   /// their all-ghost mirrors join (P3b).
   bool _rangeSelectionEligible(LayerId layerId) {
-    // SYNCED attach mirrors wait for the ghost-snap rework (P3b); free
-    // attach rows select like any drawing row (UI-R21 #3).
-    if (_isSyncedAttachedLayerId(layerId)) {
-      return false;
-    }
+    // EVERY row selects now — synced attach mirrors included (P3b: the
+    // ghost snap covers them; their mirror snaps to the base's blocks).
     if (isTrackSeLayerId(layerId)) {
       return trackSeGlobalLayerById(layerId) != null;
     }
@@ -4369,12 +4366,17 @@ class EditorSessionManager extends ChangeNotifier {
     if (selection == null || !_rangeSelectionEligible(selection.layerId)) {
       return false;
     }
-    // v1 (UI-R20 #2): key rows (camera/instruction, cut-owned SE) SELECT
-    // but their keys don't range-MOVE yet — a span containing one refuses
-    // the move whole (all-or-nothing discipline; the key-move seam is the
-    // P3b follow-up).
-    bool movable(LayerId id) => _blockMoveEligible(id) || isTrackSeLayerId(id);
-    if (!selection.spanLayerIds.every(movable)) {
+    // Key rows (camera/instruction, cut-owned SE) SELECT but their keys
+    // don't range-MOVE yet — a span containing one refuses the move
+    // whole (all-or-nothing; the key-move seam is P3b-2). SYNCED attach
+    // mirrors are PASSENGERS instead (P3b-1): nothing of their own to
+    // move — the base's slide carries the mirror — so they neither
+    // refuse nor plan (the source assembly below skips all-ghost rows).
+    bool refusesMove(LayerId id) =>
+        !_isSyncedAttachedLayerId(id) &&
+        !_blockMoveEligible(id) &&
+        !isTrackSeLayerId(id);
+    if (selection.spanLayerIds.any(refusesMove)) {
       return false;
     }
     _rangeMoveMultiSources = null;

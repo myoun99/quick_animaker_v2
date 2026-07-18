@@ -224,16 +224,10 @@ DrawingBlockMovePlan? planDrawingRangeMove({
   if (moved.isEmpty) {
     return null;
   }
-  // A range overlapping ghost instances cannot move (their timing is the
-  // repeat region's). The snap already excludes them; stay defensive.
-  for (final entry in source.timeline.entries) {
-    if (entry.key >= rangeStartIndex &&
-        entry.key < rangeEndIndexExclusive &&
-        entry.value.isDrawing &&
-        entry.value.ghost) {
-      return null;
-    }
-  }
+  // Ghost instances inside the range neither move nor block (UI-R20 #5:
+  // selections COVER ghosts now) — the plan is ghost-free above and the
+  // caller re-derives the repeats after the slide, so ghosts follow
+  // their sources to the landing.
 
   final groupStart = moved.first.startIndex;
   final groupEndExclusive = moved.last.endIndexExclusive;

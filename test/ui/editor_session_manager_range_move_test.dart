@@ -220,8 +220,9 @@ void main() {
     }
   });
 
-  test('a selection over a repeat GHOST clamps out of it and the move '
-      'rederives the ghosts at the landing', () {
+  test('GHOST cells join the selection now (UI-R20 #5): a sweep covers '
+      'them, a ghost-ORIGIN drag selects, and the move slides the real '
+      'source with its ghosts re-derived at the landing', () {
     final s = EditorSessionManager(initialProject: createDefaultProject());
     s.createDrawingAtCurrentFrame();
     final layerId = s.activeLayer!.id;
@@ -237,15 +238,30 @@ void main() {
     expect(layer.timeline[1]!.ghost, isTrue);
     expect(layer.timeline[2]!.ghost, isTrue);
 
-    // A drag sweeping across the ghosts clamps the selection before them.
+    // The sweep COVERS the ghosts (the old clamp is gone)…
     s.updateFrameRangeSelectionDrag(
       layerId: layerId,
       anchorIndex: 0,
       headIndex: 2,
     );
-    expect(s.frameRangeSelection.value!.endIndexExclusive, 1);
+    expect(s.frameRangeSelection.value!.endIndexExclusive, 3);
 
-    // Moving the source block drags its ghosts along (live sync).
+    // …and a drag STARTING on a ghost selects too (snapped to its block).
+    s.updateFrameRangeSelectionDrag(
+      layerId: layerId,
+      anchorIndex: 2,
+      headIndex: 2,
+    );
+    expect(s.frameRangeSelection.value, isNotNull);
+    expect(s.frameRangeSelection.value!.startIndex, 2);
+
+    // A move over a ghost-covering selection slides the REAL source and
+    // re-derives the ghosts at the landing.
+    s.updateFrameRangeSelectionDrag(
+      layerId: layerId,
+      anchorIndex: 0,
+      headIndex: 2,
+    );
     expect(s.beginFrameRangeMoveDrag(), isTrue);
     s.updateFrameRangeMoveDrag(frameDelta: 4);
     s.endFrameRangeMoveDrag();
@@ -254,5 +270,14 @@ void main() {
     expect(moved.timeline[5]!.ghost, isTrue);
     expect(moved.timeline[6]!.ghost, isTrue);
     expect(moved.timeline.containsKey(1), isFalse);
+
+    // A GHOST-ONLY selection has nothing to move — the begin refuses.
+    s.updateFrameRangeSelectionDrag(
+      layerId: layerId,
+      anchorIndex: 6,
+      headIndex: 6,
+    );
+    expect(s.frameRangeSelection.value, isNotNull);
+    expect(s.beginFrameRangeMoveDrag(), isFalse);
   });
 }
