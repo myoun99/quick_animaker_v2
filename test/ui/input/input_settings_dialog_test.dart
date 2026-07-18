@@ -52,6 +52,9 @@ void main() {
     final wintab = find.byKey(const ValueKey<String>('settings-tablet-wintab'));
     expect(wintab, findsOneWidget);
 
+    // The dialog scrolls now (PEN-7a grew it) — bring the row into view.
+    await tester.ensureVisible(wintab);
+    await tester.pumpAndSettle();
     await tester.tap(wintab);
     await tester.pumpAndSettle();
     expect(AppInput.settings.value.tabletService, TabletService.wintab);

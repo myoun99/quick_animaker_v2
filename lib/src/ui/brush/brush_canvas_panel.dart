@@ -78,6 +78,8 @@ class BrushCanvasPanel extends StatefulWidget {
     this.autoFrame,
     this.contentStrokeActive,
     this.sampleColorAt,
+    this.onTemporaryToolHold,
+    this.onTemporaryToolRelease,
     this.onEyedropperPick,
     this.onAltColorPick,
     this.fillDabAt,
@@ -166,6 +168,11 @@ class BrushCanvasPanel extends StatefulWidget {
   /// An Alt+click TEMPORARY pick while painting: color only, the active
   /// tool stays (the CSP muscle-memory shortcut).
   final ValueChanged<int>? onAltColorPick;
+
+  /// PEN-7a: the mapped-hold tool switch (canvas right/wheel-click
+  /// mappings) — threaded through to the workspace's tool notifier.
+  final void Function(CanvasTool tool)? onTemporaryToolHold;
+  final void Function({required bool keep})? onTemporaryToolRelease;
 
   /// Builds the fill-region dab for a tap (P6); the panel commits it
   /// through the exact stroke funnel. Null disables the fill tool.
@@ -769,6 +776,8 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel> {
                 widget.onAltColorPick!(color);
               }
             },
+      onTemporaryToolHold: widget.onTemporaryToolHold,
+      onTemporaryToolRelease: widget.onTemporaryToolRelease,
       onSourceStrokeCommitted: _handleSourceStrokeCommitted,
       // R22-A: the FILL tool runs through the view's stroke pipeline
       // (instant overlay + settling hold) instead of the panel tap layer.
