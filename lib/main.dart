@@ -1,14 +1,15 @@
 import 'package:flutter/material.dart';
 
-import 'src/services/input/wintab_pen_service.dart';
+import 'src/services/input/pen_sidecars.dart';
 import 'src/ui/home_page.dart';
 import 'src/ui/input/app_input_settings.dart' show AppInput;
 import 'src/ui/theme/app_theme.dart';
 
 void main() {
-  // The Wintab sidecar (PEN-2) follows the input settings for its whole
-  // life; without the DLL/driver it stays permanently idle.
-  WintabPenService.instance.bind();
+  // The pen sidecars (PEN-2/PEN-4): Wintab follows the input settings;
+  // the macOS/Linux channel streams start on their platform. Absent
+  // drivers/handlers stay permanently idle.
+  PenSidecars.bind();
   runApp(const QuickAnimakerApp());
 }
 

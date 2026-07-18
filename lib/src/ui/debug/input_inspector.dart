@@ -2,6 +2,8 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 
 import '../../native/qa_tablet_bridge.dart' show QaTabletPacket;
+import '../../services/input/pen_sidecars.dart';
+import '../../services/input/platform_pen_channel_service.dart';
 import '../../services/input/wintab_pen_service.dart';
 import '../theme/app_theme.dart' show AppColors;
 
@@ -267,6 +269,27 @@ class _InspectorCard extends StatelessWidget {
                                 ),
                               ),
                       ),
+                      // The macOS/Linux channel sidecars (PEN-4) — same
+                      // driver-vs-pointer diagnosis on those platforms.
+                      for (final service in PenSidecars.channelServices)
+                        ValueListenableBuilder<PenChannelSample?>(
+                          valueListenable: service.latest,
+                          builder: (context, sample, _) => sample == null
+                              ? const SizedBox.shrink()
+                              : Padding(
+                                  padding: const EdgeInsets.only(left: 6),
+                                  child: Text(
+                                    '${service.label} p='
+                                    '${sample.pressure.toStringAsFixed(2)}',
+                                    key: ValueKey<String>(
+                                      'input-inspector-${service.label}',
+                                    ),
+                                    style: rowStyle.copyWith(
+                                      color: AppColors.accent2,
+                                    ),
+                                  ),
+                                ),
+                        ),
                       const SizedBox(width: 4),
                       IconButton(
                         key: const ValueKey<String>('input-inspector-clear'),
