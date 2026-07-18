@@ -10,9 +10,15 @@ import '../../models/timeline_frame_range.dart'
 import '../theme/app_theme.dart' show AppColors, instantMenuAnimation;
 import 'layer_label_controls.dart' show LayerSectionBandCell;
 import 'property_lane_model.dart';
+import 'timeline_cell_style.dart' show timelineDrawingStartColor;
 import 'timeline_frame_range_gesture.dart'
     show TimelineFrameRangeGestureLayer, TimelineRangeGestureCallbacks;
 import 'timeline_grid_metrics.dart';
+
+/// A selected lane key rings in ACCENT 1 with a thin silhouette stroke
+/// (UI-R23 #4): two-thirds of the old 2px so the ring reads as a hairline,
+/// not a second block edge.
+const double _selectedLaneKeyBorderWidth = 4 / 3;
 
 /// The label cell of one property lane: an AE-style property name, the
 /// keyframe navigator (◀ previous key · ◆ toggle key at the playhead · ▶
@@ -798,18 +804,25 @@ class _LaneKeyMarkerState extends State<_LaneKeyMarker> {
     final colorScheme = Theme.of(context).colorScheme;
     final horizontal = widget.axis == Axis.horizontal;
     final editable = widget.laneEdit != null;
+    // Union diamonds (transform-summary group headers) fill WHITE like the
+    // frame blocks they summarize (UI-R23 #4: the accent-2 fill "looked
+    // wrong"); member-lane keys keep the primary ink.
+    final fillColor = widget.lane.isGroupHeader
+        ? timelineDrawingStartColor
+        : (_dragging
+              ? colorScheme.primary.withValues(alpha: 0.6)
+              : colorScheme.primary);
     final shape = Container(
       width: widget.markerSize,
       height: widget.markerSize,
       decoration: BoxDecoration(
-        color: _dragging
-            ? colorScheme.primary.withValues(alpha: 0.6)
-            : colorScheme.primary,
-        // Selected keys ring in ACCENT 2 (UI-R22 #5) — a silhouette
-        // stroke, color only (the selection rule).
+        color: fillColor,
+        // Selected keys ring in ACCENT 1 (UI-R23 #4) — a thin silhouette
+        // stroke, color only (the selection rule); accent 2 stays on the
+        // repeat wash/outline.
         border: Border.all(
-          color: widget.selected ? AppColors.accent2 : colorScheme.surface,
-          width: widget.selected ? 2 : 1,
+          color: widget.selected ? AppColors.accent : colorScheme.surface,
+          width: widget.selected ? _selectedLaneKeyBorderWidth : 1,
         ),
       ),
     );
