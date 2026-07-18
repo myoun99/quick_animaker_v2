@@ -6,6 +6,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:quick_animaker_v2/src/models/bitmap_surface.dart';
 import 'package:quick_animaker_v2/src/native/qa_tablet_bridge.dart';
 import 'package:quick_animaker_v2/src/services/input/wintab_pen_service.dart';
+import 'package:quick_animaker_v2/src/ui/input/app_input_settings.dart';
 import 'package:quick_animaker_v2/src/models/bitmap_tile.dart';
 import 'package:quick_animaker_v2/src/models/brush_bitmap_materialization_history_state.dart';
 import 'package:quick_animaker_v2/src/models/dirty_region.dart';
@@ -782,6 +783,48 @@ void main() {
         // The poll timer must die BEFORE the binding's pending-timer
         // invariant check (which runs ahead of tearDown callbacks).
         service.debugReset();
+      },
+    );
+
+    testWidgets(
+      'the pressure response curve shapes stylus pressure (PEN-3: gamma 2 '
+      'squares the input)',
+      (tester) async {
+        AppInput.settings.value = const AppInputSettings(
+          touchTimelineScroll: false,
+          pressureCurveGamma: 2.0,
+        );
+        addTearDown(() {
+          AppInput.settings.value = const AppInputSettings(
+            touchTimelineScroll: false,
+          );
+        });
+
+        final results = <List<BrushDab>>[];
+        await tester.pumpWidget(
+          _app(
+            _view(
+              _sessionState(width: 200, height: 16),
+              results.add,
+              inputSettings: const BrushEditCanvasInputSettings(
+                size: 8,
+                pressureSize: true,
+              ),
+            ),
+          ),
+        );
+
+        await _pressureStroke(
+          tester,
+          canvasPoints: const [Offset(2, 1), Offset(40, 1)],
+          pressure: 0.5,
+        );
+
+        expect(results, hasLength(1));
+        // 0.5^2 = 0.25 → size 8 becomes 2.
+        for (final dab in results.single) {
+          expect(dab.size, closeTo(2.0, 1e-6));
+        }
       },
     );
 

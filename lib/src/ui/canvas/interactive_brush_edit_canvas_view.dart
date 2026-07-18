@@ -9,6 +9,7 @@ import 'package:flutter/services.dart';
 
 import '../../models/bitmap_surface.dart';
 import '../../services/input/wintab_pen_service.dart';
+import '../input/app_input_settings.dart' show AppInput;
 import '../../models/bitmap_tile.dart';
 import '../../models/brush_dab.dart';
 import '../../models/brush_edit_session_state.dart';
@@ -737,9 +738,11 @@ class _InteractiveBrushEditCanvasViewState
   /// misreports (touch, or mouse with Ink unchecked) paints with real
   /// pressure anyway. Stale/absent stream falls through unchanged.
   double _normalizedPressure(PointerEvent event) {
+    // The response curve (PEN-3) shapes REAL pressure from either source
+    // — the full-pressure fallbacks stay 1.0 through any gamma.
     final wintab = WintabPenService.instance.freshContactPressure();
     if (wintab != null) {
-      return wintab;
+      return AppInput.applyPressureCurve(wintab);
     }
     if (event.kind != PointerDeviceKind.stylus &&
         event.kind != PointerDeviceKind.invertedStylus) {
@@ -749,7 +752,9 @@ class _InteractiveBrushEditCanvasViewState
     if (!range.isFinite || range <= 0.0) {
       return 1.0;
     }
-    return ((event.pressure - event.pressureMin) / range).clamp(0.0, 1.0);
+    return AppInput.applyPressureCurve(
+      ((event.pressure - event.pressureMin) / range).clamp(0.0, 1.0),
+    );
   }
 
   double get _activeStrokeSpacing =>

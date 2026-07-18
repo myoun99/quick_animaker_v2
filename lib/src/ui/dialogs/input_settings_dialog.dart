@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 
 import '../editor_session_manager.dart';
 import '../input/app_input_settings.dart';
+import '../widgets/field_slider.dart';
 
 /// The pointer-input settings dialog (UI-R22 #6). One toggle decides
 /// what a TOUCH contact means on the timeline grids — scroll or edit —
@@ -48,6 +49,42 @@ class _InputSettingsDialog extends StatelessWidget {
                 value: settings.touchTimelineScroll,
                 onChanged: (enabled) => session.setInputSettings(
                   settings.copyWith(touchTimelineScroll: enabled),
+                ),
+              ),
+              // The pen pressure response curve (PEN-3) — every
+              // platform: output = input^gamma; drag live, persist on
+              // release.
+              const Divider(height: 16),
+              Text(
+                'Pen pressure response',
+                style: Theme.of(context).textTheme.labelLarge,
+              ),
+              Padding(
+                padding: const EdgeInsets.only(top: 6, bottom: 2),
+                // Fixed box: FieldSlider builds through a LayoutBuilder,
+                // which cannot answer the AlertDialog's intrinsic-size
+                // probes — tight constraints shield it.
+                child: SizedBox(
+                  width: 320,
+                  height: 24,
+                  child: FieldSlider(
+                    key: const ValueKey<String>('settings-pressure-curve'),
+                    value: settings.pressureCurveGamma,
+                    min: 0.25,
+                    max: 4.0,
+                    scale: FieldSliderScale.exponential,
+                    label: 'Soft ↔ Hard',
+                    valueText: settings.pressureCurveGamma == 1.0
+                        ? 'Linear'
+                        : '×${settings.pressureCurveGamma.toStringAsFixed(2)}',
+                    onChanged: (gamma) => AppInput.settings.value = AppInput
+                        .settings
+                        .value
+                        .copyWith(pressureCurveGamma: gamma),
+                    onChangeEnd: (gamma) => session.setInputSettings(
+                      settings.copyWith(pressureCurveGamma: gamma),
+                    ),
+                  ),
                 ),
               ),
               // The CSP-style tablet service switch (PEN-2) — Windows

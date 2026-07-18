@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/gestures.dart' show PointerDeviceKind;
 
@@ -22,9 +24,18 @@ class AppInputSettings {
   const AppInputSettings({
     this.touchTimelineScroll = true,
     this.tabletService = TabletService.standard,
+    this.pressureCurveGamma = 1.0,
   });
 
   final bool touchTimelineScroll;
+
+  /// The pen pressure RESPONSE curve (PEN-3, cross-platform): output =
+  /// input^gamma. 1.0 = linear (the default, byte-identical to before);
+  /// below 1 = SOFTER feel (a light touch already reads strong), above
+  /// 1 = HARDER (full pressure takes a firm press). Applied wherever
+  /// normalized pressure enters the brush pipeline — OS pointer and
+  /// Wintab sidecar alike.
+  final double pressureCurveGamma;
 
   /// Which tablet backend feeds pen data (PEN-2, the CSP-style dual
   /// service — Windows only; other platforms ignore it):
@@ -38,14 +49,17 @@ class AppInputSettings {
   AppInputSettings copyWith({
     bool? touchTimelineScroll,
     TabletService? tabletService,
+    double? pressureCurveGamma,
   }) => AppInputSettings(
     touchTimelineScroll: touchTimelineScroll ?? this.touchTimelineScroll,
     tabletService: tabletService ?? this.tabletService,
+    pressureCurveGamma: pressureCurveGamma ?? this.pressureCurveGamma,
   );
 
   Map<String, dynamic> toJson() => {
     'touchTimelineScroll': touchTimelineScroll,
     'tabletService': tabletService.name,
+    'pressureCurveGamma': pressureCurveGamma,
   };
 
   static AppInputSettings fromJson(Map<String, dynamic> json) =>
@@ -54,16 +68,20 @@ class AppInputSettings {
         tabletService:
             TabletService.values.asNameMap()[json['tabletService']] ??
             TabletService.standard,
+        pressureCurveGamma:
+            (json['pressureCurveGamma'] as num?)?.toDouble() ?? 1.0,
       );
 
   @override
   bool operator ==(Object other) =>
       other is AppInputSettings &&
       other.touchTimelineScroll == touchTimelineScroll &&
-      other.tabletService == tabletService;
+      other.tabletService == tabletService &&
+      other.pressureCurveGamma == pressureCurveGamma;
 
   @override
-  int get hashCode => Object.hash(touchTimelineScroll, tabletService);
+  int get hashCode =>
+      Object.hash(touchTimelineScroll, tabletService, pressureCurveGamma);
 }
 
 /// The tablet backend choice (PEN-2). CSP's '사용할 태블릿 서비스'
@@ -78,6 +96,16 @@ abstract final class AppInput {
       ValueNotifier<AppInputSettings>(const AppInputSettings());
 
   static bool get touchTimelineScroll => settings.value.touchTimelineScroll;
+
+  /// The pen pressure response curve (PEN-3): output = input^gamma.
+  /// Gamma 1 short-circuits so the default path costs nothing.
+  static double applyPressureCurve(double pressure) {
+    final gamma = settings.value.pressureCurveGamma;
+    if (gamma == 1.0) {
+      return pressure;
+    }
+    return math.pow(pressure.clamp(0.0, 1.0), gamma).toDouble();
+  }
 
   /// The device set every timeline EDIT pan uses (range select/move,
   /// comma grips, run handles, block moves): touch joins exactly while
