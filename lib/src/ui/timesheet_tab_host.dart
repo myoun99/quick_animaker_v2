@@ -89,7 +89,14 @@ class _TimesheetTabHostState extends State<TimesheetTabHost> {
   int? _documentCutStartFrame;
   String? _documentProjectName;
   int? _documentFps;
+  bool? _documentDataSheet;
   bool? _layoutContinuous;
+
+  /// DATA-sheet mode (UI-R24 #1): the sheet prints the EXPORT-SOURCE data
+  /// (ghost chains verbatim, the labels XDTS/TDTS write) instead of the
+  /// notation shorthand — for auditing exactly what the file will carry.
+  /// View state, session-only.
+  bool _dataSheet = false;
 
   /// Null in the GAP state (no active cut, UI-R9 #3): the host renders the
   /// bare sheet background instead of a document.
@@ -112,7 +119,8 @@ class _TimesheetTabHostState extends State<TimesheetTabHost> {
         !identical(_documentTrackSe, trackSeLayers) ||
         _documentCutStartFrame != cutStartFrame ||
         _documentProjectName != projectName ||
-        _documentFps != session.projectFps) {
+        _documentFps != session.projectFps ||
+        _documentDataSheet != _dataSheet) {
       _documentCut = cut;
       _documentInfo = info;
       _documentInstructionSet = instructionSet;
@@ -120,6 +128,7 @@ class _TimesheetTabHostState extends State<TimesheetTabHost> {
       _documentCutStartFrame = cutStartFrame;
       _documentProjectName = projectName;
       _documentFps = session.projectFps;
+      _documentDataSheet = _dataSheet;
       _document = TimesheetDocument.fromCut(
         cut: cut,
         projectName: projectName,
@@ -128,6 +137,7 @@ class _TimesheetTabHostState extends State<TimesheetTabHost> {
         instructionDefById: instructionSet.defById,
         trackSeLayers: trackSeLayers,
         cutStartFrame: cutStartFrame,
+        dataSheet: _dataSheet,
       );
       _layout = null;
       _pagedLayout = null;
@@ -253,6 +263,18 @@ class _TimesheetTabHostState extends State<TimesheetTabHost> {
         tooltip: 'Sheet Info',
         icon: Icons.edit_note,
         onPressed: _editSheetInfo,
+      ),
+      // Notation ↔ DATA sheet (UI-R24 #1): data prints the export-source
+      // labels (ghost chains verbatim, exactly what XDTS/TDTS write) so
+      // the output data can be audited on the sheet itself.
+      action(
+        keyValue: 'timesheet-data-mode-toggle-button',
+        tooltip: _dataSheet
+            ? 'Notation Sheet (repeat/hold words)'
+            : 'Data Sheet (as exported)',
+        icon: Icons.receipt_long_outlined,
+        selected: _dataSheet,
+        onPressed: () => setState(() => _dataSheet = !_dataSheet),
       ),
       action(
         keyValue: 'timesheet-page-mode-toggle-button',
