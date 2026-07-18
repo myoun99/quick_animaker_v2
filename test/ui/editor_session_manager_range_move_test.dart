@@ -592,9 +592,9 @@ void main() {
     s.cancelFrameRangeMoveDrag();
   });
 
-  test('GHOST cells join the selection now (UI-R20 #5): a sweep covers '
-      'them, a ghost-ORIGIN drag selects, and the move slides the real '
-      'source with its ghosts re-derived at the landing', () {
+  test('GHOST exposures are TEXT-ONLY (UI-R23 #6): repeat instances never '
+      'extend a snap, a ghost press selects the one cell, and the real '
+      'source still slides with its ghosts re-derived at the landing', () {
     final s = EditorSessionManager(initialProject: createDefaultProject());
     s.createDrawingAtCurrentFrame();
     final layerId = s.activeLayer!.id;
@@ -610,22 +610,25 @@ void main() {
     expect(layer.timeline[1]!.ghost, isTrue);
     expect(layer.timeline[2]!.ghost, isTrue);
 
-    // The sweep COVERS the ghosts (the old clamp is gone)…
+    // The sweep spans the raw drag: the real block at 0 is covered, the
+    // ghosts read as empty cells and never extend the span past the head.
     s.updateFrameRangeSelectionDrag(
       layerId: layerId,
       anchorIndex: 0,
       headIndex: 2,
     );
+    expect(s.frameRangeSelection.value!.startIndex, 0);
     expect(s.frameRangeSelection.value!.endIndexExclusive, 3);
 
-    // …and a drag STARTING on a ghost selects too (snapped to its block).
+    // A drag STARTING on a ghost selects that ghost cell alone (empty-cell
+    // semantics — no expansion into the derived run).
     s.updateFrameRangeSelectionDrag(
       layerId: layerId,
       anchorIndex: 2,
       headIndex: 2,
     );
-    expect(s.frameRangeSelection.value, isNotNull);
     expect(s.frameRangeSelection.value!.startIndex, 2);
+    expect(s.frameRangeSelection.value!.endIndexExclusive, 3);
 
     // A move over a ghost-covering selection slides the REAL source and
     // re-derives the ghosts at the landing.
@@ -643,7 +646,7 @@ void main() {
     expect(moved.timeline[6]!.ghost, isTrue);
     expect(moved.timeline.containsKey(1), isFalse);
 
-    // A GHOST-ONLY selection has nothing to move — the begin refuses.
+    // A GHOST-ONLY selection has nothing real to move — the begin refuses.
     s.updateFrameRangeSelectionDrag(
       layerId: layerId,
       anchorIndex: 6,
@@ -651,5 +654,65 @@ void main() {
     );
     expect(s.frameRangeSelection.value, isNotNull);
     expect(s.beginFrameRangeMoveDrag(), isFalse);
+  });
+
+  test('a HOLD-edge ghost (one multi-frame span) never swallows the '
+      'selection (UI-R23 #6): a press deep inside it selects one cell', () {
+    final s = EditorSessionManager(initialProject: createDefaultProject());
+    s.createDrawingAtCurrentFrame();
+    final layerId = s.activeLayer!.id;
+    s.setRunEdgeBehavior(
+      layerId: layerId,
+      blockStartIndex: 0,
+      side: TimelineRunEdgeSide.end,
+      mode: TimelineRunEdgeMode.hold,
+    );
+    final layer = s.layers.firstWhere((l) => l.id == layerId);
+    // Hold fills [1, cutEnd) as ONE multi-frame ghost — the case where the
+    // old block-snap would have swallowed the whole derived span.
+    expect(layer.timeline[1]!.ghost, isTrue);
+    expect(layer.timeline[1]!.length!, greaterThan(1));
+
+    s.updateFrameRangeSelectionDrag(
+      layerId: layerId,
+      anchorIndex: 5,
+      headIndex: 5,
+    );
+    expect(s.frameRangeSelection.value!.startIndex, 5);
+    expect(s.frameRangeSelection.value!.endIndexExclusive, 6);
+  });
+
+  test('a REPEAT-edge block ROW-MOVES to another layer (UI-R23 #5): the '
+      'derived ghosts sharing its cel no longer void the cross-row drop', () {
+    final s = EditorSessionManager(initialProject: createDefaultProject());
+    s.createDrawingAtCurrentFrame();
+    final aId = s.activeLayer!.id;
+    s.setRunEdgeBehavior(
+      layerId: aId,
+      blockStartIndex: 0,
+      side: TimelineRunEdgeSide.end,
+      mode: TimelineRunEdgeMode.repeat,
+    );
+    s.addLayer();
+    final bId = s.activeLayer!.id;
+
+    // Select the REAL block on A and drop it on the empty layer B.
+    s.selectLayer(aId);
+    s.updateFrameRangeSelectionDrag(layerId: aId, anchorIndex: 0, headIndex: 0);
+    expect(s.beginFrameRangeMoveDrag(), isTrue);
+    s.updateFrameRangeMoveDrag(frameDelta: 0, targetLayerId: bId);
+    expect(
+      s.dragPreview.value,
+      isNotNull,
+      reason: 'the cross-row drop is legal now (ghosts are not real links)',
+    );
+    s.endFrameRangeMoveDrag();
+
+    final aAfter = s.layers.firstWhere((l) => l.id == aId);
+    final bAfter = s.layers.firstWhere((l) => l.id == bId);
+    // The real block landed on B; A no longer owns it (and, with its
+    // anchor gone, the repeat behavior self-heals away).
+    expect(bAfter.timeline[0]!.ghost, isFalse);
+    expect(aAfter.timeline.containsKey(0), isFalse);
   });
 }
