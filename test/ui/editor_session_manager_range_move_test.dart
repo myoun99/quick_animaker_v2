@@ -1,9 +1,11 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:quick_animaker_v2/src/controllers/default_project_helpers.dart';
+import 'package:quick_animaker_v2/src/models/camera_instruction.dart';
 import 'package:quick_animaker_v2/src/models/layer.dart';
 import 'package:quick_animaker_v2/src/models/layer_kind.dart';
 import 'package:quick_animaker_v2/src/models/timeline_repeat.dart';
 import 'package:quick_animaker_v2/src/ui/editor_session_manager.dart';
+import 'package:quick_animaker_v2/src/ui/timeline/timeline_cell_exposure_state.dart';
 import 'package:quick_animaker_v2/src/ui/timeline/timeline_drag_preview.dart';
 
 /// UI-R8: frame-range selection (block-snapped) + the range move drag
@@ -51,8 +53,8 @@ void main() {
   });
 
   test('EVERY layer row selects (UI-R20 #2): camera/instruction rows take '
-      'raw spans, cross-section spans walk the display order, and spans '
-      'holding key rows refuse the MOVE (v1)', () {
+      'raw spans and cross-section spans walk the display order; empty '
+      'key rows contribute nothing to a move', () {
     final (s, a, _) = fixture();
     final camera = s.layers.firstWhere((l) => l.kind == LayerKind.camera);
     final instruction = s.layers.firstWhere(
@@ -73,7 +75,9 @@ void main() {
     expect(
       s.beginFrameRangeMoveDrag(),
       isFalse,
-      reason: 'key rows select but their keys do not range-move yet',
+      reason:
+          'no keys in range — nothing to move (P3b-2: WITH keys the '
+          'camera row moves; see the key-move tests)',
     );
 
     // Instruction-origin too.
@@ -85,7 +89,8 @@ void main() {
     expect(s.frameRangeSelection.value!.layerId, instruction.id);
 
     // A drawing→camera cross-row drag spans the SECTIONED display order:
-    // drawing rows, the track-SE rows, instruction, camera.
+    // drawing rows, the track-SE rows, instruction, camera. Empty key
+    // rows in the span are silent — the blocks still move.
     s.updateFrameRangeSelectionDrag(
       layerId: a.id,
       anchorIndex: 0,
@@ -100,11 +105,8 @@ void main() {
       greaterThanOrEqualTo(5),
       reason: 'SE + instruction rows in between join the span',
     );
-    expect(
-      s.beginFrameRangeMoveDrag(),
-      isFalse,
-      reason: 'a span containing key rows refuses the move whole',
-    );
+    expect(s.beginFrameRangeMoveDrag(), isTrue);
+    s.cancelFrameRangeMoveDrag();
 
     // Regression pin: a drawing-only span still moves.
     s.updateFrameRangeSelectionDrag(
@@ -218,6 +220,105 @@ void main() {
       expect(s.brushFrameStore.frameOrNull(fromKeys[i]), isNotNull);
       expect(s.brushFrameStore.frameOrNull(toKeys[i]), isNull);
     }
+  });
+
+  test('P3b-2 (#2 second half): camera keys RIDE the range move — live '
+      'preview through the cell resolution, one undo, and a colliding '
+      'landing voids the whole move', () {
+    final s = EditorSessionManager(initialProject: createDefaultProject());
+    addTearDown(s.dispose);
+    final camera = s.layers.firstWhere((l) => l.kind == LayerKind.camera);
+    s.selectLayer(camera.id);
+    s.selectFrameIndex(2);
+    s.setCameraKeyframeAtCurrentFrame(s.cameraPoseAtCurrentFrame);
+    s.selectFrameIndex(4);
+    s.setCameraKeyframeAtCurrentFrame(s.cameraPoseAtCurrentFrame);
+
+    // Select the camera row across both keys and slide +3.
+    s.updateFrameRangeSelectionDrag(
+      layerId: camera.id,
+      anchorIndex: 2,
+      headIndex: 4,
+    );
+    expect(s.beginFrameRangeMoveDrag(), isTrue);
+    s.updateFrameRangeMoveDrag(frameDelta: 3);
+    // The cells follow the preview keys while the repository stays put.
+    expect(
+      s.exposureStateForLayer(camera, 5),
+      TimelineCellExposureState.drawingStart,
+    );
+    expect(
+      s.exposureStateForLayer(camera, 2),
+      TimelineCellExposureState.uncovered,
+    );
+    expect(s.activeCutOrNull!.camera.keyframeAt(2), isNotNull);
+
+    s.endFrameRangeMoveDrag();
+    expect(s.activeCutOrNull!.camera.keyframeAt(5), isNotNull);
+    expect(s.activeCutOrNull!.camera.keyframeAt(7), isNotNull);
+    expect(s.activeCutOrNull!.camera.keyframeAt(2), isNull);
+
+    // ONE undo restores both keys.
+    s.undo();
+    expect(s.activeCutOrNull!.camera.keyframeAt(2), isNotNull);
+    expect(s.activeCutOrNull!.camera.keyframeAt(4), isNotNull);
+
+    // A landing on an unmoved key voids: select just the key at 2, slide
+    // +2 (onto 4) — the preview clears and the end commits nothing.
+    s.updateFrameRangeSelectionDrag(
+      layerId: camera.id,
+      anchorIndex: 2,
+      headIndex: 2,
+    );
+    expect(s.beginFrameRangeMoveDrag(), isTrue);
+    s.updateFrameRangeMoveDrag(frameDelta: 2);
+    expect(s.dragPreview.value, isNull);
+    final undoDepth = s.canUndo;
+    s.endFrameRangeMoveDrag();
+    expect(s.activeCutOrNull!.camera.keyframeAt(2), isNotNull);
+    expect(s.canUndo, undoDepth, reason: 'void moves commit nothing');
+  });
+
+  test('P3b-2: instruction spans ride the range move too — shifted rows '
+      'preview as substituted layers and commit in the same undo', () {
+    final s = EditorSessionManager(initialProject: createDefaultProject());
+    addTearDown(s.dispose);
+    final instruction = s.layers.firstWhere(
+      (l) => l.kind == LayerKind.instruction,
+    );
+    s.repository.updateLayerInstructions(
+      cutId: s.requireActiveCut.id,
+      layerId: instruction.id,
+      instructions: const {
+        1: InstructionEvent(instructionId: 'pan', length: 2),
+      },
+    );
+
+    s.updateFrameRangeSelectionDrag(
+      layerId: instruction.id,
+      anchorIndex: 1,
+      headIndex: 2,
+    );
+    expect(s.beginFrameRangeMoveDrag(), isTrue);
+    s.updateFrameRangeMoveDrag(frameDelta: 4);
+    final preview = s.dragPreview.value;
+    expect(preview, isA<BlockMoveDragPreview>());
+    final previewLayer =
+        (preview as BlockMoveDragPreview).previewLayers[instruction.id];
+    expect(previewLayer!.instructions.containsKey(5), isTrue);
+
+    s.endFrameRangeMoveDrag();
+    final moved = s.layers.firstWhere((l) => l.id == instruction.id);
+    expect(moved.instructions.containsKey(5), isTrue);
+    expect(moved.instructions.containsKey(1), isFalse);
+    s.undo();
+    expect(
+      s.layers
+          .firstWhere((l) => l.id == instruction.id)
+          .instructions
+          .containsKey(1),
+      isTrue,
+    );
   });
 
   test('GHOST cells join the selection now (UI-R20 #5): a sweep covers '
