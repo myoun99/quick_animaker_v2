@@ -20,6 +20,8 @@ import 'package:quick_animaker_v2/src/models/transform_track.dart';
 import 'package:quick_animaker_v2/src/services/project_repository.dart';
 import 'package:quick_animaker_v2/src/ui/home_page.dart';
 import 'package:quick_animaker_v2/src/ui/timeline/property_lane_model.dart';
+import 'package:quick_animaker_v2/src/ui/timeline/timeline_cell_style.dart'
+    show timelineDrawingStartColor;
 import 'package:quick_animaker_v2/src/ui/timeline/transform_lane_editing.dart';
 import 'package:quick_animaker_v2/src/ui/timeline/transform_lane_policy.dart';
 
@@ -246,6 +248,20 @@ void main() {
         expect(_laneKey(laneId, 0), findsOneWidget);
         expect(_laneKey(laneId, 8), findsOneWidget);
       }
+
+      // The Transform group header's UNION diamonds fill WHITE like the
+      // frame blocks they summarize (UI-R23 #4), never a member key's
+      // primary ink.
+      Color markerFill(Finder marker) {
+        final container = tester.widget<Container>(
+          find.descendant(of: marker, matching: find.byType(Container)).first,
+        );
+        return (container.decoration! as BoxDecoration).color!;
+      }
+
+      expect(_laneKey('transform-group', 0), findsOneWidget);
+      expect(markerFill(_laneKey('transform-group', 0)), timelineDrawingStartColor);
+      expect(markerFill(_laneKey('position', 0)), isNot(timelineDrawingStartColor));
 
       // The header collapses the group again; the layer twirl hides all.
       await _expandTransformGroup(tester, 'lane-cam-layer');

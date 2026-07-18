@@ -323,8 +323,8 @@ void main() {
     expect(selectUpdates.last.$1, const LayerId('layer-a'));
     expect(selectUpdates.first.$2, 5, reason: 'anchor = the pressed cell');
 
-    // Selected key markers ring in ACCENT 2 (UI-R22 #5): cover the key
-    // at frame 2 and the marker's border flips to the accent-2 stroke.
+    // Selected key markers ring in ACCENT 1 (UI-R23 #4): cover the key
+    // at frame 2 and the marker's border flips to the thin accent-1 stroke.
     Border markerBorder() {
       final container = tester.widget<Container>(
         find
@@ -339,15 +339,15 @@ void main() {
       return (container.decoration! as BoxDecoration).border! as Border;
     }
 
-    expect(markerBorder().top.color, isNot(AppColors.accent2));
+    expect(markerBorder().top.color, isNot(AppColors.accent));
     selection.value = const TimelineFrameRangeSelection(
       layerId: LayerId('layer-a'),
       startIndex: 0,
       endIndexExclusive: 4,
     );
     await tester.pump();
-    expect(markerBorder().top.color, AppColors.accent2);
-    expect(markerBorder().top.width, 2);
+    expect(markerBorder().top.color, AppColors.accent);
+    expect(markerBorder().top.width, moreOrLessEquals(4 / 3));
   });
 
   testWidgets('the gesture layer SURVIVES mid-drag preview rebuilds that '
