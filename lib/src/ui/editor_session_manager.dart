@@ -1530,12 +1530,10 @@ class EditorSessionManager extends ChangeNotifier {
     if (activeLayer == null || selectedFrame == null) {
       return null;
     }
-    // Ghost repeat instances are DERIVED (UI-R19 #1): the playhead on
-    // one resolves the ANCHOR cel, so accepting strokes here would edit
-    // the source from a ghost. No brush target on ghost frames.
-    if (timelineIndexIsGhost(activeLayer, currentFrameIndex)) {
-      return null;
-    }
+    // Ghost repeat instances resolve to their ANCHOR cel deliberately
+    // (UI-R19b, user decision): drawing with the playhead on a ghost
+    // edits the source cel — the light-table workflow. Delete alone
+    // stays refused on ghosts.
     // R6-④: SE/instruction cels are data rows — no editable brush target,
     // so the canvas never accepts strokes on them (the drawn stack still
     // composites them read-only).

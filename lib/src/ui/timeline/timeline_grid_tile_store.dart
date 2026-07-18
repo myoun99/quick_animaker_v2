@@ -1,12 +1,14 @@
 import 'dart:async';
 import 'dart:collection';
+import 'dart:typed_data' show Uint8List;
 import 'dart:ui' as ui;
 
-import 'package:flutter/foundation.dart';
+import 'package:flutter/foundation.dart' hide Uint8List;
 import 'package:flutter/material.dart';
 
 import '../../native/qa_native_engine.dart';
 import 'timeline_frame_window.dart';
+import 'timeline_glyph_cache.dart';
 import 'timeline_grid_tile_ops.dart';
 import 'timeline_row_cells_painter.dart';
 
@@ -126,6 +128,8 @@ class TimelineGridTileStore {
         crossAxisExtent: request.painter.crossAxisExtent,
         colorScheme: request.painter.colorScheme,
         exposureStateForLayer: request.painter.exposureStateForLayer,
+        frameNameForLayer: request.painter.frameNameForLayer,
+        baseTextStyle: request.painter.baseTextStyle,
         spanEndIndexExclusive: request.spanEndIndexExclusive,
         devicePixelRatio: request.devicePixelRatio,
         image: image,
@@ -135,6 +139,82 @@ class TimelineGridTileStore {
       }
       revision.value += 1;
     }
+  }
+
+  // --- Glyph A8 bake cache (T3) ---------------------------------------
+  //
+  // Foreground glyphs bake ONCE per (text, shape-style, DPR) into an A8
+  // coverage bitmap (white text rendered off-screen, alpha extracted);
+  // tiles blit them through the op stream's GLYPH op, tinted with the
+  // painter's exact ink per cell.
+
+  static const int _glyphCapacity = 1024;
+  final LinkedHashMap<String, _BakedGlyph?> _glyphs =
+      LinkedHashMap<String, _BakedGlyph?>();
+  final Map<String, Future<_BakedGlyph?>> _glyphBakes =
+      <String, Future<_BakedGlyph?>>{};
+
+  static String _glyphKey(String text, TextStyle style, double dpr) =>
+      '$text|${style.fontSize}|${style.fontWeight}|${style.fontStyle}|'
+      '${style.fontFamily}|$dpr';
+
+  Future<_BakedGlyph?> _glyphA8(String text, TextStyle style, double dpr) {
+    final key = _glyphKey(text, style, dpr);
+    if (_glyphs.containsKey(key)) {
+      final cached = _glyphs.remove(key);
+      _glyphs[key] = cached;
+      return Future<_BakedGlyph?>.value(cached);
+    }
+    return _glyphBakes[key] ??= _bakeGlyph(text, style, dpr).then((baked) {
+      _glyphBakes.remove(key);
+      _glyphs[key] = baked;
+      while (_glyphs.length > _glyphCapacity) {
+        _glyphs.remove(_glyphs.keys.first);
+      }
+      return baked;
+    });
+  }
+
+  Future<_BakedGlyph?> _bakeGlyph(
+    String text,
+    TextStyle style,
+    double dpr,
+  ) async {
+    // COVERAGE bake: white text on transparent, alpha channel out — the
+    // GLYPH op multiplies the per-cell ink's alpha by it.
+    final textPainter = timelineGlyphPainter(
+      text,
+      style.copyWith(color: const Color(0xFFFFFFFF)),
+    );
+    if (textPainter.width <= 0 || textPainter.height <= 0) {
+      return null;
+    }
+    final width = (textPainter.width * dpr).ceil() + 2;
+    final height = (textPainter.height * dpr).ceil() + 2;
+    final recorder = ui.PictureRecorder();
+    final canvas = Canvas(recorder)
+      ..translate(1, 1)
+      ..scale(dpr, dpr);
+    textPainter.paint(canvas, Offset.zero);
+    final picture = recorder.endRecording();
+    final image = picture.toImageSync(width, height);
+    picture.dispose();
+    final data = await image.toByteData(format: ui.ImageByteFormat.rawRgba);
+    image.dispose();
+    if (data == null) {
+      return null;
+    }
+    final alpha = Uint8List(width * height);
+    for (var i = 0; i < alpha.length; i += 1) {
+      alpha[i] = data.getUint8(i * 4 + 3);
+    }
+    return _BakedGlyph(
+      width: width,
+      height: height,
+      logicalWidth: textPainter.width,
+      logicalHeight: textPainter.height,
+      alpha: alpha,
+    );
   }
 
   Future<ui.Image?> _raster(QaNativeEngine engine, _TileRequest request) async {
@@ -150,12 +230,23 @@ class TimelineGridTileStore {
     final tileWidth = horizontal ? width : height;
     final tileHeight = horizontal ? height : width;
 
-    final ops = timelineGridSubstrateOps(
+    final writer = TimelineGridTileOpWriter();
+    timelineGridEmitSubstrate(
+      writer,
       painter: painter,
       spanStartIndex: request.spanStartIndex,
       spanEndIndexExclusive: request.spanEndIndexExclusive,
       devicePixelRatio: dpr,
     );
+    final atlas = await _emitForeground(
+      writer,
+      painter: painter,
+      spanStartIndex: request.spanStartIndex,
+      spanEndIndexExclusive: request.spanEndIndexExclusive,
+      devicePixelRatio: dpr,
+    );
+
+    final ops = writer.build();
     final pixels = Uint8List(tileWidth * tileHeight * 4);
     final result = engine.gridRasterTileBytes(
       pixels: pixels,
@@ -163,12 +254,161 @@ class TimelineGridTileStore {
       tileHeight: tileHeight,
       backgroundRgba: 0,
       ops: ops,
+      atlas: atlas?.alpha,
+      atlasWidth: atlas?.width ?? 0,
+      atlasHeight: atlas?.height ?? 0,
     );
     if (result != 0) {
       assert(false, 'qa_grid_raster_tile failed: $result');
       return null;
     }
 
+    return _upload(pixels, tileWidth, tileHeight);
+  }
+
+  /// Bakes and emits the span's FOREGROUND ink (T3): hold-dash capsules
+  /// inline, glyph text through the A8 atlas — geometry and ink probed
+  /// from the painter (the substrate's fidelity rule). Returns the
+  /// transient atlas the GLYPH ops reference, or null (no glyphs).
+  Future<_TileAtlas?> _emitForeground(
+    TimelineGridTileOpWriter writer, {
+    required TimelineRowCellsPainter painter,
+    required int spanStartIndex,
+    required int spanEndIndexExclusive,
+    required double devicePixelRatio,
+  }) async {
+    final dpr = devicePixelRatio;
+    final horizontal = painter.axis == Axis.horizontal;
+    final originRect = painter.cellRectFor(spanStartIndex);
+    final originMain = horizontal ? originRect.left : originRect.top;
+
+    final glyphCells =
+        <({Rect rect, String text, TextStyle style, int rgba, String key})>[];
+    for (
+      var frameIndex = spanStartIndex;
+      frameIndex < spanEndIndexExclusive;
+      frameIndex += 1
+    ) {
+      final model = painter.cellModelAt(frameIndex);
+      if (model.glyph.isEmpty) {
+        continue;
+      }
+      final ink = painter.foregroundInkFor(model);
+      final cellRect = painter.cellRectFor(frameIndex);
+      final rect = horizontal
+          ? cellRect.shift(Offset(-originMain, 0))
+          : cellRect.shift(Offset(0, -originMain));
+      if (model.ghost && model.glyph == timelineHoldDashGlyph) {
+        // The hold dash (UI-R12 #18): a 1.4px capsule with the 3px
+        // per-boundary break — the round caps come from the rrect SDF.
+        if (horizontal) {
+          if (rect.width > 4) {
+            writer.rrectFill(
+              (rect.left + 1.5) * dpr,
+              (rect.center.dy - 0.7) * dpr,
+              (rect.width - 3) * dpr,
+              1.4 * dpr,
+              0.7 * dpr,
+              15,
+              timelineGridPackRgba(ink),
+            );
+          }
+        } else if (rect.height > 4) {
+          writer.rrectFill(
+            (rect.center.dx - 0.7) * dpr,
+            (rect.top + 1.5) * dpr,
+            1.4 * dpr,
+            (rect.height - 3) * dpr,
+            0.7 * dpr,
+            15,
+            timelineGridPackRgba(ink),
+          );
+        }
+        continue;
+      }
+      final style = painter.glyphStyleFor(model);
+      glyphCells.add((
+        rect: rect,
+        text: model.glyph,
+        style: style,
+        rgba: timelineGridPackRgba(ink),
+        key: _glyphKey(model.glyph, style, dpr),
+      ));
+    }
+    if (glyphCells.isEmpty) {
+      return null;
+    }
+
+    final baked = <String, _BakedGlyph>{};
+    for (final cell in glyphCells) {
+      if (baked.containsKey(cell.key)) {
+        continue;
+      }
+      final glyph = await _glyphA8(cell.text, cell.style, dpr);
+      if (glyph != null) {
+        baked[cell.key] = glyph;
+      }
+    }
+    if (baked.isEmpty) {
+      return null;
+    }
+
+    // Transient atlas: the span's distinct glyphs stacked vertically.
+    var atlasWidth = 0;
+    var atlasHeight = 0;
+    final rowOf = <String, int>{};
+    for (final entry in baked.entries) {
+      rowOf[entry.key] = atlasHeight;
+      atlasHeight += entry.value.height;
+      if (entry.value.width > atlasWidth) {
+        atlasWidth = entry.value.width;
+      }
+    }
+    final atlas = Uint8List(atlasWidth * atlasHeight);
+    for (final entry in baked.entries) {
+      final glyph = entry.value;
+      final rowStart = rowOf[entry.key]!;
+      for (var y = 0; y < glyph.height; y += 1) {
+        atlas.setRange(
+          (rowStart + y) * atlasWidth,
+          (rowStart + y) * atlasWidth + glyph.width,
+          glyph.alpha,
+          y * glyph.width,
+        );
+      }
+    }
+
+    for (final cell in glyphCells) {
+      final glyph = baked[cell.key];
+      if (glyph == null) {
+        continue;
+      }
+      // The classic pass centers on the LOGICAL text size; the bake pads
+      // 1 physical px on each side.
+      final destX =
+          (cell.rect.center.dx * dpr - glyph.logicalWidth * dpr / 2).round() -
+          1;
+      final destY =
+          (cell.rect.center.dy * dpr - glyph.logicalHeight * dpr / 2).round() -
+          1;
+      writer.glyph(
+        destX,
+        destY,
+        0,
+        rowOf[cell.key]!,
+        glyph.width,
+        glyph.height,
+        cell.rgba,
+      );
+    }
+    return _TileAtlas(width: atlasWidth, height: atlasHeight, alpha: atlas);
+  }
+
+  Future<ui.Image> _upload(
+    Uint8List pixels,
+    int tileWidth,
+    int tileHeight,
+  ) async {
     final buffer = await ui.ImmutableBuffer.fromUint8List(pixels);
     final descriptor = ui.ImageDescriptor.raw(
       buffer,
@@ -208,6 +448,8 @@ class _TileEntry {
     required this.crossAxisExtent,
     required this.colorScheme,
     required this.exposureStateForLayer,
+    required this.frameNameForLayer,
+    required this.baseTextStyle,
     required this.spanEndIndexExclusive,
     required this.devicePixelRatio,
     required this.image,
@@ -220,12 +462,15 @@ class _TileEntry {
   final double crossAxisExtent;
   final Object colorScheme;
   final Object exposureStateForLayer;
+  final Object? frameNameForLayer;
+  final TextStyle baseTextStyle;
   final int spanEndIndexExclusive;
   final double devicePixelRatio;
   final ui.Image image;
 
   /// The `shouldRepaint` identity, tile edition: any changed look fact
-  /// re-rasters.
+  /// re-rasters (glyphs live in the tiles too — T3 — so the glyph
+  /// sources join the key).
   bool matches(
     TimelineRowCellsPainter painter,
     int spanEndIndexExclusive,
@@ -238,9 +483,43 @@ class _TileEntry {
         crossAxisExtent == painter.crossAxisExtent &&
         identical(colorScheme, painter.colorScheme) &&
         identical(exposureStateForLayer, painter.exposureStateForLayer) &&
+        identical(frameNameForLayer, painter.frameNameForLayer) &&
+        baseTextStyle == painter.baseTextStyle &&
         this.spanEndIndexExclusive == spanEndIndexExclusive &&
         this.devicePixelRatio == devicePixelRatio;
   }
+}
+
+/// One baked glyph: A8 coverage at physical resolution (1px pad on
+/// every side) plus the LOGICAL text size the classic pass centers on.
+class _BakedGlyph {
+  const _BakedGlyph({
+    required this.width,
+    required this.height,
+    required this.logicalWidth,
+    required this.logicalHeight,
+    required this.alpha,
+  });
+
+  final int width;
+  final int height;
+  final double logicalWidth;
+  final double logicalHeight;
+  final Uint8List alpha;
+}
+
+/// The per-raster transient atlas (a vertical stack of the span's
+/// distinct glyphs) the GLYPH ops reference.
+class _TileAtlas {
+  const _TileAtlas({
+    required this.width,
+    required this.height,
+    required this.alpha,
+  });
+
+  final int width;
+  final int height;
+  final Uint8List alpha;
 }
 
 /// Emits the SUBSTRATE op stream for [painter]'s cells in
@@ -258,6 +537,25 @@ Int32List timelineGridSubstrateOps({
   required double devicePixelRatio,
 }) {
   final writer = TimelineGridTileOpWriter();
+  timelineGridEmitSubstrate(
+    writer,
+    painter: painter,
+    spanStartIndex: spanStartIndex,
+    spanEndIndexExclusive: spanEndIndexExclusive,
+    devicePixelRatio: devicePixelRatio,
+  );
+  return writer.build();
+}
+
+/// The writer-append form of [timelineGridSubstrateOps] — the store
+/// appends the foreground pass (T3) to the same stream.
+void timelineGridEmitSubstrate(
+  TimelineGridTileOpWriter writer, {
+  required TimelineRowCellsPainter painter,
+  required int spanStartIndex,
+  required int spanEndIndexExclusive,
+  required double devicePixelRatio,
+}) {
   final horizontal = painter.axis == Axis.horizontal;
   final originRect = painter.cellRectFor(spanStartIndex);
   final originMain = horizontal ? originRect.left : originRect.top;
@@ -329,5 +627,4 @@ Int32List timelineGridSubstrateOps({
       );
     }
   }
-  return writer.build();
 }

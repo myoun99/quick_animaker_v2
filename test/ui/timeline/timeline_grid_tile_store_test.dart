@@ -1,4 +1,6 @@
 import 'dart:io';
+import 'dart:typed_data';
+import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -122,6 +124,82 @@ void main() {
       expect(empty[cell * 8], TimelineGridTileOp.rrectFill);
       expect(empty[cell * 8 + 6], 0, reason: 'no rounded corners');
     }
+  });
+
+  test('T3: tiles carry the FOREGROUND ink too — the drawing cell\'s ○ '
+      'glyph shows up as a strong delta over the substrate alone', () async {
+    if (!available) {
+      markTestSkipped('qa_engine.dll not built');
+      return;
+    }
+    final store = TimelineGridTileStore.instance;
+    final layer = blockLayer();
+    final painter = painterFor(layer, store: store);
+
+    var landings = 0;
+    store.revision.addListener(() => landings += 1);
+    expect(
+      store.tileFor(
+        painter: painter,
+        spanStartIndex: 0,
+        spanEndIndexExclusive: 4,
+        devicePixelRatio: 1.0,
+      ),
+      isNull,
+    );
+    while (landings == 0) {
+      await Future<void>.delayed(const Duration(milliseconds: 5));
+    }
+    final image = store.tileFor(
+      painter: painter,
+      spanStartIndex: 0,
+      spanEndIndexExclusive: 4,
+      devicePixelRatio: 1.0,
+    );
+    expect(image, isNotNull);
+    final tileData = await image!.toByteData(
+      format: ui.ImageByteFormat.rawRgba,
+    );
+    final tileBytes = tileData!.buffer.asUint8List();
+
+    final substrate = Uint8List(image.width * image.height * 4);
+    expect(
+      QaNativeEngine.instance!.gridRasterTileBytes(
+        pixels: substrate,
+        tileWidth: image.width,
+        tileHeight: image.height,
+        backgroundRgba: 0,
+        ops: timelineGridSubstrateOps(
+          painter: painter,
+          spanStartIndex: 0,
+          spanEndIndexExclusive: 4,
+          devicePixelRatio: 1.0,
+        ),
+      ),
+      0,
+    );
+
+    // Cell 0 holds the drawing's ○ glyph: dark ink on the paper block —
+    // somewhere in that cell the delta must be strong (conversion noise
+    // is ±1 per channel; ink is tens of levels).
+    var maxDelta = 0;
+    for (var y = 0; y < image.height; y += 1) {
+      for (var x = 0; x < 24; x += 1) {
+        final base = (y * image.width + x) * 4;
+        for (var channel = 0; channel < 3; channel += 1) {
+          final delta = (tileBytes[base + channel] - substrate[base + channel])
+              .abs();
+          if (delta > maxDelta) {
+            maxDelta = delta;
+          }
+        }
+      }
+    }
+    expect(
+      maxDelta,
+      greaterThan(64),
+      reason: 'the glyph must be baked into the tile',
+    );
   });
 
   test('a cold span rasters off-frame, lands as a physical-resolution '

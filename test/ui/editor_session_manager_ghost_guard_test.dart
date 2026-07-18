@@ -4,9 +4,10 @@ import 'package:quick_animaker_v2/src/models/layer_id.dart';
 import 'package:quick_animaker_v2/src/models/timeline_repeat.dart';
 import 'package:quick_animaker_v2/src/ui/editor_session_manager.dart';
 
-/// UI-R19 #1: ghost frames (derived repeat/hold instances) are DISPLAY
-/// material — no delete, no rename, no brush target. The playhead may
-/// stand on them, but every editing gate stands down.
+/// UI-R19 → R19b (user decision): ghost frames (derived repeat/hold
+/// instances) resolve to their ANCHOR cel for rename and drawing — a
+/// deliberate light-table workflow, not a leak. Only DELETE stays
+/// refused on ghosts (there is no block of their own to remove).
 void main() {
   (EditorSessionManager, LayerId) sessionWithGhostTail() {
     final s = EditorSessionManager(initialProject: createDefaultProject());
@@ -37,30 +38,34 @@ void main() {
     expect(s.canDeleteCellAtCurrentFrame, isFalse);
   });
 
-  test('rename stands down on a ghost frame — resolving it would rename '
-      'the ANCHOR cel (UI-R19 #1)', () {
+  test('rename on a ghost frame renames the ANCHOR cel (UI-R19b: the '
+      'deliberate resolve-through)', () {
     final (s, _) = sessionWithGhostTail();
-    s.selectFrameIndex(0);
-    expect(s.canRenameFrameAtCurrentFrame, isTrue);
-
     s.selectFrameIndex(2);
-    expect(s.canRenameFrameAtCurrentFrame, isFalse);
-    expect(
-      s.renameSelectedFrame('7'),
-      isNull,
-      reason: 'the guarded rename applies nothing',
-    );
+    expect(s.canRenameFrameAtCurrentFrame, isTrue);
+    expect(s.renameSelectedFrame('7'), isNull, reason: 'applies cleanly');
     final layer = s.activeLayer!;
-    expect(layer.frames.single.name, isNot('7'));
+    expect(
+      layer.frames.single.name,
+      '7',
+      reason: 'the ghost resolved to (and renamed) the source cel',
+    );
   });
 
-  test('no brush target on a ghost frame — strokes would edit the anchor '
-      'cel from a derived instance (UI-R19 #1)', () {
+  test('the brush target on a ghost frame is the ANCHOR cel (UI-R19b: '
+      'drawing through the repeat edits the source)', () {
     final (s, _) = sessionWithGhostTail();
     s.selectFrameIndex(0);
-    expect(s.activeBrushEditorSelection, isNotNull);
+    final anchorSelection = s.activeBrushEditorSelection;
+    expect(anchorSelection, isNotNull);
 
     s.selectFrameIndex(2);
-    expect(s.activeBrushEditorSelection, isNull);
+    final ghostSelection = s.activeBrushEditorSelection;
+    expect(ghostSelection, isNotNull);
+    expect(
+      ghostSelection!.frameId,
+      anchorSelection!.frameId,
+      reason: 'same cel through the ghost',
+    );
   });
 }

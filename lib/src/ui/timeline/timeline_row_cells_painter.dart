@@ -52,8 +52,10 @@ class TimelineRowCellModel {
 
 /// The hold ghost's dash glyph — the probe VALUE tests read from
 /// [TimelineRowCellsPainter.cellModelAt]. paint() renders it as an
-/// axis-aligned line (UI-R12 #18), never as text.
-const String _holdDashGlyph = 'ㅡ';
+/// axis-aligned line (UI-R12 #18), never as text; the tile emitter (T3)
+/// keys the same value to bake it as a capsule.
+const String timelineHoldDashGlyph = 'ㅡ';
+const String _holdDashGlyph = timelineHoldDashGlyph;
 
 /// Glyph TextPainters come from the shared timeline cache (UI-R16):
 /// frame numbers and markers repeat heavily across rows and repaints.
@@ -326,6 +328,9 @@ class TimelineRowCellsPainter extends CustomPainter {
     // record — a scroll is a repaint of this thin pass, never a rebuild.
     final window = visibleFrameWindow();
     final store = tileStore;
+    // Spans whose FRESH tile already carries the foreground ink (T3):
+    // the Dart glyph/dash pass skips them.
+    final tiledSpans = <(int, int)>[];
     if (store == null || frameCellExtent <= 0) {
       for (
         var frameIndex = window.startIndex;
@@ -371,6 +376,7 @@ class TimelineRowCellsPainter extends CustomPainter {
             dst,
             tilePaint,
           );
+          tiledSpans.add((spanStart, spanEnd));
           continue;
         }
         final fallbackStart = math.max(spanStart, window.startIndex);
@@ -404,6 +410,16 @@ class TimelineRowCellsPainter extends CustomPainter {
       frameIndex < window.endIndexExclusive;
       frameIndex += 1
     ) {
+      var tiled = false;
+      for (final span in tiledSpans) {
+        if (frameIndex >= span.$1 && frameIndex < span.$2) {
+          tiled = true;
+          break;
+        }
+      }
+      if (tiled) {
+        continue;
+      }
       _paintCellForeground(canvas, frameIndex);
     }
 
@@ -458,8 +474,43 @@ class TimelineRowCellsPainter extends CustomPainter {
     }
   }
 
-  /// The cell's sparse foreground ink (hold dashes, glyph text) — stays
-  /// a Dart pass in tile mode too.
+  /// The cell's foreground INK — ghost glyphs read quiet near-white,
+  /// drawing cels use the paper ink, X marks and dim variants mute
+  /// (UI-R11 #5). PUBLIC: the tile emitter (T3) tints glyph blits with
+  /// exactly this, so tiles cannot drift from the classic pass.
+  Color foregroundInkFor(TimelineRowCellModel model) {
+    final isEmptyX = model.exposureState == TimelineCellExposureState.uncovered;
+    return model.ghost
+        ? colorScheme.onSurface.withValues(alpha: 0.85)
+        : timelineCellUsesDrawingInk(model.exposureState)
+        ? (model.dimmed
+              ? timelineDrawingInkColor.withValues(alpha: 0.55)
+              : timelineDrawingInkColor)
+        : isEmptyX
+        ? colorScheme.onSurfaceVariant.withValues(alpha: 0.55)
+        : model.dimmed
+        ? colorScheme.onSurfaceVariant.withValues(alpha: 0.45)
+        : colorScheme.onSurface;
+  }
+
+  /// The glyph's resolved text style (ink + the bold rule) — the shared
+  /// glyph cache and the tile emitter's bake key both read this.
+  TextStyle glyphStyleFor(TimelineRowCellModel model) {
+    final isEmptyX = model.exposureState == TimelineCellExposureState.uncovered;
+    return baseTextStyle.copyWith(
+      color: foregroundInkFor(model),
+      fontWeight:
+          !model.ghost &&
+              !isEmptyX &&
+              model.exposureState != TimelineCellExposureState.held
+          ? FontWeight.bold
+          : baseTextStyle.fontWeight,
+    );
+  }
+
+  /// The cell's sparse foreground ink (hold dashes, glyph text) — the
+  /// classic pass; tile mode bakes the same content into the tiles (T3)
+  /// and skips this for covered spans.
   void _paintCellForeground(Canvas canvas, int frameIndex) {
     final model = cellModelAt(frameIndex);
     if (model.glyph.isEmpty) {
@@ -467,22 +518,7 @@ class TimelineRowCellsPainter extends CustomPainter {
     }
     final rect = cellRectFor(frameIndex);
     {
-      final isEmptyX =
-          model.exposureState == TimelineCellExposureState.uncovered;
-      // Ghost glyphs (repeat names, hold dashes, dots) read as ONE quiet
-      // near-white string over the empty cells (UI-R11 #5) — dark drawing
-      // ink belongs to real paper blocks only.
-      final ink = model.ghost
-          ? colorScheme.onSurface.withValues(alpha: 0.85)
-          : timelineCellUsesDrawingInk(model.exposureState)
-          ? (model.dimmed
-                ? timelineDrawingInkColor.withValues(alpha: 0.55)
-                : timelineDrawingInkColor)
-          : isEmptyX
-          ? colorScheme.onSurfaceVariant.withValues(alpha: 0.55)
-          : model.dimmed
-          ? colorScheme.onSurfaceVariant.withValues(alpha: 0.45)
-          : colorScheme.onSurface;
+      final ink = foregroundInkFor(model);
       if (model.ghost && model.glyph == _holdDashGlyph) {
         // UI-R12 #18: the hold dash is a PAINTED line along the frame
         // axis, spanning nearly the whole cell — neighbors read as one
@@ -510,16 +546,7 @@ class TimelineRowCellsPainter extends CustomPainter {
         }
         return;
       }
-      final glyphStyle = baseTextStyle.copyWith(
-        color: ink,
-        fontWeight:
-            !model.ghost &&
-                !isEmptyX &&
-                model.exposureState != TimelineCellExposureState.held
-            ? FontWeight.bold
-            : baseTextStyle.fontWeight,
-      );
-      final glyph = _glyphPainter(model.glyph, glyphStyle);
+      final glyph = _glyphPainter(model.glyph, glyphStyleFor(model));
       glyph.paint(
         canvas,
         rect.center - Offset(glyph.width / 2, glyph.height / 2),

@@ -601,13 +601,10 @@ class TimelineController {
   // --- Frame rename / link -------------------------------------------------------
 
   bool canRenameFrameAt({required Layer layer, required int frameIndex}) {
-    // Ghost cells are DERIVED display material (UI-R19 #1): resolving
-    // them would rename the anchor cel from a repeat instance — refuse,
-    // like delete does.
-    final block = coveringDrawingBlockAt(layer.timeline, frameIndex);
-    if (block == null || block.entry.ghost) {
-      return false;
-    }
+    // Ghost cells RESOLVE to their anchor cel deliberately (UI-R19b,
+    // user decision): renaming from a repeat instance renames the
+    // source — a feature, not a leak. Only DELETE stays refused on
+    // ghosts (they are derived; there is no block to remove).
     return resolveFrameForLayer(layer: layer, frameIndex: frameIndex) != null;
   }
 
