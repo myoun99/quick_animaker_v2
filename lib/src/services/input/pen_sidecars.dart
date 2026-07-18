@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 
+import 'pencil_interaction_service.dart';
 import 'platform_pen_channel_service.dart';
 import 'wintab_pen_service.dart';
 
@@ -32,6 +33,7 @@ abstract final class PenSidecars {
     }
     _bound = true;
     WintabPenService.instance.bind();
+    PencilInteractionService.instance.bind();
     if (Platform.isMacOS) {
       channelServices.add(PlatformPenChannelService.macos()..start());
     } else if (Platform.isLinux) {

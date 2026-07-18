@@ -828,6 +828,67 @@ void main() {
       },
     );
 
+    testWidgets('the stylus BARREL button makes the stroke a temporary ERASER '
+        '(PEN-5: S-Pen side button / Wacom barrel)', (tester) async {
+      final results = <List<BrushDab>>[];
+      await tester.pumpWidget(
+        _app(
+          _view(
+            _sessionState(width: 200, height: 16),
+            results.add,
+            inputSettings: const BrushEditCanvasInputSettings(size: 8),
+          ),
+        ),
+      );
+
+      // Barrel stroke: contact + primary stylus button.
+      tester.binding.handlePointerEvent(
+        PointerDownEvent(
+          pointer: 7,
+          kind: PointerDeviceKind.stylus,
+          position: canvasGlobalOffset(tester, const Offset(2, 1)),
+          buttons: kPrimaryButton | kPrimaryStylusButton,
+          pressure: 1,
+          pressureMin: 0,
+          pressureMax: 1,
+        ),
+      );
+      await tester.pump();
+      tester.binding.handlePointerEvent(
+        PointerMoveEvent(
+          pointer: 7,
+          kind: PointerDeviceKind.stylus,
+          position: canvasGlobalOffset(tester, const Offset(40, 1)),
+          buttons: kPrimaryButton | kPrimaryStylusButton,
+          pressure: 1,
+          pressureMin: 0,
+          pressureMax: 1,
+        ),
+      );
+      await tester.pump();
+      tester.binding.handlePointerEvent(
+        PointerUpEvent(
+          pointer: 7,
+          kind: PointerDeviceKind.stylus,
+          position: canvasGlobalOffset(tester, const Offset(40, 1)),
+        ),
+      );
+      await tester.pump();
+
+      expect(results, hasLength(1));
+      expect(
+        results.single.map((dab) => dab.erase).toSet(),
+        {true},
+        reason: 'the whole barrel stroke erases',
+      );
+
+      // A plain follow-up stroke paints again (the substitution lives
+      // on the per-stroke snapshot only).
+      await dragCanvas(tester, const [Offset(2, 8), Offset(30, 8)]);
+      expect(results, hasLength(2));
+      expect(results.last.map((dab) => dab.erase).toSet(), {false});
+    });
+
     testWidgets('pen pressure is ignored when the size toggle is off', (
       tester,
     ) async {

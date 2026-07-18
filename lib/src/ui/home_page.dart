@@ -13,6 +13,7 @@ import '../services/project_repository.dart';
 import 'brush/brush_tool_state.dart';
 import 'brush/paint_tool_state_notifier.dart';
 import 'debug/input_inspector.dart';
+import '../services/input/pencil_interaction_service.dart';
 import 'shortcuts/touch_shortcuts.dart';
 import 'brush/canvas_selection_commands.dart';
 import 'brush/canvas_view_commands.dart';
@@ -115,6 +116,23 @@ class _HomePageState extends State<HomePage> {
         _canvasSelectionCommands.confirmPendingMove;
     widget.onRepositoryCreated?.call(_session.repository);
     unawaited(_shortcuts.restore());
+    // Apple Pencil double-tap (PEN-5): honor the user's SYSTEM Pencil
+    // preference — the switch actions toggle brush↔eraser; the palette/
+    // ink-attribute actions stay no-ops for now (no matching surface).
+    PencilInteractionService.instance.onPencilTap = (action) {
+      switch (action) {
+        case PencilTapAction.switchEraser || PencilTapAction.switchPrevious:
+          _invokeAction(
+            _brushTool.value.tool == CanvasTool.eraser
+                ? EditorActionIds.toolBrush
+                : EditorActionIds.toolEraser,
+          );
+        case PencilTapAction.showColorPalette ||
+            PencilTapAction.showInkAttributes ||
+            PencilTapAction.ignore:
+          break;
+      }
+    };
     if (!Platform.environment.containsKey('FLUTTER_TEST')) {
       _autosave = ProjectAutosaveService(
         isDirty: () => _session.hasUnsavedChanges,
@@ -126,6 +144,7 @@ class _HomePageState extends State<HomePage> {
 
   @override
   void dispose() {
+    PencilInteractionService.instance.onPencilTap = null;
     _autosave?.dispose();
     _session.dispose();
     _panelsMenu.dispose();
