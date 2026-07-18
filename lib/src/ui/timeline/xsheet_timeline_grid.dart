@@ -100,6 +100,7 @@ class XSheetTimelineGrid extends StatefulWidget {
     this.onToggleLayerMuted,
     this.commaDrag,
     this.rangeHooks,
+    this.laneRange,
     this.runEdit,
     this.isFrameCached,
     this.metrics = defaultMetrics,
@@ -225,6 +226,10 @@ class XSheetTimelineGrid extends StatefulWidget {
   /// successor): the grid resolves the pointer's COLUMN onto display
   /// entries and forwards frame delta + target layer to the session.
   final TimelineFrameRangeHooks? rangeHooks;
+
+  /// The LANE selection domain's gesture bundle (UI-R23 #3 part 2); null
+  /// keeps the lane bands display-only.
+  final TimelineLaneRangeCallbacks? laneRange;
 
   /// The run-edge [+]/[↻] handle hooks (UI-R8); null hides the handles.
   final TimelineRunEditCallbacks? runEdit;
@@ -648,7 +653,11 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
               trailingFrameSpacerWidth: plan.trailingFrameSpacerWidth,
               metrics: _metrics,
               laneEdit: widget.laneEdit,
-              rangeGesture: _rangeGesture,
+              // The LANE selection domain (UI-R23 #3 part 2) — layer
+              // transform lanes only in v1.
+              laneRange: layer.kind == LayerKind.camera
+                  ? null
+                  : widget.laneRange,
             );
     }
     // PRO-TIMELINE scrolling (UI-R15→R16, transposed): the cells column

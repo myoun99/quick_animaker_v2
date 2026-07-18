@@ -60,6 +60,7 @@ class TimelineFrameRowsScrollBody extends StatefulWidget {
     this.onSetAudioClipGain,
     this.commaDrag,
     this.rangeGesture,
+    this.laneRange,
     this.runEdit,
     this.laneEdit,
     this.dragPreview,
@@ -143,6 +144,10 @@ class TimelineFrameRowsScrollBody extends StatefulWidget {
   /// The range select/move gesture bundle (UI-R8 — the block-body move
   /// handle's successor); null keeps rows display-only.
   final TimelineRangeGestureCallbacks? rangeGesture;
+
+  /// The LANE selection domain's gesture bundle (UI-R23 #3 part 2); null
+  /// keeps the lane bands display-only.
+  final TimelineLaneRangeCallbacks? laneRange;
 
   /// The run-edge [+]/[↻] handle hooks (UI-R8); null hides the handles.
   final TimelineRunEditCallbacks? runEdit;
@@ -324,7 +329,12 @@ class _TimelineFrameRowsScrollBodyState
             trailingFrameSpacerWidth: widget.trailingFrameSpacerWidth,
             metrics: widget.metrics,
             laneEdit: widget.laneEdit,
-            rangeGesture: widget.rangeGesture,
+            // The LANE selection domain (UI-R23 #3 part 2) — layer
+            // transform lanes only; the camera's atomic keyframes stand
+            // down in v1.
+            laneRange: layer.kind == LayerKind.camera
+                ? null
+                : widget.laneRange,
           );
   }
 

@@ -102,6 +102,8 @@ import 'timeline/layer_timeline_display_adapter.dart'
 import 'timeline/timeline_cell_exposure_state.dart';
 import 'timeline/timeline_drag_preview.dart';
 import 'timeline/timeline_section_policy.dart';
+import 'timeline/transform_lane_editing.dart'
+    show transformLaneKeyFrames, transformTrackWithLaneKeysShifted;
 
 /// Owns the editable project session for [HomePage]: the repository, undo
 /// history, cut/layer/timeline controllers, the cut command coordinator and the
@@ -2055,10 +2057,14 @@ class EditorSessionManager extends ChangeNotifier {
 
   void selectLayer(LayerId layerId) {
     // A frame-range selection is single-layer (UI-R8): moving to another
-    // row drops it.
+    // row drops it. The lane selection follows the same rule.
     if (frameRangeSelection.value != null &&
         frameRangeSelection.value!.layerId != layerId) {
       clearFrameRangeSelection();
+    }
+    if (laneRangeSelection.value != null &&
+        laneRangeSelection.value!.layerId != layerId) {
+      clearLaneRangeSelection();
     }
     _layerController.selectLayer(layerId);
     // The solo mode FOLLOWS the active layer (R4 #7).
@@ -4076,6 +4082,152 @@ class EditorSessionManager extends ChangeNotifier {
   final ValueNotifier<TimelineFrameRangeSelection?> frameRangeSelection =
       ValueNotifier<TimelineFrameRangeSelection?>(null);
 
+  /// The selected LANE range (UI-R23 #3 part 2): one (layer, lane)'s raw
+  /// [start,end) span — the transform lanes' own selection domain,
+  /// independent of (and mutually exclusive with) [frameRangeSelection].
+  final ValueNotifier<TimelineLaneSelection?> laneRangeSelection =
+      ValueNotifier<TimelineLaneSelection?>(null);
+
+  /// A lane-band select-drag step (raw cells — lane keys are points, no
+  /// block snap). Starting a lane selection clears the cell selection
+  /// (mutual exclusion, the F4 rule).
+  void updateLaneRangeSelectionDrag({
+    required LayerId layerId,
+    required String laneId,
+    required int anchorIndex,
+    required int headIndex,
+  }) {
+    if (_layerById(layerId) == null) {
+      return;
+    }
+    clearFrameRangeSelection();
+    final start = math.max(0, math.min(anchorIndex, headIndex));
+    final endExclusive = math.max(anchorIndex, headIndex) + 1;
+    if (endExclusive <= start) {
+      return;
+    }
+    laneRangeSelection.value = TimelineLaneSelection(
+      layerId: layerId,
+      laneId: laneId,
+      startIndex: start,
+      endIndexExclusive: endExclusive,
+    );
+  }
+
+  void clearLaneRangeSelection() {
+    if (laneRangeSelection.value != null) {
+      laneRangeSelection.value = null;
+    }
+  }
+
+  /// The in-flight lane range move (UI-R23 #3 part 2): the drag-start
+  /// snapshots plus the last VALID shifted track (blocked steps HOLD it,
+  /// the #10 policy).
+  ({Layer layer, TimelineLaneSelection selection})? _laneMoveBefore;
+  TransformTrack? _laneMoveShifted;
+
+  /// Starts moving the current lane selection; false when there is none
+  /// or it covers no keys (nothing to move).
+  bool beginLaneRangeMoveDrag() {
+    final selection = laneRangeSelection.value;
+    if (selection == null) {
+      return false;
+    }
+    final layer = _layerById(selection.layerId);
+    if (layer == null || isAttachedLayer(layer)) {
+      return false;
+    }
+    final keyed = transformLaneKeyFrames(layer.transformTrack, selection.laneId)
+        .any(selection.contains);
+    if (!keyed) {
+      return false;
+    }
+    _laneMoveBefore = (layer: layer, selection: selection);
+    _laneMoveShifted = null;
+
+    return true;
+  }
+
+  /// A lane-move drag step: shifts ONLY the selected lane's keys by
+  /// [frameDelta] and previews via [dragPreview]. A blocked landing HOLDS
+  /// the last valid preview (UI-R23 #10 — no snap-back).
+  void updateLaneRangeMoveDrag({required int frameDelta}) {
+    final before = _laneMoveBefore;
+    if (before == null) {
+      return;
+    }
+    if (frameDelta == 0) {
+      _laneMoveShifted = null;
+
+      dragPreview.value = null;
+      laneRangeSelection.value = before.selection;
+      return;
+    }
+    final shifted = transformTrackWithLaneKeysShifted(
+      before.layer.transformTrack,
+      laneId: before.selection.laneId,
+      rangeStartIndex: before.selection.startIndex,
+      rangeEndIndexExclusive: before.selection.endIndexExclusive,
+      frameDelta: frameDelta,
+    );
+    if (shifted == null) {
+      // Blocked landing: the last valid preview and outline HOLD.
+      return;
+    }
+    _laneMoveShifted = shifted;
+
+    dragPreview.value = BlockMoveDragPreview(
+      previewLayers: {
+        before.layer.id: before.layer.copyWith(transformTrack: shifted),
+      },
+    );
+    final newStart = before.selection.startIndex + frameDelta;
+    if (newStart >= 0) {
+      laneRangeSelection.value = TimelineLaneSelection(
+        layerId: before.selection.layerId,
+        laneId: before.selection.laneId,
+        startIndex: newStart,
+        endIndexExclusive: before.selection.endIndexExclusive + frameDelta,
+      );
+    }
+  }
+
+  /// Commits the lane move as ONE undo step; the selection stays on the
+  /// landed span.
+  void endLaneRangeMoveDrag() {
+    final before = _laneMoveBefore;
+    final shifted = _laneMoveShifted;
+    final landed = laneRangeSelection.value;
+    _laneMoveBefore = null;
+    _laneMoveShifted = null;
+
+    dragPreview.value = null;
+    if (before == null || shifted == null) {
+      if (before != null) {
+        laneRangeSelection.value = before.selection;
+      }
+      return;
+    }
+    updateLayerTransformTrack(
+      before.layer.id,
+      shifted,
+      description: 'Move lane keys',
+    );
+    laneRangeSelection.value = landed;
+  }
+
+  /// Drops an in-flight lane-move preview, restoring the selection.
+  void cancelLaneRangeMoveDrag() {
+    final before = _laneMoveBefore;
+    _laneMoveBefore = null;
+    _laneMoveShifted = null;
+
+    dragPreview.value = null;
+    if (before != null) {
+      laneRangeSelection.value = before.selection;
+    }
+  }
+
   /// Whether [layerId] can take part in a RANGE selection (UI-R20 #2:
   /// cells are cells — EVERY layer row selects, camera and instruction
   /// included; what a selection can DO stays kind-gated at each op's
@@ -4144,6 +4296,9 @@ class EditorSessionManager extends ChangeNotifier {
     if (layer == null) {
       return;
     }
+    // Starting a CELL selection clears the lane selection (mutual
+    // exclusion, UI-R23 #3 part 2).
+    clearLaneRangeSelection();
     final base = snapFrameRangeToBlocks(
       layer: layer,
       anchorIndex: anchorIndex,

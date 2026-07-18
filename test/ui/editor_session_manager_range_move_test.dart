@@ -833,4 +833,70 @@ void main() {
     expect(s.dragPreview.value, isNotNull);
     s.cancelFrameRangeMoveDrag();
   });
+
+  test('the LANE selection domain (UI-R23 #3 part 2): a lane span selects '
+      'independently, moves ONLY that lane\'s keys as one undo, holds on a '
+      'blocked landing, and is mutually exclusive with the cell selection', () {
+    final (s, a, _) = fixture();
+    s.repository.replaceLayer(
+      layer: s.layers
+          .firstWhere((l) => l.id == a.id)
+          .copyWith(
+            transformTrack: TransformTrack.properties(
+              anchorPoint: PropertyTrack.empty(),
+              position: PropertyTrack<CanvasPoint>()
+                  .withKey(2, CanvasPoint(x: 1, y: 1))
+                  .withKey(8, CanvasPoint(x: 9, y: 9)),
+              scale: PropertyTrack<double>().withKey(2, 1.5),
+              rotation: PropertyTrack.empty(),
+              opacity: PropertyTrack.empty(),
+            ),
+          ),
+    );
+
+    // A lane span selects the (layer, lane) domain — raw cells.
+    s.updateLaneRangeSelectionDrag(
+      layerId: a.id,
+      laneId: 'position',
+      anchorIndex: 1,
+      headIndex: 3,
+    );
+    final selection = s.laneRangeSelection.value;
+    expect(selection, isNotNull);
+    expect(selection!.laneId, 'position');
+    expect(selection.startIndex, 1);
+    expect(selection.endIndexExclusive, 4);
+
+    // Starting a CELL selection clears the lane selection — and back.
+    s.updateFrameRangeSelectionDrag(layerId: a.id, anchorIndex: 0, headIndex: 0);
+    expect(s.laneRangeSelection.value, isNull);
+    expect(s.frameRangeSelection.value, isNotNull);
+    s.updateLaneRangeSelectionDrag(
+      layerId: a.id,
+      laneId: 'position',
+      anchorIndex: 1,
+      headIndex: 3,
+    );
+    expect(s.frameRangeSelection.value, isNull);
+
+    // The move shifts ONLY the position lane's covered key (+2): the
+    // scale key at 2 and the position key at 8 stay put.
+    expect(s.beginLaneRangeMoveDrag(), isTrue);
+    s.updateLaneRangeMoveDrag(frameDelta: 2);
+    expect(s.dragPreview.value, isNotNull);
+    // A blocked further step (landing on the unmoved key at 8: 2+2 range
+    // would collide at... use a big delta landing 2->8) HOLDS the last
+    // valid preview (UI-R23 #10).
+    s.updateLaneRangeMoveDrag(frameDelta: 6);
+    expect(s.laneRangeSelection.value!.startIndex, 3, reason: 'held at +2');
+    s.endLaneRangeMoveDrag();
+
+    Layer layer() => s.layers.firstWhere((l) => l.id == a.id);
+    expect(layer().transformTrack.position.keys.keys.toSet(), {4, 8});
+    expect(layer().transformTrack.scale.keys.keys.toSet(), {2});
+
+    // ONE undo restores the lane.
+    s.undo();
+    expect(layer().transformTrack.position.keys.keys.toSet(), {2, 8});
+  });
 }

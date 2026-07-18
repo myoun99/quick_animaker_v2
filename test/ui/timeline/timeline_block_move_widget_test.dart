@@ -259,13 +259,16 @@ void main() {
     );
   });
 
-  testWidgets('a drag on a LANE BAND selects on the OWNING layer '
-      '(UI-R22 #3: cells are cells, lanes included)', (tester) async {
+  testWidgets('a drag on a LANE BAND selects on THAT (layer, lane) — the '
+      'lane-scoped domain (UI-R23 #3 part 2, superseding the R22-C '
+      'owner-layer fallback) — and selected keys ring accent 1', (
+    tester,
+  ) async {
     final cursor = ValueNotifier<int>(0);
-    final selection = ValueNotifier<TimelineFrameRangeSelection?>(null);
+    final laneSelection = ValueNotifier<TimelineLaneSelection?>(null);
     addTearDown(cursor.dispose);
-    addTearDown(selection.dispose);
-    final selectUpdates = <(LayerId, int, int)>[];
+    addTearDown(laneSelection.dispose);
+    final selectUpdates = <(LayerId, String, int, int)>[];
 
     await tester.pumpWidget(
       MaterialApp(
@@ -291,10 +294,22 @@ void main() {
                 keyedFrames: {2},
               ),
             ],
-            rangeHooks: hooks(
-              selection: selection,
-              onSelectUpdate: (layerId, anchor, head) =>
-                  selectUpdates.add((layerId, anchor, head)),
+            laneRange: TimelineLaneRangeCallbacks(
+              selection: laneSelection,
+              onSelectUpdate: (layerId, laneId, anchor, head) {
+                selectUpdates.add((layerId, laneId, anchor, head));
+                laneSelection.value = TimelineLaneSelection(
+                  layerId: layerId,
+                  laneId: laneId,
+                  startIndex: anchor < head ? anchor : head,
+                  endIndexExclusive: (anchor > head ? anchor : head) + 1,
+                );
+              },
+              onTapClear: () => laneSelection.value = null,
+              onMoveBegin: () => false,
+              onMoveUpdate: (_) {},
+              onMoveEnd: () {},
+              onMoveCancel: () {},
             ),
             metrics: const TimelineGridMetrics(
               frameCellWidth: 48,
@@ -310,7 +325,7 @@ void main() {
     );
     expect(laneGesture, findsOneWidget);
 
-    // Drag on empty band cells (past the key at 2): selects on layer-a.
+    // Drag on band cells: selects on the LANE domain (layer-a, position).
     final gesture = await tester.startGesture(
       tester.getTopLeft(laneGesture) + const Offset(5 * 48 + 24, 26),
       kind: PointerDeviceKind.mouse,
@@ -321,10 +336,12 @@ void main() {
 
     expect(selectUpdates, isNotEmpty);
     expect(selectUpdates.last.$1, const LayerId('layer-a'));
-    expect(selectUpdates.first.$2, 5, reason: 'anchor = the pressed cell');
+    expect(selectUpdates.last.$2, 'position');
+    expect(selectUpdates.first.$3, 5, reason: 'anchor = the pressed cell');
 
-    // Selected key markers ring in ACCENT 1 (UI-R23 #4): cover the key
-    // at frame 2 and the marker's border flips to the thin accent-1 stroke.
+    // Selected key markers ring in ACCENT 1 (UI-R23 #4): the LANE
+    // selection covering the key at frame 2 flips the marker's border to
+    // the thin accent-1 stroke; the wash overlay marks the span.
     Border markerBorder() {
       final container = tester.widget<Container>(
         find
@@ -339,15 +356,30 @@ void main() {
       return (container.decoration! as BoxDecoration).border! as Border;
     }
 
+    laneSelection.value = null;
+    await tester.pump();
     expect(markerBorder().top.color, isNot(AppColors.accent));
-    selection.value = const TimelineFrameRangeSelection(
+    expect(
+      find.byKey(
+        const ValueKey<String>('timeline-lane-selection-layer-a-position'),
+      ),
+      findsNothing,
+    );
+    laneSelection.value = const TimelineLaneSelection(
       layerId: LayerId('layer-a'),
+      laneId: 'position',
       startIndex: 0,
       endIndexExclusive: 4,
     );
     await tester.pump();
     expect(markerBorder().top.color, AppColors.accent);
     expect(markerBorder().top.width, moreOrLessEquals(4 / 3));
+    expect(
+      find.byKey(
+        const ValueKey<String>('timeline-lane-selection-layer-a-position'),
+      ),
+      findsOneWidget,
+    );
   });
 
   testWidgets('the gesture layer SURVIVES mid-drag preview rebuilds that '
