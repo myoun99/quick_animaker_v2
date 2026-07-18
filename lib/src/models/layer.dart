@@ -1,6 +1,7 @@
 import 'dart:collection';
 
 import '../core/collection_equality.dart';
+import 'attached_mode.dart';
 import 'attached_placement.dart';
 import 'audio_clip.dart';
 import 'camera_instruction.dart';
@@ -39,6 +40,7 @@ class Layer {
     TransformTrack? transformTrack,
     this.attachedToLayerId,
     this.attachedPlacement = AttachedPlacement.above,
+    this.attachedMode = AttachedMode.synced,
     Map<FrameId, FrameId> baseFrameLinks = const {},
     List<TimelineRunBehavior> runBehaviors = const [],
   }) : frames = List.unmodifiable(frames),
@@ -102,6 +104,12 @@ class Layer {
   /// layers adjacent to their base in [below…, base, above…] order).
   final AttachedPlacement attachedPlacement;
 
+  /// The attach TIMING mode (UI-R21 #3): [AttachedMode.synced] mirrors
+  /// the base through [baseFrameLinks] (own [timeline] stays empty);
+  /// [AttachedMode.free] authors its own timeline like a normal drawing
+  /// layer. Meaningful only while [attachedToLayerId] is set.
+  final AttachedMode attachedMode;
+
   /// CELL-level links: base frame id → this layer's frame id. Linking per
   /// cel (not per block start) keeps attach cels riding linked-cel reuse
   /// and comma drags automatically. A base cel without a link simply shows
@@ -132,6 +140,7 @@ class Layer {
     TransformTrack? transformTrack,
     LayerId? attachedToLayerId,
     AttachedPlacement? attachedPlacement,
+    AttachedMode? attachedMode,
     Map<FrameId, FrameId>? baseFrameLinks,
     List<TimelineRunBehavior>? runBehaviors,
   }) {
@@ -155,6 +164,7 @@ class Layer {
       // deleted whole); copyWith only carries the linkage along.
       attachedToLayerId: attachedToLayerId ?? this.attachedToLayerId,
       attachedPlacement: attachedPlacement ?? this.attachedPlacement,
+      attachedMode: attachedMode ?? this.attachedMode,
       baseFrameLinks: baseFrameLinks ?? this.baseFrameLinks,
       runBehaviors: runBehaviors ?? this.runBehaviors,
     );
@@ -179,13 +189,14 @@ class Layer {
     'mark': mark.toJson(),
     if (isFillReference) 'fillReference': true,
     if (runBehaviors.isNotEmpty)
-      'runBehaviors': [
-        for (final behavior in runBehaviors) behavior.toJson(),
-      ],
+      'runBehaviors': [for (final behavior in runBehaviors) behavior.toJson()],
     if (transformTrack.isNotEmpty) 'transform': transformTrack.toJson(),
     if (attachedToLayerId != null) ...{
       'attachedTo': attachedToLayerId!.toJson(),
       'attachedPlacement': attachedPlacement.toJson(),
+      // Default synced omitted — pre-mode files read back unchanged.
+      if (attachedMode != AttachedMode.synced)
+        'attachedMode': attachedMode.toJson(),
       if (baseFrameLinks.isNotEmpty)
         'baseFrameLinks': [
           for (final entry in baseFrameLinks.entries)
@@ -268,6 +279,7 @@ class Layer {
           ? null
           : LayerId.fromJson(json['attachedTo'] as Map<String, dynamic>),
       attachedPlacement: AttachedPlacement.fromJson(json['attachedPlacement']),
+      attachedMode: AttachedMode.fromJson(json['attachedMode']),
       baseFrameLinks: json['baseFrameLinks'] == null
           ? const {}
           : {
@@ -302,6 +314,7 @@ class Layer {
           other.transformTrack == transformTrack &&
           other.attachedToLayerId == attachedToLayerId &&
           other.attachedPlacement == attachedPlacement &&
+          other.attachedMode == attachedMode &&
           mapEquals(other.baseFrameLinks, baseFrameLinks) &&
           listEquals(other.runBehaviors, runBehaviors);
 
@@ -326,7 +339,7 @@ class Layer {
     isFillReference,
     transformTrack,
     attachedToLayerId,
-    attachedPlacement,
+    Object.hash(attachedPlacement, attachedMode),
     Object.hashAllUnordered(
       baseFrameLinks.entries.map(
         (entry) => Object.hash(entry.key, entry.value),
@@ -525,9 +538,7 @@ SplayTreeMap<int, TimelineExposure> _timelineFromJson(
         );
         if (item.breakdownOffsets.isNotEmpty) {
           // copyWith normalizes (sorts, dedupes, clamps to the length).
-          exposure = exposure.copyWith(
-            breakdownOffsets: item.breakdownOffsets,
-          );
+          exposure = exposure.copyWith(breakdownOffsets: item.breakdownOffsets);
         }
         timeline[item.index] = exposure;
     }

@@ -1,6 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:quick_animaker_v2/src/controllers/cut_duplicate_helpers.dart';
 import 'package:quick_animaker_v2/src/models/attached_layer_resolve.dart';
+import 'package:quick_animaker_v2/src/models/attached_mode.dart';
 import 'package:quick_animaker_v2/src/models/attached_placement.dart';
 import 'package:quick_animaker_v2/src/models/canvas_size.dart';
 import 'package:quick_animaker_v2/src/models/cut.dart';
@@ -84,6 +85,22 @@ void main() {
     final plainJson = base.toJson();
     expect(plainJson.containsKey('attachedTo'), isFalse);
     expect(Layer.fromJson(plainJson).attachedToLayerId, isNull);
+  });
+
+  test('the attach MODE round-trips (UI-R21 #3): synced omits the key '
+      '(pre-mode files read back unchanged), free persists it', () {
+    expect(attached.attachedMode, AttachedMode.synced);
+    expect(isSyncedAttachedLayer(attached), isTrue);
+    expect(attached.toJson().containsKey('attachedMode'), isFalse);
+
+    final free = attached.copyWith(attachedMode: AttachedMode.free);
+    expect(isAttachedLayer(free), isTrue);
+    expect(isSyncedAttachedLayer(free), isFalse);
+    final json = free.toJson();
+    expect(json['attachedMode'], 'free');
+    final restored = Layer.fromJson(json);
+    expect(restored.attachedMode, AttachedMode.free);
+    expect(restored, free);
   });
 
   test('v1 base eligibility: drawing kinds only, and never an attach layer '

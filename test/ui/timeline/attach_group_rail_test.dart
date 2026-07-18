@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:quick_animaker_v2/src/models/attached_layer_resolve.dart';
+import 'package:quick_animaker_v2/src/models/attached_mode.dart';
 import 'package:quick_animaker_v2/src/models/attached_placement.dart';
 import 'package:quick_animaker_v2/src/models/frame.dart';
 import 'package:quick_animaker_v2/src/models/frame_id.dart';
@@ -222,6 +223,51 @@ void main() {
     preview.value = null;
     await tester.pump();
     expect(built!.timeline[0]!.length, 2);
+  });
+
+  testWidgets('a FREE attach row never re-derives from a base preview '
+      '(UI-R21 #3): its own timeline stays put through the drag', (
+    tester,
+  ) async {
+    final freeAttach = Layer(
+      id: const LayerId('free1'),
+      name: '+1',
+      frames: [Frame(id: const FrameId('a1'), duration: 1, strokes: const [])],
+      timeline: const {3: TimelineExposure.drawing(FrameId('a1'), length: 2)},
+      attachedToLayerId: const LayerId('base'),
+      attachedMode: AttachedMode.free,
+    );
+    final preview = ValueNotifier<TimelineDragPreview?>(null);
+    Layer? built;
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: TimelineDragPreviewRowGate(
+          dragPreview: preview,
+          layer: freeAttach,
+          rowBuilder: (context, layer) {
+            built = layer;
+            return const SizedBox();
+          },
+        ),
+      ),
+    );
+    expect(identical(built, freeAttach), isTrue);
+
+    preview.value = ExposureEdgeDragPreview(
+      previewLayer: Layer(
+        id: const LayerId('base'),
+        name: 'base',
+        frames: const [],
+        timeline: const {0: TimelineExposure.drawing(FrameId('b1'), length: 9)},
+      ),
+    );
+    await tester.pump();
+    expect(
+      identical(built, freeAttach),
+      isTrue,
+      reason: 'a base drag must never overwrite a free row\'s own timeline',
+    );
   });
 
   testWidgets('the timeline + flyout adds attach layers riding the active '

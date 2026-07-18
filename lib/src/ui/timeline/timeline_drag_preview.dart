@@ -284,10 +284,14 @@ class _TimelineDragPreviewRowGateState
     if (direct != null) {
       return direct;
     }
-    // Attach rows mirror their BASE live (UI-R20 #8): while a drag
-    // previews the base, re-derive the mirrored display timeline from the
-    // previewed base so the attach row follows the pointer, not just the
-    // release commit.
+    // SYNCED attach rows mirror their BASE live (UI-R20 #8): while a
+    // drag previews the base, re-derive the mirrored display timeline
+    // from the previewed base so the attach row follows the pointer, not
+    // just the release commit. FREE attach rows own their timeline — a
+    // base drag must never overwrite it (UI-R21 #3).
+    if (!isSyncedAttachedLayer(widget.layer)) {
+      return null;
+    }
     final baseId = widget.layer.attachedToLayerId;
     if (baseId != null) {
       final previewBase = timelineDragPreviewLayerFor(

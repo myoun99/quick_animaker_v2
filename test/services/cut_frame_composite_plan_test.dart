@@ -6,6 +6,7 @@ import 'package:quick_animaker_v2/src/models/bitmap_tile.dart';
 import 'package:quick_animaker_v2/src/models/canvas_size.dart';
 import 'package:quick_animaker_v2/src/models/cut.dart';
 import 'package:quick_animaker_v2/src/models/cut_id.dart';
+import 'package:quick_animaker_v2/src/models/attached_mode.dart';
 import 'package:quick_animaker_v2/src/models/frame.dart';
 import 'package:quick_animaker_v2/src/models/frame_id.dart';
 import 'package:quick_animaker_v2/src/models/layer.dart';
@@ -367,6 +368,37 @@ void main() {
       attachedToLayerId: attachedTo,
       baseFrameLinks: {const FrameId('frame-1'): FrameId('frame-$marker')},
     );
+
+    test('a FREE attach row composites from its OWN timeline (UI-R21 #3) '
+        'while still riding the base eye cascade', () {
+      Layer freeRow({bool baseVisible = true}) => Layer(
+        id: const LayerId('free'),
+        name: '+1',
+        frames: [frame('frame-9')],
+        // Own exposure PAST the base's block — a synced row could never
+        // show here.
+        timeline: {
+          5: TimelineExposure.drawing(const FrameId('frame-9'), length: 2),
+        },
+        attachedToLayerId: const LayerId('base'),
+        attachedMode: AttachedMode.free,
+      );
+
+      final plan = planCutFrameComposite(
+        cut: cut([baseLayer(), freeRow()]),
+        frameIndex: 5,
+        surfaceResolver: resolver,
+      );
+      expect(plan.map(markerOf), [9], reason: 'own timeline resolves');
+
+      // The base's eye still cascades over BOTH attach modes.
+      final hidden = planCutFrameComposite(
+        cut: cut([baseLayer(isVisible: false), freeRow()]),
+        frameIndex: 5,
+        surfaceResolver: resolver,
+      );
+      expect(hidden, isEmpty);
+    });
 
     test('attach rows composite in list order around their base — '
         '[below, base, above] — riding the base exposure', () {

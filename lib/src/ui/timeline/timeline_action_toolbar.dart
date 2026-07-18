@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../models/attached_mode.dart';
 import '../../models/attached_placement.dart';
 import '../../models/layer_kind.dart';
 import '../cut_command_group.dart';
@@ -161,19 +162,40 @@ class TimelineActionToolbar extends StatelessWidget {
         label: 'Instruction',
         onSelected: () => session.addLayerOfKind(LayerKind.instruction),
       ),
-      // Attach layers (W5, UI-R20 #8): the same entrance the Layer menu
-      // has — own cels riding the active layer's timing and FX.
+      // Attach layers (W5, UI-R20 #8 / UI-R21 #3): the same entrance the
+      // Layer menu has — own cels riding the base's FX. FREE authors its
+      // own timeline; SYNCED mirrors the base's exposures (ghost rows).
       const PanelFlyoutDivider(),
       PanelFlyoutItem(
+        keyValue: 'add-layer-attach-free-above',
+        label: 'Attach free layer above',
+        icon: Icons.north_east,
+        enabled: session.canAddAttachedLayerToActive,
+        onSelected: () => session.addAttachedLayer(
+          AttachedPlacement.above,
+          mode: AttachedMode.free,
+        ),
+      ),
+      PanelFlyoutItem(
+        keyValue: 'add-layer-attach-free-below',
+        label: 'Attach free layer below',
+        icon: Icons.south_east,
+        enabled: session.canAddAttachedLayerToActive,
+        onSelected: () => session.addAttachedLayer(
+          AttachedPlacement.below,
+          mode: AttachedMode.free,
+        ),
+      ),
+      PanelFlyoutItem(
         keyValue: 'add-layer-attach-above',
-        label: 'Attach layer above',
+        label: 'Attach synced layer above',
         icon: Icons.north_east,
         enabled: session.canAddAttachedLayerToActive,
         onSelected: () => session.addAttachedLayer(AttachedPlacement.above),
       ),
       PanelFlyoutItem(
         keyValue: 'add-layer-attach-below',
-        label: 'Attach layer below',
+        label: 'Attach synced layer below',
         icon: Icons.south_east,
         enabled: session.canAddAttachedLayerToActive,
         onSelected: () => session.addAttachedLayer(AttachedPlacement.below),

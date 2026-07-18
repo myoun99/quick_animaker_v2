@@ -7,6 +7,7 @@ library;
 
 import 'dart:collection';
 
+import 'attached_mode.dart';
 import 'attached_placement.dart';
 import 'frame.dart';
 import 'frame_id.dart';
@@ -16,8 +17,16 @@ import 'layer_kind.dart';
 import 'timeline_coverage.dart';
 import 'timeline_exposure.dart';
 
-/// Whether [layer] is an attach layer (rides a base layer's timing).
+/// Whether [layer] is an attach layer of EITHER mode (rides a base
+/// layer's transform/FX and group structure).
 bool isAttachedLayer(Layer layer) => layer.attachedToLayerId != null;
+
+/// Whether [layer] is a SYNCED attach row (UI-R21 #3): its cels ride the
+/// base's timeline through the cell links and the row mirrors as ghosts.
+/// The TIMING standdowns apply to this mode only — a FREE attach row
+/// authors its own timeline like any drawing layer.
+bool isSyncedAttachedLayer(Layer layer) =>
+    isAttachedLayer(layer) && layer.attachedMode == AttachedMode.synced;
 
 /// Whether [layer] can carry attach layers (v1: drawing kinds only, no
 /// nesting — an attach layer is never itself a base).

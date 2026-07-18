@@ -172,7 +172,10 @@ List<CutFrameCompositeEntry> resolveCutFrameCompositeEntries({
       continue;
     }
 
-    final frame = base == null
+    // SYNCED attach cels resolve through the base's exposure + the cell
+    // links; FREE attach rows (UI-R21 #3) expose their OWN timeline like
+    // a normal layer — the base still carries eye cascade and FX above.
+    final frame = base == null || !isSyncedAttachedLayer(layer)
         ? resolveExposedFrameAt(layer, frameIndex)
         : resolveAttachedFrameAt(
             attached: layer,

@@ -55,12 +55,14 @@ class LayerController {
       return const <Layer>[];
     }
     final cutLayers = cut.layers;
-    // Attach rows join as DISPLAY clones whose timeline mirrors the base
-    // through the cell links (W5) — the same read-clone pattern as the
-    // track SE rows below; writes address the real layers via commands.
+    // SYNCED attach rows join as DISPLAY clones whose timeline mirrors
+    // the base through the cell links (W5) — the same read-clone pattern
+    // as the track SE rows below; writes address the real layers via
+    // commands. FREE attach rows (UI-R21 #3) pass through untouched —
+    // they own their timeline like any drawing layer.
     final displayed = [
       for (final layer in cutLayers)
-        if (isAttachedLayer(layer))
+        if (isSyncedAttachedLayer(layer))
           switch (attachedBaseOf(layer, cutLayers)) {
             null => layer,
             final base => attachedDisplayLayer(attached: layer, base: base),
