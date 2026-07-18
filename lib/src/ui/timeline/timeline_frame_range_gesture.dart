@@ -3,6 +3,7 @@ import 'package:flutter/gestures.dart' show DragStartBehavior;
 import 'package:flutter/material.dart';
 
 import '../input/app_input_settings.dart' show AppInput;
+import '../input/eager_pan_gesture_recognizer.dart';
 
 import '../../models/layer.dart';
 import '../../models/layer_id.dart';
@@ -313,18 +314,30 @@ class _TimelineFrameRangeGestureLayerState
       child: GestureDetector(
         behavior: HitTestBehavior.translucent,
         onTapUp: (_) => widget.callbacks.onTapClear(widget.layer.id),
-        child: GestureDetector(
+        child: RawGestureDetector(
           // Translucent: the cells' pointer-down select keeps firing;
           // only the pan recognizer competes in the arena. Touch joins
           // per the input policy (UI-R22 #6): editing unless the timeline
-          // scroll owns touch.
+          // scroll owns touch. EAGER slop (UI-R22F #2): the edit pan
+          // accepts at the viewport recognizers' hit slop, so slow small
+          // pen drags select instead of losing the arena to the scroll.
           behavior: HitTestBehavior.translucent,
-          supportedDevices: AppInput.timelineEditPanDevices,
-          dragStartBehavior: DragStartBehavior.down,
-          onPanStart: (details) => _startDrag(details.localPosition),
-          onPanUpdate: _updateDrag,
-          onPanEnd: (_) => _endDrag(),
-          onPanCancel: _cancelDrag,
+          gestures: <Type, GestureRecognizerFactory>{
+            EagerPanGestureRecognizer:
+                GestureRecognizerFactoryWithHandlers<EagerPanGestureRecognizer>(
+                  () => EagerPanGestureRecognizer(debugOwner: this),
+                  (recognizer) {
+                    recognizer.supportedDevices =
+                        AppInput.timelineEditPanDevices;
+                    recognizer.dragStartBehavior = DragStartBehavior.down;
+                    recognizer.onStart = (details) =>
+                        _startDrag(details.localPosition);
+                    recognizer.onUpdate = _updateDrag;
+                    recognizer.onEnd = (_) => _endDrag();
+                    recognizer.onCancel = _cancelDrag;
+                  },
+                ),
+          },
         ),
       ),
     );

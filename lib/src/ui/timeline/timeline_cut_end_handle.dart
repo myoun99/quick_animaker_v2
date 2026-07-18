@@ -2,6 +2,8 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 
+import '../input/app_input_settings.dart' show AppInput;
+
 import '../../models/cut_id.dart';
 import 'timeline_drag_preview.dart';
 
@@ -122,6 +124,10 @@ class _TimelineCutEndDragHandleState extends State<TimelineCutEndDragHandle> {
           : SystemMouseCursors.resizeRow,
       child: GestureDetector(
         behavior: HitTestBehavior.opaque,
+        // Drag-only grip: touch follows the timeline input policy
+        // (UI-R22F — when touch scrolls the timeline, a finger pan
+        // starting on the end grip must scroll too, not trim).
+        supportedDevices: AppInput.timelineEditPanDevices,
         dragStartBehavior: DragStartBehavior.down,
         onHorizontalDragStart: horizontal ? (_) => _start() : null,
         onHorizontalDragUpdate: horizontal

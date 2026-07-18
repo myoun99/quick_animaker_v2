@@ -1,20 +1,25 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/gestures.dart' show PointerDeviceKind;
 
-/// Pointer-input policy (UI-R22 #6).
+/// Pointer-input policy (UI-R22 #6, default flipped in UI-R22F #1).
 ///
 /// What a TOUCH contact means on the timeline grids:
 ///
-/// - [touchTimelineScroll] OFF (the DEFAULT) — touch EDITS exactly like
-///   the pen (the shipped R17-⑥ contract: some Windows/tablet drivers
-///   report styluses as touch, so touch keeps full editing power —
-///   select, move, drag grips). This is byte-for-byte today's behavior.
-/// - ON — the timeline's edit gestures (range select/move, comma grips,
-///   run handles, block moves) release touch entirely, so a finger pan
-///   reaches the scroll viewports uncontested: touch becomes the
-///   timeline's SCROLL device. The pen (stylus) edits either way.
+/// - [touchTimelineScroll] ON (the DEFAULT) — the timeline's edit
+///   gestures (range select/move, comma grips, run handles, block
+///   moves) release touch entirely, so a finger pan reaches the scroll
+///   viewports uncontested: touch is the timeline's SCROLL device. The
+///   pen (stylus) edits either way.
+/// - OFF — touch EDITS exactly like the pen (the R17-⑥ contract: some
+///   Windows/tablet drivers report styluses as touch, so touch keeps
+///   full editing power — select, move, drag grips). The safety net for
+///   pens that misreport as touch.
+///
+/// NOTE for tests: `test/flutter_test_config.dart` pins the corpus to
+/// OFF (the touch-as-pen contract `tester.drag` was written under);
+/// scroll-behavior suites opt into ON explicitly.
 class AppInputSettings {
-  const AppInputSettings({this.touchTimelineScroll = false});
+  const AppInputSettings({this.touchTimelineScroll = true});
 
   final bool touchTimelineScroll;
 
@@ -26,7 +31,7 @@ class AppInputSettings {
 
   static AppInputSettings fromJson(Map<String, dynamic> json) =>
       AppInputSettings(
-        touchTimelineScroll: json['touchTimelineScroll'] as bool? ?? false,
+        touchTimelineScroll: json['touchTimelineScroll'] as bool? ?? true,
       );
 
   @override

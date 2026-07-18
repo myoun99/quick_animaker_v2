@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../input/app_input_settings.dart' show AppInput;
+
 import '../../models/layer_id.dart';
 import '../../models/timeline_coverage.dart';
 import 'timeline_cell_style.dart';
@@ -164,6 +166,10 @@ class _TimelineBlockEdgeGripState extends State<TimelineBlockEdgeGrip> {
           : SystemMouseCursors.resizeRow,
       child: GestureDetector(
         behavior: HitTestBehavior.opaque,
+        // Drag-only grip: touch follows the timeline input policy
+        // (UI-R22F — when touch scrolls the timeline, a finger pan
+        // starting on a grip must scroll too, not comma-drag).
+        supportedDevices: AppInput.timelineEditPanDevices,
         onHorizontalDragStart: horizontal ? (_) => _startDrag() : null,
         onHorizontalDragUpdate: horizontal
             ? (details) => _updateDrag(details.delta.dx)

@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:quick_animaker_v2/main.dart';
 import 'package:quick_animaker_v2/src/models/cut_id.dart';
+import 'package:quick_animaker_v2/src/ui/input/app_input_settings.dart';
 import 'package:quick_animaker_v2/src/ui/storyboard_panel.dart';
 import 'package:quick_animaker_v2/src/ui/storyboard_timeline_layout.dart';
 import 'package:quick_animaker_v2/src/ui/timeline/timeline_row_cells_painter.dart';
@@ -602,6 +603,19 @@ Future<void> _expectTimelineActionKeys(WidgetTester tester) async {
   await tester.pumpAndSettle();
 }
 
+/// Frame-axis SCROLL tests run under the PRODUCT default (touch scrolls
+/// the grids, UI-R22F): the corpus baseline is OFF (touch-as-pen) via
+/// flutter_test_config, and under OFF a cell-area touch drag EDITS (the
+/// eager pan claims it) instead of scrolling.
+void _withTouchScroll() {
+  AppInput.settings.value = const AppInputSettings(touchTimelineScroll: true);
+  addTearDown(() {
+    AppInput.settings.value = const AppInputSettings(
+      touchTimelineScroll: false,
+    );
+  });
+}
+
 void main() {
   testWidgets('shows placeholder app shell', (WidgetTester tester) async {
     await tester.pumpWidget(const QuickAnimakerApp());
@@ -644,6 +658,7 @@ void main() {
   testWidgets('default sample cut duration is 24 frames', (
     WidgetTester tester,
   ) async {
+    _withTouchScroll();
     await tester.pumpWidget(const QuickAnimakerApp());
 
     // The bottom dock runs between the two vertical tool bars, so the
@@ -663,6 +678,7 @@ void main() {
       'cells; the ruler edge-drag alone extends it (UI-R12 #16)', (
     WidgetTester tester,
   ) async {
+    _withTouchScroll();
     await tester.pumpWidget(const QuickAnimakerApp());
 
     // Painterized ruler (UI-R13 #1): headers past the base exist exactly
@@ -804,6 +820,7 @@ void main() {
       'cells; the frame-rail edge-drag alone extends it (UI-R12 #16)', (
     WidgetTester tester,
   ) async {
+    _withTouchScroll();
     await tester.pumpWidget(const QuickAnimakerApp());
     await _tapToolbarButton(
       tester,

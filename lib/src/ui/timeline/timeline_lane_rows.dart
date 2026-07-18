@@ -1,6 +1,9 @@
 import 'package:flutter/gestures.dart' show DragStartBehavior;
 import 'package:flutter/material.dart';
 
+import '../input/app_input_settings.dart' show AppInput;
+import '../input/eager_pan_gesture_recognizer.dart';
+
 import '../../models/layer.dart';
 import '../../models/timeline_frame_range.dart'
     show TimelineFrameRangeSelection;
@@ -258,19 +261,33 @@ class _TimelineLaneControlsRowState extends State<TimelineLaneControlsRow> {
     // Tap types a value; a drag SCRUBS it (AE-style — horizontal for the
     // first component, vertical for Position's y; the drag-axis mapping is
     // the lane's, identical in both orientations) and commits once on
-    // release.
-    return GestureDetector(
-      // .down: positions measure from the pointer-down origin, so the
-      // recognizer's slop never eats into the scrubbed value.
-      dragStartBehavior: DragStartBehavior.down,
-      onPanStart: laneEdit?.onSetValue == null
-          ? null
-          : (details) => _startScrub(details.globalPosition, valueLabel),
-      onPanUpdate: laneEdit?.onSetValue == null
-          ? null
-          : (details) => _updateScrub(details.globalPosition),
-      onPanEnd: laneEdit?.onSetValue == null ? null : (_) => _endScrub(),
-      onPanCancel: laneEdit?.onSetValue == null ? null : _cancelScrub,
+    // release. EAGER slop + the input device policy (UI-R22F #2): a slow
+    // scrub must never lose the arena to the grid scroll, and touch
+    // follows the timeline policy like every other edit gesture.
+    return RawGestureDetector(
+      gestures: laneEdit?.onSetValue == null
+          ? const <Type, GestureRecognizerFactory>{}
+          : <Type, GestureRecognizerFactory>{
+              EagerPanGestureRecognizer:
+                  GestureRecognizerFactoryWithHandlers<
+                    EagerPanGestureRecognizer
+                  >(() => EagerPanGestureRecognizer(debugOwner: this), (
+                    recognizer,
+                  ) {
+                    recognizer.supportedDevices =
+                        AppInput.timelineEditPanDevices;
+                    // .down: positions measure from the pointer-down
+                    // origin, so the recognizer's slop never eats into
+                    // the scrubbed value.
+                    recognizer.dragStartBehavior = DragStartBehavior.down;
+                    recognizer.onStart = (details) =>
+                        _startScrub(details.globalPosition, valueLabel);
+                    recognizer.onUpdate = (details) =>
+                        _updateScrub(details.globalPosition);
+                    recognizer.onEnd = (_) => _endScrub();
+                    recognizer.onCancel = _cancelScrub;
+                  }),
+            },
       child: MouseRegion(
         cursor: laneEdit?.onSetValue == null
             ? MouseCursor.defer

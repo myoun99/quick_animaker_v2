@@ -38,11 +38,11 @@ class _InputSettingsDialog extends StatelessWidget {
                 dense: true,
                 title: const Text('Touch scrolls the timeline'),
                 subtitle: const Text(
-                  'ON: finger pans scroll the grids — the edit gestures '
-                  'release touch entirely.\n'
-                  'OFF (default): touch edits exactly like the pen '
-                  '(select, move, drag grips) — pens that report as '
-                  'touch keep full power.',
+                  'ON (default): finger pans scroll the grids — the edit '
+                  'gestures release touch entirely.\n'
+                  'OFF: touch edits exactly like the pen (select, move, '
+                  'drag grips) — the safety net for pens that report as '
+                  'touch.',
                 ),
                 value: settings.touchTimelineScroll,
                 onChanged: (enabled) => session.setInputSettings(
