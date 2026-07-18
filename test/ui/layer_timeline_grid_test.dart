@@ -2309,37 +2309,56 @@ void main() {
     },
   );
 
-  test('cell style keeps covered cells paper-white and empty cells muted', () {
+  testWidgets('the ACTIVE-row wash is a row underlay, not cell paint '
+      '(UI-R21 #2): exactly the active row carries it', (tester) async {
+    await tester.pumpWidget(_grid());
+    bool rowHasWash(String layerId) {
+      final context = tester.element(find.byType(LayerTimelineGrid));
+      final wash = timelineActiveRowWashColor(Theme.of(context).colorScheme);
+      return tester
+          .widgetList<ColoredBox>(
+            find.descendant(
+              of: find.byKey(
+                ValueKey<String>('timeline-frame-row-area-$layerId'),
+              ),
+              matching: find.byType(ColoredBox),
+            ),
+          )
+          .any((box) => box.color == wash);
+    }
+
+    // _grid pins layer-1 active.
+    expect(rowHasWash('layer-1'), isTrue);
+    expect(rowHasWash('layer-2'), isFalse);
+  });
+
+  test('cell style keeps covered cells paper-white; empty cells paint '
+      'NOTHING (the row underlay owns the paper, UI-R21 #2)', () {
     const colorScheme = ColorScheme.light();
 
     final drawingStart = timelineCellStyleColors(
       colorScheme: colorScheme,
       exposureState: TimelineCellExposureState.drawingStart,
-      active: true,
       selected: false,
     );
     final heldDrawing = timelineCellStyleColors(
       colorScheme: colorScheme,
       exposureState: TimelineCellExposureState.held,
-      active: true,
       selected: false,
     );
     final markHeld = timelineCellStyleColors(
       colorScheme: colorScheme,
       exposureState: TimelineCellExposureState.markHeld,
-      active: true,
       selected: false,
     );
     final uncovered = timelineCellStyleColors(
       colorScheme: colorScheme,
       exposureState: TimelineCellExposureState.uncovered,
-      active: true,
       selected: false,
     );
     final selectedDrawing = timelineCellStyleColors(
       colorScheme: colorScheme,
       exposureState: TimelineCellExposureState.held,
-      active: true,
       selected: true,
     );
 
@@ -2350,7 +2369,10 @@ void main() {
     // seam sits on the same faint grid ink as the held seams.
     expect(drawingStart.border, heldDrawing.border);
     expect(markHeld.background, heldDrawing.background);
-    expect(uncovered.background, isNot(heldDrawing.background));
+    // UI-R21 #2: empties are TRANSPARENT — the substrate carries no
+    // per-row state, so switching the active layer re-rasters nothing.
+    expect(uncovered.background, Colors.transparent);
+    expect(uncovered.border, Colors.transparent);
     expect(selectedDrawing.border, timelineSelectedFrameBorderColor);
     expect(selectedDrawing.background, isNot(heldDrawing.background));
   });

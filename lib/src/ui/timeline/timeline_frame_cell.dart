@@ -88,7 +88,6 @@ class TimelineFrameCell extends StatelessWidget {
     final styleColors = timelineCellStyleColors(
       colorScheme: colorScheme,
       exposureState: effectiveExposureState,
-      active: active,
       selected: false,
     );
     // Ghost repeat instances dim like out-of-range cells (UI-R8).

@@ -111,12 +111,13 @@ class TimelineGridTileStore {
       scheduleMicrotask(_drain);
     }
     // LOOK-only staleness (UI-R20 #6): the CONTENT is the same layer at
-    // the same geometry — only active/scheme flipped. Keep showing the
-    // stale tile until the fresh raster lands (a 1-2 frame tint lag)
-    // instead of dropping to the classic pass, whose per-frame text
-    // rendering swap reads as glyphs thinning/thickening on activation.
-    // Content changes (a NEW layer instance) still return null so edits
-    // show correct cells immediately.
+    // the same geometry — only the scheme/text style flipped (the active
+    // flag left the raster entirely in UI-R21 #2: the wash is a row
+    // underlay now). Keep showing the stale tile until the fresh raster
+    // lands instead of dropping to the classic pass, whose per-frame
+    // text rendering swap reads as glyphs thinning/thickening. Content
+    // changes (a NEW layer instance) still return null so edits show
+    // correct cells immediately.
     if (entry != null &&
         identical(entry.layer, painter.layer) &&
         entry.frameCellExtent == painter.frameCellExtent &&
@@ -147,7 +148,6 @@ class TimelineGridTileStore {
       _entries.remove(key)?.image.dispose();
       _entries[key] = _TileEntry(
         layer: request.painter.layer,
-        active: request.painter.active,
         playbackFrameCount: request.painter.playbackFrameCount,
         frameCellExtent: request.painter.frameCellExtent,
         crossAxisExtent: request.painter.crossAxisExtent,
@@ -467,7 +467,6 @@ class _TileRequest {
 class _TileEntry {
   const _TileEntry({
     required this.layer,
-    required this.active,
     required this.playbackFrameCount,
     required this.frameCellExtent,
     required this.crossAxisExtent,
@@ -481,7 +480,6 @@ class _TileEntry {
   });
 
   final Object layer;
-  final bool active;
   final int playbackFrameCount;
   final double frameCellExtent;
   final double crossAxisExtent;
@@ -502,7 +500,6 @@ class _TileEntry {
     double devicePixelRatio,
   ) {
     return identical(layer, painter.layer) &&
-        active == painter.active &&
         playbackFrameCount == painter.playbackFrameCount &&
         frameCellExtent == painter.frameCellExtent &&
         crossAxisExtent == painter.crossAxisExtent &&
