@@ -754,4 +754,84 @@ void main() {
     expect(bAfter.timeline.containsKey(0), isTrue);
     expect(aAfter.timeline.containsKey(0), isFalse);
   });
+
+  test('a multi-layer drawing selection ROW-MOVES as one rigid group '
+      '(UI-R23 #9): every selected row shifts together, cels travel, and one '
+      'undo restores all rows', () {
+    final s = EditorSessionManager(initialProject: createDefaultProject());
+    s.createDrawingAtCurrentFrame(); // block on A
+    final aId = s.activeLayer!.id;
+    s.addLayer();
+    final bId = s.activeLayer!.id;
+    s.selectLayer(bId);
+    s.selectFrameIndex(0);
+    s.createDrawingAtCurrentFrame(); // block on B
+    s.addLayer();
+    final cId = s.activeLayer!.id; // empty target row below
+
+    Layer layer(LayerId id) => s.layers.firstWhere((l) => l.id == id);
+    final aFrameId = layer(aId).frames.single.id;
+    final bFrameId = layer(bId).frames.single.id;
+
+    // Select A..B, then drag the anchor down one row (A->B, B->C).
+    s.selectLayer(aId);
+    s.updateFrameRangeSelectionDrag(
+      layerId: aId,
+      anchorIndex: 0,
+      headIndex: 0,
+      headLayerId: bId,
+    );
+    expect(s.frameRangeSelection.value!.spanLayerIds, [aId, bId]);
+    expect(s.beginFrameRangeMoveDrag(), isTrue);
+    s.updateFrameRangeMoveDrag(frameDelta: 0, targetLayerId: bId);
+    expect(s.dragPreview.value, isNotNull);
+    expect(s.frameRangeSelection.value!.spanLayerIds, [bId, cId]);
+    s.endFrameRangeMoveDrag();
+
+    // The whole group shifted down one row; cels rode along.
+    expect(layer(aId).timeline.keys, isEmpty);
+    expect(layer(bId).timeline[0]!.frameId, aFrameId);
+    expect(layer(cId).timeline[0]!.frameId, bFrameId);
+    expect(layer(bId).frames.map((f) => f.id), contains(aFrameId));
+    expect(layer(cId).frames.map((f) => f.id), contains(bFrameId));
+
+    // ONE undo restores every affected row.
+    s.undo();
+    expect(layer(aId).timeline[0]!.frameId, aFrameId);
+    expect(layer(bId).timeline[0]!.frameId, bFrameId);
+    expect(layer(cId).timeline.keys, isEmpty);
+  });
+
+  test('a multi-row shift that would push a row off the lattice HOLDS the '
+      'last valid landing (UI-R23 #9 + #10)', () {
+    final s = EditorSessionManager(initialProject: createDefaultProject());
+    s.createDrawingAtCurrentFrame();
+    final aId = s.activeLayer!.id;
+    s.addLayer();
+    final bId = s.activeLayer!.id;
+    s.selectLayer(bId);
+    s.selectFrameIndex(0);
+    s.createDrawingAtCurrentFrame();
+    s.addLayer();
+    final cId = s.activeLayer!.id;
+
+    s.selectLayer(aId);
+    s.updateFrameRangeSelectionDrag(
+      layerId: aId,
+      anchorIndex: 0,
+      headIndex: 0,
+      headLayerId: bId,
+    );
+    expect(s.beginFrameRangeMoveDrag(), isTrue);
+    // A valid one-row shift (A->B, B->C).
+    s.updateFrameRangeMoveDrag(frameDelta: 0, targetLayerId: bId);
+    expect(s.frameRangeSelection.value!.spanLayerIds, [bId, cId]);
+
+    // Dragging further so B would fall off the bottom is illegal — the last
+    // valid one-row shift HOLDS (no snap-back, no partial move).
+    s.updateFrameRangeMoveDrag(frameDelta: 0, targetLayerId: cId);
+    expect(s.frameRangeSelection.value!.spanLayerIds, [bId, cId]);
+    expect(s.dragPreview.value, isNotNull);
+    s.cancelFrameRangeMoveDrag();
+  });
 }

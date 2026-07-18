@@ -75,6 +75,7 @@ import 'storyboard_cut_fade_policy.dart';
 import '../models/track_frame_axis.dart';
 import 'storyboard_timeline_layout.dart';
 import '../models/drawing_block_move.dart';
+import '../models/multi_row_range_move.dart';
 import '../services/command.dart';
 import '../services/commands/attached_cel_command.dart';
 import '../services/commands/cut_command_coordinator.dart';
@@ -4416,6 +4417,12 @@ class EditorSessionManager extends ChangeNotifier {
   List<({Layer commit, int offset})>? _rangeMoveMultiSources;
   List<DrawingBlockMovePlan>? _rangeMoveMultiPlans;
 
+  /// The in-flight MULTI-ROW range move (UI-R23 #9): a multi-layer drawing
+  /// selection dragged onto a different row shifts every selected row
+  /// rigidly. Set only while a valid rigid landing is previewed; an illegal
+  /// step leaves the last valid plan in place (UI-R23 #10).
+  MultiRowRangeMovePlan? _rangeMoveMultiRowPlan;
+
   /// KEY sources riding the range move (P3b-2, #2 second half): the
   /// camera row's keyframe snapshot and the spanned instruction rows —
   /// their keys shift with the same delta the blocks slide.
@@ -4470,6 +4477,7 @@ class EditorSessionManager extends ChangeNotifier {
     }
     _rangeMoveMultiSources = null;
     _rangeMoveMultiPlans = null;
+    _rangeMoveMultiRowPlan = null;
     _rangeMoveCameraBefore = null;
     _rangeMoveCameraLayerId = null;
     _rangeMoveInstructionSources = null;
@@ -4709,6 +4717,102 @@ class EditorSessionManager extends ChangeNotifier {
     return false;
   }
 
+  /// The display-ordered lattice of move-eligible DRAWING rows — the rows a
+  /// multi-row rigid shift can travel across (all one section).
+  List<Layer> _blockMoveLattice() {
+    final ordered = sectionedLayerOrder(activeCutOrNull?.layers ?? const []);
+    return [
+      for (final layer in ordered)
+        if (_blockMoveEligible(layer.id)) layer,
+    ];
+  }
+
+  /// A MULTI-ROW range move step (UI-R23 #9): a multi-layer DRAWING
+  /// selection dragged onto a different row shifts every selected row
+  /// rigidly by the same row + frame delta. Returns true when it OWNS the
+  /// step — a valid rigid landing (preview published) or an illegal one
+  /// that HOLDS the last valid preview (UI-R23 #10). Returns false (falls
+  /// through to the plain frame slide) for same-row steps or spans that
+  /// include a non-drawing row.
+  bool _updateMultiRowRangeMove(
+    TimelineFrameRangeSelection selection,
+    int frameDelta,
+    LayerId targetLayerId,
+  ) {
+    if (selection.spanLayerIds.length <= 1) {
+      return false;
+    }
+    for (final id in selection.spanLayerIds) {
+      if (!_blockMoveEligible(id)) {
+        return false;
+      }
+    }
+    final lattice = _blockMoveLattice();
+    final anchorIndex = lattice.indexWhere((l) => l.id == selection.layerId);
+    if (anchorIndex == -1) {
+      return false;
+    }
+    final targetIndex = lattice.indexWhere((l) => l.id == targetLayerId);
+    if (targetIndex == -1) {
+      // The pointer left the drawing lattice — an illegal landing for the
+      // rigid shift; HOLD the last valid preview (UI-R23 #10).
+      return true;
+    }
+    final rowDelta = targetIndex - anchorIndex;
+    if (rowDelta == 0) {
+      // No row change this step — the plain frame slide owns it.
+      return false;
+    }
+    final plan = planMultiRowRangeMove(
+      orderedLayers: lattice,
+      sourceLayerIds: selection.spanLayerIds,
+      rangeStartIndex: selection.startIndex,
+      rangeEndIndexExclusive: selection.endIndexExclusive,
+      frameDelta: frameDelta,
+      rowDelta: rowDelta,
+    );
+    if (plan == null) {
+      // An illegal rigid landing HOLDS the last valid preview (UI-R23 #10).
+      return true;
+    }
+    // A valid rigid landing supersedes the slide / row-change plans.
+    _rangeMoveMultiRowPlan = plan;
+    _rangeMoveMultiPlans = null;
+    _rangeMoveSeRowChange = null;
+    _rangeMoveInstructionRowChange = null;
+    _rangeMoveCameraShifted = null;
+    _rangeMoveInstructionShifted = null;
+    _rangeMoveTransformShifted = null;
+    _cameraKeysDragPreview = null;
+    dragPreview.value = BlockMoveDragPreview(
+      previewLayers: {
+        for (final entry in plan.layersAfter.entries)
+          entry.key: rederiveRunBehaviors(
+            entry.value,
+            cutFrameCount: _activeCutFrameCount,
+          ),
+      },
+    );
+    // The outline rides the rigid shift to the target rows.
+    final indexById = {
+      for (var i = 0; i < lattice.length; i += 1) lattice[i].id: i,
+    };
+    final landedLayerIds = [
+      for (final id in selection.spanLayerIds)
+        lattice[indexById[id]! + rowDelta].id,
+    ];
+    final newStart = selection.startIndex + frameDelta;
+    if (newStart >= 0) {
+      frameRangeSelection.value = TimelineFrameRangeSelection(
+        layerId: targetLayerId,
+        startIndex: newStart,
+        endIndexExclusive: selection.endIndexExclusive + frameDelta,
+        layerIds: landedLayerIds,
+      );
+    }
+    return true;
+  }
+
   /// A range-move drag step: live preview on [dragPreview] (repository
   /// untouched), the selection outline riding the previewed landing.
   void updateFrameRangeMoveDrag({
@@ -4729,10 +4833,18 @@ class EditorSessionManager extends ChangeNotifier {
           _updateRangeRowChangeDrag(selection, frameDelta, targetLayerId)) {
         return;
       }
-      // Falling to the plain slide: any prior SE/instruction row-change
-      // plan is stale now (the slide, not the row change, is last valid).
+      // MULTI-ROW rigid move (UI-R23 #9): a multi-layer drawing selection
+      // dragged onto a different row carries every selected row together.
+      if (targetLayerId != null &&
+          selection.spanLayerIds.length > 1 &&
+          _updateMultiRowRangeMove(selection, frameDelta, targetLayerId)) {
+        return;
+      }
+      // Falling to the plain slide: any prior row-change / multi-row plan
+      // is stale now (the slide, not the row change, is last valid).
       _rangeMoveSeRowChange = null;
       _rangeMoveInstructionRowChange = null;
+      _rangeMoveMultiRowPlan = null;
       // Cross-layer slide (UI-R18 #1): every spanned layer plans the SAME
       // frame delta on itself; any illegal landing HOLDS the last valid
       // preview (all-or-nothing, the single-layer discipline). KEY
@@ -4947,6 +5059,7 @@ class EditorSessionManager extends ChangeNotifier {
     final transformShifted = _rangeMoveTransformShifted;
     final seRowChange = _rangeMoveSeRowChange;
     final instructionRowChange = _rangeMoveInstructionRowChange;
+    final multiRowPlan = _rangeMoveMultiRowPlan;
     final landedSelection = frameRangeSelection.value;
     _rangeMoveSourceBefore = null;
     _rangeMoveSelectionBefore = null;
@@ -4954,6 +5067,7 @@ class EditorSessionManager extends ChangeNotifier {
     _rangeMovePlan = null;
     _rangeMoveMultiSources = null;
     _rangeMoveMultiPlans = null;
+    _rangeMoveMultiRowPlan = null;
     _rangeMoveCameraBefore = null;
     _rangeMoveCameraLayerId = null;
     _rangeMoveInstructionSources = null;
@@ -5022,6 +5136,66 @@ class EditorSessionManager extends ChangeNotifier {
       } else {
         frameRangeSelection.value = selection;
       }
+      return;
+    }
+    if (selection != null && multiRowPlan != null) {
+      // MULTI-ROW rigid move commit (UI-R23 #9): every affected drawing row
+      // rewrites in one composite undo, and each cross-row cel re-keys its
+      // brush frame to the target row.
+      final cut = activeCutOrNull;
+      final commands = <Command>[];
+      for (final entry in multiRowPlan.layersAfter.entries) {
+        final before = _layerById(entry.key);
+        if (before == null) {
+          continue;
+        }
+        final after = rederiveRunBehaviors(
+          entry.value,
+          cutFrameCount: _activeCutFrameCount,
+        );
+        if (after == before) {
+          continue; // An untouched source/target row — no command.
+        }
+        commands.add(
+          UpdateLayerTimelineCommand(
+            repository: _repository,
+            before: before,
+            after: after,
+          ),
+        );
+      }
+      if (cut != null && multiRowPlan.rekeys.isNotEmpty) {
+        commands.add(
+          RekeyBrushFramesCommand(
+            store: brushFrameStore,
+            pairs: [
+              for (final rekey in multiRowPlan.rekeys)
+                (
+                  brushFrameKeyForCut(cut, rekey.from, rekey.frameId),
+                  brushFrameKeyForCut(cut, rekey.to, rekey.frameId),
+                ),
+            ],
+          ),
+        );
+      }
+      if (commands.isEmpty) {
+        frameRangeSelection.value = selection;
+        return;
+      }
+      _historyManager.execute(
+        commands.length == 1
+            ? commands.single
+            : CompositeCommand(
+                description: 'Move frame range',
+                commands: commands,
+              ),
+      );
+      frameRangeSelection.value = landedSelection;
+      if (landedSelection != null) {
+        _layerController.selectLayer(landedSelection.layerId);
+      }
+      _warmActiveCut();
+      notifyListeners();
       return;
     }
     if (selection != null && multiSources != null) {
@@ -5164,6 +5338,7 @@ class EditorSessionManager extends ChangeNotifier {
     _rangeMovePlan = null;
     _rangeMoveMultiSources = null;
     _rangeMoveMultiPlans = null;
+    _rangeMoveMultiRowPlan = null;
     _rangeMoveCameraBefore = null;
     _rangeMoveCameraLayerId = null;
     _rangeMoveInstructionSources = null;
