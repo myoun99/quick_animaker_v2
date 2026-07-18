@@ -436,6 +436,43 @@ void main() {
     );
   });
 
+  test('UI-R22 #4: covering ONE cell of an instruction event selects its '
+      'whole span (the block rule on CAM rows)', () {
+    final s = EditorSessionManager(initialProject: createDefaultProject());
+    addTearDown(s.dispose);
+    final instruction = s.layers.firstWhere(
+      (l) => l.kind == LayerKind.instruction,
+    );
+    s.repository.updateLayerInstructions(
+      cutId: s.requireActiveCut.id,
+      layerId: instruction.id,
+      instructions: const {
+        1: InstructionEvent(instructionId: 'pan', length: 3),
+        7: InstructionEvent(instructionId: 'zoom', length: 2),
+      },
+    );
+
+    // One mid-event cell → the whole [1,4) span.
+    s.updateFrameRangeSelectionDrag(
+      layerId: instruction.id,
+      anchorIndex: 2,
+      headIndex: 2,
+    );
+    var selection = s.frameRangeSelection.value!;
+    expect(selection.startIndex, 1);
+    expect(selection.endIndexExclusive, 4);
+
+    // A sweep half-covering the second event swallows it whole.
+    s.updateFrameRangeSelectionDrag(
+      layerId: instruction.id,
+      anchorIndex: 2,
+      headIndex: 7,
+    );
+    selection = s.frameRangeSelection.value!;
+    expect(selection.startIndex, 1);
+    expect(selection.endIndexExclusive, 9);
+  });
+
   test('P3b-4 (#2): SE→SE row moves land blocks WITH their cels and '
       'audio clips on the sibling SE row — one undo restores both rows', () {
     final s = EditorSessionManager(initialProject: createDefaultProject());

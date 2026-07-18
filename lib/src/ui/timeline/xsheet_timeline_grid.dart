@@ -1997,6 +1997,14 @@ class _XSheetFrameCellsColumn extends StatelessWidget {
             onActivateCell: layerKindOpensCellEditorOnDoubleTap(layer.kind)
                 ? onActivateCell
                 : null,
+            // A press inside the selection starts a MOVE, never a seek
+            // (UI-R22 #2 — the painter rows' rule, unified).
+            suppressPointerDownSelect: (frame) {
+              final selection = rangeGesture?.selection.value;
+              return selection != null &&
+                  selection.coversLayer(layer.id) &&
+                  selection.contains(frame);
+            },
             axis: Axis.vertical,
             width: metrics.layerRowHeight,
             height: metrics.frameCellWidth,

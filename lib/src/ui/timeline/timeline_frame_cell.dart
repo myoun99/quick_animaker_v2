@@ -30,6 +30,7 @@ class TimelineFrameCell extends StatelessWidget {
     required this.onSelectLayer,
     required this.onSelectFrame,
     this.onActivateCell,
+    this.suppressPointerDownSelect,
     this.axis = Axis.horizontal,
     this.width,
     this.height,
@@ -59,6 +60,12 @@ class TimelineFrameCell extends StatelessWidget {
   /// instruction picker joins later). Null keeps plain taps snappy — the
   /// double-tap recognizer would delay single-tap selection otherwise.
   final void Function(LayerId layerId, int frameIndex)? onActivateCell;
+
+  /// A press INSIDE the frame-range selection initiates a MOVE — it must
+  /// not re-seek the playhead first (UI-R22 #2, the painter rows'
+  /// UI-R10 #12 rule unified onto the sparse cells). True suppresses the
+  /// pointer-down select for this cell.
+  final bool Function(int frameIndex)? suppressPointerDownSelect;
 
   /// The frame axis direction: horizontal in the layer timeline, vertical
   /// in the X-sheet. Controls which edges of an exposure block round.
@@ -203,7 +210,8 @@ class TimelineFrameCell extends StatelessWidget {
       // pointer down bypasses the arena, keeping single-tap selection
       // instant on every layer kind.
       onPointerDown: (event) {
-        if (event.buttons == 0 || (event.buttons & kPrimaryButton) != 0) {
+        if ((event.buttons == 0 || (event.buttons & kPrimaryButton) != 0) &&
+            !(suppressPointerDownSelect?.call(frameIndex) ?? false)) {
           select();
         }
       },

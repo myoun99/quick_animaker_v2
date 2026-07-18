@@ -149,6 +149,68 @@ void main() {
     expect(selectUpdates.last.$1, const LayerId('se-1'));
   });
 
+  testWidgets('a press INSIDE the selection never seeks — sparse rows '
+      'follow the painter rule now (UI-R22 #2)', (tester) async {
+    final cursor = ValueNotifier<int>(0);
+    final selection = ValueNotifier<TimelineFrameRangeSelection?>(
+      const TimelineFrameRangeSelection(
+        layerId: LayerId('se-1'),
+        startIndex: 0,
+        endIndexExclusive: 4,
+      ),
+    );
+    addTearDown(cursor.dispose);
+    addTearDown(selection.dispose);
+    final seeks = <int>[];
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: LayerTimelineGrid(
+            layers: [blockLayer('se-1').copyWith(kind: LayerKind.se)],
+            activeLayerId: const LayerId('se-1'),
+            frameCursor: cursor,
+            playbackFrameCount: 24,
+            exposureStateForLayer: stateFor,
+            onSelectLayer: (_) {},
+            onSelectFrame: seeks.add,
+            onAddLayer: () {},
+            onToggleLayerVisibility: (_) {},
+            onLayerOpacityChanged: (_, _) {},
+            onToggleLayerTimesheet: (_) {},
+            onLayerMarkSelected: (_, _) {},
+            rangeHooks: hooks(selection: selection),
+            metrics: const TimelineGridMetrics(
+              frameCellWidth: 48,
+              layerRowHeight: 52,
+            ),
+          ),
+        ),
+      ),
+    );
+
+    final gestureLayer = find.byKey(
+      const ValueKey<String>('timeline-range-gesture-se-1'),
+    );
+    // Press INSIDE the selected span (cell 1): no seek.
+    var gesture = await tester.startGesture(
+      tester.getTopLeft(gestureLayer) + const Offset(24 + 48, 26),
+      kind: PointerDeviceKind.mouse,
+    );
+    await gesture.up();
+    await tester.pump();
+    expect(seeks, isEmpty, reason: 'inside the selection = a move press');
+
+    // Press OUTSIDE (cell 6): seeks as always.
+    gesture = await tester.startGesture(
+      tester.getTopLeft(gestureLayer) + const Offset(24 + 6 * 48, 26),
+      kind: PointerDeviceKind.mouse,
+    );
+    await gesture.up();
+    await tester.pump();
+    expect(seeks, [6]);
+  });
+
   testWidgets('a cell drag reports anchor/head SELECT updates, never a '
       'move', (tester) async {
     final selectUpdates = <(LayerId, int, int)>[];
