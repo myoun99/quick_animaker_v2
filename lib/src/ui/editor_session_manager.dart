@@ -4372,6 +4372,26 @@ class EditorSessionManager extends ChangeNotifier {
   List<Layer>? _rangeMoveTransformSources;
   Map<LayerId, TransformTrack>? _rangeMoveTransformShifted;
 
+  /// A ROW-CHANGE drop in flight within the SE / camera sections (P3b-4,
+  /// 같은 섹션 행이동): the planned GLOBAL layer pair for an SE→SE drop,
+  /// or the instruction-map pair for instruction→instruction.
+  ({
+    LayerId sourceId,
+    LayerId targetId,
+    Layer sourceBefore,
+    Layer sourceAfter,
+    Layer targetBefore,
+    Layer targetAfter,
+  })?
+  _rangeMoveSeRowChange;
+  ({
+    LayerId sourceId,
+    LayerId targetId,
+    Map<int, InstructionEvent> sourceAfter,
+    Map<int, InstructionEvent> targetAfter,
+  })?
+  _rangeMoveInstructionRowChange;
+
   /// The in-flight camera-key preview the cell resolution consults
   /// (exposureStateForLayer): the camera row's cells follow the drag
   /// without the repository moving.
@@ -4398,6 +4418,8 @@ class EditorSessionManager extends ChangeNotifier {
     _rangeMoveInstructionShifted = null;
     _rangeMoveTransformSources = null;
     _rangeMoveTransformShifted = null;
+    _rangeMoveSeRowChange = null;
+    _rangeMoveInstructionRowChange = null;
     // KEY sources (P3b-2, #2 second half): camera keys, instruction
     // spans AND the layers' own transform-track keys (P3c, #13) inside
     // the selection move with the blocks — same delta, one rigid group.
@@ -4512,6 +4534,123 @@ class EditorSessionManager extends ChangeNotifier {
     return true;
   }
 
+  /// A ROW-CHANGE drag step (P3b-4): returns true when it OWNED the step
+  /// — either a planned SE→SE / instruction→instruction landing (preview
+  /// published) or an owned-but-illegal hover (preview cleared). False
+  /// falls through to the plain frame-axis slide.
+  bool _updateRangeRowChangeDrag(
+    TimelineFrameRangeSelection selection,
+    int frameDelta,
+    LayerId targetLayerId,
+  ) {
+    void clearAsIllegal() {
+      _rangeMoveMultiPlans = null;
+      _rangeMoveCameraShifted = null;
+      _rangeMoveInstructionShifted = null;
+      _rangeMoveTransformShifted = null;
+      _cameraKeysDragPreview = null;
+      dragPreview.value = null;
+      frameRangeSelection.value = selection;
+    }
+
+    void followOutline() {
+      _rangeMoveMultiPlans = null;
+      _rangeMoveCameraShifted = null;
+      _rangeMoveInstructionShifted = null;
+      _rangeMoveTransformShifted = null;
+      _cameraKeysDragPreview = null;
+      final newStart = selection.startIndex + frameDelta;
+      if (newStart >= 0) {
+        frameRangeSelection.value = TimelineFrameRangeSelection(
+          layerId: targetLayerId,
+          startIndex: newStart,
+          endIndexExclusive: selection.endIndexExclusive + frameDelta,
+        );
+      }
+    }
+
+    final sourceIsSe = isTrackSeLayerId(selection.layerId);
+    if (sourceIsSe && isTrackSeLayerId(targetLayerId)) {
+      final sourceGlobal = trackSeGlobalLayerById(selection.layerId);
+      final targetGlobal = trackSeGlobalLayerById(targetLayerId);
+      if (sourceGlobal == null || targetGlobal == null) {
+        clearAsIllegal();
+        return true;
+      }
+      final offset =
+          _commitBlockStart(selection.layerId, selection.startIndex) -
+          selection.startIndex;
+      final plan = planSeRangeRowMove(
+        source: sourceGlobal,
+        target: targetGlobal,
+        rangeStartIndex: selection.startIndex + offset,
+        rangeEndIndexExclusive: selection.endIndexExclusive + offset,
+        frameDelta: frameDelta,
+      );
+      if (plan == null) {
+        clearAsIllegal();
+        return true;
+      }
+      _rangeMoveSeRowChange = (
+        sourceId: selection.layerId,
+        targetId: targetLayerId,
+        sourceBefore: sourceGlobal,
+        sourceAfter: plan.sourceAfter,
+        targetBefore: targetGlobal,
+        targetAfter: plan.targetAfter,
+      );
+      dragPreview.value = BlockMoveDragPreview(
+        previewLayers: {
+          selection.layerId: trackSeWindow.displayLayer(plan.sourceAfter),
+          targetLayerId: trackSeWindow.displayLayer(plan.targetAfter),
+        },
+      );
+      followOutline();
+      return true;
+    }
+    final sourceLayer = _layerById(selection.layerId);
+    final targetLayer = _layerById(targetLayerId);
+    final sourceIsInstruction = sourceLayer?.kind == LayerKind.instruction;
+    if (sourceIsInstruction && targetLayer?.kind == LayerKind.instruction) {
+      final plan = planInstructionRangeRowMove(
+        source: sourceLayer!.instructions,
+        target: targetLayer!.instructions,
+        rangeStartIndex: selection.startIndex,
+        rangeEndIndexExclusive: selection.endIndexExclusive,
+        frameDelta: frameDelta,
+      );
+      if (plan == null) {
+        clearAsIllegal();
+        return true;
+      }
+      _rangeMoveInstructionRowChange = (
+        sourceId: selection.layerId,
+        targetId: targetLayerId,
+        sourceAfter: plan.sourceAfter,
+        targetAfter: plan.targetAfter,
+      );
+      dragPreview.value = BlockMoveDragPreview(
+        previewLayers: {
+          selection.layerId: sourceLayer.copyWith(
+            instructions: plan.sourceAfter,
+          ),
+          targetLayerId: targetLayer.copyWith(instructions: plan.targetAfter),
+        },
+      );
+      followOutline();
+      return true;
+    }
+    // SE / instruction sources hovering an INCOMPATIBLE row: the drop is
+    // illegal — preview clears until a legal row (the cross-section
+    // discipline). Every other source falls through to the plain slide
+    // (the camera key drag keeps ignoring row wander, P3b-2).
+    if (sourceIsSe || sourceIsInstruction) {
+      clearAsIllegal();
+      return true;
+    }
+    return false;
+  }
+
   /// A range-move drag step: live preview on [dragPreview] (repository
   /// untouched), the selection outline riding the previewed landing.
   void updateFrameRangeMoveDrag({
@@ -4521,6 +4660,19 @@ class EditorSessionManager extends ChangeNotifier {
     final selection = _rangeMoveSelectionBefore;
     final multiSources = _rangeMoveMultiSources;
     if (selection != null && multiSources != null) {
+      // ROW-CHANGE drops within the SE / camera sections (P3b-4, 같은
+      // 섹션 행이동): a single-row track-SE selection may land on a
+      // sibling SE row, an instruction selection on a sibling
+      // instruction row — the handler owns the step then (cross-kind
+      // hovers clear the preview like any illegal landing).
+      _rangeMoveSeRowChange = null;
+      _rangeMoveInstructionRowChange = null;
+      if (targetLayerId != null &&
+          targetLayerId != selection.layerId &&
+          selection.spanLayerIds.length == 1 &&
+          _updateRangeRowChangeDrag(selection, frameDelta, targetLayerId)) {
+        return;
+      }
       // Cross-layer slide (UI-R18 #1): every spanned layer plans the SAME
       // frame delta on itself; any illegal landing clears the whole
       // preview (all-or-nothing, the single-layer discipline). KEY
@@ -4739,6 +4891,8 @@ class EditorSessionManager extends ChangeNotifier {
     final cameraShifted = _rangeMoveCameraShifted;
     final instructionShifted = _rangeMoveInstructionShifted;
     final transformShifted = _rangeMoveTransformShifted;
+    final seRowChange = _rangeMoveSeRowChange;
+    final instructionRowChange = _rangeMoveInstructionRowChange;
     final landedSelection = frameRangeSelection.value;
     _rangeMoveSourceBefore = null;
     _rangeMoveSelectionBefore = null;
@@ -4753,8 +4907,69 @@ class EditorSessionManager extends ChangeNotifier {
     _rangeMoveInstructionShifted = null;
     _rangeMoveTransformSources = null;
     _rangeMoveTransformShifted = null;
+    _rangeMoveSeRowChange = null;
+    _rangeMoveInstructionRowChange = null;
     _cameraKeysDragPreview = null;
     dragPreview.value = null;
+    // ROW-CHANGE commits (P3b-4): the planned pair replaces both rows in
+    // one composite undo; the selection follows the landing row.
+    if (selection != null && seRowChange != null) {
+      _historyManager.execute(
+        CompositeCommand(
+          description: 'Move frame range',
+          commands: [
+            UpdateLayerTimelineCommand(
+              repository: _repository,
+              before: seRowChange.sourceBefore,
+              after: seRowChange.sourceAfter,
+            ),
+            UpdateLayerTimelineCommand(
+              repository: _repository,
+              before: seRowChange.targetBefore,
+              after: seRowChange.targetAfter,
+            ),
+          ],
+        ),
+      );
+      frameRangeSelection.value = landedSelection;
+      _layerController.selectLayer(seRowChange.targetId);
+      _warmActiveCut();
+      notifyListeners();
+      return;
+    }
+    if (selection != null && instructionRowChange != null) {
+      final cut = activeCutOrNull;
+      if (cut != null) {
+        _historyManager.execute(
+          CompositeCommand(
+            description: 'Move frame range',
+            commands: [
+              UpdateLayerInstructionsCommand(
+                repository: _repository,
+                cutId: cut.id,
+                layerId: instructionRowChange.sourceId,
+                instructions: instructionRowChange.sourceAfter,
+                description: 'Move instruction keys',
+              ),
+              UpdateLayerInstructionsCommand(
+                repository: _repository,
+                cutId: cut.id,
+                layerId: instructionRowChange.targetId,
+                instructions: instructionRowChange.targetAfter,
+                description: 'Move instruction keys',
+              ),
+            ],
+          ),
+        );
+        frameRangeSelection.value = landedSelection;
+        _layerController.selectLayer(instructionRowChange.targetId);
+        _warmActiveCut();
+        notifyListeners();
+      } else {
+        frameRangeSelection.value = selection;
+      }
+      return;
+    }
     if (selection != null && multiSources != null) {
       // Cross-layer slide commit (UI-R18 #1) + key shifts (P3b-2/P3c):
       // one composite undo across blocks, camera keys, instruction spans
@@ -4902,6 +5117,8 @@ class EditorSessionManager extends ChangeNotifier {
     _rangeMoveInstructionShifted = null;
     _rangeMoveTransformSources = null;
     _rangeMoveTransformShifted = null;
+    _rangeMoveSeRowChange = null;
+    _rangeMoveInstructionRowChange = null;
     _cameraKeysDragPreview = null;
     dragPreview.value = null;
     if (selection != null) {
