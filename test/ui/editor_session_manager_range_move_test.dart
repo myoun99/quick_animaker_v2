@@ -1,10 +1,15 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:quick_animaker_v2/src/controllers/default_project_helpers.dart';
+import 'package:quick_animaker_v2/src/models/audio_clip.dart';
 import 'package:quick_animaker_v2/src/models/camera_instruction.dart';
 import 'package:quick_animaker_v2/src/models/canvas_point.dart';
+import 'package:quick_animaker_v2/src/models/frame.dart';
+import 'package:quick_animaker_v2/src/models/frame_id.dart';
 import 'package:quick_animaker_v2/src/models/layer.dart';
+import 'package:quick_animaker_v2/src/models/layer_id.dart';
 import 'package:quick_animaker_v2/src/models/layer_kind.dart';
 import 'package:quick_animaker_v2/src/models/property_track.dart';
+import 'package:quick_animaker_v2/src/models/timeline_exposure.dart';
 import 'package:quick_animaker_v2/src/models/timeline_repeat.dart';
 import 'package:quick_animaker_v2/src/models/transform_track.dart';
 import 'package:quick_animaker_v2/src/ui/editor_session_manager.dart';
@@ -429,6 +434,125 @@ void main() {
       s.layers.firstWhere((l) => l.id == a.id).timeline.containsKey(0),
       isFalse,
     );
+  });
+
+  test('P3b-4 (#2): SE→SE row moves land blocks WITH their cels and '
+      'audio clips on the sibling SE row — one undo restores both rows', () {
+    final s = EditorSessionManager(initialProject: createDefaultProject());
+    addTearDown(s.dispose);
+    final seIds = [for (final l in s.activeTrack.seLayers) l.id];
+    expect(seIds, hasLength(2));
+    final s1 = s.activeTrack.seLayers.first;
+    s.repository.replaceLayer(
+      layer: s1.copyWith(
+        frames: [
+          Frame(id: const FrameId('se-cel'), duration: 1, strokes: const []),
+        ],
+        timeline: const {
+          2: TimelineExposure.drawing(FrameId('se-cel'), length: 3),
+        },
+        audioClips: const [
+          AudioClip(filePath: 'a.wav', frameId: FrameId('se-cel')),
+        ],
+      ),
+    );
+
+    s.updateFrameRangeSelectionDrag(
+      layerId: seIds[0],
+      anchorIndex: 2,
+      headIndex: 4,
+    );
+    expect(s.frameRangeSelection.value, isNotNull);
+    expect(s.beginFrameRangeMoveDrag(), isTrue);
+    s.updateFrameRangeMoveDrag(frameDelta: 0, targetLayerId: seIds[1]);
+    final preview = s.dragPreview.value! as BlockMoveDragPreview;
+    expect(preview.previewLayers.keys.toSet(), seIds.toSet());
+    s.endFrameRangeMoveDrag();
+
+    Layer seLayer(int index) =>
+        s.activeTrack.seLayers.firstWhere((l) => l.id == seIds[index]);
+    expect(seLayer(0).timeline, isEmpty);
+    expect(seLayer(0).audioClips, isEmpty);
+    expect(seLayer(1).timeline.containsKey(2), isTrue);
+    expect(seLayer(1).frames.single.id, const FrameId('se-cel'));
+    expect(
+      seLayer(1).audioClips.single.frameId,
+      const FrameId('se-cel'),
+      reason: 'the clip follows its cel to the landing row',
+    );
+    expect(s.activeLayer!.id, seIds[1], reason: 'selection follows');
+
+    s.undo();
+    expect(seLayer(0).timeline.containsKey(2), isTrue);
+    expect(seLayer(0).audioClips, hasLength(1));
+    expect(seLayer(1).timeline, isEmpty);
+  });
+
+  test('P3b-4 (#2): instruction→instruction row moves carry the events; '
+      'an overlapping landing voids; cross-kind hovers clear the preview', () {
+    final s = EditorSessionManager(initialProject: createDefaultProject());
+    addTearDown(s.dispose);
+    final first = s.layers.firstWhere((l) => l.kind == LayerKind.instruction);
+    s.addLayerOfKind(LayerKind.instruction);
+    final second = s.layers.lastWhere(
+      (l) => l.kind == LayerKind.instruction && l.id != first.id,
+    );
+    s.repository.updateLayerInstructions(
+      cutId: s.requireActiveCut.id,
+      layerId: first.id,
+      instructions: const {
+        1: InstructionEvent(instructionId: 'pan', length: 2),
+      },
+    );
+
+    s.updateFrameRangeSelectionDrag(
+      layerId: first.id,
+      anchorIndex: 1,
+      headIndex: 2,
+    );
+    expect(s.beginFrameRangeMoveDrag(), isTrue);
+    s.updateFrameRangeMoveDrag(frameDelta: 2, targetLayerId: second.id);
+    expect(s.dragPreview.value, isNotNull);
+    s.endFrameRangeMoveDrag();
+
+    Layer row(LayerId id) => s.layers.firstWhere((l) => l.id == id);
+    expect(row(first.id).instructions, isEmpty);
+    expect(row(second.id).instructions.containsKey(3), isTrue);
+    s.undo();
+    expect(row(first.id).instructions.containsKey(1), isTrue);
+    expect(row(second.id).instructions, isEmpty);
+
+    // An overlapping landing on the target voids the drop.
+    s.repository.updateLayerInstructions(
+      cutId: s.requireActiveCut.id,
+      layerId: second.id,
+      instructions: const {
+        2: InstructionEvent(instructionId: 'zoom', length: 2),
+      },
+    );
+    s.updateFrameRangeSelectionDrag(
+      layerId: first.id,
+      anchorIndex: 1,
+      headIndex: 2,
+    );
+    expect(s.beginFrameRangeMoveDrag(), isTrue);
+    s.updateFrameRangeMoveDrag(frameDelta: 2, targetLayerId: second.id);
+    expect(s.dragPreview.value, isNull, reason: '[3,5) overlaps [2,4)');
+    final undoProbe = s.canUndo;
+    s.endFrameRangeMoveDrag();
+    expect(s.canUndo, undoProbe, reason: 'void drops commit nothing');
+
+    // A cross-kind hover (instruction → drawing row) clears the preview.
+    final drawing = s.layers.firstWhere((l) => l.kind == LayerKind.animation);
+    s.updateFrameRangeSelectionDrag(
+      layerId: first.id,
+      anchorIndex: 1,
+      headIndex: 2,
+    );
+    expect(s.beginFrameRangeMoveDrag(), isTrue);
+    s.updateFrameRangeMoveDrag(frameDelta: 1, targetLayerId: drawing.id);
+    expect(s.dragPreview.value, isNull);
+    s.cancelFrameRangeMoveDrag();
   });
 
   test('GHOST cells join the selection now (UI-R20 #5): a sweep covers '

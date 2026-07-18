@@ -6,6 +6,8 @@ library;
 
 import 'camera_instruction.dart';
 import 'camera_pose.dart';
+import 'drawing_block_move.dart';
+import 'layer.dart';
 import 'property_track.dart';
 import 'transform_track.dart';
 
@@ -121,6 +123,96 @@ TransformTrack? shiftTransformKeysInRange({
     rotation: rotation,
     opacity: opacity,
   );
+}
+
+/// An SE→SE ROW move (P3b-4, 같은 섹션 행이동): the selected sound
+/// blocks land on a SIBLING SE row — cels travel with the blocks (the
+/// drawing-move planner's cross-layer carry) and the AUDIO CLIPS follow
+/// their cels by [AudioClip.frameId] (a clip anchors to its cel, so its
+/// timing rides the landed block for free). Null on any illegal landing
+/// (overlap on the target, partially covered blocks, negative frames).
+({Layer sourceAfter, Layer targetAfter})? planSeRangeRowMove({
+  required Layer source,
+  required Layer target,
+  required int rangeStartIndex,
+  required int rangeEndIndexExclusive,
+  required int frameDelta,
+}) {
+  final plan = planDrawingRangeMove(
+    source: source,
+    target: target,
+    rangeStartIndex: rangeStartIndex,
+    rangeEndIndexExclusive: rangeEndIndexExclusive,
+    frameDelta: frameDelta,
+  );
+  final targetAfter = plan?.targetAfter;
+  if (plan == null || targetAfter == null) {
+    return null;
+  }
+  final movedIds = plan.movedFrameIds.toSet();
+  return (
+    sourceAfter: plan.sourceAfter.copyWith(
+      audioClips: [
+        for (final clip in source.audioClips)
+          if (!movedIds.contains(clip.frameId)) clip,
+      ],
+    ),
+    targetAfter: targetAfter.copyWith(
+      audioClips: [
+        ...target.audioClips,
+        for (final clip in source.audioClips)
+          if (movedIds.contains(clip.frameId)) clip,
+      ],
+    ),
+  );
+}
+
+/// An instruction→instruction ROW move (P3b-4): events STARTING in the
+/// range land on a sibling instruction row at start+[frameDelta]; null
+/// when nothing moves, a landing dips below 0, or it overlaps one of the
+/// target's existing events (moved events keep their relative spacing,
+/// so they never collide with each other).
+({
+  Map<int, InstructionEvent> sourceAfter,
+  Map<int, InstructionEvent> targetAfter,
+})?
+planInstructionRangeRowMove({
+  required Map<int, InstructionEvent> source,
+  required Map<int, InstructionEvent> target,
+  required int rangeStartIndex,
+  required int rangeEndIndexExclusive,
+  required int frameDelta,
+}) {
+  bool inRange(int frame) =>
+      frame >= rangeStartIndex && frame < rangeEndIndexExclusive;
+  final moved = <int>{
+    for (final start in source.keys)
+      if (inRange(start)) start,
+  };
+  if (moved.isEmpty) {
+    return null;
+  }
+  final sourceAfter = <int, InstructionEvent>{
+    for (final entry in source.entries)
+      if (!moved.contains(entry.key)) entry.key: entry.value,
+  };
+  final targetAfter = Map<int, InstructionEvent>.of(target);
+  for (final start in moved) {
+    final event = source[start]!;
+    final landing = start + frameDelta;
+    if (landing < 0) {
+      return null;
+    }
+    final landingEnd = landing + event.length;
+    for (final other in targetAfter.entries) {
+      final otherEnd = other.key + other.value.length;
+      if (landing < otherEnd && other.key < landingEnd) {
+        return null;
+      }
+    }
+    targetAfter[landing] = event;
+  }
+  return (sourceAfter: sourceAfter, targetAfter: targetAfter);
 }
 
 /// The instruction map with every event STARTING in the range shifted by
