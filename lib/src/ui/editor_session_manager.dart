@@ -4037,13 +4037,20 @@ class EditorSessionManager extends ChangeNotifier {
   final ValueNotifier<TimelineFrameRangeSelection?> frameRangeSelection =
       ValueNotifier<TimelineFrameRangeSelection?>(null);
 
-  /// Whether [layerId] can take part in a RANGE selection (UI-R18 #1):
-  /// the block-move-eligible drawing rows PLUS the SE section's
-  /// track-owned rows (their ops map through the global-axis seam);
-  /// camera/instruction rows keep their own timing model and stand down.
-  bool _rangeSelectionEligible(LayerId layerId) =>
-      _blockMoveEligible(layerId) ||
-      (isTrackSeLayerId(layerId) && trackSeGlobalLayerById(layerId) != null);
+  /// Whether [layerId] can take part in a RANGE selection (UI-R20 #2:
+  /// cells are cells — EVERY layer row selects, camera and instruction
+  /// included; what a selection can DO stays kind-gated at each op's
+  /// seam). Attach rows stand down until the ghost-snap rework lets
+  /// their all-ghost mirrors join (P3b).
+  bool _rangeSelectionEligible(LayerId layerId) {
+    if (_isAttachedLayerId(layerId)) {
+      return false;
+    }
+    if (isTrackSeLayerId(layerId)) {
+      return trackSeGlobalLayerById(layerId) != null;
+    }
+    return _layerById(layerId) != null;
+  }
 
   /// The layer a RANGE selection reads (cut-local DISPLAY indexes): cut
   /// layers as-is, track-SE rows as their display clones.
@@ -4149,15 +4156,18 @@ class EditorSessionManager extends ChangeNotifier {
   }
 
   /// The display-ordered ELIGIBLE layers between [anchor] and [head]
-  /// (inclusive) — cut drawing rows first, the SE section's track rows
-  /// after (the timeline's section order). Ineligible rows inside the
-  /// span are skipped; cross-KIND moves stay blocked at the move seam
-  /// (UI-R18 #1 safety).
+  /// (inclusive) — the SECTIONED order the grids render (drawing rows,
+  /// then the SE section with the track rows, then camera/instruction),
+  /// so a cross-row drag spans exactly the rows it visually crosses.
+  /// Ineligible rows inside the span are skipped; cross-KIND moves stay
+  /// blocked at the move seam (UI-R18 #1 safety).
   List<LayerId> _selectionSpanLayerIds(LayerId anchor, LayerId head) {
+    final ordered = sectionedLayerOrder([
+      ...activeCutOrNull?.layers ?? const <Layer>[],
+      ...activeTrack.seLayers,
+    ]);
     final eligible = [
-      for (final layer in activeCutOrNull?.layers ?? const <Layer>[])
-        if (_blockMoveEligible(layer.id)) layer.id,
-      for (final layer in activeTrack.seLayers)
+      for (final layer in ordered)
         if (_rangeSelectionEligible(layer.id)) layer.id,
     ];
     final anchorIndex = eligible.indexOf(anchor);
@@ -4343,6 +4353,14 @@ class EditorSessionManager extends ChangeNotifier {
   bool beginFrameRangeMoveDrag() {
     final selection = frameRangeSelection.value;
     if (selection == null || !_rangeSelectionEligible(selection.layerId)) {
+      return false;
+    }
+    // v1 (UI-R20 #2): key rows (camera/instruction, cut-owned SE) SELECT
+    // but their keys don't range-MOVE yet — a span containing one refuses
+    // the move whole (all-or-nothing discipline; the key-move seam is the
+    // P3b follow-up).
+    bool movable(LayerId id) => _blockMoveEligible(id) || isTrackSeLayerId(id);
+    if (!selection.spanLayerIds.every(movable)) {
       return false;
     }
     _rangeMoveMultiSources = null;

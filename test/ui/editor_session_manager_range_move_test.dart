@@ -1,6 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:quick_animaker_v2/src/controllers/default_project_helpers.dart';
 import 'package:quick_animaker_v2/src/models/layer.dart';
+import 'package:quick_animaker_v2/src/models/layer_kind.dart';
 import 'package:quick_animaker_v2/src/models/timeline_repeat.dart';
 import 'package:quick_animaker_v2/src/ui/editor_session_manager.dart';
 import 'package:quick_animaker_v2/src/ui/timeline/timeline_drag_preview.dart';
@@ -47,6 +48,72 @@ void main() {
     // The head cell (3) is a block start: the block extends the range to
     // its end.
     expect(selection.endIndexExclusive, 4);
+  });
+
+  test('EVERY layer row selects (UI-R20 #2): camera/instruction rows take '
+      'raw spans, cross-section spans walk the display order, and spans '
+      'holding key rows refuse the MOVE (v1)', () {
+    final (s, a, _) = fixture();
+    final camera = s.layers.firstWhere((l) => l.kind == LayerKind.camera);
+    final instruction = s.layers.firstWhere(
+      (l) => l.kind == LayerKind.instruction,
+    );
+
+    // Camera-origin: no blocks to snap → the raw span selects as-is.
+    s.updateFrameRangeSelectionDrag(
+      layerId: camera.id,
+      anchorIndex: 2,
+      headIndex: 5,
+    );
+    var selection = s.frameRangeSelection.value;
+    expect(selection, isNotNull);
+    expect(selection!.layerId, camera.id);
+    expect(selection.startIndex, 2);
+    expect(selection.endIndexExclusive, 6);
+    expect(
+      s.beginFrameRangeMoveDrag(),
+      isFalse,
+      reason: 'key rows select but their keys do not range-move yet',
+    );
+
+    // Instruction-origin too.
+    s.updateFrameRangeSelectionDrag(
+      layerId: instruction.id,
+      anchorIndex: 0,
+      headIndex: 1,
+    );
+    expect(s.frameRangeSelection.value!.layerId, instruction.id);
+
+    // A drawing→camera cross-row drag spans the SECTIONED display order:
+    // drawing rows, the track-SE rows, instruction, camera.
+    s.updateFrameRangeSelectionDrag(
+      layerId: a.id,
+      anchorIndex: 0,
+      headIndex: 0,
+      headLayerId: camera.id,
+    );
+    selection = s.frameRangeSelection.value;
+    expect(selection!.spanLayerIds.first, a.id);
+    expect(selection.spanLayerIds.last, camera.id);
+    expect(
+      selection.spanLayerIds.length,
+      greaterThanOrEqualTo(5),
+      reason: 'SE + instruction rows in between join the span',
+    );
+    expect(
+      s.beginFrameRangeMoveDrag(),
+      isFalse,
+      reason: 'a span containing key rows refuses the move whole',
+    );
+
+    // Regression pin: a drawing-only span still moves.
+    s.updateFrameRangeSelectionDrag(
+      layerId: a.id,
+      anchorIndex: 0,
+      headIndex: 3,
+    );
+    expect(s.beginFrameRangeMoveDrag(), isTrue);
+    s.cancelFrameRangeMoveDrag();
   });
 
   test('selection clears on layer switch and cut refresh', () {

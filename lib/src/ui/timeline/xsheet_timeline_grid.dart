@@ -1877,10 +1877,9 @@ class _XSheetFrameCellsColumn extends StatelessWidget {
           // The range gesture layer replaces the block-body move handle
           // (UI-R8, axis-transposed): a pan SELECTS a frame range, a pan
           // starting inside the selection MOVES it. Mounted UNDER the
-          // grips so the edges keep comma-drag priority.
-          if (rangeGesture != null &&
-              layerKindHoldsDrawings(layer.kind) &&
-              !layerKindUsesSeSheetCells(layer.kind))
+          // grips so the edges keep comma-drag priority. EVERY layer row
+          // mounts it (UI-R20 #2 — see the horizontal grid).
+          if (rangeGesture != null)
             TimelineFrameRangeGestureLayer(
               layer: layer,
               frameStartIndex: frameStartIndex,
