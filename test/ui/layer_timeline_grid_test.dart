@@ -737,6 +737,19 @@ void main() {
     expect(storyboardIcon.icon, Icons.auto_stories_outlined);
     expect(find.bySemanticsLabel('Animation layer'), findsOneWidget);
     expect(find.bySemanticsLabel('Storyboard layer'), findsOneWidget);
+    // The kind icon lives in its OWN type button now (UI-R24 #7) — a
+    // control separate from the name area.
+    expect(
+      find.descendant(
+        of: find.byKey(
+          const ValueKey<String>('timeline-layer-type-button-layer-1'),
+        ),
+        matching: find.byKey(
+          const ValueKey<String>('timeline-layer-kind-icon-layer-1'),
+        ),
+      ),
+      findsOneWidget,
+    );
     expect(
       find.descendant(
         of: find.byKey(const ValueKey<String>('timeline-layer-name-layer-1')),
@@ -744,7 +757,8 @@ void main() {
           const ValueKey<String>('timeline-layer-kind-icon-layer-1'),
         ),
       ),
-      findsOneWidget,
+      findsNothing,
+      reason: 'the name area no longer carries the icon',
     );
     expect(find.text('Layer 1'), findsOneWidget);
     expect(find.text('Layer 2'), findsOneWidget);

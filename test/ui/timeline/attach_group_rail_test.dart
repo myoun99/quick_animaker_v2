@@ -307,11 +307,16 @@ void main() {
     });
     expect(twirls, findsOneWidget);
 
-    // Folding the group hides the INACTIVE attach row; the active one
-    // (the -1 just added) stays by the exemption.
+    // Folding while an attach row is ACTIVE hands the selection to the
+    // BASE (UI-R24 #4), so the whole group actually disappears — no
+    // "active row stays and blocks the fold" limbo.
     await tester.tap(twirls);
     await tester.pumpAndSettle();
     expect(find.text('+1'), findsNothing);
-    expect(find.text('-1'), findsWidgets);
+    expect(find.text('-1'), findsNothing);
+    expect(
+      find.byKey(const ValueKey<String>('timeline-selected-layer')),
+      findsOneWidget,
+    );
   });
 }

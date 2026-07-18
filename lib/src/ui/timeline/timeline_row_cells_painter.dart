@@ -17,7 +17,6 @@ import 'timeline_frame_window.dart';
 import 'timeline_glyph_cache.dart';
 import 'timeline_grid_tile_store.dart';
 import 'timeline_se_row_visual.dart' show layerKindUsesSeSheetCells;
-import 'timeline_sheet_mode.dart' show TimelineSheet;
 
 /// One DRAWING row's frame cells as a single painter (UI-R9 #12b, the
 /// hybrid painterization): the dense, mostly-static cell strip — paper
@@ -82,7 +81,6 @@ class TimelineRowCellsPainter extends CustomPainter {
     this.viewportMainExtent = 0,
     this.tileStore,
     this.devicePixelRatio = 1.0,
-    this.sheetDataMode = false,
   }) : super(
          repaint: tileStore == null
              ? windowBucket
@@ -128,11 +126,6 @@ class TimelineRowCellsPainter extends CustomPainter {
   /// Physical resolution for the tiles (tiles raster at logical × DPR
   /// and draw 1:1, so hidpi rows stay crisp).
   final double devicePixelRatio;
-
-  /// DATA-sheet text (UI-R23 feedback #1): every covered cell prints its
-  /// RESOLVED frame name — held cells and hold ghosts spell the name out
-  /// instead of the notation blank/dash. Joins the tile-look identity.
-  final bool sheetDataMode;
 
   /// The frame window paint() actually draws: the full bounds under the
   /// classic contract, the bucket-derived span (shared policy) under the
@@ -209,26 +202,18 @@ class TimelineRowCellsPainter extends CustomPainter {
         ghost &&
         runBehaviorOwningGhostAt(layer, frameIndex)?.mode ==
             TimelineRunEdgeMode.hold;
-    String dataName() => frameName == null || frameName.isEmpty
-        ? '○'
-        : frameName;
     String glyph;
-    if (holdGhost && !sheetDataMode) {
+    if (holdGhost) {
       glyph = _holdDashGlyph;
     } else if (frameCellExtent < 14) {
       glyph = '';
-    } else if (sheetDataMode && exposureState.isCovered) {
-      // DATA sheet (UI-R23 feedback #1): every covered cell — block
-      // start, held, repeat/hold ghost alike — prints the frame it
-      // actually exposes, so the sheet reads per-cell like the printed
-      // cel-studio form (the notation shorthand stands down).
-      glyph = dataName();
     } else if (ghost) {
       // Ghosts are TEXT-ONLY (UI-R10 #11): a repeat ghost prints just the
       // cel names, exactly like before — the SHEET alone carries the
       // repeat-word convention (UI-R14 #3 rolled the timeline back).
       glyph = switch (exposureState) {
-        TimelineCellExposureState.drawingStart => dataName(),
+        TimelineCellExposureState.drawingStart =>
+          frameName == null || frameName.isEmpty ? '○' : frameName,
         TimelineCellExposureState.markHeld ||
         TimelineCellExposureState.markUncovered => '●',
         _ => '',
@@ -703,9 +688,6 @@ Widget timelineRowCellsPaintArea({
     // by itself when the native engine is unavailable (tests, web).
     tileStore: TimelineGridTileStore.instance,
     devicePixelRatio: MediaQuery.maybeDevicePixelRatioOf(context) ?? 1.0,
-    // The sheet-text mode (UI-R23 feedback #1) — the app shell rebuilds
-    // on the notifier, so a flip reconstructs every painter.
-    sheetDataMode: TimelineSheet.showsData,
   );
   final totalMainExtent =
       leadingFrameSpacerWidth +

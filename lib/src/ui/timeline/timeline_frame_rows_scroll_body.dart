@@ -16,7 +16,6 @@ import 'timeline_exposure_comma_drag_policy.dart';
 import 'timeline_frame_cells_row.dart';
 import 'timeline_grid_metrics.dart';
 import 'timeline_lane_rows.dart';
-import 'timeline_sheet_mode.dart' show TimelineSheet;
 
 /// See [TimelineFrameRowsScrollBody.memoAux].
 class TimelineRowMemoAux {
@@ -195,9 +194,6 @@ typedef _RowMemoInputs = ({
   // the camera track / instruction registry, and the SE spill-in flag.
   Object? auxiliaryIdentity,
   bool seSpillsIn,
-  // The sheet-text mode (UI-R23 #1): notation vs data cells print
-  // different text, so a flip must invalidate the memoized rows.
-  bool sheetDataMode,
 });
 
 class _RowMemoEntry {
@@ -245,8 +241,7 @@ class _TimelineFrameRowsScrollBodyState
         a.hasActivateCell == b.hasActivateCell &&
         identical(a.dragPreview, b.dragPreview) &&
         identical(a.auxiliaryIdentity, b.auxiliaryIdentity) &&
-        a.seSpillsIn == b.seSpillsIn &&
-        a.sheetDataMode == b.sheetDataMode;
+        a.seSpillsIn == b.seSpillsIn;
   }
 
   /// The row kind's external-input identity for the memo token.
@@ -380,7 +375,6 @@ class _TimelineFrameRowsScrollBodyState
       dragPreview: widget.dragPreview,
       auxiliaryIdentity: _auxiliaryIdentityFor(row.layer),
       seSpillsIn: widget.seSpillInLayerIds.contains(row.layer.id),
-      sheetDataMode: TimelineSheet.showsData,
     );
     final cached = _rowMemo[rowKey.value];
     if (cached != null && _inputsMatch(cached.inputs, inputs)) {

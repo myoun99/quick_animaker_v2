@@ -111,6 +111,11 @@ Frame? resolveAttachedFrameAt({
 /// affordances stand down like on any derived exposure. Drawing and
 /// playback still treat ghosts as ordinary exposures, so the attach cels
 /// keep editing and compositing through them.
+///
+/// The base's OWN ghost entries (repeat/hold run-edge instances) mirror
+/// with their [TimelineExposure.ghostOwnerId] intact (UI-R24 #2): paired
+/// with the base's runBehaviors on the display clone, the mirror row
+/// prints the base's hold dashes / repeat notation exactly.
 SplayTreeMap<int, TimelineExposure> attachedDisplayTimeline({
   required Layer attached,
   required Layer base,
@@ -131,6 +136,7 @@ SplayTreeMap<int, TimelineExposure> attachedDisplayTimeline({
       linked,
       length: length,
       ghost: true,
+      ghostOwnerId: entry.value.ghostOwnerId,
     );
   }
   return timeline;
@@ -141,9 +147,14 @@ SplayTreeMap<int, TimelineExposure> attachedDisplayTimeline({
 /// the track SE rows use: every read path (rows, selection, brush frame
 /// resolution) sees the derived exposures, while writes address the REAL
 /// layer through commands.
+///
+/// The clone carries the BASE's runBehaviors (UI-R24 #2): the mirrored
+/// ghost entries keep their owner ids, so the cells painter resolves the
+/// base's hold/repeat modes on the mirror row and prints the same dashes.
 Layer attachedDisplayLayer({required Layer attached, required Layer base}) {
   return attached.copyWith(
     timeline: attachedDisplayTimeline(attached: attached, base: base),
+    runBehaviors: base.runBehaviors,
   );
 }
 

@@ -218,6 +218,12 @@ class TimesheetDocument {
     // cut; [cutStartFrame] is the cut's global start on its track.
     List<Layer> trackSeLayers = const [],
     int cutStartFrame = 0,
+    // DATA-sheet cells (UI-R24 #1): print the EXPORT-SOURCE data instead
+    // of the notation shorthand — every ghost chain (repeat word, 止め,
+    // front-hold relocation) renders verbatim as the concrete per-entry
+    // cel labels XDTS/TDTS write. Holds stay holds (labels never tile
+    // down held rows).
+    bool dataSheet = false,
   }) {
     if (fps <= 0) {
       throw ArgumentError.value(fps, 'fps', 'fps must be positive.');
@@ -301,6 +307,7 @@ class TimesheetDocument {
                   layer: animationLayers[slot],
                   rowCount: rowCount,
                   playbackFrameCount: playbackFrameCount,
+                  dataSheet: dataSheet,
                 )
               : _blankCells(rowCount),
           previewCellsBuilder: slot < animationLayers.length
@@ -308,6 +315,7 @@ class TimesheetDocument {
                   layer: layer,
                   rowCount: rowCount,
                   playbackFrameCount: playbackFrameCount,
+                  dataSheet: dataSheet,
                 )
               : null,
         ),
@@ -328,6 +336,7 @@ class TimesheetDocument {
                   // the speaker name rides along for the method-A name row.
                   markEmptyRuns: false,
                   includeSeNames: true,
+                  dataSheet: dataSheet,
                 )
               : _blankCells(rowCount),
           // SE drags preview live (UI-R18 #7): the timeline publishes
@@ -340,6 +349,7 @@ class TimesheetDocument {
                   playbackFrameCount: playbackFrameCount,
                   markEmptyRuns: false,
                   includeSeNames: true,
+                  dataSheet: dataSheet,
                 )
               : null,
         ),
@@ -484,6 +494,7 @@ class TimesheetDocument {
     required int playbackFrameCount,
     bool markEmptyRuns = true,
     bool includeSeNames = false,
+    bool dataSheet = false,
   }) {
     final cells = List<TimesheetCell>.filled(rowCount, TimesheetCell.blank);
 
@@ -530,7 +541,11 @@ class TimesheetDocument {
       }
       final exposure = entries[index].value;
 
-      if (exposure.ghost) {
+      // DATA sheet (UI-R24 #1): ghost chains skip the notation shorthand
+      // entirely and fall through to the plain-block path below — every
+      // derived entry prints its concrete cel label at its own start,
+      // exactly the value-change data XDTS/TDTS write (holds stay holds).
+      if (exposure.ghost && !dataSheet) {
         // The contiguous chain the same behavior owns.
         final ownerId = exposure.ghostOwnerId;
         var chainEndExclusive = start + exposure.length!;
@@ -795,6 +810,7 @@ List<TimesheetCell> timesheetLayerCells({
   required int playbackFrameCount,
   bool markEmptyRuns = true,
   bool includeSeNames = false,
+  bool dataSheet = false,
 }) {
   return TimesheetDocument._layerCells(
     layer: layer,
@@ -802,5 +818,6 @@ List<TimesheetCell> timesheetLayerCells({
     playbackFrameCount: playbackFrameCount,
     markEmptyRuns: markEmptyRuns,
     includeSeNames: includeSeNames,
+    dataSheet: dataSheet,
   );
 }

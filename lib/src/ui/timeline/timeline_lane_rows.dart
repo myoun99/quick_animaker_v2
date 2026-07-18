@@ -843,14 +843,12 @@ class _LaneKeyMarkerState extends State<_LaneKeyMarker> {
     final colorScheme = Theme.of(context).colorScheme;
     final horizontal = widget.axis == Axis.horizontal;
     final editable = widget.laneEdit != null;
-    // Union diamonds (transform-summary group headers) fill WHITE like the
-    // frame blocks they summarize (UI-R23 #4: the accent-2 fill "looked
-    // wrong"); member-lane keys keep the primary ink.
-    final fillColor = widget.lane.isGroupHeader
-        ? timelineDrawingStartColor
-        : (_dragging
-              ? colorScheme.primary.withValues(alpha: 0.6)
-              : colorScheme.primary);
+    // EVERY key diamond fills WHITE like the frame blocks (UI-R24 #9 —
+    // union headers, member lanes, camera lanes alike); selection speaks
+    // through the accent silhouette alone.
+    final fillColor = _dragging
+        ? timelineDrawingStartColor.withValues(alpha: 0.6)
+        : timelineDrawingStartColor;
     final shape = Container(
       width: widget.markerSize,
       height: widget.markerSize,

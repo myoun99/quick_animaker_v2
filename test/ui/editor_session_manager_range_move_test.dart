@@ -834,6 +834,42 @@ void main() {
     s.cancelFrameRangeMoveDrag();
   });
 
+  test('a span with EMPTY rows row-moves its content (UI-R24 #3): '
+      'selecting two layers where only one holds blocks still lands the '
+      'blocks on the target row', () {
+    final s = EditorSessionManager(initialProject: createDefaultProject());
+    s.createDrawingAtCurrentFrame(); // block on A
+    final aId = s.activeLayer!.id;
+    s.addLayer();
+    final bId = s.activeLayer!.id; // stays EMPTY, joins the selection
+    s.addLayer();
+    final cId = s.activeLayer!.id; // target row
+
+    s.selectLayer(aId);
+    s.updateFrameRangeSelectionDrag(
+      layerId: aId,
+      anchorIndex: 0,
+      headIndex: 0,
+      headLayerId: bId,
+    );
+    expect(s.frameRangeSelection.value!.spanLayerIds, [aId, bId]);
+    expect(s.beginFrameRangeMoveDrag(), isTrue);
+    // Drag down one row: A's block lands on B; the empty B maps to C but
+    // carries nothing — the move must NOT refuse.
+    s.updateFrameRangeMoveDrag(frameDelta: 0, targetLayerId: bId);
+    expect(
+      s.dragPreview.value,
+      isNotNull,
+      reason: 'empty selected rows never block the row move',
+    );
+    s.endFrameRangeMoveDrag();
+
+    Layer layer(LayerId id) => s.layers.firstWhere((l) => l.id == id);
+    expect(layer(aId).timeline.keys, isEmpty);
+    expect(layer(bId).timeline.containsKey(0), isTrue);
+    expect(layer(cId).timeline.keys, isEmpty);
+  });
+
   test('the LANE selection domain (UI-R23 #3 part 2): a lane span selects '
       'independently, moves ONLY that lane\'s keys as one undo, holds on a '
       'blocked landing, and is mutually exclusive with the cell selection', () {

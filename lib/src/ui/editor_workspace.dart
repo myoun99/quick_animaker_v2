@@ -342,6 +342,15 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
     final next = Set<LayerId>.of(_collapsedAttachBaseIds.value);
     if (!next.remove(baseId)) {
       next.add(baseId);
+      // FOLDING while one of the group's attach rows is active (UI-R24
+      // #4): hand the selection to the BASE so the group actually
+      // disappears — the active-attach-stays-visible rule otherwise kept
+      // the fold from taking effect until some other row was picked.
+      final session = widget.session;
+      final active = session.activeLayer;
+      if (active != null && active.attachedToLayerId == baseId) {
+        session.selectLayer(baseId);
+      }
     }
     _collapsedAttachBaseIds.value = next;
   }

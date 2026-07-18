@@ -249,9 +249,9 @@ void main() {
         expect(_laneKey(laneId, 8), findsOneWidget);
       }
 
-      // The Transform group header's UNION diamonds fill WHITE like the
-      // frame blocks they summarize (UI-R23 #4), never a member key's
-      // primary ink.
+      // EVERY key diamond fills WHITE like the frame blocks (UI-R24 #9)
+      // — union headers and member lanes alike; selection speaks through
+      // the accent silhouette alone.
       Color markerFill(Finder marker) {
         final container = tester.widget<Container>(
           find.descendant(of: marker, matching: find.byType(Container)).first,
@@ -261,7 +261,7 @@ void main() {
 
       expect(_laneKey('transform-group', 0), findsOneWidget);
       expect(markerFill(_laneKey('transform-group', 0)), timelineDrawingStartColor);
-      expect(markerFill(_laneKey('position', 0)), isNot(timelineDrawingStartColor));
+      expect(markerFill(_laneKey('position', 0)), timelineDrawingStartColor);
 
       // The header collapses the group again; the layer twirl hides all.
       await _expandTransformGroup(tester, 'lane-cam-layer');

@@ -4829,8 +4829,10 @@ class EditorSessionManager extends ChangeNotifier {
   /// rigidly by the same row + frame delta. Returns true when it OWNS the
   /// step — a valid rigid landing (preview published) or an illegal one
   /// that HOLDS the last valid preview (UI-R23 #10). Returns false (falls
-  /// through to the plain frame slide) for same-row steps or spans that
-  /// include a non-drawing row.
+  /// through to the plain frame slide) for same-row steps or spans whose
+  /// NON-drawing rows carry content in range (keys ride the frame axis
+  /// only). Empty rows of any kind never block (UI-R24 #3: only the
+  /// frames inside the selection move).
   bool _updateMultiRowRangeMove(
     TimelineFrameRangeSelection selection,
     int frameDelta,
@@ -4839,8 +4841,37 @@ class EditorSessionManager extends ChangeNotifier {
     if (selection.spanLayerIds.length <= 1) {
       return false;
     }
+    bool anyKeyIn(Iterable<int> keys) => keys.any(
+      (key) => key >= selection.startIndex && key < selection.endIndexExclusive,
+    );
     for (final id in selection.spanLayerIds) {
-      if (!_blockMoveEligible(id)) {
+      if (_blockMoveEligible(id)) {
+        continue;
+      }
+      // An INELIGIBLE row may ride along only while it contributes
+      // nothing — content on it routes the whole step to the frame slide.
+      final layer = _layerById(id);
+      if (layer == null) {
+        continue;
+      }
+      if (layer.kind == LayerKind.camera) {
+        final keyframes = activeCutOrNull?.camera.keyframes;
+        if (keyframes != null && anyKeyIn(keyframes.keys)) {
+          return false;
+        }
+        continue;
+      }
+      if (layer.kind == LayerKind.instruction &&
+          anyKeyIn(layer.instructions.keys)) {
+        return false;
+      }
+      final hasBlockInRange = drawingBlocks(layer.timeline).any(
+        (block) =>
+            !block.entry.ghost &&
+            block.startIndex < selection.endIndexExclusive &&
+            block.endIndexExclusive > selection.startIndex,
+      );
+      if (hasBlockInRange) {
         return false;
       }
     }
@@ -4889,13 +4920,17 @@ class EditorSessionManager extends ChangeNotifier {
           ),
       },
     );
-    // The outline rides the rigid shift to the target rows.
+    // The outline rides the rigid shift to the target rows (rows that
+    // carried nothing — off the lattice or shifted off it — drop out of
+    // the outline; only the moved frames' landings read selected).
     final indexById = {
       for (var i = 0; i < lattice.length; i += 1) lattice[i].id: i,
     };
     final landedLayerIds = [
       for (final id in selection.spanLayerIds)
-        lattice[indexById[id]! + rowDelta].id,
+        if (indexById[id] case final index?
+            when index + rowDelta >= 0 && index + rowDelta < lattice.length)
+          lattice[index + rowDelta].id,
     ];
     final newStart = selection.startIndex + frameDelta;
     if (newStart >= 0) {
@@ -6565,6 +6600,20 @@ class EditorSessionManager extends ChangeNotifier {
           )
           ? '■'
           : '◆';
+    }
+    // SYNCED attach mirrors PRINT THE BASE's cel name (UI-R24 #2 — the
+    // name follows the owner; mirror cels are unnameable): the mirror row
+    // reads 1ㅇㅇ----- exactly like its base.
+    if (isSyncedAttachedLayer(layer)) {
+      final base = attachedBaseOf(
+        layer,
+        activeCutOrNull?.layers ?? const <Layer>[],
+      );
+      if (base != null) {
+        return _timelineController
+            .resolveFrameForLayer(layer: base, frameIndex: frameIndex)
+            ?.name;
+      }
     }
     return _timelineController
         .resolveFrameForLayer(layer: layer, frameIndex: frameIndex)
