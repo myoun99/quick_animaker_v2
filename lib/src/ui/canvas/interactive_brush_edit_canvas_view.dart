@@ -8,7 +8,7 @@ import 'package:flutter/scheduler.dart';
 import 'package:flutter/services.dart';
 
 import '../../models/bitmap_surface.dart';
-import '../../services/input/wintab_pen_service.dart';
+import '../../services/input/pen_sidecars.dart';
 import '../input/app_input_settings.dart' show AppInput;
 import '../../models/bitmap_tile.dart';
 import '../../models/brush_dab.dart';
@@ -740,7 +740,7 @@ class _InteractiveBrushEditCanvasViewState
   double _normalizedPressure(PointerEvent event) {
     // The response curve (PEN-3) shapes REAL pressure from either source
     // — the full-pressure fallbacks stay 1.0 through any gamma.
-    final wintab = WintabPenService.instance.freshContactPressure();
+    final wintab = PenSidecars.freshContactPressure();
     if (wintab != null) {
       return AppInput.applyPressureCurve(wintab);
     }
