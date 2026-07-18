@@ -77,7 +77,6 @@ import 'storyboard_timeline_layout.dart';
 import '../models/drawing_block_move.dart';
 import '../models/multi_row_range_move.dart';
 import '../services/command.dart';
-import '../services/commands/attached_cel_command.dart';
 import '../services/commands/cut_command_coordinator.dart';
 import '../services/commands/rekey_brush_frames_command.dart';
 import '../services/commands/update_cut_camera_command.dart';
@@ -2033,39 +2032,21 @@ class EditorSessionManager extends ChangeNotifier {
                   )
                   .length
         : attachedGroupEndIndex(base.id, cut.layers);
-    // UI-R23 #7: a SYNCED attach row is a FULL mirror the moment it is
-    // created — one empty cel + base link per base cel, so every mirror
-    // cell is editable at once (was: lazily created on first draw). Its
-    // own [timeline] stays empty; the derived display mirrors the base.
-    final frames = <Frame>[];
-    final baseFrameLinks = <FrameId, FrameId>{};
-    if (mode == AttachedMode.synced) {
-      for (final entry in base.timeline.entries) {
-        final baseFrameId = entry.value.frameId;
-        if (!entry.value.isDrawing ||
-            entry.value.ghost ||
-            baseFrameId == null ||
-            baseFrameLinks.containsKey(baseFrameId)) {
-          continue;
-        }
-        _frameSequence += 1;
-        final celId = FrameId(_nextFrameId(layerId));
-        frames.add(Frame(id: celId, duration: 1, strokes: const []));
-        baseFrameLinks[baseFrameId] = celId;
-      }
-    }
+    // UI-R23 #7 v2: the row is added EMPTY — the repository's
+    // always-mirror reconciliation fills one own cel + base link per base
+    // cel in the same write (and keeps doing so live as the base gains
+    // cels later), so every mirror cell is editable from the first frame.
     _layerController.addLayer(
       layer: Layer(
         id: layerId,
         name: nextAttachedLayerName(base, cut.layers, placement),
-        frames: frames,
+        frames: const [],
         timeline: const {},
         kind: base.kind,
         onTimesheet: false,
         attachedToLayerId: base.id,
         attachedPlacement: placement,
         attachedMode: mode,
-        baseFrameLinks: baseFrameLinks,
       ),
       insertionIndex: insertionIndex,
     );
@@ -3024,40 +3005,18 @@ class EditorSessionManager extends ChangeNotifier {
     if (layer == null || !layerKindHoldsDrawings(layer.kind)) {
       return false;
     }
-    // SYNCED attach rows (W5): "Create Drawing" makes a cel RIDING the
-    // base's exposed cel at the playhead — possible only where the base
-    // shows a cel that has no link on this row yet. FREE attach rows
-    // (UI-R21 #3) fall through to the normal authoring path below.
+    // SYNCED attach rows (UI-R23 #7 v2): the ALWAYS-MIRROR invariant keeps
+    // one own cel per base cel automatically — there is never anything
+    // left to create by hand. FREE attach rows (UI-R21 #3) fall through
+    // to the normal authoring path below.
     if (isSyncedAttachedLayer(layer)) {
-      return _attachTargetBaseFrameIdAt(layer) != null;
+      return false;
     }
 
     return _timelineController.canCreateDrawingAt(
       layer: layer,
       frameIndex: _timelineController.currentFrameIndex,
     );
-  }
-
-  /// The base cel id an attach cel would link to at the playhead; null
-  /// when the base shows nothing there, the base is gone, or the cel is
-  /// already linked on [attached].
-  FrameId? _attachTargetBaseFrameIdAt(Layer attached) {
-    final base = attachedBaseOf(
-      attached,
-      activeCutOrNull?.layers ?? const <Layer>[],
-    );
-    if (base == null) {
-      return null;
-    }
-    final baseFrameId = _timelineController.resolveFrameIdForLayer(
-      layer: base,
-      frameIndex: _timelineController.currentFrameIndex,
-    );
-    if (baseFrameId == null ||
-        attached.baseFrameLinks.containsKey(baseFrameId)) {
-      return null;
-    }
-    return baseFrameId;
   }
 
   bool get canCopyFrameAtCurrentFrame {
@@ -3135,23 +3094,6 @@ class EditorSessionManager extends ChangeNotifier {
     }
 
     _frameSequence += 1;
-    if (isSyncedAttachedLayer(layer)) {
-      final baseFrameId = _attachTargetBaseFrameIdAt(layer);
-      if (baseFrameId == null) {
-        return;
-      }
-      _historyManager.execute(
-        CreateAttachedCelCommand(
-          repository: _repository,
-          cutId: requireActiveCut.id,
-          layerId: layer.id,
-          baseFrameId: baseFrameId,
-          frameId: FrameId(_nextFrameId(layer.id)),
-        ),
-      );
-      notifyListeners();
-      return;
-    }
     _timelineController.createDrawingFrameForLayer(
       layerId: layer.id,
       frameId: FrameId(_nextFrameId(layer.id)),

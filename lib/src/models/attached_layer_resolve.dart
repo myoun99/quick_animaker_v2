@@ -9,6 +9,7 @@ import 'dart:collection';
 
 import 'attached_mode.dart';
 import 'attached_placement.dart';
+import 'cut.dart';
 import 'frame.dart';
 import 'frame_id.dart';
 import 'layer.dart';
@@ -144,6 +145,77 @@ Layer attachedDisplayLayer({required Layer attached, required Layer base}) {
   return attached.copyWith(
     timeline: attachedDisplayTimeline(attached: attached, base: base),
   );
+}
+
+/// The mirror cel id a SYNCED attach row uses for [baseFrameId] (UI-R23 #7
+/// v2, auto-mirroring). DETERMINISTIC — reconciliation after an undo/redo
+/// or a re-executed command re-mints the identical id, so links, brush
+/// frame keys and history replay all stay stable.
+FrameId attachedMirrorCelId(LayerId attachedId, FrameId baseFrameId) =>
+    FrameId('attach-mirror-${attachedId.value}-${baseFrameId.value}');
+
+/// [cut] with every SYNCED attach row's mirror COMPLETED (UI-R23 #7 v2,
+/// the always-mirror invariant): one own cel + cell link per base cel, so
+/// the row mirrors the base's whole timeline in real time no matter how
+/// the base gained the cel (create, cross-row move, paste, redo, load).
+///
+/// Runs on every repository write as a NORMALIZATION — pure adds only:
+/// missing links gain a fresh empty cel; links whose cel object is missing
+/// (while their base cel lives) get the cel re-materialized under the SAME
+/// id; orphan links (base cel deleted) stay untouched by design
+/// (audio-clip semantics — the cel comes back with the base cel).
+/// Identity-preserving: an already-complete cut returns the SAME instance
+/// (no-op writes stay no-ops for dirty tracking).
+Cut cutWithReconciledAttachedMirrors(Cut cut) {
+  List<Layer>? nextLayers;
+  for (var i = 0; i < cut.layers.length; i += 1) {
+    final layer = cut.layers[i];
+    if (!isSyncedAttachedLayer(layer)) {
+      continue;
+    }
+    final base = attachedBaseOf(layer, cut.layers);
+    if (base == null) {
+      continue; // Dangling link — display skips the row; nothing to add.
+    }
+    final ownFrameIds = {for (final frame in layer.frames) frame.id};
+    List<Frame>? addedFrames;
+    Map<FrameId, FrameId>? addedLinks;
+    for (final entry in base.timeline.entries) {
+      final baseFrameId = entry.value.frameId;
+      if (!entry.value.isDrawing || entry.value.ghost || baseFrameId == null) {
+        continue;
+      }
+      final linked =
+          layer.baseFrameLinks[baseFrameId] ?? addedLinks?[baseFrameId];
+      if (linked != null) {
+        // Link present — re-materialize the cel if its object went missing.
+        if (!ownFrameIds.contains(linked)) {
+          (addedFrames ??= []).add(
+            Frame(id: linked, duration: 1, strokes: const []),
+          );
+          ownFrameIds.add(linked);
+        }
+        continue;
+      }
+      final celId = attachedMirrorCelId(layer.id, baseFrameId);
+      (addedFrames ??= []).add(
+        Frame(id: celId, duration: 1, strokes: const []),
+      );
+      ownFrameIds.add(celId);
+      (addedLinks ??= {})[baseFrameId] = celId;
+    }
+    if (addedFrames == null && addedLinks == null) {
+      continue;
+    }
+    nextLayers ??= [...cut.layers];
+    nextLayers[i] = layer.copyWith(
+      frames: [...layer.frames, ...?addedFrames],
+      baseFrameLinks: addedLinks == null
+          ? null
+          : {...layer.baseFrameLinks, ...addedLinks},
+    );
+  }
+  return nextLayers == null ? cut : cut.copyWith(layers: nextLayers);
 }
 
 /// The index just past [baseId]'s attach group — base plus its contiguous

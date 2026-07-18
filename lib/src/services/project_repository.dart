@@ -1,3 +1,5 @@
+import '../models/attached_layer_resolve.dart'
+    show cutWithReconciledAttachedMirrors;
 import '../models/audio_clip.dart';
 import '../models/camera_instruction.dart';
 import '../models/canvas_size.dart';
@@ -25,7 +27,9 @@ import 'project_tree_editor.dart';
 
 class ProjectRepository {
   ProjectRepository({Project? initialProject})
-    : _currentProject = initialProject;
+    : _currentProject = initialProject == null
+          ? null
+          : _reconcileAttachedMirrors(initialProject);
 
   Project? _currentProject;
 
@@ -42,7 +46,7 @@ class ProjectRepository {
   }
 
   void replaceProject(Project project) {
-    _currentProject = project;
+    _currentProject = _reconcileAttachedMirrors(project);
   }
 
   void clearProject() {
@@ -50,7 +54,33 @@ class ProjectRepository {
   }
 
   void updateProject(Project Function(Project project) update) {
-    _currentProject = update(requireProject());
+    _currentProject = _reconcileAttachedMirrors(update(requireProject()));
+  }
+
+  /// The ALWAYS-MIRROR invariant (UI-R23 #7 v2): every write leaves every
+  /// synced attach row a complete mirror of its base — one own cel + link
+  /// per base cel — no matter how the base gained the cel (create, move,
+  /// paste, undo/redo replay, file load). Identity-preserving on no-ops,
+  /// so an already-complete project passes through untouched.
+  static Project _reconcileAttachedMirrors(Project project) {
+    List<Track>? nextTracks;
+    for (var t = 0; t < project.tracks.length; t += 1) {
+      final track = project.tracks[t];
+      List<Cut>? nextCuts;
+      for (var c = 0; c < track.cuts.length; c += 1) {
+        final cut = track.cuts[c];
+        final reconciled = cutWithReconciledAttachedMirrors(cut);
+        if (identical(reconciled, cut)) {
+          continue;
+        }
+        (nextCuts ??= [...track.cuts])[c] = reconciled;
+      }
+      if (nextCuts == null) {
+        continue;
+      }
+      (nextTracks ??= [...project.tracks])[t] = track.copyWith(cuts: nextCuts);
+    }
+    return nextTracks == null ? project : project.copyWith(tracks: nextTracks);
   }
 
   void updateTimesheetInfo(TimesheetInfo info) {
