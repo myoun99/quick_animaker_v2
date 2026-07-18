@@ -1,6 +1,7 @@
-import 'package:flutter/gestures.dart'
-    show DragStartBehavior, PointerDeviceKind;
+import 'package:flutter/gestures.dart' show DragStartBehavior;
 import 'package:flutter/material.dart';
+
+import '../input/app_input_settings.dart' show AppInput;
 
 import '../../models/layer_id.dart';
 import '../../models/timeline_coverage.dart';
@@ -270,14 +271,8 @@ class _TimelineBlockMoveHandleState extends State<TimelineBlockMoveHandle> {
         // Touch joined the set (UI-R17 #6, superseding R12-⑤): stylus
         // pens report as TOUCH on some Windows/tablet drivers, which made
         // block grabs pen-dead there — grid panning stays on the
-        // rulers/scrollbars.
-        supportedDevices: const {
-          PointerDeviceKind.mouse,
-          PointerDeviceKind.stylus,
-          PointerDeviceKind.invertedStylus,
-          PointerDeviceKind.touch,
-          PointerDeviceKind.unknown,
-        },
+        // rulers/scrollbars. Touch follows the input policy (UI-R22 #6).
+        supportedDevices: AppInput.timelineEditPanDevices,
         // Pixel-exact deltas from the pointer-down point (the camera
         // overlay rule) — no slop swallowed out of the frame/row math.
         dragStartBehavior: DragStartBehavior.down,

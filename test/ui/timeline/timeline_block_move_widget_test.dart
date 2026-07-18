@@ -11,6 +11,7 @@ import 'package:quick_animaker_v2/src/models/timeline_exposure.dart';
 import 'package:quick_animaker_v2/src/models/timeline_frame_range.dart';
 
 import 'timeline_cell_probe.dart';
+import 'package:quick_animaker_v2/src/ui/input/app_input_settings.dart';
 import 'package:quick_animaker_v2/src/ui/theme/app_theme.dart' show AppColors;
 import 'package:quick_animaker_v2/src/ui/timeline/layer_timeline_grid.dart';
 import 'package:quick_animaker_v2/src/ui/timeline/property_lane_model.dart';
@@ -150,6 +151,47 @@ void main() {
     await tester.pump();
     expect(selectUpdates, isNotEmpty);
     expect(selectUpdates.last.$1, const LayerId('se-1'));
+  });
+
+  testWidgets('with touch-timeline-scroll ON, a TOUCH pan no longer '
+      'selects (UI-R22 #6: the scroll owns touch then)', (tester) async {
+    AppInput.settings.value = const AppInputSettings(touchTimelineScroll: true);
+    addTearDown(() {
+      AppInput.settings.value = const AppInputSettings();
+    });
+    final cursor = ValueNotifier<int>(0);
+    final selection = ValueNotifier<TimelineFrameRangeSelection?>(null);
+    addTearDown(cursor.dispose);
+    addTearDown(selection.dispose);
+    final selectUpdates = <(LayerId, int, int)>[];
+
+    await tester.pumpWidget(
+      harness(
+        layers: [blockLayer('layer-a')],
+        cursor: cursor,
+        rangeHooks: hooks(
+          selection: selection,
+          onSelectUpdate: (layerId, anchor, head) =>
+              selectUpdates.add((layerId, anchor, head)),
+        ),
+      ),
+    );
+
+    final gestureLayer = find.byKey(
+      const ValueKey<String>('timeline-range-gesture-layer-a'),
+    );
+    final gesture = await tester.startGesture(
+      tester.getTopLeft(gestureLayer) + const Offset(24 + 5 * 48, 26),
+      kind: PointerDeviceKind.touch,
+    );
+    await gesture.moveBy(const Offset(96, 0));
+    await gesture.up();
+    await tester.pump();
+    expect(
+      selectUpdates,
+      isEmpty,
+      reason: 'touch belongs to the scroll while the toggle is ON',
+    );
   });
 
   testWidgets('a drag on a LANE BAND selects on the OWNING layer '

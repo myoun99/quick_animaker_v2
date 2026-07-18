@@ -1,6 +1,7 @@
-import 'package:flutter/gestures.dart'
-    show DragStartBehavior, PointerDeviceKind;
+import 'package:flutter/gestures.dart' show DragStartBehavior;
 import 'package:flutter/material.dart';
+
+import '../input/app_input_settings.dart' show AppInput;
 
 import '../../models/frame_id.dart';
 import '../../models/layer.dart';
@@ -480,14 +481,9 @@ class _RunEdgeClusterState extends State<_RunEdgeCluster> {
         behavior: HitTestBehavior.opaque,
         // Every pointer kind operates the handle (UI-R17 #6): stylus pens
         // report as TOUCH on some Windows/tablet drivers, so the old
-        // mouse+stylus allowlist read as "pen dead" there.
-        supportedDevices: const {
-          PointerDeviceKind.mouse,
-          PointerDeviceKind.stylus,
-          PointerDeviceKind.invertedStylus,
-          PointerDeviceKind.touch,
-          PointerDeviceKind.unknown,
-        },
+        // mouse+stylus allowlist read as "pen dead" there. Touch joins
+        // per the input policy (UI-R22 #6).
+        supportedDevices: AppInput.timelineEditPanDevices,
         dragStartBehavior: DragStartBehavior.down,
         // Tap = add ONE cel (UI-R17 #4); a drag keeps the count-preview
         // flow.

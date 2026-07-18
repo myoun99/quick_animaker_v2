@@ -8,6 +8,8 @@ import '../controllers/default_layer_helpers.dart';
 import '../models/app_language.dart';
 import '../services/persistence/app_language_settings_store.dart';
 import '../services/persistence/app_accent_settings_store.dart';
+import '../services/persistence/app_input_settings_store.dart';
+import 'input/app_input_settings.dart';
 import 'theme/app_accents.dart';
 import 'theme/app_theme.dart' show AppColors;
 import '../controllers/editing_session_state.dart';
@@ -115,13 +117,16 @@ class EditorSessionManager extends ChangeNotifier {
     AudioPeaksStore? audioPeaksStore,
     AppLanguageSettingsStore? languageSettingsStore,
     AppAccentSettingsStore? accentSettingsStore,
+    AppInputSettingsStore? inputSettingsStore,
   }) : _editingSession = EditingSessionState.forProject(initialProject),
        _injectedAudioPeaksStore = audioPeaksStore,
        _languageSettingsStore = languageSettingsStore,
        _accentSettingsStore = accentSettingsStore,
+       _inputSettingsStore = inputSettingsStore,
        _repository = ProjectRepository(initialProject: initialProject) {
     unawaited(_restoreLanguageSettings());
     unawaited(_restoreAccentSettings());
+    unawaited(_restoreInputSettings());
     _historyManager = HistoryManager();
     _cutCommandCoordinator = CutCommandCoordinator(
       repository: _repository,
@@ -192,6 +197,29 @@ class EditorSessionManager extends ChangeNotifier {
     }
     AppColors.accentSettings.value = settings;
     final store = _accentSettingsStore;
+    if (store != null) {
+      unawaited(store.save(settings));
+    }
+  }
+
+  // --- Input settings (UI-R22 #6) -------------------------------------------
+
+  /// Injectable persistence; null (tests) keeps the in-memory defaults.
+  final AppInputSettingsStore? _inputSettingsStore;
+
+  Future<void> _restoreInputSettings() async {
+    final restored = await _inputSettingsStore?.load();
+    if (restored != null) {
+      AppInput.settings.value = restored;
+    }
+  }
+
+  void setInputSettings(AppInputSettings settings) {
+    if (settings == AppInput.settings.value) {
+      return;
+    }
+    AppInput.settings.value = settings;
+    final store = _inputSettingsStore;
     if (store != null) {
       unawaited(store.save(settings));
     }
