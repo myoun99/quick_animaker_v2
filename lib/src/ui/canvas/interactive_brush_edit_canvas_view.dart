@@ -157,6 +157,16 @@ class _InteractiveBrushEditCanvasViewState
     extends State<InteractiveBrushEditCanvasView> {
   int? _activeDrawingPointer;
 
+  /// PEN-12 #4: the touch stroke's commitment tracking — sub-slop, a
+  /// simultaneous second finger still converts the pair to navigation;
+  /// committed, extra fingers are ignored (the mid-line vanish fix).
+  Offset? _touchStrokeDownPosition;
+  bool _touchStrokeCommitted = false;
+
+  /// The commitment distance (the engine's lock slop — one number keeps
+  /// the engine's navigate-lock and this view's cancel window agreeing).
+  static const double kTouchStrokeCommitSlop = 18;
+
   /// Live touch contacts. A second finger switches the interaction to
   /// viewport navigation (handled by the panel's gesture layer): the
   /// in-progress stroke is cancelled without committing, and no new stroke
@@ -341,22 +351,30 @@ class _InteractiveBrushEditCanvasViewState
     // synchronous cost).
     _flushPendingStrokeCommit();
     if (event.kind == PointerDeviceKind.touch) {
-      // PEN-7b: in SCREEN-CONTROL touch mode fingers never draw — the
-      // panel's gesture layer owns every touch (flip/navigate/brush
-      // size). Draw mode (touch-only form factors force it) keeps the
-      // full touch-as-pen behavior below.
-      if (AppInput.effectiveCanvasTouchMode == CanvasTouchMode.control) {
+      // PEN-12 #4: a finger draws exactly when the ONE-FINGER touch slot
+      // says draw (the old control/draw mode collapsed into the slot);
+      // otherwise the panel's gesture layer owns every touch.
+      if (!AppInput.touchDraws) {
         return;
       }
       _activeTouchPointers.add(event.pointer);
       if (_activeTouchPointers.length >= 2) {
+        final drawingPointer = _activeDrawingPointer;
+        final touchStroke =
+            drawingPointer != null &&
+            _activeTouchPointers.contains(drawingPointer);
+        // PEN-12 #4: a COMMITTED stroke survives extra fingers — palm
+        // rests and habitual pinches must never vanish a live line. The
+        // newcomer is simply ignored (no navigation, no modifier).
+        if (touchStroke && _touchStrokeCommitted) {
+          return;
+        }
         _multiTouchNavigation = true;
-        // Discard only a TOUCH stroke — the first finger turned out to be
-        // the start of a pinch, not a stroke. A stylus/mouse stroke keeps
-        // drawing: extra touch contacts alongside it are palm rests, and
-        // the gesture layer holds navigation while any stroke is active.
-        if (_activeDrawingPointer != null &&
-            _activeTouchPointers.contains(_activeDrawingPointer)) {
+        // Discard only a SUB-SLOP touch stroke — the first finger turned
+        // out to be the start of a pinch, not a stroke (both fingers
+        // landed together). A stylus/mouse stroke keeps drawing: extra
+        // touch contacts alongside it are palm rests.
+        if (touchStroke) {
           _endStrokeInput();
           _resetOverlay();
         }
@@ -462,6 +480,14 @@ class _InteractiveBrushEditCanvasViewState
     }
 
     _activeDrawingPointer = event.pointer;
+    // PEN-12 #4: a TOUCH stroke starts UNCOMMITTED — until it crosses the
+    // touch slop a simultaneous second finger may still turn the pair
+    // into navigation (cancelling only an invisible dot); once committed
+    // the stroke owns the screen and extra fingers are ignored.
+    _touchStrokeDownPosition = event.kind == PointerDeviceKind.touch
+        ? event.localPosition
+        : null;
+    _touchStrokeCommitted = false;
     // The stroke's settings snapshot — every downstream dab reads it, so
     // the mapped-eraser substitution here flips the WHOLE stroke.
     final strokeSettings = mappedErase
@@ -531,6 +557,13 @@ class _InteractiveBrushEditCanvasViewState
     }
     if (event.pointer != _activeDrawingPointer) {
       return;
+    }
+    final touchStrokeDown = _touchStrokeDownPosition;
+    if (!_touchStrokeCommitted &&
+        touchStrokeDown != null &&
+        (event.localPosition - touchStrokeDown).distance >=
+            kTouchStrokeCommitSlop) {
+      _touchStrokeCommitted = true;
     }
 
     _currentPressure = _normalizedPressure(event);
@@ -952,6 +985,8 @@ class _InteractiveBrushEditCanvasViewState
   /// notifies synchronously.
   void _clearStrokeInputState() {
     _activeDrawingPointer = null;
+    _touchStrokeDownPosition = null;
+    _touchStrokeCommitted = false;
     _nextSequence = 0;
     _breakCurrentVisibleSegment = false;
     _previousRawCanvasPosition = null;

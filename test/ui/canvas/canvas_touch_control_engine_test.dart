@@ -23,11 +23,13 @@ void main() {
     })
   >
   pumpEngine(WidgetTester tester, {CanvasViewport? viewport}) async {
-    // Opt INTO control mode (the corpus baseline pins draw): keep any
-    // custom settings a test already applied.
-    if (AppInput.settings.value.canvasTouchMode != CanvasTouchMode.control) {
+    // Opt INTO an engine-driven one-finger slot (the corpus baseline
+    // pins draw = the engine stands down): keep any custom settings a
+    // test already applied.
+    if (AppInput.settings.value.touchDragOneFinger ==
+        CanvasTouchDragAction.draw) {
       AppInput.settings.value = AppInput.settings.value.copyWith(
-        canvasTouchMode: CanvasTouchMode.control,
+        touchDragOneFinger: CanvasTouchDragAction.flip,
       );
     }
     final actions = <String>[];
@@ -225,5 +227,50 @@ void main() {
 
     expect(probes.actions, isEmpty, reason: 'no flip on a navigate slot');
     expect(probes.viewports, isNotEmpty, reason: 'one-finger pan');
+  });
+
+  testWidgets('a DRAW one-finger slot stands the engine down — no flip, '
+      'no nav; two fingers landing together still navigate (PEN-12 #4)', (
+    tester,
+  ) async {
+    final probes = await pumpEngine(tester);
+    AppInput.settings.value = AppInput.settings.value.copyWith(
+      touchDragOneFinger: CanvasTouchDragAction.draw,
+    );
+
+    // A long single-finger drag: the brush view's stroke — the engine
+    // must emit NOTHING (no flip steps, no viewport changes).
+    final finger = await tester.startGesture(
+      const Offset(200, 200),
+      kind: PointerDeviceKind.touch,
+    );
+    for (var step = 0; step < 5; step += 1) {
+      await finger.moveBy(const Offset(40, 0));
+      await tester.pump();
+    }
+    await finger.up();
+    await tester.pump();
+    expect(probes.actions, isEmpty, reason: 'the stroke owns the finger');
+    expect(probes.viewports, isEmpty);
+
+    // Two fingers landing together (pre-lock join): the two-finger slot
+    // still navigates.
+    final first = await tester.startGesture(
+      const Offset(200, 200),
+      kind: PointerDeviceKind.touch,
+      pointer: 21,
+    );
+    final second = await tester.startGesture(
+      const Offset(260, 200),
+      kind: PointerDeviceKind.touch,
+      pointer: 22,
+    );
+    await first.moveBy(const Offset(-40, 0));
+    await second.moveBy(const Offset(40, 0));
+    await tester.pump();
+    await first.up();
+    await second.up();
+    await tester.pump();
+    expect(probes.viewports, isNotEmpty, reason: 'pinch still navigates');
   });
 }

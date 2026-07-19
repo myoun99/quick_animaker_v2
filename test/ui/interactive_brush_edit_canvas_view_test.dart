@@ -463,6 +463,41 @@ void main() {
       expect(results, hasLength(1));
     });
 
+    testWidgets('a COMMITTED touch stroke SURVIVES a late second finger '
+        '(PEN-12 #4: the mid-line vanish fix)', (tester) async {
+      final results = <List<BrushDab>>[];
+      await tester.pumpWidget(
+        _app(_view(_sessionState(width: 200, height: 16), results.add)),
+      );
+
+      final firstFinger = await tester.createGesture(
+        kind: PointerDeviceKind.touch,
+      );
+      await firstFinger.down(canvasGlobalOffset(tester, const Offset(2, 4)));
+      // Past the 18px commit slop: the stroke owns the screen now.
+      await firstFinger.moveTo(canvasGlobalOffset(tester, const Offset(40, 4)));
+      await tester.pump();
+
+      final secondFinger = await tester.createGesture(
+        kind: PointerDeviceKind.touch,
+      );
+      await secondFinger.down(canvasGlobalOffset(tester, const Offset(90, 10)));
+      await tester.pump();
+
+      // The stroke keeps drawing through the extra contact.
+      await firstFinger.moveTo(canvasGlobalOffset(tester, const Offset(70, 4)));
+      await firstFinger.up();
+      await secondFinger.up();
+      await tester.pump();
+
+      expect(
+        results,
+        hasLength(1),
+        reason: 'the committed stroke commits whole — never vanishes',
+      );
+      expect(results.single, isNotEmpty);
+    });
+
     testWidgets('single-finger touch stroke still commits', (tester) async {
       final results = <List<BrushDab>>[];
       await tester.pumpWidget(_app(_view(_sessionState(), results.add)));
@@ -934,7 +969,7 @@ void main() {
           touchTimelineScroll: false,
           // The follow-up stroke below drags with TOUCH — keep the
           // corpus draw contract for it.
-          canvasTouchMode: CanvasTouchMode.draw,
+          touchDragOneFinger: CanvasTouchDragAction.draw,
           canvasRightClick: CanvasPointerMapping(
             action: CanvasPointerAction.eraser,
             release: CanvasPointerRelease.keep,
