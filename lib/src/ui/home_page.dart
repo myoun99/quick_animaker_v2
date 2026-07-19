@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io' show Platform;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show SystemNavigator;
 
 import '../controllers/default_project_helpers.dart';
 import '../models/project.dart';
@@ -275,148 +276,161 @@ class _HomePageState extends State<HomePage> {
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
-    return Scaffold(
-      // PEN-8 #1: keep the editor OUT of the OS chrome (Android status
-      // bar / gesture areas, notches) — desktop insets are zero, so this
-      // is a tablet-only effect.
-      // The app-level shortcut layer (P1): the manager stands bare-letter
-      // shortcuts down while a text field has focus; the bindings notifier
-      // rebuilds the map live as the user re-records keys.
-      body: SafeArea(
-        child: ListenableBuilder(
-          listenable: _shortcuts,
-          builder: (context, _) => Shortcuts.manager(
-            manager: EditorShortcutManager(shortcuts: _shortcuts.shortcuts),
-            child: Actions(
-              actions: {
-                EditorActionIntent: CallbackAction<EditorActionIntent>(
-                  onInvoke: (intent) {
-                    _invokeAction(intent.actionId);
-                    return null;
-                  },
-                ),
-              },
-              child: FocusScope(
-                autofocus: true,
-                // Multi-finger touch shortcuts (R11-⑨) fire through the SAME
-                // action funnel as key bindings; the layer only observes raw
-                // touches, so drawing and pinch navigation are untouched.
-                child: TouchShortcutLayer(
-                  onGesture: (gesture) {
-                    final actionId = _shortcuts.actionIdForTouchGesture(
-                      gesture,
-                    );
-                    if (actionId != null) {
-                      _invokeAction(actionId);
-                    }
-                  },
-                  // The pen program's diagnosis overlay (Edit ▸ Input
-                  // Inspector) — inert until toggled, observes raw events
-                  // only (never a gesture-arena participant).
-                  child: InputInspectorHost(
-                    child: Column(
-                      children: [
-                        // The top strip: title, the menu bar, and the quick actions
-                        // (undo/redo/export keep their long-standing keys).
-                        Material(
-                          color: colorScheme.surfaceContainerHigh,
-                          child: Row(
-                            children: [
-                              const SizedBox(width: 12),
-                              Text(
-                                'QuickAnimaker',
-                                style: Theme.of(context).textTheme.titleSmall,
-                              ),
-                              const SizedBox(width: 8),
-                              Expanded(
-                                // Narrow windows scroll the menu bar instead of
-                                // overflowing the strip.
-                                child: SingleChildScrollView(
-                                  scrollDirection: Axis.horizontal,
-                                  // The menu re-reads its enablement per notify: the
-                                  // history manager is merged in because brush strokes
-                                  // execute into it straight from the canvas (no session
-                                  // notify fires for a pen-up), the playback controller
-                                  // for the Playback menu's state, the panels bridge for
-                                  // the Window checkboxes.
-                                  child: ListenableBuilder(
-                                    listenable: Listenable.merge([
-                                      _session,
-                                      _session.historyManager,
-                                      _session.playback,
-                                      _panelsMenu,
-                                    ]),
-                                    builder: (context, _) => EditorMenuBar(
-                                      session: _session,
-                                      panelsMenu: _panelsMenu,
-                                      shortcuts: _shortcuts,
+    // PEN-11: the Android back button must never silently kill the
+    // editor — back asks first and only an explicit Close exits (the
+    // task-manager "close all" can't be intercepted; the autosave
+    // sidecar is the shield there). Desktop/iPad have no system back,
+    // so this never fires for them.
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop) {
+          _confirmSystemExit();
+        }
+      },
+      child: Scaffold(
+        // PEN-8 #1: keep the editor OUT of the OS chrome (Android status
+        // bar / gesture areas, notches) — desktop insets are zero, so this
+        // is a tablet-only effect.
+        // The app-level shortcut layer (P1): the manager stands bare-letter
+        // shortcuts down while a text field has focus; the bindings notifier
+        // rebuilds the map live as the user re-records keys.
+        body: SafeArea(
+          child: ListenableBuilder(
+            listenable: _shortcuts,
+            builder: (context, _) => Shortcuts.manager(
+              manager: EditorShortcutManager(shortcuts: _shortcuts.shortcuts),
+              child: Actions(
+                actions: {
+                  EditorActionIntent: CallbackAction<EditorActionIntent>(
+                    onInvoke: (intent) {
+                      _invokeAction(intent.actionId);
+                      return null;
+                    },
+                  ),
+                },
+                child: FocusScope(
+                  autofocus: true,
+                  // Multi-finger touch shortcuts (R11-⑨) fire through the SAME
+                  // action funnel as key bindings; the layer only observes raw
+                  // touches, so drawing and pinch navigation are untouched.
+                  child: TouchShortcutLayer(
+                    onGesture: (gesture) {
+                      final actionId = _shortcuts.actionIdForTouchGesture(
+                        gesture,
+                      );
+                      if (actionId != null) {
+                        _invokeAction(actionId);
+                      }
+                    },
+                    // The pen program's diagnosis overlay (Edit ▸ Input
+                    // Inspector) — inert until toggled, observes raw events
+                    // only (never a gesture-arena participant).
+                    child: InputInspectorHost(
+                      child: Column(
+                        children: [
+                          // The top strip: title, the menu bar, and the quick actions
+                          // (undo/redo/export keep their long-standing keys).
+                          Material(
+                            color: colorScheme.surfaceContainerHigh,
+                            child: Row(
+                              children: [
+                                const SizedBox(width: 12),
+                                Text(
+                                  'QuickAnimaker',
+                                  style: Theme.of(context).textTheme.titleSmall,
+                                ),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  // Narrow windows scroll the menu bar instead of
+                                  // overflowing the strip.
+                                  child: SingleChildScrollView(
+                                    scrollDirection: Axis.horizontal,
+                                    // The menu re-reads its enablement per notify: the
+                                    // history manager is merged in because brush strokes
+                                    // execute into it straight from the canvas (no session
+                                    // notify fires for a pen-up), the playback controller
+                                    // for the Playback menu's state, the panels bridge for
+                                    // the Window checkboxes.
+                                    child: ListenableBuilder(
+                                      listenable: Listenable.merge([
+                                        _session,
+                                        _session.historyManager,
+                                        _session.playback,
+                                        _panelsMenu,
+                                      ]),
+                                      builder: (context, _) => EditorMenuBar(
+                                        session: _session,
+                                        panelsMenu: _panelsMenu,
+                                        shortcuts: _shortcuts,
+                                      ),
                                     ),
                                   ),
                                 ),
-                              ),
-                              ListenableBuilder(
-                                listenable: Listenable.merge([
-                                  _session,
-                                  _session.historyManager,
-                                ]),
-                                builder: (context, _) => Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    IconButton(
-                                      key: const ValueKey<String>(
-                                        'undo-button',
+                                ListenableBuilder(
+                                  listenable: Listenable.merge([
+                                    _session,
+                                    _session.historyManager,
+                                  ]),
+                                  builder: (context, _) => Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      IconButton(
+                                        key: const ValueKey<String>(
+                                          'undo-button',
+                                        ),
+                                        tooltip: 'Undo',
+                                        onPressed: _session.canUndo
+                                            ? _session.undo
+                                            : null,
+                                        icon: const Icon(Icons.undo),
                                       ),
-                                      tooltip: 'Undo',
-                                      onPressed: _session.canUndo
-                                          ? _session.undo
-                                          : null,
-                                      icon: const Icon(Icons.undo),
-                                    ),
-                                    IconButton(
-                                      key: const ValueKey<String>(
-                                        'redo-button',
+                                      IconButton(
+                                        key: const ValueKey<String>(
+                                          'redo-button',
+                                        ),
+                                        tooltip: 'Redo',
+                                        onPressed: _session.canRedo
+                                            ? _session.redo
+                                            : null,
+                                        icon: const Icon(Icons.redo),
                                       ),
-                                      tooltip: 'Redo',
-                                      onPressed: _session.canRedo
-                                          ? _session.redo
-                                          : null,
-                                      icon: const Icon(Icons.redo),
-                                    ),
-                                  ],
+                                    ],
+                                  ),
                                 ),
-                              ),
-                              IconButton(
-                                key: const ValueKey<String>(
-                                  'export-png-button',
+                                IconButton(
+                                  key: const ValueKey<String>(
+                                    'export-png-button',
+                                  ),
+                                  tooltip: 'Export',
+                                  onPressed: () {
+                                    unawaited(
+                                      showDialog<void>(
+                                        context: context,
+                                        builder: (context) =>
+                                            ExportDialog(session: _session),
+                                      ),
+                                    );
+                                  },
+                                  icon: const Icon(Icons.save_alt),
                                 ),
-                                tooltip: 'Export',
-                                onPressed: () {
-                                  unawaited(
-                                    showDialog<void>(
-                                      context: context,
-                                      builder: (context) =>
-                                          ExportDialog(session: _session),
-                                    ),
-                                  );
-                                },
-                                icon: const Icon(Icons.save_alt),
-                              ),
-                              const SizedBox(width: 8),
-                            ],
+                                const SizedBox(width: 8),
+                              ],
+                            ),
                           ),
-                        ),
-                        Expanded(
-                          child: EditorWorkspace(
-                            session: _session,
-                            panelsMenu: _panelsMenu,
-                            brushTool: _brushTool,
-                            canvasViewCommands: _canvasViewCommands,
-                            canvasSelectionCommands: _canvasSelectionCommands,
-                            layerNav: _timelineLayerNav,
-                            onInvokeAction: _invokeAction,
+                          Expanded(
+                            child: EditorWorkspace(
+                              session: _session,
+                              panelsMenu: _panelsMenu,
+                              brushTool: _brushTool,
+                              canvasViewCommands: _canvasViewCommands,
+                              canvasSelectionCommands: _canvasSelectionCommands,
+                              layerNav: _timelineLayerNav,
+                              onInvokeAction: _invokeAction,
+                            ),
                           ),
-                        ),
-                      ],
+                        ],
+                      ),
                     ),
                   ),
                 ),
@@ -426,5 +440,38 @@ class _HomePageState extends State<HomePage> {
         ),
       ),
     );
+  }
+
+  /// PEN-11: the back-button exit gate. Dirty sessions call out the
+  /// unsaved work; Close is the only way out.
+  Future<void> _confirmSystemExit() async {
+    final close = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        key: const ValueKey<String>('system-exit-dialog'),
+        title: const Text('Close project?'),
+        content: Text(
+          _session.hasUnsavedChanges
+              ? 'There are unsaved changes. The autosave keeps a recovery '
+                    'snapshot, but the project file itself is not updated.'
+              : 'The app will close.',
+        ),
+        actions: [
+          TextButton(
+            key: const ValueKey<String>('system-exit-cancel'),
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            key: const ValueKey<String>('system-exit-close'),
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('Close'),
+          ),
+        ],
+      ),
+    );
+    if (close ?? false) {
+      await SystemNavigator.pop();
+    }
   }
 }

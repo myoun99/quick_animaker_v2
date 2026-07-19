@@ -1,5 +1,7 @@
 import 'package:flutter/gestures.dart';
 
+import '../debug/input_inspector.dart' show InputInspector;
+
 /// A [PanGestureRecognizer] that accepts at the DIRECTIONAL hit slop
 /// (~18px, [computeHitSlop]) instead of the pan slop (~36px,
 /// [computePanSlop]) — UI-R22F #2.
@@ -24,4 +26,28 @@ class EagerPanGestureRecognizer extends PanGestureRecognizer {
   ) =>
       globalDistanceMoved.abs() >
       computeHitSlop(pointerDeviceKind, gestureSettings);
+
+  // PEN-11 field probes (no-ops while the Input Inspector is hidden):
+  // the arena verdict with the accumulated distance at that moment. An
+  // 'ep rej' BELOW the hit slop means a competitor accepted before this
+  // recognizer even reached its threshold — the on-device measurement
+  // the desktop tests can't take.
+  String _probeSuffix(PointerDeviceKind kind) {
+    final threshold = computeHitSlop(kind, gestureSettings);
+    return 'd=${globalDistanceMoved.abs().toStringAsFixed(1)}'
+        ' thr=${threshold.toStringAsFixed(1)}'
+        ' ts=${gestureSettings?.touchSlop?.toStringAsFixed(1)}';
+  }
+
+  @override
+  void acceptGesture(int pointer) {
+    InputInspector.note('ep acc ${_probeSuffix(PointerDeviceKind.stylus)}');
+    super.acceptGesture(pointer);
+  }
+
+  @override
+  void rejectGesture(int pointer) {
+    InputInspector.note('ep rej ${_probeSuffix(PointerDeviceKind.stylus)}');
+    super.rejectGesture(pointer);
+  }
 }

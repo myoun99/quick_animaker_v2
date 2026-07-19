@@ -103,6 +103,7 @@ class InteractiveBrushEditCanvasView extends StatefulWidget {
     this.onAltPick,
     this.onTemporaryToolHold,
     this.onTemporaryToolRelease,
+    this.onInvokeAction,
     this.fillDabAt,
     CanvasViewport? viewport,
   }) : viewport = viewport ?? CanvasViewport();
@@ -126,6 +127,12 @@ class InteractiveBrushEditCanvasView extends StatefulWidget {
   /// cursor/panels follow, and restores (or keeps) on release.
   final void Function(CanvasTool tool)? onTemporaryToolHold;
   final void Function({required bool keep})? onTemporaryToolRelease;
+
+  /// PEN-11: one-shot mapped actions (undo/redo) dispatch through the
+  /// registry funnel — fired at a mapped press, or at a HOVER button
+  /// press for pens that report it (the S-Pen hover palm-rejection
+  /// window blocks touch, so the pen carries its own undo).
+  final void Function(String actionId)? onInvokeAction;
 
   /// FILL mode (R22-A): non-null while the fill tool is active — a
   /// primary tap builds the flood's stamp dab here and the view runs it
@@ -307,6 +314,7 @@ class _InteractiveBrushEditCanvasViewState
             onPointerMove: _handlePointerMove,
             onPointerUp: _handlePointerUp,
             onPointerCancel: _handlePointerCancel,
+            onPointerHover: _handlePointerHover,
             child: ClipRect(
               key: const ValueKey<String>('interactive-brush-edit-canvas-clip'),
               // The viewport transform is applied inside the painter (not by
@@ -377,6 +385,18 @@ class _InteractiveBrushEditCanvasViewState
         // Pan belongs to the panel's viewport gesture layer — this view
         // only stands down so no stroke competes with it.
         case CanvasPointerAction.pan:
+          return;
+        case CanvasPointerAction.undo:
+          // Skip when the button press already fired during hover (the
+          // hover edge below) and the tip then touched with it held.
+          if (!_mappedButtonHeldSinceHover(event)) {
+            widget.onInvokeAction?.call('edit-undo');
+          }
+          return;
+        case CanvasPointerAction.redo:
+          if (!_mappedButtonHeldSinceHover(event)) {
+            widget.onInvokeAction?.call('edit-redo');
+          }
           return;
         case CanvasPointerAction.eyedropper:
           _mappedHoldPointer = event.pointer;
@@ -754,6 +774,52 @@ class _InteractiveBrushEditCanvasViewState
       return settings.canvasWheelClick;
     }
     return null;
+  }
+
+  /// Buttons seen on the latest HOVER event — the PEN-11 hover-press
+  /// edge detector's memory (S-Pen/Wacom report barrel presses while
+  /// hovering; a rising mapped button fires one-shot actions without
+  /// needing contact — the S-Pen hover window blocks touch, so the pen
+  /// carries its own undo).
+  int _lastHoverButtons = 0;
+
+  bool _mappedButtonHeldSinceHover(PointerDownEvent event) =>
+      (_lastHoverButtons &
+          event.buttons &
+          (kSecondaryButton | kTertiaryButton)) !=
+      0;
+
+  void _handlePointerHover(PointerHoverEvent event) {
+    if (event.kind == PointerDeviceKind.touch) {
+      return;
+    }
+    final pressed = event.buttons & ~_lastHoverButtons;
+    _lastHoverButtons = event.buttons;
+    if (pressed == 0) {
+      return;
+    }
+    final settings = AppInput.settings.value;
+    final CanvasPointerMapping? mapping;
+    if ((pressed & kSecondaryButton) != 0) {
+      mapping = settings.canvasRightClick;
+    } else if ((pressed & kTertiaryButton) != 0) {
+      mapping = settings.canvasWheelClick;
+    } else {
+      return;
+    }
+    // Only the ONE-SHOT actions fire from hover — the hold-tools need a
+    // contact to mean anything.
+    switch (mapping.action) {
+      case CanvasPointerAction.undo:
+        widget.onInvokeAction?.call('edit-undo');
+      case CanvasPointerAction.redo:
+        widget.onInvokeAction?.call('edit-redo');
+      case CanvasPointerAction.eyedropper ||
+          CanvasPointerAction.eraser ||
+          CanvasPointerAction.pan ||
+          CanvasPointerAction.none:
+        break;
+    }
   }
 
   /// Ends an active mapped hold (pointer up/cancel): tells the shell to

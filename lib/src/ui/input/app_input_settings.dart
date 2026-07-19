@@ -281,7 +281,10 @@ enum TabletService { standard, wintab }
 /// it. Pen side/barrel buttons, the S-Pen button and the mouse right
 /// button all arrive as the SAME right-click bit, so one row governs
 /// them all (and the wheel/upper-button bit gets its own row).
-enum CanvasPointerAction { eyedropper, eraser, pan, none }
+/// [undo]/[redo] are ONE-SHOT actions (PEN-11): they fire once at the
+/// press — and on a hover BUTTON press for pens that report it — so the
+/// pen can undo even while S-Pen hover palm-rejection blocks all touch.
+enum CanvasPointerAction { eyedropper, eraser, pan, undo, redo, none }
 
 /// What happens when the held mapping ends (PEN-7a): the hold
 /// temporarily SWITCHES THE TOOL (the shared tool-switch path — cursor,

@@ -437,6 +437,10 @@ class _CanvasMappingRow extends StatelessWidget {
     CanvasPointerAction.eyedropper: 'Eyedropper',
     CanvasPointerAction.eraser: 'Eraser',
     CanvasPointerAction.pan: 'Pan',
+    // PEN-11 one-shot actions: fire at the press (and at a hover barrel
+    // press) — the pen undoes even while S-Pen hover blocks touch.
+    CanvasPointerAction.undo: 'Undo',
+    CanvasPointerAction.redo: 'Redo',
     CanvasPointerAction.none: 'None',
   };
 
