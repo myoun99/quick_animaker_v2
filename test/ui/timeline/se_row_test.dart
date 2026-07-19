@@ -315,17 +315,23 @@ void main() {
         .onChanged!(48);
     await tester.pumpAndSettle();
 
+    // Double-tap on the EMPTY cell creates the default entry DIRECTLY —
+    // no dialog (UI-R25 #2, 조작 통일화).
     await _doubleTapCell(
       tester,
       find.byKey(const ValueKey<String>('timeline-cell-se-voice-4')),
     );
-    expect(find.text('New SE'), findsOneWidget);
-    // The R3 length input is retired — creation is one frame, like cels.
-    expect(
-      find.byKey(const ValueKey<String>('instance-length-field')),
-      findsNothing,
-    );
+    expect(find.text('New SE'), findsNothing, reason: 'creation is silent');
+    var layer = _seLayer(repository);
+    expect(layer.timeline[4]!.length, 1, reason: 'one frame, like cels');
+    expect(layer.frames.single.name, isNull, reason: 'unlabeled default');
 
+    // The SECOND double-tap (now a covered cell) opens the edit dialog —
+    // labeling stays the dialog's job.
+    await _doubleTapCell(
+      tester,
+      find.byKey(const ValueKey<String>('timeline-cell-se-voice-4')),
+    );
     await tester.enterText(
       find.byKey(const ValueKey<String>('se-dialogue-field')),
       '와아!',
@@ -339,15 +345,16 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    final layer = _seLayer(repository);
-    final entry = layer.timeline[4]!;
+    layer = _seLayer(repository);
     expect(layer.frames.single.name, '와아!');
     expect(layer.frames.single.seName, '앨리스');
-    expect(entry.length, 1, reason: 'new instances are one frame long');
     expect(_seDialogueAt(tester, 'timeline-se-label-se-voice-4'), '와아!');
     expect(find.bySemanticsLabel('SE name 앨리스'), findsOneWidget);
 
-    // ONE undo removes the entire labeled entry.
+    // Undo pops the label edit, then the creation.
+    await tester.tap(find.byKey(const ValueKey<String>('undo-button')));
+    await tester.pumpAndSettle();
+    expect(_seLayer(repository).frames.single.name, isNull);
     await tester.tap(find.byKey(const ValueKey<String>('undo-button')));
     await tester.pumpAndSettle();
     expect(_seLayer(repository).timeline, isEmpty);

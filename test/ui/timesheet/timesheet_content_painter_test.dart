@@ -316,9 +316,11 @@ void main() {
       cutFrameCount: 8,
     );
     final cells = documentFor([single]).columns[0].cells;
-    expect(cells[2].kind, TimesheetCellKind.holdStart);
-    expect(cells[2].spanLength, 6);
-    for (var row = 3; row < 8; row += 1) {
+    // The hold word starts RIGHT AFTER the cel's first row (UI-R25 #1):
+    // 1止め — the block's own held rows join the word span.
+    expect(cells[1].kind, TimesheetCellKind.holdStart);
+    expect(cells[1].spanLength, 7);
+    for (var row = 2; row < 8; row += 1) {
       expect(cells[row].kind, TimesheetCellKind.empty, reason: '$row');
     }
 

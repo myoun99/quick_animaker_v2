@@ -598,11 +598,21 @@ class TimesheetDocument {
               mergedBlockStarts.add(chainEndExclusive);
             }
           } else if (singleCelDisplay) {
-            // One cel held from row 1: the rear chain prints 止め.
-            cells[start] = TimesheetCell(
-              TimesheetCellKind.holdStart,
-              spanLength: rowsEnd - start,
-            );
+            // One cel held from row 1: the hold word prints RIGHT AFTER
+            // the cel's first row (UI-R25 #1) — 1止め, never 1--止め: the
+            // word's span swallows the block's own held rows (already
+            // written by the block pass; row order puts the block first)
+            // and runs to the cut end, the rest staying blank paper.
+            const wordStart = 1;
+            if (wordStart < rowsEnd) {
+              cells[wordStart] = TimesheetCell(
+                TimesheetCellKind.holdStart,
+                spanLength: rowsEnd - wordStart,
+              );
+              for (var row = wordStart + 1; row < rowsEnd; row += 1) {
+                cells[row] = TimesheetCell.blank;
+              }
+            }
           }
         } else if (behavior?.side == TimelineRunEdgeSide.start) {
           // FRONT repeats write their GHOST FRAMES verbatim (UI-R14 #3):

@@ -112,7 +112,12 @@ void main() {
     expect(layer.timeline[2]!.ghost, isTrue);
 
     final notation = _document(layer, dataSheet: false).columns.first.cells;
-    expect(notation[2].kind, TimesheetCellKind.holdStart);
+    // The hold word starts RIGHT AFTER the cel's first row (UI-R25 #1):
+    // 1止め — the block's own held row joins the word span, and the rest
+    // of the column is blank paper.
+    expect(notation[1].kind, TimesheetCellKind.holdStart);
+    expect(notation[1].spanLength, 11);
+    expect(notation[2].kind, TimesheetCellKind.empty);
 
     final data = _document(layer, dataSheet: true).columns.first.cells;
     // One drawing label at the hold ghost's start (the XDTS value-change
