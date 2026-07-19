@@ -152,7 +152,7 @@ class _CanvasViewportGestureLayerState
     }
     _panPointer = event.pointer;
     _panStartLocalPosition = event.localPosition;
-    _panStartViewport = widget.viewport;
+    _panStartViewport = _liveViewport;
   }
 
   /// Whether this button chord starts a viewport PAN (PEN-7a): any
@@ -249,6 +249,27 @@ class _CanvasViewportGestureLayerState
 
   // Brush-size state.
   bool _brushSizeActive = false;
+
+  /// PEN-14: the viewport as the engine last EMITTED it. Mid-gesture,
+  /// `widget.viewport` lags the emissions by however long the parent
+  /// takes to rebuild — re-anchoring off the stale prop (the modifier
+  /// engage/release path) snapped the zoom back to the GESTURE-START
+  /// scale ("추가 핑거를 올리면 줌이 50%로 초기화"). Cleared whenever the
+  /// parent catches up or an external change lands (didUpdateWidget).
+  CanvasViewport? _lastEmittedViewport;
+
+  CanvasViewport get _liveViewport => _lastEmittedViewport ?? widget.viewport;
+
+  @override
+  void didUpdateWidget(covariant CanvasViewportGestureLayer oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // An exact catch-up (prop == our latest emission) keeps the cache; any
+    // OTHER prop change is external and wins.
+    if (widget.viewport != oldWidget.viewport &&
+        widget.viewport != _lastEmittedViewport) {
+      _lastEmittedViewport = null;
+    }
+  }
 
   void _controlTouchDown(PointerDownEvent event) {
     if (_groupPointers.isEmpty) {
@@ -385,7 +406,7 @@ class _CanvasViewportGestureLayerState
       _navStartAngle = null;
     }
     _navRotationCompensation = null;
-    _navStartViewport = widget.viewport;
+    _navStartViewport = _liveViewport;
   }
 
   void _engageModifier() {
@@ -393,7 +414,7 @@ class _CanvasViewportGestureLayerState
       // Re-anchor so the constraint takes over from HERE, not from the
       // gesture start — the view never jumps when the finger lands.
       _navModifierActive = true;
-      _navModifierLockRotation = widget.viewport.rotationDegrees;
+      _navModifierLockRotation = _liveViewport.rotationDegrees;
       _anchorNavigate();
     }
   }
@@ -540,8 +561,8 @@ class _CanvasViewportGestureLayerState
     }
     final factor = event.scrollDelta.dy < 0 ? 1.1 : 1 / 1.1;
     _emit(
-      widget.viewport.zoomedAround(
-        nextZoom: widget.viewport.zoom * factor,
+      _liveViewport.zoomedAround(
+        nextZoom: _liveViewport.zoom * factor,
         anchor: ViewportPoint(
           x: event.localPosition.dx,
           y: event.localPosition.dy,
@@ -554,7 +575,7 @@ class _CanvasViewportGestureLayerState
     if (widget.strokeActive) {
       return;
     }
-    _panZoomStartViewport = widget.viewport;
+    _panZoomStartViewport = _liveViewport;
     _panZoomRotationCompensation = null;
   }
 
@@ -609,6 +630,8 @@ class _CanvasViewportGestureLayerState
   }
 
   void _emit(CanvasViewport viewport) {
-    widget.onViewportChanged(viewport.clamped());
+    final clamped = viewport.clamped();
+    _lastEmittedViewport = clamped;
+    widget.onViewportChanged(clamped);
   }
 }
