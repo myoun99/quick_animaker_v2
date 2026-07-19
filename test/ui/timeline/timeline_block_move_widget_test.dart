@@ -48,6 +48,7 @@ void main() {
     required List<Layer> layers,
     required ValueNotifier<int> cursor,
     required TimelineFrameRangeHooks rangeHooks,
+    ValueChanged<int>? onSelectFrame,
     // Classic geometry: this file's pan distances assume 48×52 cells.
     TimelineGridMetrics metrics = const TimelineGridMetrics(
       frameCellWidth: 48,
@@ -63,7 +64,7 @@ void main() {
           playbackFrameCount: 24,
           exposureStateForLayer: stateFor,
           onSelectLayer: (_) {},
-          onSelectFrame: (_) {},
+          onSelectFrame: onSelectFrame ?? (_) {},
           onAddLayer: () {},
           onToggleLayerVisibility: (_) {},
           onLayerOpacityChanged: (_, _) {},
@@ -576,30 +577,51 @@ void main() {
       ),
     );
 
+    Offset pressPoint(String layerId) =>
+        tester.getTopLeft(
+          find.byKey(ValueKey<String>('timeline-range-gesture-$layerId')),
+        ) +
+        const Offset(24 + 2 * 48, 26);
+
     Future<void> press(String layerId, {required PointerDeviceKind kind}) {
-      final layerGesture = find.byKey(
-        ValueKey<String>('timeline-range-gesture-$layerId'),
-      );
       return tester
-          .startGesture(
-            tester.getTopLeft(layerGesture) + const Offset(24 + 2 * 48, 26),
-            kind: kind,
-          )
+          .startGesture(pressPoint(layerId), kind: kind)
           .then((g) => g.up())
           .then((_) => tester.pump());
     }
 
-    // TOUCH press = pure scroll intent: no seek on either row shape.
+    // A touch press that becomes a DRAG never seeks — the scroll owns it
+    // (UI-R23 #2: the first scroll touch kept re-seeking).
+    Future<void> dragTouch(String layerId) async {
+      final gesture = await tester.startGesture(
+        pressPoint(layerId),
+        kind: PointerDeviceKind.touch,
+      );
+      for (var step = 0; step < 4; step += 1) {
+        await gesture.moveBy(const Offset(-20, 0));
+        await tester.pump();
+      }
+      await gesture.up();
+      await tester.pump();
+    }
+
+    await dragTouch('anim-1');
+    await dragTouch('se-1');
+    expect(seeks, isEmpty, reason: 'a scrolling finger must not seek');
+
+    // PEN-12 #6: a clean finger TAP is a click — it seeks (at the UP,
+    // once the press provably wasn't a scroll) on both row shapes.
     await press('anim-1', kind: PointerDeviceKind.touch);
     await press('se-1', kind: PointerDeviceKind.touch);
-    expect(seeks, isEmpty, reason: 'touch must not move the playhead');
+    expect(seeks, [2, 2], reason: 'a finger tap = a click');
+    seeks.clear();
 
     // Pen and mouse keep the instant seek.
     await press('anim-1', kind: PointerDeviceKind.stylus);
     await press('se-1', kind: PointerDeviceKind.mouse);
     expect(seeks, [2, 2]);
 
-    // Toggle OFF (touch-as-pen, R17-⑥): touch seeks again.
+    // Toggle OFF (touch-as-pen, R17-⑥): touch seeks at the DOWN again.
     AppInput.settings.value = AppInputSettings.testCorpusBaseline;
     await press('anim-1', kind: PointerDeviceKind.touch);
     expect(seeks, [2, 2, 2]);
@@ -1058,5 +1080,49 @@ void main() {
       reason: 'pen-nearby must keep the coast hittable for the landing pen',
     );
     expect(selectUpdates.last.$1, const LayerId('layer-a'));
+  });
+
+  testWidgets('PEN-12 #6: with touch-timeline-scroll ON a clean finger TAP '
+      'selects the frame; a finger DRAG still only scrolls', (tester) async {
+    AppInput.settings.value = const AppInputSettings(touchTimelineScroll: true);
+    addTearDown(() {
+      AppInput.settings.value = AppInputSettings.testCorpusBaseline;
+    });
+    final cursor = ValueNotifier<int>(0);
+    final selection = ValueNotifier<TimelineFrameRangeSelection?>(null);
+    addTearDown(cursor.dispose);
+    addTearDown(selection.dispose);
+    final selectedFrames = <int>[];
+
+    await tester.pumpWidget(
+      harness(
+        layers: [blockLayer('layer-a')],
+        cursor: cursor,
+        rangeHooks: hooks(selection: selection),
+        onSelectFrame: selectedFrames.add,
+      ),
+    );
+
+    final gestureLayer = find.byKey(
+      const ValueKey<String>('timeline-range-gesture-layer-a'),
+    );
+    final rowY = tester.getTopLeft(gestureLayer).dy + 26;
+
+    await tester.tapAt(Offset(500, rowY));
+    await tester.pumpAndSettle();
+    expect(selectedFrames, hasLength(1), reason: 'a finger tap = a click');
+
+    // A DRAG keeps belonging to the scroll: no further selects.
+    final drag = await tester.startGesture(
+      Offset(500, rowY),
+      kind: PointerDeviceKind.touch,
+    );
+    for (var step = 0; step < 5; step += 1) {
+      await drag.moveBy(const Offset(-24, 0));
+      await tester.pump();
+    }
+    await drag.up();
+    await tester.pumpAndSettle();
+    expect(selectedFrames, hasLength(1), reason: 'a drag never selects');
   });
 }

@@ -2,10 +2,14 @@ import 'dart:async';
 import 'dart:io';
 
 /// Autosave (P3): a periodic tick snapshots a DIRTY session into a sidecar
-/// — `<path>.autosave` next to the saved file, or an app-data
-/// `autosave/<projectId>.qap.autosave` while the project has never been
-/// saved. A successful MANUAL save deletes the sidecar; opening a file
-/// with a newer sidecar offers recovery (the menu's open flow).
+/// `<path>.autosave` next to the saved file. A successful MANUAL save
+/// deletes the sidecar; opening a file with a newer sidecar offers
+/// recovery (the menu's open flow).
+///
+/// PEN-12 #8: a NEVER-SAVED project autosaves nowhere — instead of piling
+/// sidecars into hidden app-data folders, a dirty tick fires
+/// [onUnsavedProject] so the shell can ask the user for a real file
+/// (OpenToonz-style).
 ///
 /// The service knows nothing about widgets: the shell starts it
 /// (FLUTTER_TEST never runs the timer) and tests drive [tick] directly.
@@ -14,6 +18,8 @@ class ProjectAutosaveService {
     required this.isDirty,
     required this.writeSnapshot,
     required this.autosavePath,
+    this.needsProjectFile,
+    this.onUnsavedProject,
     this.interval = const Duration(minutes: 2),
   });
 
@@ -27,6 +33,14 @@ class ProjectAutosaveService {
   /// The sidecar path for the CURRENT session state (moves when the
   /// project is saved under a new name).
   final String Function() autosavePath;
+
+  /// True while the project has never been saved to a real file — a
+  /// dirty tick then calls [onUnsavedProject] instead of snapshotting.
+  final bool Function()? needsProjectFile;
+
+  /// The shell's "please save first" hook (once-per-session gating is
+  /// the shell's business).
+  final void Function()? onUnsavedProject;
 
   final Duration interval;
 
@@ -47,6 +61,10 @@ class ProjectAutosaveService {
   /// editing; the next tick retries.
   Future<void> tick() async {
     if (_ticking || !isDirty()) {
+      return;
+    }
+    if (needsProjectFile?.call() ?? false) {
+      onUnsavedProject?.call();
       return;
     }
     _ticking = true;
