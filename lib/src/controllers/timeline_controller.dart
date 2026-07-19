@@ -365,6 +365,73 @@ class TimelineController {
     deleteBlocksForLayers({layerId: blockStartIndexes});
   }
 
+  /// The cross-layer CREATE form (UI-R25 #3, the delete form's mirror):
+  /// every layer's new drawings compose into ONE undo step. Each fill is
+  /// (cut-local startIndex, length, frameId, name/seName) — indexes shift
+  /// per layer like every edit (track-SE rows land on their global
+  /// timeline). Fills whose cell is already covered are skipped, never
+  /// thrown: the selection sweep offers only empty gaps, but a stale
+  /// offer must not sink the whole composite.
+  void createDrawingFramesForLayers(
+    Map<
+      LayerId,
+      List<({int startIndex, int length, FrameId frameId, String? name})>
+    >
+    fillsByLayer, {
+    String description = 'Create selected cells',
+  }) {
+    final commands = <Command>[];
+    for (final entry in fillsByLayer.entries) {
+      final before = _requireLayer(entry.key);
+      final offset = _frameOffsetForLayer?.call(entry.key) ?? 0;
+      final nextTimeline = SplayTreeMap<int, TimelineExposure>.from(
+        before.timeline,
+      );
+      final newFrames = <Frame>[];
+      for (final fill in entry.value) {
+        final startIndex = fill.startIndex + offset;
+        if (startIndex < 0 ||
+            fill.length < 1 ||
+            coveringDrawingBlockAt(nextTimeline, startIndex) != null) {
+          continue;
+        }
+        final nextBlock = nextDrawingBlockAfter(nextTimeline, startIndex);
+        final maxLength = nextBlock == null
+            ? fill.length
+            : nextBlock.startIndex - startIndex;
+        final length = fill.length > maxLength ? maxLength : fill.length;
+        if (length < 1) {
+          continue;
+        }
+        nextTimeline[startIndex] = TimelineExposure.drawing(
+          fill.frameId,
+          length: length,
+        );
+        newFrames.add(
+          Frame(
+            id: fill.frameId,
+            duration: length,
+            strokes: const [],
+            name: _normalizeFrameName(fill.name),
+          ),
+        );
+      }
+      if (newFrames.isEmpty) {
+        continue;
+      }
+      commands.add(
+        _layerEditCommand(
+          before: before,
+          after: before.copyWith(
+            frames: [...before.frames, ...newFrames],
+            timeline: nextTimeline,
+          ),
+        ),
+      );
+    }
+    _executeCommands(commands, description: description);
+  }
+
   /// The cross-layer form (UI-R17 #8): every layer's deletions compose
   /// into ONE undo step.
   void deleteBlocksForLayers(Map<LayerId, List<int>> blockStartsByLayer) {

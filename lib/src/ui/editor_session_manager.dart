@@ -103,7 +103,10 @@ import 'timeline/timeline_cell_exposure_state.dart';
 import 'timeline/timeline_drag_preview.dart';
 import 'timeline/timeline_section_policy.dart';
 import 'timeline/transform_lane_editing.dart'
-    show transformLaneKeyFrames, transformTrackWithLaneKeysShifted;
+    show
+        transformLaneKeyFrames,
+        transformTrackWithLaneKeyToggled,
+        transformTrackWithLaneKeysShifted;
 
 /// Owns the editable project session for [HomePage]: the repository, undo
 /// history, cut/layer/timeline controllers, the cut command coordinator and the
@@ -2441,6 +2444,32 @@ class EditorSessionManager extends ChangeNotifier {
     return instructionSpanCovering(layer.instructions, frameIndex);
   }
 
+  /// Dialog-free instruction creation (UI-R25 #2, 조작 통일화): an EMPTY
+  /// instruction cell gains a ONE-frame event of the vocabulary's first
+  /// entry directly — the Edit Instance dialog changes it afterwards.
+  /// Covered cells no-op (creation never edits).
+  void createDefaultInstructionEventAtCurrentFrame() {
+    final layer = activeLayer;
+    if (layer == null || layer.kind != LayerKind.instruction) {
+      return;
+    }
+    final frameIndex = _timelineController.currentFrameIndex;
+    if (frameIndex < 0 ||
+        instructionSpanAt(layer.id, frameIndex) != null ||
+        cameraInstructionSet.defs.isEmpty) {
+      return;
+    }
+    upsertInstructionEventAt(
+      layer.id,
+      frameIndex,
+      InstructionEvent(
+        instructionId: cameraInstructionSet.defs.first.id,
+        length: 1,
+      ),
+      createLengthFrames: 1,
+    );
+  }
+
   /// Creates or edits the instruction event at [frameIndex] in ONE undo
   /// step: a covered cell replaces its span's event (start/length stay), an
   /// empty cell starts a new span holding to the next one / the cut's end.
@@ -3105,6 +3134,215 @@ class EditorSessionManager extends ChangeNotifier {
       frameId: FrameId(_nextFrameId(layer.id)),
     );
     notifyListeners();
+  }
+
+  /// UI-R25 #3: Add with a LIVE selection fills the WHOLE selection —
+  /// wherever creation is possible, kind by kind (the rule: anywhere
+  /// selectable creates). Returns true when a selection owned the press.
+  ///
+  /// - Cell selection: every spanned row fills its EMPTY gaps inside the
+  ///   range — drawing/SE rows with a new cel per gap (exposure = gap,
+  ///   ONE undo across all rows), instruction rows with a default-
+  ///   vocabulary event per gap (one undo per row), the camera row with a
+  ///   pose key frozen on every unkeyed frame (one undo).
+  /// - Lane selection: the lane freezes a key on every unkeyed frame of
+  ///   the range (one undo) — the navigator toggle's range form.
+  bool createInstancesForSelection() {
+    final lane = laneRangeSelection.value;
+    if (lane != null) {
+      _createLaneKeysForSelection(lane);
+      return true;
+    }
+    final selection = frameRangeSelection.value;
+    if (selection == null) {
+      return false;
+    }
+    final displayById = {for (final layer in layers) layer.id: layer};
+    final fills =
+        <
+          LayerId,
+          List<({int startIndex, int length, FrameId frameId, String? name})>
+        >{};
+    for (final layerId in selection.spanLayerIds) {
+      final layer = displayById[layerId];
+      if (layer == null) {
+        continue;
+      }
+      if (layer.kind == LayerKind.camera) {
+        _createCameraKeysForRange(selection);
+        continue;
+      }
+      if (layer.kind == LayerKind.instruction) {
+        _createInstructionEventsForRange(layer, selection);
+        continue;
+      }
+      if (!layerKindHoldsDrawings(layer.kind) || isSyncedAttachedLayer(layer)) {
+        continue; // Synced mirrors follow their base; nothing to author.
+      }
+      final layerFills =
+          <({int startIndex, int length, FrameId frameId, String? name})>[];
+      for (final gap in _emptyGapsInRange(layer, selection)) {
+        _frameSequence += 1;
+        layerFills.add((
+          startIndex: gap.startIndex,
+          length: gap.length,
+          frameId: FrameId(_nextFrameId(layer.id)),
+          name: null,
+        ));
+      }
+      if (layerFills.isNotEmpty) {
+        fills[layer.id] = layerFills;
+      }
+    }
+    if (fills.isNotEmpty) {
+      _timelineController.createDrawingFramesForLayers(fills);
+    }
+    notifyListeners();
+    return true;
+  }
+
+  /// The selection range's maximal EMPTY runs on [layer]'s timeline
+  /// (ghost coverage counts as covered — derived cells are not authoring
+  /// room).
+  List<({int startIndex, int length})> _emptyGapsInRange(
+    Layer layer,
+    TimelineFrameRangeSelection selection,
+  ) {
+    final gaps = <({int startIndex, int length})>[];
+    int? gapStart;
+    for (var index = selection.startIndex;
+        index <= selection.endIndexExclusive;
+        index += 1) {
+      final covered =
+          index >= selection.endIndexExclusive ||
+          index < 0 ||
+          coveringDrawingBlockAt(layer.timeline, index) != null;
+      if (!covered) {
+        gapStart ??= index;
+        continue;
+      }
+      if (gapStart != null) {
+        gaps.add((startIndex: gapStart, length: index - gapStart));
+        gapStart = null;
+      }
+    }
+    return gaps;
+  }
+
+  void _createCameraKeysForRange(TimelineFrameRangeSelection selection) {
+    final cut = activeCutOrNull;
+    final cutId = _editingSession.activeCutId;
+    if (cut == null || cutId == null) {
+      return;
+    }
+    var camera = cut.camera;
+    var changed = false;
+    for (var frame = selection.startIndex;
+        frame < selection.endIndexExclusive;
+        frame += 1) {
+      if (frame < 0 || camera.keyframeAt(frame) != null) {
+        continue;
+      }
+      // Freeze the RESOLVED pose (AE behavior): keys appear, the picture
+      // does not move.
+      camera = camera.withKeyframe(
+        frame,
+        resolveCameraPoseAt(
+          camera: cut.camera,
+          canvasSize: cut.canvasSize,
+          frameIndex: frame,
+        ),
+      );
+      changed = true;
+    }
+    if (!changed) {
+      return;
+    }
+    _cutCommandCoordinator.updateCutCamera(
+      cutId: cutId,
+      camera: camera,
+      description: 'Create camera keys',
+    );
+    _refreshAfterCutCommand();
+  }
+
+  void _createInstructionEventsForRange(
+    Layer layer,
+    TimelineFrameRangeSelection selection,
+  ) {
+    final defaultDef = cameraInstructionSet.defs.isEmpty
+        ? null
+        : cameraInstructionSet.defs.first;
+    if (defaultDef == null) {
+      return;
+    }
+    bool covered(int index) {
+      for (final entry in layer.instructions.entries) {
+        if (index >= entry.key && index < entry.key + entry.value.length) {
+          return true;
+        }
+      }
+      return false;
+    }
+
+    final next = Map<int, InstructionEvent>.of(layer.instructions);
+    var changed = false;
+    int? gapStart;
+    for (var index = selection.startIndex;
+        index <= selection.endIndexExclusive;
+        index += 1) {
+      final inGap =
+          index < selection.endIndexExclusive && index >= 0 && !covered(index);
+      if (inGap) {
+        gapStart ??= index;
+        continue;
+      }
+      if (gapStart != null) {
+        next[gapStart] = InstructionEvent(
+          instructionId: defaultDef.id,
+          length: index - gapStart,
+        );
+        changed = true;
+        gapStart = null;
+      }
+    }
+    if (changed) {
+      updateLayerInstructions(layer.id, next, description: 'Create events');
+    }
+  }
+
+  /// The lane-selection create (UI-R25 #3): a key frozen at the resolved
+  /// value on every unkeyed frame of the range — one undo.
+  void _createLaneKeysForSelection(TimelineLaneSelection lane) {
+    final layer = _layerById(lane.layerId);
+    if (layer == null || isAttachedLayer(layer)) {
+      return;
+    }
+    var track = layer.transformTrack;
+    var changed = false;
+    for (var frame = lane.startIndex;
+        frame < lane.endIndexExclusive;
+        frame += 1) {
+      if (frame < 0 ||
+          transformLaneKeyFrames(track, lane.laneId).contains(frame)) {
+        continue;
+      }
+      final next = transformTrackWithLaneKeyToggled(
+        track,
+        laneId: lane.laneId,
+        frameIndex: frame,
+        resolvedPose: layerPoseAtFrame(layer, frame),
+        resolvedAnchorPoint: layerAnchorPointAtFrame(layer, frame),
+        resolvedOpacity: layerOpacityAtFrame(layer, frame),
+      );
+      if (next != null) {
+        track = next;
+        changed = true;
+      }
+    }
+    if (changed) {
+      updateLayerTransformTrack(layer.id, track, description: 'Create keys');
+    }
   }
 
   void copyFrameAtCurrentFrame() {

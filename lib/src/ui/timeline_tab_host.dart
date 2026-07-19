@@ -448,10 +448,16 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
     await _activateCellEditor(layer.id, _session.currentFrameIndex);
   }
 
-  /// Toolbar 'Add' — kind-dispatched creation: drawing kinds create a
-  /// frame, camera keys the current pose, SE/instruction open their
-  /// dialog first (dialog-first, one undo on commit).
+  /// Toolbar 'Add' — kind-dispatched creation. NO dialogs anywhere
+  /// (UI-R25 #2, 조작 통일화): SE/instruction create a DEFAULT instance
+  /// directly — the Edit Instance button / double-tap edits it after.
+  /// A live selection fills the WHOLE selection instead (UI-R25 #3):
+  /// anywhere selectable creates — drawing gaps, SE gaps, instruction
+  /// gaps, camera keys, lane keys.
   Future<void> _createActiveInstance() async {
+    if (_session.createInstancesForSelection()) {
+      return;
+    }
     final layer = _session.activeLayer;
     if (layer == null) {
       return;
@@ -462,9 +468,9 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
           _session.cameraPoseAtCurrentFrame,
         );
       case LayerKind.se:
-        await _editSeLabel();
+        _session.createSeEntryAtCurrentFrame(name: '', lengthFrames: 1);
       case LayerKind.instruction:
-        await _editInstructionEvent(layer.id, _session.currentFrameIndex);
+        _session.createDefaultInstructionEventAtCurrentFrame();
       case LayerKind.animation || LayerKind.storyboard || LayerKind.art:
         _session.createDrawingAtCurrentFrame();
     }
@@ -524,22 +530,24 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
       ? Axis.horizontal
       : Axis.vertical;
 
-  /// SE cells: covered cells edit the covering entry's name/dialogue,
-  /// empty cells create a ONE-frame entry carrying the entered texts (the
-  /// comma grips own the length afterwards, like drawing cels); one undo
-  /// each way.
+  /// SE cells: covered cells edit the covering entry's name/dialogue in
+  /// the dialog; EMPTY cells create a default one-frame entry DIRECTLY
+  /// (UI-R25 #2 — creation never opens a dialog; edit it afterwards).
   Future<void> _editSeLabel() async {
     final creating = _session.selectedFrame == null;
-    if (creating && !_session.canCreateDrawingAtCurrentFrame) {
+    if (creating) {
+      if (_session.canCreateDrawingAtCurrentFrame) {
+        _session.createSeEntryAtCurrentFrame(name: '', lengthFrames: 1);
+      }
       return;
     }
 
     final result = await showDialog<SeInstanceDialogResult>(
       context: context,
       builder: (context) => SeInstanceDialog(
-        creating: creating,
-        initialSeName: creating ? '' : _session.selectedFrameSeName ?? '',
-        initialDialogue: creating ? '' : _session.selectedFrameName ?? '',
+        creating: false,
+        initialSeName: _session.selectedFrameSeName ?? '',
+        initialDialogue: _session.selectedFrameName ?? '',
         previewAxis: _previewAxis,
       ),
     );
@@ -548,35 +556,30 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
     }
 
     final seName = result.seName.isEmpty ? null : result.seName;
-    if (creating) {
-      _session.createSeEntryAtCurrentFrame(
-        name: result.dialogue,
-        seName: seName,
-        lengthFrames: 1,
-      );
-    } else {
-      // SE edits never hit the link-conflict flow (duplicates allowed).
-      _session.updateSelectedSeEntry(dialogue: result.dialogue, seName: seName);
-    }
+    // SE edits never hit the link-conflict flow (duplicates allowed).
+    _session.updateSelectedSeEntry(dialogue: result.dialogue, seName: seName);
   }
 
-  /// Instruction cells: covered cells edit/delete the covering event, empty
-  /// cells add a ONE-frame event (the grips own the length afterwards);
-  /// one undo each. The vocabulary editor is reachable from inside the
-  /// picker.
+  /// Instruction cells: covered cells edit/delete the covering event in
+  /// the dialog; EMPTY cells create a default one-frame event DIRECTLY
+  /// (UI-R25 #2). The vocabulary editor is reachable from the picker.
   Future<void> _editInstructionEvent(LayerId layerId, int frameIndex) async {
     final covering = _session.instructionSpanAt(layerId, frameIndex);
+    if (covering == null) {
+      _session.createDefaultInstructionEventAtCurrentFrame();
+      return;
+    }
 
     final result = await showDialog<InstructionEventDialogResult>(
       context: context,
       builder: (context) => InstructionEventDialog(
         instructionSet: _session.cameraInstructionSet,
-        initialInstructionId: covering?.value.instructionId,
-        initialText: covering?.value.text,
-        initialValueA: covering?.value.valueA,
-        initialValueB: covering?.value.valueB,
-        initialMemo: covering?.value.memo,
-        editing: covering != null,
+        initialInstructionId: covering.value.instructionId,
+        initialText: covering.value.text,
+        initialValueA: covering.value.valueA,
+        initialValueB: covering.value.valueB,
+        initialMemo: covering.value.memo,
+        editing: true,
         onEditInstructionSet: () => _editInstructionSet(context),
         previewAxis: _previewAxis,
       ),

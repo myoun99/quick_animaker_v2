@@ -154,19 +154,23 @@ void main() {
       onRepositoryCreated: (repo) => repository = repo,
     );
 
+    // Double-tap on the EMPTY cell creates a default-vocabulary event
+    // DIRECTLY — no dialog (UI-R25 #2, 조작 통일화).
     await _doubleTapCell(
       tester,
       find.byKey(const ValueKey<String>('timeline-cell-inst-cam-4')),
     );
-    expect(find.text('Add Instruction'), findsOneWidget);
-    // The R3 length input is retired — creation is one frame, like cels.
-    expect(
-      find.byKey(const ValueKey<String>('instance-length-field')),
-      findsNothing,
-    );
+    expect(find.text('Add Instruction'), findsNothing);
+    var event = _camLayer(repository).instructions[4]!;
+    expect(event.length, 1, reason: 'new instances are one frame long');
 
-    // Pick PAN from the vocabulary (near the menu top — far entries sit
-    // outside the dropdown's visible window) and give it endpoint values.
+    // The SECOND double-tap (covered now) opens the editor: swap it to
+    // PAN with endpoint values — editing stays the dialog's job.
+    await _doubleTapCell(
+      tester,
+      find.byKey(const ValueKey<String>('timeline-cell-inst-cam-4')),
+    );
+    expect(find.text('Edit Instruction'), findsOneWidget);
     await tester.tap(
       find.byKey(const ValueKey<String>('instruction-def-dropdown')),
     );
@@ -188,13 +192,15 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    final event = _camLayer(repository).instructions[4]!;
+    event = _camLayer(repository).instructions[4]!;
     expect(event.instructionId, 'pan');
-    expect(event.length, 1, reason: 'new instances are one frame long');
     expect(event.valueA, '0%');
     expect(event.valueB, '100%');
     expect(find.text('PAN'), findsWidgets);
 
+    // Undo pops the edit, then the creation.
+    await tester.tap(find.byKey(const ValueKey<String>('undo-button')));
+    await tester.pumpAndSettle();
     await tester.tap(find.byKey(const ValueKey<String>('undo-button')));
     await tester.pumpAndSettle();
     expect(_camLayer(repository).instructions, isEmpty);
@@ -321,12 +327,17 @@ void main() {
       onRepositoryCreated: (repo) => repository = repo,
     );
 
+    // First double-tap CREATES the default event silently (UI-R25 #2);
+    // the second (covered cell) opens the editor the vocabulary button
+    // lives in.
     await _doubleTapCell(
       tester,
       find.byKey(const ValueKey<String>('timeline-cell-inst-cam-0')),
     );
-    // The length field made the creation dialog taller — scroll the
-    // vocabulary button into view first.
+    await _doubleTapCell(
+      tester,
+      find.byKey(const ValueKey<String>('timeline-cell-inst-cam-0')),
+    );
     await tester.ensureVisible(
       find.byKey(const ValueKey<String>('instruction-edit-set-button')),
     );

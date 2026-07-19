@@ -185,9 +185,9 @@ void main() {
     expect(track.rotation.keyAt(4), isNotNull);
   });
 
-  testWidgets('toolbar Add on an empty SE cell runs the SE dialog first', (
-    tester,
-  ) async {
+  testWidgets('toolbar Add on an empty SE cell creates a DEFAULT entry '
+      'directly — no dialog (UI-R25 #2); the Edit Instance dialog labels '
+      'it afterwards', (tester) async {
     final repository = await _pumpHome(tester);
 
     await tester.tap(
@@ -196,8 +196,18 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const ValueKey<String>('new-frame-button')));
     await tester.pumpAndSettle();
-    expect(find.text('New SE'), findsOneWidget);
+    expect(find.text('New SE'), findsNothing, reason: 'creation is silent');
 
+    final seLayer = _cut(
+      repository,
+    ).layers.firstWhere((layer) => layer.kind == LayerKind.se);
+    expect(seLayer.timeline[3], isNotNull, reason: 'the entry just exists');
+
+    // Editing stays the dialog's job (the unified edit entrance).
+    await tapCommandButton(
+      tester,
+      const ValueKey<String>('rename-frame-button'),
+    );
     await tester.enterText(
       find.byKey(const ValueKey<String>('se-dialogue-field')),
       '쿵',
@@ -206,12 +216,15 @@ void main() {
       find.byKey(const ValueKey<String>('instance-edit-ok-button')),
     );
     await tester.pumpAndSettle();
-
-    final seLayer = _cut(
-      repository,
-    ).layers.firstWhere((layer) => layer.kind == LayerKind.se);
-    expect(seLayer.frames.single.name, '쿵');
-    expect(seLayer.timeline[3], isNotNull);
+    expect(
+      _cut(repository)
+          .layers
+          .firstWhere((layer) => layer.kind == LayerKind.se)
+          .frames
+          .single
+          .name,
+      '쿵',
+    );
   });
 
   testWidgets('toolbar Edit Instance opens the camera key dialog for the '
