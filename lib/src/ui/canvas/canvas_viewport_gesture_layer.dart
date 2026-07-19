@@ -302,7 +302,10 @@ class _CanvasViewportGestureLayerState
             firstMovedDelta.dx.abs() >= firstMovedDelta.dy.abs();
         _flipEmittedSteps = 0;
       case CanvasTouchDragAction.navigate:
-        _anchorNavigate();
+        // Anchor at the DOWN positions: the whole travel since touchdown
+        // counts (the legacy pinch contract — nothing swallowed by the
+        // lock slop, and a single-event jump still navigates in full).
+        _anchorNavigate(fromDownPositions: true);
       case CanvasTouchDragAction.brushSize:
         _brushSizeActive = true;
         widget.onBrushSizeDragStart?.call();
@@ -365,10 +368,11 @@ class _CanvasViewportGestureLayerState
     }
   }
 
-  void _anchorNavigate() {
+  void _anchorNavigate({bool fromDownPositions = false}) {
+    final source = fromDownPositions ? _groupDownPositions : _touchPositions;
     final positions = {
       for (final pointer in _groupPointers)
-        pointer: _touchPositions[pointer] ?? Offset.zero,
+        pointer: source[pointer] ?? Offset.zero,
     };
     _navStartFocal = _groupCentroid(positions);
     if (_groupPointers.length >= 2) {
