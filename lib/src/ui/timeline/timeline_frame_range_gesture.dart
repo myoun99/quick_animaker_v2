@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../input/app_input_settings.dart' show AppInput;
 import '../input/eager_pan_gesture_recognizer.dart';
+import '../debug/input_inspector.dart' show InputInspector;
 
 import '../../models/layer.dart';
 import '../../models/layer_id.dart';
@@ -311,22 +312,34 @@ class _TimelineFrameRangeGestureLayerState
       // #6/#8): stylus pens report as TOUCH on some Windows/tablet
       // drivers, which left range selection pen-dead there — cell-area
       // panning stays available on the rulers/scrollbars.
-      child: GestureDetector(
+      // PEN-10 probe: with the Input Inspector open, a down REACHING
+      // this layer logs 'IN' — a 'tl dn' without a matching 'IN' is the
+      // hit-test-exclusion smoking gun.
+      child: Listener(
         behavior: HitTestBehavior.translucent,
-        onTapUp: (_) => widget.callbacks.onTapClear(widget.layer.id),
-        child: RawGestureDetector(
-          // Translucent: the cells' pointer-down select keeps firing;
-          // only the pan recognizer competes in the arena. Touch joins
-          // per the input policy (UI-R22 #6): editing unless the timeline
-          // scroll owns touch. EAGER slop (UI-R22F #2): the edit pan
-          // accepts at the viewport recognizers' hit slop, so slow small
-          // pen drags select instead of losing the arena to the scroll.
+        onPointerDown: (event) {
+          if (InputInspector.visible.value) {
+            InputInspector.note('tl IN=${event.kind.name}');
+          }
+        },
+        child: GestureDetector(
           behavior: HitTestBehavior.translucent,
-          gestures: <Type, GestureRecognizerFactory>{
-            EagerPanGestureRecognizer:
-                GestureRecognizerFactoryWithHandlers<EagerPanGestureRecognizer>(
-                  () => EagerPanGestureRecognizer(debugOwner: this),
-                  (recognizer) {
+          onTapUp: (_) => widget.callbacks.onTapClear(widget.layer.id),
+          child: RawGestureDetector(
+            // Translucent: the cells' pointer-down select keeps firing;
+            // only the pan recognizer competes in the arena. Touch joins
+            // per the input policy (UI-R22 #6): editing unless the timeline
+            // scroll owns touch. EAGER slop (UI-R22F #2): the edit pan
+            // accepts at the viewport recognizers' hit slop, so slow small
+            // pen drags select instead of losing the arena to the scroll.
+            behavior: HitTestBehavior.translucent,
+            gestures: <Type, GestureRecognizerFactory>{
+              EagerPanGestureRecognizer:
+                  GestureRecognizerFactoryWithHandlers<
+                    EagerPanGestureRecognizer
+                  >(() => EagerPanGestureRecognizer(debugOwner: this), (
+                    recognizer,
+                  ) {
                     recognizer.supportedDevices =
                         AppInput.timelineEditPanDevices;
                     recognizer.dragStartBehavior = DragStartBehavior.down;
@@ -335,9 +348,9 @@ class _TimelineFrameRangeGestureLayerState
                     recognizer.onUpdate = _updateDrag;
                     recognizer.onEnd = (_) => _endDrag();
                     recognizer.onCancel = _cancelDrag;
-                  },
-                ),
-          },
+                  }),
+            },
+          ),
         ),
       ),
     );

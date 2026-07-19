@@ -40,6 +40,7 @@ import 'se_audio_lane.dart' show AudioOffsetDragCallbacks;
 import 'timeline_lane_rows.dart';
 import 'timeline_layer_controls_header.dart';
 import 'timeline_layer_frame_body_layout.dart';
+import 'pen_friendly_scroll_controller.dart';
 import 'stylus_glide_stop.dart';
 import 'timeline_zoom_anchor_policy.dart';
 import 'timeline_layer_controls_row.dart';
@@ -439,8 +440,10 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
   @override
   void initState() {
     super.initState();
-    _horizontalScrollController = ScrollController();
-    _verticalScrollController = ScrollController();
+    // PEN-10: pen-friendly positions — while a stylus is nearby, a
+    // coasting fling stops hiding the cells from hit-testing.
+    _horizontalScrollController = PenFriendlyScrollController();
+    _verticalScrollController = PenFriendlyScrollController();
     _horizontalScrollController.addListener(_handleHorizontalScroll);
     _verticalScrollController.addListener(_handleVerticalScroll);
   }

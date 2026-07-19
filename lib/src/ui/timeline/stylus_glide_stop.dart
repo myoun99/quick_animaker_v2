@@ -1,5 +1,10 @@
+import 'dart:async';
+
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+
+import '../debug/input_inspector.dart';
+import 'pen_friendly_scroll_controller.dart';
 
 /// PEN-9: a stylus approaching the timeline stops any COASTING scroll.
 ///
@@ -13,6 +18,11 @@ import 'package:flutter/material.dart';
 /// pointer-down stop is the fallback for the first contact of pens that
 /// deliver no hover. Stopping a coast is exactly the tap-to-stop gesture,
 /// so the pen loses nothing.
+///
+/// PEN-10 adds the second belt: every stylus event marks the wrapped
+/// [PenFriendlyScrollPosition]s pen-nearby for a short window, so a coast
+/// that starts (or survives) with the pen close keeps the children
+/// hittable even when no hover movement precedes the landing.
 ///
 /// A FINGER drag must never be yanked from under the hand (pens hover
 /// while fingers scroll), so only axes whose latest update was not
@@ -41,6 +51,14 @@ class _StylusGlideStopState extends State<StylusGlideStop> {
   /// approach is equally safe).
   final Set<Axis> _coasting = <Axis>{};
 
+  Timer? _penNearbyTimer;
+
+  @override
+  void dispose() {
+    _penNearbyTimer?.cancel();
+    super.dispose();
+  }
+
   bool _handleNotification(ScrollNotification notification) {
     final axis = notification.metrics.axis;
     if (notification is ScrollUpdateNotification) {
@@ -55,11 +73,15 @@ class _StylusGlideStopState extends State<StylusGlideStop> {
     return false;
   }
 
+  bool _isStylus(PointerEvent event) =>
+      event.kind == PointerDeviceKind.stylus ||
+      event.kind == PointerDeviceKind.invertedStylus;
+
   void _stopGlides(PointerEvent event) {
-    if (event.kind != PointerDeviceKind.stylus &&
-        event.kind != PointerDeviceKind.invertedStylus) {
+    if (!_isStylus(event)) {
       return;
     }
+    _markPenNearby();
     if (_coasting.isEmpty) {
       return;
     }
@@ -74,6 +96,52 @@ class _StylusGlideStopState extends State<StylusGlideStop> {
     _coasting.clear();
   }
 
+  /// PEN-10: the pen was just seen — keep coasting viewports hittable
+  /// for a short window (see [PenFriendlyScrollPosition.penNearby]).
+  void _markPenNearby() {
+    _setPenNearby(true);
+    _penNearbyTimer?.cancel();
+    _penNearbyTimer = Timer(
+      const Duration(seconds: 2),
+      () => _setPenNearby(false),
+    );
+  }
+
+  void _setPenNearby(bool value) {
+    for (final controller in widget.controllers) {
+      for (final position in controller.positions) {
+        if (position is PenFriendlyScrollPosition) {
+          position.penNearby = value;
+        }
+      }
+    }
+  }
+
+  /// PEN-10 field diagnosis: with the Input Inspector open, every
+  /// pointer-down over the timeline logs its kind plus the scroll state
+  /// it landed into ('cst'=coasting axes, 'scr'=axes with a live scroll
+  /// activity). Paired with the range layer's 'IN' note, one glance
+  /// separates a kind misreport (dn=touch while using the pen) from a
+  /// hit-test exclusion (dn=stylus without a following IN).
+  void _noteDown(PointerEvent event) {
+    if (!InputInspector.visible.value) {
+      return;
+    }
+    final scrolling = <String>[];
+    for (final controller in widget.controllers) {
+      for (final position in controller.positions) {
+        if (position.isScrollingNotifier.value) {
+          scrolling.add(position.axis.name[0]);
+        }
+      }
+    }
+    InputInspector.note(
+      'tl dn=${event.kind.name}'
+      ' cst=${_coasting.map((axis) => axis.name[0]).join()}'
+      ' scr=${scrolling.join()}',
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return NotificationListener<ScrollNotification>(
@@ -81,7 +149,10 @@ class _StylusGlideStopState extends State<StylusGlideStop> {
       child: Listener(
         behavior: HitTestBehavior.translucent,
         onPointerHover: _stopGlides,
-        onPointerDown: _stopGlides,
+        onPointerDown: (event) {
+          _noteDown(event);
+          _stopGlides(event);
+        },
         child: widget.child,
       ),
     );

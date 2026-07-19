@@ -102,6 +102,35 @@ void main() {
     expect(InputInspector.samples.length, InputInspector.capacity);
   });
 
+  test('PEN-10: touch-down counter + probe notes count, gate and clear', () {
+    // Touch downs count; other kinds/phases do not.
+    InputInspector.record(const PointerDownEvent());
+    InputInspector.record(const PointerDownEvent());
+    InputInspector.record(
+      const PointerDownEvent(kind: PointerDeviceKind.stylus),
+    );
+    InputInspector.record(const PointerMoveEvent());
+    expect(InputInspector.touchDownCount, 2);
+
+    // Notes only land while the inspector is visible, and stay bounded.
+    InputInspector.note('hidden — dropped');
+    expect(InputInspector.notes, isEmpty);
+    InputInspector.visible.value = true;
+    for (var i = 0; i < InputInspector.notesCapacity + 3; i += 1) {
+      InputInspector.note('probe $i');
+    }
+    expect(InputInspector.notes.length, InputInspector.notesCapacity);
+    expect(
+      InputInspector.notes.last,
+      'probe ${InputInspector.notesCapacity + 2}',
+    );
+
+    InputInspector.clear();
+    expect(InputInspector.touchDownCount, 0);
+    expect(InputInspector.notes, isEmpty);
+    InputInspector.reset();
+  });
+
   test('describe() carries the diagnosis fields', () {
     const event = PointerDownEvent(
       kind: PointerDeviceKind.stylus,

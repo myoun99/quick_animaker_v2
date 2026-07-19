@@ -43,6 +43,7 @@ import 'timeline_lane_rows.dart';
 import 'timeline_instruction_row_visual.dart';
 import 'timeline_se_row_visual.dart';
 import 'timeline_horizontal_offset_policy.dart';
+import 'pen_friendly_scroll_controller.dart';
 import 'stylus_glide_stop.dart';
 import 'timeline_horizontal_scrollbar_rail.dart';
 import 'timeline_ruler_cut_end_boundary.dart';
@@ -321,8 +322,10 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
   @override
   void initState() {
     super.initState();
-    _frameScrollController = ScrollController();
-    _layerScrollController = ScrollController();
+    // PEN-10: pen-friendly positions — while a stylus is nearby, a
+    // coasting fling stops hiding the cells from hit-testing.
+    _frameScrollController = PenFriendlyScrollController();
+    _layerScrollController = PenFriendlyScrollController();
     _frameScrollController.addListener(_handleFrameScroll);
   }
 
