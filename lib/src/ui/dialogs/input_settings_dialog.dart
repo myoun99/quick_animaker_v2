@@ -113,26 +113,14 @@ class _InputSettingsDialog extends StatelessWidget {
                     settings.copyWith(canvasWheelClick: mapping),
                   ),
                 ),
-                // PEN-7b: the CANVAS TOUCH system — mode, the
-                // finger-count drag slots (all assignable), the
-                // +1-finger modifier and the snap tables.
+                // PEN-7b: the CANVAS TOUCH system — the finger-count
+                // drag slots (all assignable; PEN-12 #4 folded the old
+                // control/draw mode into the ONE-FINGER slot's Drawing
+                // action), the +1-finger modifier and the snap tables.
                 const Divider(height: 16),
                 Text(
                   'Canvas touch',
                   style: Theme.of(context).textTheme.labelLarge,
-                ),
-                _EnumDropdownRow<CanvasTouchMode>(
-                  rowKey: 'settings-canvas-touch-mode',
-                  label: 'Touch',
-                  value: settings.canvasTouchMode,
-                  values: CanvasTouchMode.values,
-                  labelOf: (mode) => switch (mode) {
-                    CanvasTouchMode.control => 'Screen control (default)',
-                    CanvasTouchMode.draw => 'Draw',
-                  },
-                  onChanged: (mode) => session.setInputSettings(
-                    settings.copyWith(canvasTouchMode: mode),
-                  ),
                 ),
                 _EnumDropdownRow<CanvasTouchDragAction>(
                   rowKey: 'settings-touch-slot-1',
@@ -147,8 +135,15 @@ class _InputSettingsDialog extends StatelessWidget {
                 _EnumDropdownRow<CanvasTouchDragAction>(
                   rowKey: 'settings-touch-slot-2',
                   label: '2-finger drag',
+                  // Drawing is single-finger by nature — the multi-finger
+                  // slots never offer it.
+                  values: const [
+                    CanvasTouchDragAction.flip,
+                    CanvasTouchDragAction.navigate,
+                    CanvasTouchDragAction.brushSize,
+                    CanvasTouchDragAction.none,
+                  ],
                   value: settings.touchDragTwoFingers,
-                  values: CanvasTouchDragAction.values,
                   labelOf: _dragActionLabel,
                   onChanged: (action) => session.setInputSettings(
                     settings.copyWith(touchDragTwoFingers: action),
@@ -157,8 +152,13 @@ class _InputSettingsDialog extends StatelessWidget {
                 _EnumDropdownRow<CanvasTouchDragAction>(
                   rowKey: 'settings-touch-slot-3',
                   label: '3-finger drag',
+                  values: const [
+                    CanvasTouchDragAction.flip,
+                    CanvasTouchDragAction.navigate,
+                    CanvasTouchDragAction.brushSize,
+                    CanvasTouchDragAction.none,
+                  ],
                   value: settings.touchDragThreeFingers,
-                  values: CanvasTouchDragAction.values,
                   labelOf: _dragActionLabel,
                   onChanged: (action) => session.setInputSettings(
                     settings.copyWith(touchDragThreeFingers: action),
@@ -316,6 +316,7 @@ String _dragActionLabel(CanvasTouchDragAction action) => switch (action) {
   CanvasTouchDragAction.flip => 'Flip (frames / layers)',
   CanvasTouchDragAction.navigate => 'Screen (pan · zoom · rotate)',
   CanvasTouchDragAction.brushSize => 'Brush size',
+  CanvasTouchDragAction.draw => 'Drawing',
   CanvasTouchDragAction.none => 'None',
 };
 

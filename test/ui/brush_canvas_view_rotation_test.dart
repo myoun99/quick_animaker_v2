@@ -242,23 +242,39 @@ void main() {
     });
 
     testWidgets('inside the deadzone a pinch stays level', (tester) async {
-      // ~3° sweep: below the 5° deadzone — no rotation at all.
+      // PEN-12 #4 (engine contract): the finger must CROSS the 18px lock
+      // slop to navigate at all, so the sweep rides a mostly-radial move
+      // — ~1.4° of angle on a 40px travel: below the 5° deadzone, no
+      // rotation (the zoom may change, that is not this pin).
       final emitted = await runTwoFingerArc(
         tester,
-        secondFingerEnd: const Offset(199.86, 105.23),
+        secondFingerEnd: const Offset(240, 103.42),
       );
       expect(emitted, isNotNull);
       expect(emitted!.rotationDegrees, 0);
     });
 
     testWidgets('small engaged angles snap back to 0°', (tester) async {
-      // ~8° sweep: engaged, effective ~3° — inside the zero-snap window.
+      // ~8° sweep on a 43px travel: engaged (past the 5° deadzone),
+      // effective ~3° — inside the zero-snap window.
       final emitted = await runTwoFingerArc(
         tester,
-        secondFingerEnd: const Offset(199.03, 113.92),
+        secondFingerEnd: const Offset(238.64, 119.48),
       );
       expect(emitted, isNotNull);
       expect(emitted!.rotationDegrees, 0);
+    });
+
+    testWidgets('sub-slop two-finger travel emits nothing — the lock slop '
+        'keeps two-finger TAPS clean (PEN-12 #4 engine contract)', (
+      tester,
+    ) async {
+      final emitted = await runTwoFingerArc(
+        tester,
+        // ~5px of travel: under the 18px lock slop.
+        secondFingerEnd: const Offset(199.86, 105.23),
+      );
+      expect(emitted, isNull);
     });
   });
 }

@@ -31,7 +31,6 @@ class AppInputSettings {
     this.canvasWheelClick = const CanvasPointerMapping(
       action: CanvasPointerAction.pan,
     ),
-    this.canvasTouchMode = CanvasTouchMode.control,
     this.touchDragOneFinger = CanvasTouchDragAction.flip,
     this.touchDragTwoFingers = CanvasTouchDragAction.navigate,
     this.touchDragThreeFingers = CanvasTouchDragAction.brushSize,
@@ -43,12 +42,12 @@ class AppInputSettings {
     this.brushSizeSnaps = defaultBrushSizeSnaps,
   });
 
-  /// What touch means on the canvas (PEN-7b): screen control (default)
-  /// or drawing. Touch-only form factors force draw at the policy level
-  /// ([AppInput.effectiveCanvasTouchMode]).
-  final CanvasTouchMode canvasTouchMode;
-
-  /// The finger-count drag slots (PEN-7b), all user-assignable.
+  /// The finger-count drag slots (PEN-7b), all user-assignable. PEN-12
+  /// #4 retired the separate control/draw MODE: drawing is simply the
+  /// ONE-FINGER slot's [CanvasTouchDragAction.draw] (the old mode setting
+  /// overlapped it — "손으로 그린다는 게 1핑거 드래그잖아"). Touch-only
+  /// form factors force the one-finger slot to draw at the policy level
+  /// ([AppInput.touchDragActionFor]).
   final CanvasTouchDragAction touchDragOneFinger;
   final CanvasTouchDragAction touchDragTwoFingers;
   final CanvasTouchDragAction touchDragThreeFingers;
@@ -91,7 +90,7 @@ class AppInputSettings {
   /// `AppInputSettings()`.
   static const AppInputSettings testCorpusBaseline = AppInputSettings(
     touchTimelineScroll: false,
-    canvasTouchMode: CanvasTouchMode.draw,
+    touchDragOneFinger: CanvasTouchDragAction.draw,
   );
 
   /// The canvas mapping for the RIGHT-CLICK bit (PEN-7a): pen side/
@@ -127,7 +126,6 @@ class AppInputSettings {
     double? pressureCurveGamma,
     CanvasPointerMapping? canvasRightClick,
     CanvasPointerMapping? canvasWheelClick,
-    CanvasTouchMode? canvasTouchMode,
     CanvasTouchDragAction? touchDragOneFinger,
     CanvasTouchDragAction? touchDragTwoFingers,
     CanvasTouchDragAction? touchDragThreeFingers,
@@ -143,7 +141,6 @@ class AppInputSettings {
     pressureCurveGamma: pressureCurveGamma ?? this.pressureCurveGamma,
     canvasRightClick: canvasRightClick ?? this.canvasRightClick,
     canvasWheelClick: canvasWheelClick ?? this.canvasWheelClick,
-    canvasTouchMode: canvasTouchMode ?? this.canvasTouchMode,
     touchDragOneFinger: touchDragOneFinger ?? this.touchDragOneFinger,
     touchDragTwoFingers: touchDragTwoFingers ?? this.touchDragTwoFingers,
     touchDragThreeFingers: touchDragThreeFingers ?? this.touchDragThreeFingers,
@@ -163,7 +160,6 @@ class AppInputSettings {
     'pressureCurveGamma': pressureCurveGamma,
     'canvasRightClick': canvasRightClick.toJson(),
     'canvasWheelClick': canvasWheelClick.toJson(),
-    'canvasTouchMode': canvasTouchMode.name,
     'touchDragOneFinger': touchDragOneFinger.name,
     'touchDragTwoFingers': touchDragTwoFingers.name,
     'touchDragThreeFingers': touchDragThreeFingers.name,
@@ -204,9 +200,6 @@ class AppInputSettings {
       json['canvasWheelClick'],
       fallback: const CanvasPointerMapping(action: CanvasPointerAction.pan),
     ),
-    canvasTouchMode:
-        CanvasTouchMode.values.asNameMap()[json['canvasTouchMode']] ??
-        CanvasTouchMode.control,
     touchDragOneFinger:
         CanvasTouchDragAction.values.asNameMap()[json['touchDragOneFinger']] ??
         CanvasTouchDragAction.flip,
@@ -239,7 +232,6 @@ class AppInputSettings {
       other.pressureCurveGamma == pressureCurveGamma &&
       other.canvasRightClick == canvasRightClick &&
       other.canvasWheelClick == canvasWheelClick &&
-      other.canvasTouchMode == canvasTouchMode &&
       other.touchDragOneFinger == touchDragOneFinger &&
       other.touchDragTwoFingers == touchDragTwoFingers &&
       other.touchDragThreeFingers == touchDragThreeFingers &&
@@ -257,7 +249,6 @@ class AppInputSettings {
     pressureCurveGamma,
     canvasRightClick,
     canvasWheelClick,
-    canvasTouchMode,
     touchDragOneFinger,
     touchDragTwoFingers,
     touchDragThreeFingers,
@@ -343,14 +334,6 @@ class CanvasPointerMapping {
   int get hashCode => Object.hash(action, release);
 }
 
-/// What a TOUCH contact means on the CANVAS (PEN-7b):
-/// - [control] (the DEFAULT): fingers operate the SCREEN — the assigned
-///   finger-count gestures (flip/navigate/brush size) — and never draw.
-///   The pen draws.
-/// - [draw]: a single finger draws like the pen (the touch-only form
-///   factors — iPhone — force this; two fingers still navigate).
-enum CanvasTouchMode { control, draw }
-
 /// The drag action a finger-count slot performs on canvas (PEN-7b) —
 /// every slot is user-assignable; the action owns its axes AND its
 /// +1-finger modifier meaning, so reassignment carries both.
@@ -367,6 +350,13 @@ enum CanvasTouchDragAction {
   /// Vertical = brush size (horizontal deliberately unmapped). Modifier
   /// = snap to the size list.
   brushSize,
+
+  /// ONE-FINGER slot only (PEN-12 #4): the finger draws like the pen —
+  /// the old control/draw mode setting collapsed into this. No modifier:
+  /// a COMMITTED stroke ignores extra fingers entirely (palm/habit must
+  /// never vanish a live line); two fingers landing together before the
+  /// stroke commits still navigate.
+  draw,
 
   none,
 }
@@ -401,24 +391,27 @@ abstract final class AppInput {
     return shortestSide < 600;
   }
 
-  /// The EFFECTIVE canvas touch mode (PEN-7b): the stored preference,
-  /// except touch-only form factors always draw.
-  static CanvasTouchMode get effectiveCanvasTouchMode => touchOnlyFormFactor
-      ? CanvasTouchMode.draw
-      : settings.value.canvasTouchMode;
-
   /// The drag action assigned to a finger-count slot (3+ fingers share
-  /// the three-finger slot).
+  /// the three-finger slot). Touch-only form factors force the
+  /// one-finger slot to DRAW (PEN-7b capability rule: 아이폰=그리기
+  /// 강제 — no pen exists there).
   static CanvasTouchDragAction touchDragActionFor(int fingerCount) {
     final value = settings.value;
     if (fingerCount <= 1) {
-      return value.touchDragOneFinger;
+      return touchOnlyFormFactor
+          ? CanvasTouchDragAction.draw
+          : value.touchDragOneFinger;
     }
     if (fingerCount == 2) {
       return value.touchDragTwoFingers;
     }
     return value.touchDragThreeFingers;
   }
+
+  /// Whether a single finger DRAWS on canvas (PEN-12 #4 — the retired
+  /// control/draw mode's replacement question).
+  static bool get touchDraws =>
+      touchDragActionFor(1) == CanvasTouchDragAction.draw;
 
   /// Nearest-value snapping against a user-editable list (PEN-7b) —
   /// shared by the navigate constraints and the brush-size drag.

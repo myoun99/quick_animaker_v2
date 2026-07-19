@@ -94,12 +94,6 @@ class _CanvasViewportGestureLayerState
   /// Live touch contacts (pointer id → local position). The first two form
   /// the two-finger navigation gesture.
   final Map<int, Offset> _touchPositions = <int, Offset>{};
-  List<int>? _touchNavPointers;
-  Offset? _touchNavStartFocal;
-  double? _touchNavStartDistance;
-  double? _touchNavStartAngle;
-  double? _touchNavRotationCompensation;
-  CanvasViewport? _touchNavStartViewport;
 
   static double _wrapDegrees(double degrees) {
     var wrapped = degrees;
@@ -144,11 +138,10 @@ class _CanvasViewportGestureLayerState
   void _handlePointerDown(PointerDownEvent event) {
     if (event.kind == PointerDeviceKind.touch) {
       _touchPositions[event.pointer] = event.localPosition;
-      if (AppInput.effectiveCanvasTouchMode == CanvasTouchMode.draw) {
-        _syncTouchNavigation();
-      } else {
-        _controlTouchDown(event);
-      }
+      // PEN-12 #4: ONE touch engine — the old draw MODE's legacy pinch
+      // path retired; a draw-assigned one-finger slot simply makes the
+      // engine stand down for that group (the brush view draws).
+      _controlTouchDown(event);
       return;
     }
 
@@ -183,11 +176,7 @@ class _CanvasViewportGestureLayerState
   void _handlePointerMove(PointerMoveEvent event) {
     if (_touchPositions.containsKey(event.pointer)) {
       _touchPositions[event.pointer] = event.localPosition;
-      if (AppInput.effectiveCanvasTouchMode == CanvasTouchMode.draw) {
-        _updateTouchNavigation();
-      } else {
-        _controlTouchMove(event);
-      }
+      _controlTouchMove(event);
       return;
     }
 
@@ -205,11 +194,7 @@ class _CanvasViewportGestureLayerState
 
   void _handlePointerUp(PointerUpEvent event) {
     if (_touchPositions.remove(event.pointer) != null) {
-      if (AppInput.effectiveCanvasTouchMode == CanvasTouchMode.draw) {
-        _syncTouchNavigation();
-      } else {
-        _controlTouchLift(event.pointer);
-      }
+      _controlTouchLift(event.pointer);
       return;
     }
     if (event.pointer == _panPointer) {
@@ -219,11 +204,7 @@ class _CanvasViewportGestureLayerState
 
   void _handlePointerCancel(PointerCancelEvent event) {
     if (_touchPositions.remove(event.pointer) != null) {
-      if (AppInput.effectiveCanvasTouchMode == CanvasTouchMode.draw) {
-        _syncTouchNavigation();
-      } else {
-        _controlTouchLift(event.pointer);
-      }
+      _controlTouchLift(event.pointer);
       return;
     }
     if (event.pointer == _panPointer) {
@@ -287,7 +268,12 @@ class _CanvasViewportGestureLayerState
       _groupDownPositions[event.pointer] = event.localPosition;
       return;
     }
-    if (_groupLocked && AppInput.settings.value.extraFingerModifier) {
+    if (_groupLocked &&
+        // PEN-12 #4: a locked DRAW group takes no modifier at all — the
+        // stroke is the brush view's; a late finger (palm, habit) must
+        // change nothing.
+        _groupAction != CanvasTouchDragAction.draw &&
+        AppInput.settings.value.extraFingerModifier) {
       _modifierPointers.add(event.pointer);
       _engageModifier();
     }
@@ -316,10 +302,15 @@ class _CanvasViewportGestureLayerState
             firstMovedDelta.dx.abs() >= firstMovedDelta.dy.abs();
         _flipEmittedSteps = 0;
       case CanvasTouchDragAction.navigate:
-        _anchorNavigate();
+        // Anchor at the DOWN positions: the whole travel since touchdown
+        // counts (the legacy pinch contract — nothing swallowed by the
+        // lock slop, and a single-event jump still navigates in full).
+        _anchorNavigate(fromDownPositions: true);
       case CanvasTouchDragAction.brushSize:
         _brushSizeActive = true;
         widget.onBrushSizeDragStart?.call();
+      // The brush view owns a DRAW group's stroke; the engine stands by.
+      case CanvasTouchDragAction.draw:
       case CanvasTouchDragAction.none:
         break;
     }
@@ -333,6 +324,7 @@ class _CanvasViewportGestureLayerState
         _updateNavigate();
       case CanvasTouchDragAction.brushSize:
         _updateBrushSize();
+      case CanvasTouchDragAction.draw:
       case CanvasTouchDragAction.none:
         break;
     }
@@ -376,10 +368,11 @@ class _CanvasViewportGestureLayerState
     }
   }
 
-  void _anchorNavigate() {
+  void _anchorNavigate({bool fromDownPositions = false}) {
+    final source = fromDownPositions ? _groupDownPositions : _touchPositions;
     final positions = {
       for (final pointer in _groupPointers)
-        pointer: _touchPositions[pointer] ?? Offset.zero,
+        pointer: source[pointer] ?? Offset.zero,
     };
     _navStartFocal = _groupCentroid(positions);
     if (_groupPointers.length >= 2) {
@@ -534,108 +527,9 @@ class _CanvasViewportGestureLayerState
     _brushSizeActive = false;
   }
 
-  /// (Re)arms or disarms the two-finger gesture as touch contacts come and
-  /// go. Any contact-count change re-anchors the gesture at the current
-  /// positions so a lifted/added finger never jumps the viewport.
-  void _syncTouchNavigation() {
-    if (_touchPositions.length < 2) {
-      _touchNavPointers = null;
-      _touchNavStartFocal = null;
-      _touchNavStartDistance = null;
-      _touchNavStartAngle = null;
-      _touchNavRotationCompensation = null;
-      _touchNavStartViewport = null;
-      return;
-    }
-
-    final pointers = _touchPositions.keys.take(2).toList(growable: false);
-    final first = _touchPositions[pointers[0]]!;
-    final second = _touchPositions[pointers[1]]!;
-    _touchNavPointers = pointers;
-    _touchNavStartFocal = Offset(
-      (first.dx + second.dx) / 2,
-      (first.dy + second.dy) / 2,
-    );
-    _touchNavStartDistance = (second - first).distance;
-    _touchNavStartAngle = _touchAngleDegrees(first, second);
-    _touchNavRotationCompensation = null;
-    _touchNavStartViewport = widget.viewport;
-  }
-
   static double _touchAngleDegrees(Offset first, Offset second) {
     final vector = second - first;
     return math.atan2(vector.dy, vector.dx) * 180 / math.pi;
-  }
-
-  void _updateTouchNavigation() {
-    // A non-touch stroke (stylus/mouse) stays active through stray touch
-    // contacts — hold navigation and keep re-anchoring so the viewport
-    // neither warps the stroke nor jumps when the stroke ends. (A TOUCH
-    // stroke is cancelled by the second finger, clearing this flag.)
-    if (widget.strokeActive) {
-      _syncTouchNavigation();
-      return;
-    }
-
-    final pointers = _touchNavPointers;
-    final startFocal = _touchNavStartFocal;
-    final startDistance = _touchNavStartDistance;
-    final startViewport = _touchNavStartViewport;
-    if (pointers == null ||
-        startFocal == null ||
-        startDistance == null ||
-        startViewport == null) {
-      return;
-    }
-    final first = _touchPositions[pointers[0]];
-    final second = _touchPositions[pointers[1]];
-    if (first == null || second == null) {
-      return;
-    }
-
-    final focal = Offset(
-      (first.dx + second.dx) / 2,
-      (first.dy + second.dy) / 2,
-    );
-    final distance = (second - first).distance;
-    final focalAnchor = ViewportPoint(x: startFocal.dx, y: startFocal.dy);
-    // Scale around the START focal, then follow the fingers: the canvas
-    // point that was under the initial focal stays under the current one.
-    var next = startViewport;
-    if (startDistance > 0 && distance > 0) {
-      next = next.zoomedAround(
-        nextZoom: startViewport.zoom * (distance / startDistance),
-        anchor: focalAnchor,
-      );
-    }
-    // Two-finger rotation (P8): the angle between the fingers turns the
-    // view around the same focal — past the deadzone, so a plain pinch
-    // stays level.
-    final startAngle = widget.rotationEnabled ? _touchNavStartAngle : null;
-    if (startAngle != null) {
-      final rawDelta = _wrapDegrees(
-        _touchAngleDegrees(first, second) - startAngle,
-      );
-      if (_touchNavRotationCompensation == null &&
-          rawDelta.abs() >= rotationDeadzoneDegrees) {
-        _touchNavRotationCompensation = rawDelta.sign * rotationDeadzoneDegrees;
-      }
-      final compensation = _touchNavRotationCompensation;
-      if (compensation != null) {
-        next = next.rotatedAround(
-          nextRotationDegrees: _snappedRotation(
-            startViewport.rotationDegrees + rawDelta - compensation,
-          ),
-          anchor: focalAnchor,
-        );
-      }
-    }
-    _emit(
-      next.translated(
-        dx: focal.dx - startFocal.dx,
-        dy: focal.dy - startFocal.dy,
-      ),
-    );
   }
 
   void _handlePointerSignal(PointerSignalEvent event) {
