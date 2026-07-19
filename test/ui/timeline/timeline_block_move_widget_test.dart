@@ -859,4 +859,135 @@ void main() {
     await tester.pump();
     expect(moveUpdates.last, (0, const LayerId('layer-b')));
   });
+
+  testWidgets('PEN-9: a pen landing MID-COAST cannot select — the glide '
+      'ignore-pointers the gesture layer (the tablet bug, pinned)', (
+    tester,
+  ) async {
+    AppInput.settings.value = const AppInputSettings(touchTimelineScroll: true);
+    addTearDown(() {
+      AppInput.settings.value = AppInputSettings.testCorpusBaseline;
+    });
+    final cursor = ValueNotifier<int>(0);
+    final selection = ValueNotifier<TimelineFrameRangeSelection?>(null);
+    addTearDown(cursor.dispose);
+    addTearDown(selection.dispose);
+    final selectUpdates = <(LayerId, int, int)>[];
+
+    await tester.pumpWidget(
+      harness(
+        layers: [blockLayer('layer-a')],
+        cursor: cursor,
+        rangeHooks: hooks(
+          selection: selection,
+          onSelectUpdate: (layerId, anchor, head) =>
+              selectUpdates.add((layerId, anchor, head)),
+        ),
+      ),
+    );
+
+    final gestureLayer = find.byKey(
+      const ValueKey<String>('timeline-range-gesture-layer-a'),
+    );
+    final rowY = tester.getTopLeft(gestureLayer).dy + 26;
+
+    // A touch fling starts the horizontal coast…
+    await tester.flingFrom(Offset(500, rowY), const Offset(-250, 0), 1200);
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 30));
+
+    // …and a pen that lands WITHOUT hovering first was never hit-tested
+    // against the (ignore-pointered) gesture layer: its drag can only
+    // feed the scroll. This is the accepted fallback for hoverless pens
+    // (first contact = tap-to-stop); EMR pens are saved by hover below.
+    final pen = await tester.startGesture(
+      Offset(500, rowY),
+      kind: PointerDeviceKind.stylus,
+    );
+    for (var step = 0; step < 6; step += 1) {
+      await pen.moveBy(const Offset(8, 0));
+      await tester.pump();
+    }
+    await pen.up();
+    await tester.pumpAndSettle();
+    expect(selectUpdates, isEmpty);
+  });
+
+  testWidgets('PEN-9: stylus HOVER stops the coast, so the pen SELECTS '
+      'right after a touch fling (the Galaxy Tab fix)', (tester) async {
+    AppInput.settings.value = const AppInputSettings(touchTimelineScroll: true);
+    addTearDown(() {
+      AppInput.settings.value = AppInputSettings.testCorpusBaseline;
+    });
+    final cursor = ValueNotifier<int>(0);
+    final selection = ValueNotifier<TimelineFrameRangeSelection?>(null);
+    addTearDown(cursor.dispose);
+    addTearDown(selection.dispose);
+    final selectUpdates = <(LayerId, int, int)>[];
+
+    await tester.pumpWidget(
+      harness(
+        layers: [blockLayer('layer-a')],
+        cursor: cursor,
+        rangeHooks: hooks(
+          selection: selection,
+          onSelectUpdate: (layerId, anchor, head) =>
+              selectUpdates.add((layerId, anchor, head)),
+        ),
+      ),
+    );
+
+    final gestureLayer = find.byKey(
+      const ValueKey<String>('timeline-range-gesture-layer-a'),
+    );
+    final rowY = tester.getTopLeft(gestureLayer).dy + 26;
+
+    await tester.flingFrom(Offset(500, rowY), const Offset(-250, 0), 1200);
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 30));
+
+    List<double> scrollOffsets() => tester
+        .stateList<ScrollableState>(
+          find.byType(Scrollable, skipOffstage: false),
+        )
+        .map((state) => state.position.pixels)
+        .toList();
+
+    // The pen APPROACHES first (EMR pens always hover before contact):
+    // the glide stops…
+    final hover = await tester.createGesture(
+      kind: PointerDeviceKind.stylus,
+      pointer: 77,
+    );
+    await hover.addPointer(location: Offset(500, rowY));
+    await hover.moveTo(Offset(501, rowY));
+    await tester.pump();
+    final stoppedOffsets = scrollOffsets();
+    await tester.pump(const Duration(milliseconds: 200));
+    expect(
+      scrollOffsets(),
+      stoppedOffsets,
+      reason: 'the pen approach must freeze the glide',
+    );
+    await hover.removePointer();
+    await tester.pump();
+
+    // …and the SAME slow creep that just scrolled now range-selects.
+    final pen = await tester.startGesture(
+      Offset(500, rowY),
+      kind: PointerDeviceKind.stylus,
+    );
+    for (var step = 0; step < 6; step += 1) {
+      await pen.moveBy(const Offset(8, 0));
+      await tester.pump();
+    }
+    await pen.up();
+    await tester.pumpAndSettle();
+    expect(
+      selectUpdates,
+      isNotEmpty,
+      reason: 'after the hover-stop the pen drag must select, not scroll',
+    );
+    expect(selectUpdates.last.$1, const LayerId('layer-a'));
+  });
 }
