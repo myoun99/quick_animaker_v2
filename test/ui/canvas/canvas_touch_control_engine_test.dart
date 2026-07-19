@@ -177,6 +177,34 @@ void main() {
     await tester.pump();
   });
 
+  testWidgets('a STAGGERED second finger still forms the two-finger '
+      'gesture (PEN-8 #3: pre-lock joins have no time window)', (tester) async {
+    final probes = await pumpEngine(tester);
+
+    final first = await tester.startGesture(
+      const Offset(200, 200),
+      kind: PointerDeviceKind.touch,
+    );
+    // The second finger lands WELL past any simultaneity window (the
+    // tablet-reported miss: 살짝 어긋난 핀치가 안 먹히던 케이스).
+    await tester.pump(const Duration(milliseconds: 400));
+    final second = await tester.startGesture(
+      const Offset(260, 200),
+      kind: PointerDeviceKind.touch,
+    );
+    await tester.pump();
+    await first.moveBy(const Offset(-40, 0));
+    await second.moveBy(const Offset(40, 0));
+    await tester.pump();
+    await first.up();
+    await second.up();
+    await tester.pump();
+
+    expect(probes.actions, isEmpty, reason: 'no one-finger flip fired');
+    expect(probes.viewports, isNotEmpty, reason: 'the pinch navigated');
+    expect(probes.viewports.last.zoom, greaterThan(1));
+  });
+
   testWidgets('slots are ASSIGNABLE: 1-finger set to navigate pans the '
       'viewport instead of flipping', (tester) async {
     AppInput.settings.value = const AppInputSettings(

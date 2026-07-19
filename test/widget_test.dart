@@ -619,6 +619,9 @@ void main() {
     await tester.pumpWidget(const QuickAnimakerApp());
 
     expect(find.byType(MaterialApp), findsOneWidget);
+    // PEN-8 #1: the editor body sits inside a SafeArea so tablet OS
+    // chrome (status bar, gesture areas) never overlaps the app.
+    expect(find.byType(SafeArea), findsWidgets);
     expect(find.text('QuickAnimaker'), findsOneWidget);
     expect(
       find.byKey(const ValueKey<String>('new-frame-button')),
