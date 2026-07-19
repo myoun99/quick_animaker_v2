@@ -61,6 +61,12 @@ class _StylusGlideStopState extends State<StylusGlideStop> {
 
   bool _handleNotification(ScrollNotification notification) {
     final axis = notification.metrics.axis;
+    if (notification is ScrollStartNotification &&
+        notification.dragDetails != null) {
+      // PEN-11 probe: a USER drag just claimed a timeline scroll — the
+      // arena verdict from the scroll's side.
+      InputInspector.note('scr dragstart ${axis.name[0]}');
+    }
     if (notification is ScrollUpdateNotification) {
       if (notification.dragDetails == null) {
         _coasting.add(axis);

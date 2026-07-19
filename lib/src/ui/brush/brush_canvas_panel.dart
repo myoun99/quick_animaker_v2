@@ -797,6 +797,8 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel> {
             },
       onTemporaryToolHold: widget.onTemporaryToolHold,
       onTemporaryToolRelease: widget.onTemporaryToolRelease,
+      // PEN-11: one-shot mapped actions (undo/redo) from pen buttons.
+      onInvokeAction: widget.onInvokeAction,
       onSourceStrokeCommitted: _handleSourceStrokeCommitted,
       // R22-A: the FILL tool runs through the view's stroke pipeline
       // (instant overlay + settling hold) instead of the panel tap layer.

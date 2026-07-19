@@ -494,6 +494,10 @@ class _RunEdgeClusterState extends State<_RunEdgeCluster> {
                 () => TapGestureRecognizer(debugOwner: this),
                 (recognizer) {
                   recognizer.supportedDevices = AppInput.timelineEditPanDevices;
+                  // PEN-11: device gesture settings (RawGestureDetector
+                  // does not inject them - kTouchSlop 18 vs device ~8).
+                  recognizer.gestureSettings =
+                      MediaQuery.maybeGestureSettingsOf(context);
                   recognizer.onTap = _tapAdd;
                 },
               ),
@@ -502,6 +506,10 @@ class _RunEdgeClusterState extends State<_RunEdgeCluster> {
                 () => EagerPanGestureRecognizer(debugOwner: this),
                 (recognizer) {
                   recognizer.supportedDevices = AppInput.timelineEditPanDevices;
+                  // PEN-11: device gesture settings (RawGestureDetector
+                  // does not inject them - kTouchSlop 18 vs device ~8).
+                  recognizer.gestureSettings =
+                      MediaQuery.maybeGestureSettingsOf(context);
                   recognizer.dragStartBehavior = DragStartBehavior.down;
                   recognizer.onStart = (_) => _startAdd();
                   recognizer.onUpdate = (details) => _updateAdd(details.delta);

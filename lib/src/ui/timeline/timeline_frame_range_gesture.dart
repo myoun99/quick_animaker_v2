@@ -342,6 +342,14 @@ class _TimelineFrameRangeGestureLayerState
                   ) {
                     recognizer.supportedDevices =
                         AppInput.timelineEditPanDevices;
+                    // PEN-11: RawGestureDetector does NOT inject the
+                    // device gesture settings (only GestureDetector
+                    // does) — without them this pan waits for kTouchSlop
+                    // 18 while the viewport accepts at the DEVICE hit
+                    // slop (~8 on Android): slow pen drags lost the
+                    // arena on tablets.
+                    recognizer.gestureSettings =
+                        MediaQuery.maybeGestureSettingsOf(context);
                     recognizer.dragStartBehavior = DragStartBehavior.down;
                     recognizer.onStart = (details) =>
                         _startDrag(details.localPosition);
@@ -536,6 +544,10 @@ class _TimelineLaneRangeGestureLayerState
                   (recognizer) {
                     recognizer.supportedDevices =
                         AppInput.timelineEditPanDevices;
+                    // PEN-11: device gesture settings (RawGestureDetector
+                    // does not inject them — kTouchSlop 18 vs device ~8).
+                    recognizer.gestureSettings =
+                        MediaQuery.maybeGestureSettingsOf(context);
                     recognizer.dragStartBehavior = DragStartBehavior.down;
                     recognizer.onStart = (details) =>
                         _startDrag(details.localPosition);

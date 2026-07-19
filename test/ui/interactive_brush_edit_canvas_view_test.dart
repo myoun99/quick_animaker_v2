@@ -1000,6 +1000,89 @@ void main() {
         expect(picks, isEmpty);
         expect(holds, isEmpty);
       });
+
+      testWidgets('mapped UNDO fires once at the press — no stroke, no '
+          'hold (PEN-11)', (tester) async {
+        AppInput.settings.value = const AppInputSettings(
+          touchTimelineScroll: false,
+          canvasRightClick: CanvasPointerMapping(
+            action: CanvasPointerAction.undo,
+          ),
+        );
+        final results = <List<BrushDab>>[];
+        final holds = <CanvasTool>[];
+        final invoked = <String>[];
+        await tester.pumpWidget(
+          _app(
+            _view(
+              _sessionState(width: 200, height: 16),
+              results.add,
+              onTemporaryToolHold: holds.add,
+              onInvokeAction: invoked.add,
+            ),
+          ),
+        );
+
+        await barrelStroke(tester);
+
+        expect(invoked, ['edit-undo']);
+        expect(results, isEmpty, reason: 'a one-shot action never strokes');
+        expect(holds, isEmpty);
+      });
+
+      testWidgets('a HOVER barrel press fires UNDO without contact, and a '
+          'buttoned contact right after does not double-fire (PEN-11)', (
+        tester,
+      ) async {
+        AppInput.settings.value = const AppInputSettings(
+          touchTimelineScroll: false,
+          canvasRightClick: CanvasPointerMapping(
+            action: CanvasPointerAction.undo,
+          ),
+        );
+        final results = <List<BrushDab>>[];
+        final invoked = <String>[];
+        await tester.pumpWidget(
+          _app(
+            _view(
+              _sessionState(width: 200, height: 16),
+              results.add,
+              onInvokeAction: invoked.add,
+            ),
+          ),
+        );
+
+        final at = canvasGlobalOffset(tester, const Offset(10, 4));
+        void hover(int buttons) {
+          tester.binding.handlePointerEvent(
+            PointerHoverEvent(
+              kind: PointerDeviceKind.stylus,
+              position: at,
+              buttons: buttons,
+            ),
+          );
+        }
+
+        // Approach → button press mid-hover: fires without any contact
+        // (the S-Pen hover window blocks touch, not the pen itself).
+        hover(0);
+        await tester.pump();
+        hover(kPrimaryStylusButton);
+        await tester.pump();
+        expect(invoked, ['edit-undo']);
+
+        // The tip then touches with the button STILL held: no double.
+        await barrelStroke(tester);
+        expect(invoked, ['edit-undo']);
+        expect(results, isEmpty);
+
+        // Released and pressed again on a later hover: fires again.
+        hover(0);
+        await tester.pump();
+        hover(kPrimaryStylusButton);
+        await tester.pump();
+        expect(invoked, ['edit-undo', 'edit-undo']);
+      });
     });
 
     testWidgets('pen pressure is ignored when the size toggle is off', (
@@ -1303,6 +1386,7 @@ InteractiveBrushEditCanvasView _view(
   ValueChanged<CanvasPoint>? onAltPick,
   void Function(CanvasTool tool)? onTemporaryToolHold,
   void Function({required bool keep})? onTemporaryToolRelease,
+  void Function(String actionId)? onInvokeAction,
 }) {
   return InteractiveBrushEditCanvasView(
     sessionState: sessionState,
@@ -1313,6 +1397,7 @@ InteractiveBrushEditCanvasView _view(
     onAltPick: onAltPick,
     onTemporaryToolHold: onTemporaryToolHold,
     onTemporaryToolRelease: onTemporaryToolRelease,
+    onInvokeAction: onInvokeAction,
     // Tests observe the committed source dabs; the exact pre-rasterized
     // stroke pixels travel alongside them in the commit data.
     onSourceStrokeCommitted: (strokeData) => onResult(strokeData.sourceDabs),

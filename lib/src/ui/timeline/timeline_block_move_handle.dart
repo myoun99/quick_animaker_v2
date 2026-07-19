@@ -281,6 +281,13 @@ class _TimelineBlockMoveHandleState extends State<TimelineBlockMoveHandle> {
                 () => EagerPanGestureRecognizer(debugOwner: this),
                 (recognizer) {
                   recognizer.supportedDevices = AppInput.timelineEditPanDevices;
+                  // PEN-11: RawGestureDetector does NOT inject the device
+                  // gesture settings (only GestureDetector does). Without
+                  // them this pan waits for kTouchSlop 18 while the
+                  // viewport accepts at the DEVICE hit slop (~8 on
+                  // Android) — slow pen drags lost the arena on tablets.
+                  recognizer.gestureSettings =
+                      MediaQuery.maybeGestureSettingsOf(context);
                   // Pixel-exact deltas from the pointer-down point (the
                   // camera overlay rule) — no slop swallowed out of the
                   // frame/row math.

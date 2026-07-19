@@ -281,6 +281,10 @@ class _TimelineLaneControlsRowState extends State<TimelineLaneControlsRow> {
                   ) {
                     recognizer.supportedDevices =
                         AppInput.timelineEditPanDevices;
+                    // PEN-11: device gesture settings (RawGestureDetector
+                    // does not inject them — kTouchSlop 18 vs device ~8).
+                    recognizer.gestureSettings =
+                        MediaQuery.maybeGestureSettingsOf(context);
                     // .down: positions measure from the pointer-down
                     // origin, so the recognizer's slop never eats into
                     // the scrubbed value.
