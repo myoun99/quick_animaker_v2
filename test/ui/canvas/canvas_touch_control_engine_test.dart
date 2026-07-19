@@ -273,4 +273,51 @@ void main() {
     await tester.pump();
     expect(probes.viewports, isNotEmpty, reason: 'pinch still navigates');
   });
+
+  testWidgets('PEN-14: the modifier landing mid-navigate keeps the zoom '
+      'CONTINUOUS — never a snap back to the gesture-start scale', (
+    tester,
+  ) async {
+    final probes = await pumpEngine(tester);
+
+    // Two fingers pinch OUT to 2×. The harness never rebuilds the layer
+    // with the emitted viewport (widget.viewport stays 1.0) — exactly
+    // the mid-gesture staleness a real parent shows between frames.
+    final first = await tester.startGesture(
+      const Offset(200, 200),
+      kind: PointerDeviceKind.touch,
+      pointer: 31,
+    );
+    final second = await tester.startGesture(
+      const Offset(300, 200),
+      kind: PointerDeviceKind.touch,
+      pointer: 32,
+    );
+    await first.moveBy(const Offset(-50, 0));
+    await second.moveBy(const Offset(50, 0));
+    await tester.pump();
+    expect(probes.viewports.last.zoom, closeTo(2.0, 0.01));
+
+    // The MODIFIER lands: constrain from HERE — the zoom must stay ~2×
+    // (snapped within the percent list), not collapse to the stale
+    // widget.viewport scale.
+    final modifier = await tester.startGesture(
+      const Offset(250, 300),
+      kind: PointerDeviceKind.touch,
+      pointer: 33,
+    );
+    await tester.pump();
+    await second.moveBy(const Offset(2, 0));
+    await tester.pump();
+    expect(
+      probes.viewports.last.zoom,
+      closeTo(2.0, 0.01),
+      reason: 'the constraint anchors at the LIVE zoom, not the stale prop',
+    );
+
+    await first.up();
+    await second.up();
+    await modifier.up();
+    await tester.pump();
+  });
 }
