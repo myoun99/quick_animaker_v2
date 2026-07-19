@@ -1,4 +1,4 @@
-import 'package:flutter/gestures.dart' show kPrimaryButton;
+import 'package:flutter/gestures.dart' show PointerDeviceKind, kPrimaryButton;
 import 'package:flutter/material.dart';
 
 import '../../models/layer.dart';
@@ -207,6 +207,11 @@ class TimelineFrameCell extends StatelessWidget {
       ),
     );
 
+    // PEN-12 #6: scroll owns finger DRAGS, but a clean finger TAP still
+    // selects — tracked raw (distance-based) since the press path
+    // bypasses the arena. Build-local capture: a tap outlives no build.
+    int? touchTapPointer;
+    Offset? touchTapDownAt;
     return Listener(
       // Selection must not wait out the double-tap window: with
       // onDoubleTap registered, InkWell's onTap only fires once the
@@ -220,6 +225,35 @@ class TimelineFrameCell extends StatelessWidget {
             (event.buttons == 0 || (event.buttons & kPrimaryButton) != 0) &&
             !(suppressPointerDownSelect?.call(frameIndex) ?? false)) {
           select();
+        } else if (event.kind == PointerDeviceKind.touch &&
+            !AppInput.timelineCellPressSeeks(event.kind) &&
+            (event.buttons == 0 || (event.buttons & kPrimaryButton) != 0)) {
+          touchTapPointer = event.pointer;
+          touchTapDownAt = event.position;
+        }
+      },
+      onPointerMove: (event) {
+        final downAt = touchTapDownAt;
+        if (event.pointer == touchTapPointer &&
+            downAt != null &&
+            (event.position - downAt).distance > 12) {
+          touchTapPointer = null;
+          touchTapDownAt = null;
+        }
+      },
+      onPointerUp: (event) {
+        if (event.pointer == touchTapPointer) {
+          touchTapPointer = null;
+          touchTapDownAt = null;
+          if (!(suppressPointerDownSelect?.call(frameIndex) ?? false)) {
+            select();
+          }
+        }
+      },
+      onPointerCancel: (event) {
+        if (event.pointer == touchTapPointer) {
+          touchTapPointer = null;
+          touchTapDownAt = null;
         }
       },
       child: cell,

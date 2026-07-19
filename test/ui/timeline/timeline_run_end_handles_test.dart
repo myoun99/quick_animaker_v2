@@ -9,6 +9,7 @@ import 'package:quick_animaker_v2/src/models/timeline_coverage.dart';
 import 'package:quick_animaker_v2/src/models/timeline_exposure.dart';
 import 'package:quick_animaker_v2/src/models/timeline_repeat.dart';
 import 'package:quick_animaker_v2/src/models/timeline_run_edit.dart';
+import 'package:quick_animaker_v2/src/ui/input/app_input_settings.dart';
 import 'package:quick_animaker_v2/src/ui/timeline/layer_timeline_grid.dart';
 import 'package:quick_animaker_v2/src/ui/timeline/timeline_drag_preview.dart';
 import 'package:quick_animaker_v2/src/ui/timeline/timeline_cell_exposure_state.dart';
@@ -484,5 +485,77 @@ void main() {
 
     // Grips: only the SOURCE block's two — the ghost blocks carry none.
     expect(find.byType(TimelineBlockEdgeGrip), findsNWidgets(2));
+  });
+
+  testWidgets('PEN-12 #6: with touch-timeline-scroll ON, a clean finger '
+      'TAP on [+] still adds one cel', (tester) async {
+    AppInput.settings.value = const AppInputSettings(touchTimelineScroll: true);
+    addTearDown(() {
+      AppInput.settings.value = AppInputSettings.testCorpusBaseline;
+    });
+    final addCounts = <int>[];
+    final begins = <(LayerId, int, bool)>[];
+    await tester.pumpWidget(
+      harness(
+        layers: [plainLayer()],
+        runEdit: recordingCallbacks(
+          addCounts: addCounts,
+          onAddBegin: (layerId, start, atEnd) =>
+              begins.add((layerId, start, atEnd)),
+        ),
+      ),
+    );
+
+    await tester.tap(
+      find.byKey(const ValueKey<String>('timeline-run-add-end-layer-a-f1')),
+    );
+    await tester.pumpAndSettle();
+    expect(begins.single, (const LayerId('layer-a'), 0, true));
+    expect(addCounts.last, 1, reason: 'a tap adds exactly one cel');
+  });
+
+  testWidgets('PEN-12 #3: a drag STARTING on the run property tag never '
+      'scrolls the timeline', (tester) async {
+    AppInput.settings.value = const AppInputSettings(touchTimelineScroll: true);
+    addTearDown(() {
+      AppInput.settings.value = AppInputSettings.testCorpusBaseline;
+    });
+    await tester.pumpWidget(
+      harness(layers: [plainLayer()], runEdit: recordingCallbacks()),
+    );
+
+    List<double> scrollOffsets() => tester
+        .stateList<ScrollableState>(
+          find.byType(Scrollable, skipOffstage: false),
+        )
+        .map((state) => state.position.pixels)
+        .toList();
+    final before = scrollOffsets();
+
+    final tag = find.byKey(
+      const ValueKey<String>('timeline-run-edge-tag-layer-a-f1-end'),
+    );
+    expect(tag, findsOneWidget);
+    final gesture = await tester.startGesture(
+      tester.getCenter(tag),
+      kind: PointerDeviceKind.touch,
+    );
+    for (var step = 0; step < 5; step += 1) {
+      await gesture.moveBy(const Offset(24, 0));
+      await tester.pump();
+    }
+    await gesture.up();
+    await tester.pumpAndSettle();
+
+    // The press legitimately opened the mode flyout (its own scrollable
+    // joins the tree) — dismiss it before comparing the GRID's offsets.
+    await tester.tapAt(const Offset(4, 4));
+    await tester.pumpAndSettle();
+
+    expect(
+      scrollOffsets(),
+      before,
+      reason: 'the tag press owns the drag — the scroll must stay put',
+    );
   });
 }

@@ -29,8 +29,8 @@ void main() {
     return session;
   }
 
-  test('next: jumps to the block start, then steps frames past the last '
-      'block', () {
+  test('next: jumps to the block start, ESCAPES past the block end, then '
+      'steps frames through empty space (PEN-12 #2)', () {
     final session = sessionWithBlock();
     addTearDown(session.dispose);
 
@@ -38,12 +38,19 @@ void main() {
     session.selectNextDrawing();
     expect(session.currentFrameIndex, 2, reason: 'jumps to the block');
 
-    // Past the block there is no next drawing — empty space walks one
-    // frame at a time.
+    // ON the last block with no next drawing: one press escapes past its
+    // end — never a one-frame crawl through a long tail block.
     session.selectNextDrawing();
-    expect(session.currentFrameIndex, 3);
+    expect(session.currentFrameIndex, 5, reason: 'escapes the block whole');
+
+    // Pure empty space keeps the PEN-8 one-frame walk.
     session.selectNextDrawing();
-    expect(session.currentFrameIndex, 4);
+    expect(session.currentFrameIndex, 6);
+
+    // From INSIDE the block the escape lands past the end too.
+    session.selectFrameIndex(3);
+    session.selectNextDrawing();
+    expect(session.currentFrameIndex, 5, reason: 'mid-block escapes whole');
   });
 
   test('previous: steps frames through empty space, then jumps to the '

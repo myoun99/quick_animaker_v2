@@ -2,6 +2,8 @@ import 'dart:async';
 import 'dart:io' show Platform;
 
 import 'package:flutter/material.dart';
+import 'dart:ui' show AppExitResponse;
+
 import 'package:flutter/services.dart' show SystemNavigator;
 
 import '../controllers/default_project_helpers.dart';
@@ -88,6 +90,15 @@ class _HomePageState extends State<HomePage> {
   /// Never runs under FLUTTER_TEST (tests drive the service directly).
   ProjectAutosaveService? _autosave;
 
+  /// PEN-12 #5: the DESKTOP exit gate — the window's close button lands
+  /// in the same confirm dialog as the Android back button (the OS asks
+  /// the framework before tearing the window down).
+  AppLifecycleListener? _lifecycle;
+
+  /// PEN-12 #8: the never-saved autosave prompt fires once per session —
+  /// a declined prompt must not nag every tick.
+  bool _unsavedAutosavePromptShown = false;
+
   // NO whole-page session setState: rebuilding the app bar and every dock
   // and panel on every session notify was the editing jank's biggest
   // multiplier. Each panel host subscribes to the session itself; the app
@@ -139,13 +150,20 @@ class _HomePageState extends State<HomePage> {
         isDirty: () => _session.hasUnsavedChanges,
         writeSnapshot: _session.writeAutosaveSnapshot,
         autosavePath: () => _session.autosaveSidecarPath,
+        // PEN-12 #8: a NEVER-SAVED project autosaves nowhere — instead
+        // of piling sidecars into hidden app-data dirs, the first dirty
+        // tick asks the user to pick a real file (OpenToonz-style).
+        needsProjectFile: () => _session.projectFilePath == null,
+        onUnsavedProject: _promptUnsavedAutosave,
       )..start();
     }
+    _lifecycle = AppLifecycleListener(onExitRequested: _handleExitRequested);
   }
 
   @override
   void dispose() {
     PencilInteractionService.instance.onPencilTap = null;
+    _lifecycle?.dispose();
     _autosave?.dispose();
     _session.dispose();
     _panelsMenu.dispose();
@@ -445,33 +463,88 @@ class _HomePageState extends State<HomePage> {
   /// PEN-11: the back-button exit gate. Dirty sessions call out the
   /// unsaved work; Close is the only way out.
   Future<void> _confirmSystemExit() async {
-    final close = await showDialog<bool>(
+    if (await _showExitDialog()) {
+      await SystemNavigator.pop();
+    }
+  }
+
+  /// PEN-12 #5: the desktop window-close request routes through the SAME
+  /// gate — Cancel keeps the window open.
+  Future<AppExitResponse> _handleExitRequested() async =>
+      await _showExitDialog() ? AppExitResponse.exit : AppExitResponse.cancel;
+
+  bool _exitDialogOpen = false;
+
+  Future<bool> _showExitDialog() async {
+    if (_exitDialogOpen) {
+      return false;
+    }
+    _exitDialogOpen = true;
+    try {
+      final close = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          key: const ValueKey<String>('system-exit-dialog'),
+          title: const Text('Close project?'),
+          content: Text(
+            _session.hasUnsavedChanges
+                ? 'There are unsaved changes. The autosave keeps a recovery '
+                      'snapshot, but the project file itself is not updated.'
+                : 'The app will close.',
+          ),
+          actions: [
+            TextButton(
+              key: const ValueKey<String>('system-exit-cancel'),
+              onPressed: () => Navigator.of(context).pop(false),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              key: const ValueKey<String>('system-exit-close'),
+              onPressed: () => Navigator.of(context).pop(true),
+              child: const Text('Close'),
+            ),
+          ],
+        ),
+      );
+      return close ?? false;
+    } finally {
+      _exitDialogOpen = false;
+    }
+  }
+
+  /// PEN-12 #8: a dirty NEVER-SAVED project asked for its first real
+  /// file — offer the Save As picker right here; declining stops the
+  /// asking for the rest of the session (the user chose to live risky).
+  Future<void> _promptUnsavedAutosave() async {
+    if (_unsavedAutosavePromptShown || !mounted) {
+      return;
+    }
+    _unsavedAutosavePromptShown = true;
+    final save = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        key: const ValueKey<String>('system-exit-dialog'),
-        title: const Text('Close project?'),
-        content: Text(
-          _session.hasUnsavedChanges
-              ? 'There are unsaved changes. The autosave keeps a recovery '
-                    'snapshot, but the project file itself is not updated.'
-              : 'The app will close.',
+        key: const ValueKey<String>('unsaved-autosave-dialog'),
+        title: const Text('Save your project'),
+        content: const Text(
+          'This project has never been saved, so autosave has nowhere to '
+          'write. Pick a file and autosave will guard it from then on.',
         ),
         actions: [
           TextButton(
-            key: const ValueKey<String>('system-exit-cancel'),
+            key: const ValueKey<String>('unsaved-autosave-later'),
             onPressed: () => Navigator.of(context).pop(false),
-            child: const Text('Cancel'),
+            child: const Text('Not now'),
           ),
           FilledButton(
-            key: const ValueKey<String>('system-exit-close'),
+            key: const ValueKey<String>('unsaved-autosave-save'),
             onPressed: () => Navigator.of(context).pop(true),
-            child: const Text('Close'),
+            child: const Text('Save As…'),
           ),
         ],
       ),
     );
-    if (close ?? false) {
-      await SystemNavigator.pop();
+    if ((save ?? false) && mounted) {
+      await promptSaveProjectAs(context, _session);
     }
   }
 }

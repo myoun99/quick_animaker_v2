@@ -1,7 +1,7 @@
 import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart' show ValueListenable;
-import 'package:flutter/gestures.dart' show kPrimaryButton;
+import 'package:flutter/gestures.dart' show PointerDeviceKind, kPrimaryButton;
 import 'package:flutter/material.dart';
 import 'package:flutter/semantics.dart' show SemanticsProperties;
 
@@ -700,6 +700,12 @@ Widget timelineRowCellsPaintArea({
     onSelectFrame(frameIndex);
   }
 
+  // PEN-12 #6: scroll owns finger DRAGS, but a clean finger TAP still
+  // selects — tracked raw (distance-based) since the press path bypasses
+  // the arena. Build-local capture: a tap outlives no build.
+  int? touchTapPointer;
+  Offset? touchTapDownAt;
+  int? touchTapFrameIndex;
   return Listener(
     // Selection rides the raw pointer down (never the arena — see the
     // TimelineFrameCell latency note).
@@ -707,6 +713,15 @@ Widget timelineRowCellsPaintArea({
       // Touch-scroll ON: a finger press is pure scroll — it never seeks
       // (UI-R23 feedback #2); pen/mouse keep the instant select.
       if (!AppInput.timelineCellPressSeeks(event.kind)) {
+        if (event.kind == PointerDeviceKind.touch &&
+            (event.buttons == 0 || (event.buttons & kPrimaryButton) != 0)) {
+          final frameIndex = painter.frameIndexAt(event.localPosition);
+          if (inWindow(frameIndex)) {
+            touchTapPointer = event.pointer;
+            touchTapDownAt = event.position;
+            touchTapFrameIndex = frameIndex;
+          }
+        }
         return;
       }
       if (event.buttons == 0 || (event.buttons & kPrimaryButton) != 0) {
@@ -717,6 +732,34 @@ Widget timelineRowCellsPaintArea({
             !(suppressPointerDownSelect?.call(frameIndex) ?? false)) {
           select(frameIndex);
         }
+      }
+    },
+    onPointerMove: (event) {
+      final downAt = touchTapDownAt;
+      if (event.pointer == touchTapPointer &&
+          downAt != null &&
+          (event.position - downAt).distance > 12) {
+        touchTapPointer = null;
+        touchTapDownAt = null;
+        touchTapFrameIndex = null;
+      }
+    },
+    onPointerUp: (event) {
+      final frameIndex = touchTapFrameIndex;
+      if (event.pointer == touchTapPointer && frameIndex != null) {
+        touchTapPointer = null;
+        touchTapDownAt = null;
+        touchTapFrameIndex = null;
+        if (!(suppressPointerDownSelect?.call(frameIndex) ?? false)) {
+          select(frameIndex);
+        }
+      }
+    },
+    onPointerCancel: (event) {
+      if (event.pointer == touchTapPointer) {
+        touchTapPointer = null;
+        touchTapDownAt = null;
+        touchTapFrameIndex = null;
       }
     },
     child: GestureDetector(

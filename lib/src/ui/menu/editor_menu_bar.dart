@@ -90,16 +90,6 @@ class EditorMenuBar extends StatelessWidget {
     return file?.path;
   }
 
-  static Future<String?> _defaultSavePicker(String suggestedName) async {
-    final location = await getSaveLocation(
-      suggestedName: suggestedName,
-      acceptedTypeGroups: const [
-        XTypeGroup(label: 'QuickAnimaker project', extensions: ['qap']),
-      ],
-    );
-    return location?.path;
-  }
-
   void _showFileError(BuildContext context, Object error) {
     ScaffoldMessenger.maybeOf(
       context,
@@ -158,24 +148,8 @@ class EditorMenuBar extends StatelessWidget {
     }
   }
 
-  Future<void> _saveProjectAs(BuildContext context) async {
-    final suggested =
-        '${sanitizeExportFileComponent(session.repository.requireProject().name)}.qap';
-    var path = await (qapSaveFilePicker ?? _defaultSavePicker)(suggested);
-    if (path == null || !context.mounted) {
-      return;
-    }
-    if (!path.toLowerCase().endsWith('.qap')) {
-      path = '$path.qap';
-    }
-    try {
-      await session.saveProjectToFile(path);
-    } catch (error) {
-      if (context.mounted) {
-        _showFileError(context, error);
-      }
-    }
-  }
+  Future<void> _saveProjectAs(BuildContext context) =>
+      promptSaveProjectAs(context, session, savePicker: qapSaveFilePicker);
 
   Future<void> _saveProject(BuildContext context) async {
     final path = session.projectFilePath;
@@ -712,4 +686,41 @@ class EditorMenuBar extends StatelessWidget {
       ],
     );
   }
+}
+
+/// PEN-12 #8: the shared Save As flow — the File menu and the
+/// unsaved-autosave prompt land in the same picker + writer.
+Future<void> promptSaveProjectAs(
+  BuildContext context,
+  EditorSessionManager session, {
+  Future<String?> Function(String suggestedName)? savePicker,
+}) async {
+  final suggested =
+      '${sanitizeExportFileComponent(session.repository.requireProject().name)}.qap';
+  var path = await (savePicker ?? _defaultQapSavePicker)(suggested);
+  if (path == null || !context.mounted) {
+    return;
+  }
+  if (!path.toLowerCase().endsWith('.qap')) {
+    path = '$path.qap';
+  }
+  try {
+    await session.saveProjectToFile(path);
+  } catch (error) {
+    if (context.mounted) {
+      ScaffoldMessenger.maybeOf(
+        context,
+      )?.showSnackBar(SnackBar(content: Text('$error')));
+    }
+  }
+}
+
+Future<String?> _defaultQapSavePicker(String suggestedName) async {
+  final location = await getSaveLocation(
+    suggestedName: suggestedName,
+    acceptedTypeGroups: const [
+      XTypeGroup(label: 'QuickAnimaker project', extensions: ['qap']),
+    ],
+  );
+  return location?.path;
 }

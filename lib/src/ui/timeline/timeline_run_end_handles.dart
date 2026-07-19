@@ -493,7 +493,10 @@ class _RunEdgeClusterState extends State<_RunEdgeCluster> {
               GestureRecognizerFactoryWithHandlers<TapGestureRecognizer>(
                 () => TapGestureRecognizer(debugOwner: this),
                 (recognizer) {
-                  recognizer.supportedDevices = AppInput.timelineEditPanDevices;
+                  // PEN-12 #6: TAPS take every device — a clean finger
+                  // tap clicks [+] even while touch panning belongs to
+                  // the scroll (the arena hands a real drag to the
+                  // scroll, so the two never fight).
                   // PEN-11: device gesture settings (RawGestureDetector
                   // does not inject them - kTouchSlop 18 vs device ~8).
                   recognizer.gestureSettings =
@@ -557,17 +560,39 @@ class _RunEdgeClusterState extends State<_RunEdgeCluster> {
           ),
           behavior: HitTestBehavior.opaque,
           onPointerDown: (_) => _openModeFlyout(anchorContext),
-          child: Center(
-            child: Text(
-              label,
-              style: TextStyle(
-                fontSize: _glyphSize,
-                height: 1,
-                fontWeight: FontWeight.w700,
-                color: _glyphColor(
-                  colorScheme,
-                  hovered: _tagHovered,
-                  operating: _menuOpen,
+          // PEN-12 #3: the press already opened the flyout — any drag
+          // continuing from it must die HERE, not scroll the timeline
+          // under the open menu (every device: a finger press on the
+          // tag is the tag's, not the scroll's).
+          child: RawGestureDetector(
+            behavior: HitTestBehavior.opaque,
+            gestures: <Type, GestureRecognizerFactory>{
+              EagerPanGestureRecognizer:
+                  GestureRecognizerFactoryWithHandlers<
+                    EagerPanGestureRecognizer
+                  >(() => EagerPanGestureRecognizer(debugOwner: this), (
+                    recognizer,
+                  ) {
+                    recognizer.gestureSettings =
+                        MediaQuery.maybeGestureSettingsOf(context);
+                    recognizer.onStart = (_) {};
+                    recognizer.onUpdate = (_) {};
+                    recognizer.onEnd = (_) {};
+                    recognizer.onCancel = () {};
+                  }),
+            },
+            child: Center(
+              child: Text(
+                label,
+                style: TextStyle(
+                  fontSize: _glyphSize,
+                  height: 1,
+                  fontWeight: FontWeight.w700,
+                  color: _glyphColor(
+                    colorScheme,
+                    hovered: _tagHovered,
+                    operating: _menuOpen,
+                  ),
                 ),
               ),
             ),

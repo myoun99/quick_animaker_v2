@@ -6760,7 +6760,19 @@ class EditorSessionManager extends ChangeNotifier {
     if (block != null) {
       selectFrameIndex(block.startIndex);
     } else {
-      selectNextFrame();
+      // PEN-12 #2: no NEXT drawing but the cursor sits ON a block —
+      // escape past its end in one press (never crawl through a long
+      // tail block one frame at a time); pure empty space keeps the
+      // PEN-8 one-frame walk.
+      final covering = coveringDrawingBlockAt(
+        layer.timeline,
+        _timelineController.currentFrameIndex,
+      );
+      if (covering != null) {
+        selectFrameIndex(covering.endIndexExclusive);
+      } else {
+        selectNextFrame();
+      }
     }
   }
 
