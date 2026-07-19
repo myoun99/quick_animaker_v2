@@ -233,15 +233,14 @@ class _CanvasViewportGestureLayerState
 
   // --- PEN-7b: the CONTROL-mode touch engine ------------------------------
   //
-  // Slot model: the fingers that land together (~120ms) form the BASE
-  // group; its size picks the user-assigned drag action (flip/navigate/
+  // Slot model: fingers landing BEFORE the lock form the BASE group;
+  // its size picks the user-assigned drag action (flip/navigate/
   // brush size). Once the group LOCKS (any finger crosses the slop) later
   // fingers become the +1 MODIFIER (never a re-classification — the
   // Callipeg-confusion fix); the modifier constrains the action (snap/
   // lock/fine-step). Any BASE finger lifting ends the gesture; a modifier
   // lifting just releases the constraint. Speed never decides anything.
 
-  static const Duration groupWindow = Duration(milliseconds: 120);
   static const double _touchSlop = 18;
 
   /// One flip step per this many pixels along the locked axis.
@@ -249,7 +248,6 @@ class _CanvasViewportGestureLayerState
 
   final List<int> _groupPointers = <int>[];
   final Map<int, Offset> _groupDownPositions = <int, Offset>{};
-  DateTime? _groupStartedAt;
   bool _groupLocked = false;
   CanvasTouchDragAction _groupAction = CanvasTouchDragAction.none;
   final Set<int> _modifierPointers = <int>{};
@@ -272,22 +270,23 @@ class _CanvasViewportGestureLayerState
   bool _brushSizeActive = false;
 
   void _controlTouchDown(PointerDownEvent event) {
-    final now = DateTime.now();
     if (_groupPointers.isEmpty) {
-      _groupStartedAt = now;
       _groupPointers.add(event.pointer);
       _groupDownPositions[event.pointer] = event.localPosition;
       return;
     }
-    final startedAt = _groupStartedAt;
-    final withinWindow =
-        startedAt != null && now.difference(startedAt) <= groupWindow;
-    if (!_groupLocked && withinWindow && _groupPointers.length < 3) {
+    // PEN-8 #3: before the LOCK, every new finger JOINS the group — a
+    // slightly staggered pinch (fingers landing 100–300ms apart, or
+    // close together) must still become the two-finger gesture. The
+    // fixed simultaneity window silently dropped the late finger, which
+    // read as "two-finger gestures randomly don't take". Only once the
+    // group is locked does a late finger become the MODIFIER (the
+    // lock-then-modify rule — still never a re-classification).
+    if (!_groupLocked && _groupPointers.length < 3) {
       _groupPointers.add(event.pointer);
       _groupDownPositions[event.pointer] = event.localPosition;
       return;
     }
-    // Late finger = the modifier (lock-then-modify; never re-classify).
     if (_groupLocked && AppInput.settings.value.extraFingerModifier) {
       _modifierPointers.add(event.pointer);
       _engageModifier();
@@ -520,7 +519,6 @@ class _CanvasViewportGestureLayerState
   void _resetControlEngine() {
     _groupPointers.clear();
     _groupDownPositions.clear();
-    _groupStartedAt = null;
     _groupLocked = false;
     _groupAction = CanvasTouchDragAction.none;
     _modifierPointers.clear();

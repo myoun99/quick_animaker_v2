@@ -3210,9 +3210,11 @@ class EditorSessionManager extends ChangeNotifier {
   ) {
     final gaps = <({int startIndex, int length})>[];
     int? gapStart;
-    for (var index = selection.startIndex;
-        index <= selection.endIndexExclusive;
-        index += 1) {
+    for (
+      var index = selection.startIndex;
+      index <= selection.endIndexExclusive;
+      index += 1
+    ) {
       final covered =
           index >= selection.endIndexExclusive ||
           index < 0 ||
@@ -3237,9 +3239,11 @@ class EditorSessionManager extends ChangeNotifier {
     }
     var camera = cut.camera;
     var changed = false;
-    for (var frame = selection.startIndex;
-        frame < selection.endIndexExclusive;
-        frame += 1) {
+    for (
+      var frame = selection.startIndex;
+      frame < selection.endIndexExclusive;
+      frame += 1
+    ) {
       if (frame < 0 || camera.keyframeAt(frame) != null) {
         continue;
       }
@@ -3288,9 +3292,11 @@ class EditorSessionManager extends ChangeNotifier {
     final next = Map<int, InstructionEvent>.of(layer.instructions);
     var changed = false;
     int? gapStart;
-    for (var index = selection.startIndex;
-        index <= selection.endIndexExclusive;
-        index += 1) {
+    for (
+      var index = selection.startIndex;
+      index <= selection.endIndexExclusive;
+      index += 1
+    ) {
       final inGap =
           index < selection.endIndexExclusive && index >= 0 && !covered(index);
       if (inGap) {
@@ -3320,9 +3326,11 @@ class EditorSessionManager extends ChangeNotifier {
     }
     var track = layer.transformTrack;
     var changed = false;
-    for (var frame = lane.startIndex;
-        frame < lane.endIndexExclusive;
-        frame += 1) {
+    for (
+      var frame = lane.startIndex;
+      frame < lane.endIndexExclusive;
+      frame += 1
+    ) {
       if (frame < 0 ||
           transformLaneKeyFrames(track, lane.laneId).contains(frame)) {
         continue;
@@ -4375,8 +4383,10 @@ class EditorSessionManager extends ChangeNotifier {
     if (layer == null || isAttachedLayer(layer)) {
       return false;
     }
-    final keyed = transformLaneKeyFrames(layer.transformTrack, selection.laneId)
-        .any(selection.contains);
+    final keyed = transformLaneKeyFrames(
+      layer.transformTrack,
+      selection.laneId,
+    ).any(selection.contains);
     if (!keyed) {
       return false;
     }
@@ -6728,6 +6738,11 @@ class EditorSessionManager extends ChangeNotifier {
     );
     if (block != null) {
       selectFrameIndex(block.startIndex);
+    } else {
+      // PEN-8 #2: no earlier drawing — walk EMPTY space one frame at a
+      // time instead of dead-ending (the plain-arrow/파라파라 unit:
+      // blocks where blocks exist, frames where they don't).
+      selectPreviousFrame();
     }
   }
 
@@ -6744,6 +6759,8 @@ class EditorSessionManager extends ChangeNotifier {
     );
     if (block != null) {
       selectFrameIndex(block.startIndex);
+    } else {
+      selectNextFrame();
     }
   }
 
