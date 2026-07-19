@@ -37,7 +37,30 @@ abstract final class InputInspector {
   /// "is pressure alive at all" check.
   static double peakPressure = 0;
 
+  /// PEN-10: TOUCH pointer-downs seen since the last [clear]. The
+  /// hover-palm-rejection diagnosis on S-Pen tablets: hover the pen and
+  /// tap with fingers — if this counter does not move, the OS suppressed
+  /// the touches before the app ever saw them.
+  static int touchDownCount = 0;
+
+  /// PEN-10: free-form probe lines (newest last) — call sites annotate
+  /// where an event landed (e.g. the timeline down/IN probes). Ignored
+  /// while the inspector is hidden.
+  static final List<String> notes = <String>[];
+
   static const int capacity = 120;
+  static const int notesCapacity = 5;
+
+  static void note(String line) {
+    if (!visible.value) {
+      return;
+    }
+    notes.add(line);
+    if (notes.length > notesCapacity) {
+      notes.removeRange(0, notes.length - notesCapacity);
+    }
+    revision.value += 1;
+  }
 
   static void record(PointerEvent event, {String? phaseOverride}) {
     final phase = phaseOverride ?? _phaseOf(event);
@@ -51,6 +74,9 @@ abstract final class InputInspector {
     // Peak tracks CONTACT pressure only — hovers idle at 0 by contract.
     if ((phase == 'down' || phase == 'move') && event.pressure > peakPressure) {
       peakPressure = event.pressure;
+    }
+    if (phase == 'down' && event.kind == PointerDeviceKind.touch) {
+      touchDownCount += 1;
     }
     revision.value += 1;
   }
@@ -67,10 +93,12 @@ abstract final class InputInspector {
     _ => null,
   };
 
-  /// Clears the ring + peak (the card's ⟲).
+  /// Clears the ring + peak + counters/notes (the card's ⟲).
   static void clear() {
     samples.clear();
     peakPressure = 0;
+    touchDownCount = 0;
+    notes.clear();
     revision.value += 1;
   }
 
@@ -326,6 +354,22 @@ class _InspectorCard extends StatelessWidget {
                           color: _kindColor(colorScheme, samples[i].kind),
                         ),
                       ),
+                  // PEN-10 diagnosis strip: the touch-down counter (the
+                  // pen-hover palm-rejection check) + probe notes.
+                  Text(
+                    'touch downs=${InputInspector.touchDownCount}',
+                    key: const ValueKey<String>('input-inspector-touch-count'),
+                    style: rowStyle.copyWith(color: AppColors.accent2),
+                  ),
+                  for (final line in InputInspector.notes)
+                    Text(
+                      line,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: rowStyle.copyWith(
+                        color: colorScheme.onSurfaceVariant,
+                      ),
+                    ),
                 ],
               );
             },

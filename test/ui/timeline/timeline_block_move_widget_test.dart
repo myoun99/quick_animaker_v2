@@ -990,4 +990,73 @@ void main() {
     );
     expect(selectUpdates.last.$1, const LayerId('layer-a'));
   });
+
+  testWidgets('PEN-10: with the pen recently seen, a NEW coast keeps cells '
+      'hittable — the pen lands with NO hover and still selects', (
+    tester,
+  ) async {
+    AppInput.settings.value = const AppInputSettings(touchTimelineScroll: true);
+    addTearDown(() {
+      AppInput.settings.value = AppInputSettings.testCorpusBaseline;
+    });
+    final cursor = ValueNotifier<int>(0);
+    final selection = ValueNotifier<TimelineFrameRangeSelection?>(null);
+    addTearDown(cursor.dispose);
+    addTearDown(selection.dispose);
+    final selectUpdates = <(LayerId, int, int)>[];
+
+    await tester.pumpWidget(
+      harness(
+        layers: [blockLayer('layer-a')],
+        cursor: cursor,
+        rangeHooks: hooks(
+          selection: selection,
+          onSelectUpdate: (layerId, anchor, head) =>
+              selectUpdates.add((layerId, anchor, head)),
+        ),
+      ),
+    );
+
+    final gestureLayer = find.byKey(
+      const ValueKey<String>('timeline-range-gesture-layer-a'),
+    );
+    final rowY = tester.getTopLeft(gestureLayer).dy + 26;
+
+    // The pen was seen once (a hover pass) BEFORE any scroll existed —
+    // the pen-nearby window opens with nothing to stop.
+    final hover = await tester.createGesture(
+      kind: PointerDeviceKind.stylus,
+      pointer: 77,
+    );
+    await hover.addPointer(location: Offset(500, rowY));
+    await hover.moveTo(Offset(501, rowY));
+    await tester.pump();
+    await hover.removePointer();
+    await tester.pump();
+
+    // A touch fling starts a FRESH coast; the pen then lands with no
+    // hover move in between (stationary-hover pen). Without PEN-10 this
+    // is the stolen case pinned above — pen-nearby keeps the cells
+    // hittable through the coast, so the drag selects.
+    await tester.flingFrom(Offset(500, rowY), const Offset(-250, 0), 1200);
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 30));
+
+    final pen = await tester.startGesture(
+      Offset(500, rowY),
+      kind: PointerDeviceKind.stylus,
+    );
+    for (var step = 0; step < 6; step += 1) {
+      await pen.moveBy(const Offset(8, 0));
+      await tester.pump();
+    }
+    await pen.up();
+    await tester.pumpAndSettle();
+    expect(
+      selectUpdates,
+      isNotEmpty,
+      reason: 'pen-nearby must keep the coast hittable for the landing pen',
+    );
+    expect(selectUpdates.last.$1, const LayerId('layer-a'));
+  });
 }
