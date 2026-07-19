@@ -52,4 +52,36 @@ void main() {
     await store.save(settings);
     expect(await store.load(), settings);
   });
+
+  test('PEN-15: stored snap lists matching a LEGACY default upgrade to the '
+      'current default; customized lists persist', () {
+    final legacy = AppInputSettings.fromJson(const {
+      'zoomSnapPercents': [50, 75, 100, 125, 150, 200, 300, 400],
+      'brushSizeSnaps': [2, 4, 8, 16, 32, 64],
+    });
+    expect(
+      legacy.zoomSnapPercents,
+      AppInputSettings.defaultZoomSnapPercents,
+      reason: 'the expanded default (10/25 added) reaches old files',
+    );
+    expect(
+      legacy.brushSizeSnaps,
+      AppInputSettings.defaultBrushSizeSnaps,
+      reason: 'the extended ladder (128/256/512) reaches old files',
+    );
+
+    final custom = AppInputSettings.fromJson(const {
+      'zoomSnapPercents': [33, 66, 99],
+      'brushSizeSnaps': [5, 10, 20],
+    });
+    expect(custom.zoomSnapPercents, [33, 66, 99]);
+    expect(custom.brushSizeSnaps, [5, 10, 20]);
+  });
+
+  test('PEN-15: the default zoom list reaches below 50% (the "snaps to 50" '
+      'report) and the brush ladder past 64', () {
+    expect(AppInputSettings.defaultZoomSnapPercents, contains(10));
+    expect(AppInputSettings.defaultZoomSnapPercents, contains(25));
+    expect(AppInputSettings.defaultBrushSizeSnaps, containsAll([128, 256]));
+  });
 }

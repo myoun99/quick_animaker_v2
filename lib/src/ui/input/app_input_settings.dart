@@ -70,7 +70,12 @@ class AppInputSettings {
   final List<double> zoomSnapPercents;
   final List<double> brushSizeSnaps;
 
+  /// PEN-15: 10/25 joined so a sub-50% view has nearby snaps (the
+  /// modifier constraint glues the CURRENT zoom to the nearest entry —
+  /// with 50 as the floor, engaging at 30% read as "reset to 50%").
   static const List<double> defaultZoomSnapPercents = [
+    10,
+    25,
     50,
     75,
     100,
@@ -80,7 +85,29 @@ class AppInputSettings {
     300,
     400,
   ];
-  static const List<double> defaultBrushSizeSnaps = [2, 4, 8, 16, 32, 64];
+
+  /// PEN-15: the doubling ladder continues past 64 (brushes go to 2000).
+  static const List<double> defaultBrushSizeSnaps = [
+    2,
+    4,
+    8,
+    16,
+    32,
+    64,
+    128,
+    256,
+    512,
+  ];
+
+  /// The PREVIOUS default lists (PEN-15): stored settings that still
+  /// match one of these upgrade to the current default on load — only a
+  /// user-customized list persists as-is.
+  static const List<List<double>> legacyZoomSnapDefaults = [
+    [50, 75, 100, 125, 150, 200, 300, 400],
+  ];
+  static const List<List<double>> legacyBrushSizeSnapDefaults = [
+    [2, 4, 8, 16, 32, 64],
+  ];
 
   /// The TEST-CORPUS baseline (see test/flutter_test_config.dart): the
   /// corpus was written under touch-as-pen — timeline touch EDITS and
@@ -182,6 +209,22 @@ class AppInputSettings {
     return values.isEmpty ? fallback : values;
   }
 
+  /// PEN-15: a stored list that still matches a PREVIOUS default swaps to
+  /// the current default — expanded defaults reach existing settings
+  /// files while genuinely customized lists persist untouched.
+  static List<double> _upgradedList(
+    List<double> stored, {
+    required List<List<double>> legacyDefaults,
+    required List<double> current,
+  }) {
+    for (final legacy in legacyDefaults) {
+      if (listEquals(stored, legacy)) {
+        return current;
+      }
+    }
+    return stored;
+  }
+
   static AppInputSettings fromJson(
     Map<String, dynamic> json,
   ) => AppInputSettings(
@@ -217,11 +260,16 @@ class AppInputSettings {
         json['navigationModifierRotationLock'] as bool? ?? false,
     rotationSnapDegrees:
         (json['rotationSnapDegrees'] as num?)?.toDouble() ?? 15,
-    zoomSnapPercents: _doubleList(
-      json['zoomSnapPercents'],
-      defaultZoomSnapPercents,
+    zoomSnapPercents: _upgradedList(
+      _doubleList(json['zoomSnapPercents'], defaultZoomSnapPercents),
+      legacyDefaults: legacyZoomSnapDefaults,
+      current: defaultZoomSnapPercents,
     ),
-    brushSizeSnaps: _doubleList(json['brushSizeSnaps'], defaultBrushSizeSnaps),
+    brushSizeSnaps: _upgradedList(
+      _doubleList(json['brushSizeSnaps'], defaultBrushSizeSnaps),
+      legacyDefaults: legacyBrushSizeSnapDefaults,
+      current: defaultBrushSizeSnaps,
+    ),
   );
 
   @override
