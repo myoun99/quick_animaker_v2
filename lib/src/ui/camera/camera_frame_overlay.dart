@@ -1,8 +1,10 @@
 import 'dart:math' as math;
 
-import 'package:flutter/gestures.dart' show DragStartBehavior;
+import 'package:flutter/gestures.dart'
+    show DragStartBehavior, PanGestureRecognizer, PointerDeviceKind;
 import 'package:flutter/material.dart';
 
+import '../input/app_input_settings.dart' show AppInput;
 import '../../models/camera_pose.dart';
 import '../../models/canvas_point.dart';
 import '../../models/canvas_size.dart';
@@ -175,6 +177,23 @@ class _CameraFrameOverlayState extends State<CameraFrameOverlay> {
   double _zoomStartZoom = 1;
   double _lastPointerAngle = 0;
 
+  /// PEN-13: the TOUCH gate. Fingers manipulate the camera ONLY when the
+  /// one-finger touch slot is Touch drawing (the camera drag is a pen-
+  /// class edit, so it follows the drawing capability) — under a flip/
+  /// navigate slot a finger on the camera layer belongs to the screen
+  /// gestures alone. Pen/mouse always operate.
+  ///
+  /// The commitment rule mirrors the brush view (PEN-12 #4): a second
+  /// finger landing while the touch drag is still SUB-SLOP converts the
+  /// pair to a screen gesture (the camera pose snaps back untouched);
+  /// once committed, extra fingers are ignored and the drag lives.
+  final Set<int> _touchContacts = <int>{};
+  bool _touchDrag = false;
+  bool _touchDragAborted = false;
+  double _touchDragDistance = 0;
+
+  static const double _touchCommitSlop = 18;
+
   CameraPose get _displayPose => _dragPose ?? widget.pose;
 
   Offset get _centerInViewport =>
@@ -186,6 +205,18 @@ class _CameraFrameOverlayState extends State<CameraFrameOverlay> {
   }
 
   void _dragStart(DragStartDetails details) {
+    if (details.kind == PointerDeviceKind.touch) {
+      if (!AppInput.touchDraws || _touchContacts.length > 1) {
+        _touchDragAborted = true;
+        return;
+      }
+      _touchDrag = true;
+      _touchDragAborted = false;
+      _touchDragDistance = 0;
+    } else {
+      _touchDrag = false;
+      _touchDragAborted = false;
+    }
     final position = details.localPosition;
     final pose = widget.pose;
 
@@ -221,6 +252,12 @@ class _CameraFrameOverlayState extends State<CameraFrameOverlay> {
   }
 
   void _dragUpdate(DragUpdateDetails details) {
+    if (_touchDragAborted) {
+      return;
+    }
+    if (_touchDrag) {
+      _touchDragDistance += details.delta.distance;
+    }
     final pose = _displayPose;
     switch (_dragMode) {
       case _CameraDragMode.move:
@@ -277,10 +314,34 @@ class _CameraFrameOverlayState extends State<CameraFrameOverlay> {
 
   void _dragEnd() {
     final dragPose = _dragPose;
+    final aborted = _touchDragAborted;
+    _touchDrag = false;
+    _touchDragAborted = false;
+    _touchDragDistance = 0;
     setState(() => _dragPose = null);
-    if (dragPose != null && dragPose != widget.pose) {
+    if (!aborted && dragPose != null && dragPose != widget.pose) {
       widget.onPoseCommitted?.call(dragPose);
     }
+  }
+
+  /// A second finger landing during a SUB-SLOP touch drag: the pair is a
+  /// screen gesture — the camera pose snaps back untouched.
+  void _handleExtraTouchDown(PointerDownEvent event) {
+    if (event.kind != PointerDeviceKind.touch) {
+      return;
+    }
+    _touchContacts.add(event.pointer);
+    if (_touchContacts.length >= 2 &&
+        _touchDrag &&
+        !_touchDragAborted &&
+        _touchDragDistance < _touchCommitSlop) {
+      _touchDragAborted = true;
+      setState(() => _dragPose = null);
+    }
+  }
+
+  void _handleTouchGone(int pointer) {
+    _touchContacts.remove(pointer);
   }
 
   @override
@@ -304,18 +365,43 @@ class _CameraFrameOverlayState extends State<CameraFrameOverlay> {
       return IgnorePointer(child: paint);
     }
 
-    return GestureDetector(
-      key: const ValueKey<String>('camera-frame-overlay-gesture'),
-      behavior: HitTestBehavior.opaque,
-      // Handles are small: report the true pointer-down position (not the
-      // post-touch-slop accept position) so corner/knob hit tests don't
-      // miss the handle the user pressed.
-      dragStartBehavior: DragStartBehavior.down,
-      onPanStart: _dragStart,
-      onPanUpdate: _dragUpdate,
-      onPanEnd: (_) => _dragEnd(),
-      onPanCancel: _dragEnd,
-      child: paint,
+    return Listener(
+      // PEN-13: raw contact tracking for the touch gate (the pan
+      // callbacks alone can't see the finger count).
+      behavior: HitTestBehavior.translucent,
+      onPointerDown: _handleExtraTouchDown,
+      onPointerUp: (event) => _handleTouchGone(event.pointer),
+      onPointerCancel: (event) => _handleTouchGone(event.pointer),
+      child: RawGestureDetector(
+        key: const ValueKey<String>('camera-frame-overlay-gesture'),
+        behavior: HitTestBehavior.opaque,
+        gestures: <Type, GestureRecognizerFactory>{
+          _CameraPanGestureRecognizer:
+              GestureRecognizerFactoryWithHandlers<_CameraPanGestureRecognizer>(
+                () => _CameraPanGestureRecognizer(debugOwner: this),
+                (recognizer) {
+                  // A LATE touch never joins the pan (the default
+                  // latest-pointer strategy would hand the drag to the
+                  // idle newcomer, freezing the camera mid-drag) — the
+                  // finger that started the drag keeps driving it.
+                  recognizer.extraTouchRejected = (event) =>
+                      event.kind == PointerDeviceKind.touch &&
+                      _touchContacts.isNotEmpty;
+                  recognizer.gestureSettings =
+                      MediaQuery.maybeGestureSettingsOf(context);
+                  // Handles are small: report the true pointer-down
+                  // position (not the post-touch-slop accept position) so
+                  // corner/knob hit tests don't miss the pressed handle.
+                  recognizer.dragStartBehavior = DragStartBehavior.down;
+                  recognizer.onStart = _dragStart;
+                  recognizer.onUpdate = _dragUpdate;
+                  recognizer.onEnd = (_) => _dragEnd();
+                  recognizer.onCancel = _dragEnd;
+                },
+              ),
+        },
+        child: paint,
+      ),
     );
   }
 }
@@ -428,4 +514,24 @@ class CameraFramePainter extends CustomPainter {
       oldDelegate.dimOpacity != dimOpacity ||
       oldDelegate.outlineColor != outlineColor ||
       oldDelegate.showHandles != showHandles;
+}
+
+/// PEN-13: the camera pan that never hands its drag to a late finger —
+/// [extraTouchRejected] filters newcomers at the arena door, so the
+/// finger that started the drag keeps driving it (committed drags
+/// survive palm rests; the overlay's Listener handles the sub-slop
+/// abort separately).
+class _CameraPanGestureRecognizer extends PanGestureRecognizer {
+  _CameraPanGestureRecognizer({super.debugOwner});
+
+  bool Function(PointerDownEvent event)? extraTouchRejected;
+
+  @override
+  bool isPointerAllowed(PointerEvent event) {
+    if (event is PointerDownEvent &&
+        (extraTouchRejected?.call(event) ?? false)) {
+      return false;
+    }
+    return super.isPointerAllowed(event);
+  }
 }

@@ -316,7 +316,9 @@ String _dragActionLabel(CanvasTouchDragAction action) => switch (action) {
   CanvasTouchDragAction.flip => 'Flip (frames / layers)',
   CanvasTouchDragAction.navigate => 'Screen (pan · zoom · rotate)',
   CanvasTouchDragAction.brushSize => 'Brush size',
-  CanvasTouchDragAction.draw => 'Drawing',
+  // PEN-13: named to match its reach — the slot also gates the touch
+  // CAMERA drag (pen-class edits follow the drawing capability).
+  CanvasTouchDragAction.draw => 'Touch drawing',
   CanvasTouchDragAction.none => 'None',
 };
 

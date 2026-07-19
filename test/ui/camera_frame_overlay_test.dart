@@ -1,5 +1,7 @@
+import 'package:flutter/gestures.dart' show PointerDeviceKind;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:quick_animaker_v2/src/ui/input/app_input_settings.dart';
 import 'package:quick_animaker_v2/src/models/camera_pose.dart';
 import 'package:quick_animaker_v2/src/models/canvas_point.dart';
 import 'package:quick_animaker_v2/src/models/canvas_size.dart';
@@ -229,6 +231,84 @@ void main() {
         warnIfMissed: false,
       );
       expect(tappedBelow, isTrue);
+    });
+
+    testWidgets('PEN-13: a FINGER only moves the camera when the one-finger '
+        'slot is Touch drawing; pen/mouse always operate', (tester) async {
+      // Corpus baseline pins draw — flip is the tablet default the report
+      // came from.
+      AppInput.settings.value = AppInput.settings.value.copyWith(
+        touchDragOneFinger: CanvasTouchDragAction.flip,
+      );
+      addTearDown(() {
+        AppInput.settings.value = AppInputSettings.testCorpusBaseline;
+      });
+      final committed = await pumpInteractiveOverlay(tester);
+
+      await tester.drag(
+        find.byKey(const ValueKey<String>('camera-frame-overlay-gesture')),
+        const Offset(50, -30),
+        kind: PointerDeviceKind.touch,
+      );
+      await tester.pump();
+      expect(committed, isEmpty, reason: 'flip slot: fingers never drive');
+
+      await tester.drag(
+        find.byKey(const ValueKey<String>('camera-frame-overlay-gesture')),
+        const Offset(50, -30),
+        kind: PointerDeviceKind.mouse,
+      );
+      await tester.pump();
+      expect(committed, hasLength(1), reason: 'the mouse always operates');
+    });
+
+    testWidgets('PEN-13: a second finger during a SUB-SLOP touch drag '
+        'aborts it (screen gesture); a committed drag survives', (
+      tester,
+    ) async {
+      // Baseline slot = draw: fingers may drive the camera.
+      final committed = await pumpInteractiveOverlay(tester);
+      final origin = overlayOrigin(tester);
+
+      // Sub-slop: 8px of travel, then a second finger lands — aborted.
+      final first = await tester.startGesture(
+        origin + const Offset(400, 300),
+        kind: PointerDeviceKind.touch,
+      );
+      await first.moveBy(const Offset(8, 0));
+      await tester.pump();
+      final second = await tester.startGesture(
+        origin + const Offset(500, 300),
+        kind: PointerDeviceKind.touch,
+        pointer: 9,
+      );
+      await tester.pump();
+      await first.moveBy(const Offset(60, 0));
+      await first.up();
+      await second.up();
+      await tester.pump();
+      expect(committed, isEmpty, reason: 'the pair is a screen gesture');
+
+      // Committed: 40px of travel first — the late finger changes nothing.
+      final third = await tester.startGesture(
+        origin + const Offset(400, 300),
+        kind: PointerDeviceKind.touch,
+        pointer: 11,
+      );
+      await third.moveBy(const Offset(40, 0));
+      await tester.pump();
+      final fourth = await tester.startGesture(
+        origin + const Offset(500, 300),
+        kind: PointerDeviceKind.touch,
+        pointer: 12,
+      );
+      await tester.pump();
+      await third.moveBy(const Offset(20, 0));
+      await third.up();
+      await fourth.up();
+      await tester.pump();
+      expect(committed, hasLength(1), reason: 'the committed drag lives');
+      expect(committed.single.center.x, closeTo(1000 + 120, 1e-6));
     });
   });
 }
