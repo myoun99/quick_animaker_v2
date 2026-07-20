@@ -15,6 +15,7 @@ project(qa_engine LANGUAGES C)
 add_library(qa_engine SHARED
   "${CMAKE_CURRENT_LIST_DIR}/qa_engine.c"
   "${CMAKE_CURRENT_LIST_DIR}/qa_audio_decode.c"
+  "${CMAKE_CURRENT_LIST_DIR}/qa_audio_device.c"
 )
 
 set_target_properties(qa_engine PROPERTIES
@@ -39,11 +40,29 @@ endif()
 # straight overwrite), so the warnings are silenced on THIS translation
 # unit only. Our own code keeps every warning it had.
 if(MSVC)
-  set_source_files_properties("${CMAKE_CURRENT_LIST_DIR}/qa_audio_decode.c"
-    PROPERTIES COMPILE_OPTIONS "/wd4267;/wd4244;/wd4996")
+  set_source_files_properties(
+    "${CMAKE_CURRENT_LIST_DIR}/qa_audio_decode.c"
+    "${CMAKE_CURRENT_LIST_DIR}/qa_audio_device.c"
+    PROPERTIES COMPILE_OPTIONS "/wd4267;/wd4244;/wd4996;/wd4018;/wd4389")
 else()
-  set_source_files_properties("${CMAKE_CURRENT_LIST_DIR}/qa_audio_decode.c"
+  set_source_files_properties(
+    "${CMAKE_CURRENT_LIST_DIR}/qa_audio_decode.c"
+    "${CMAKE_CURRENT_LIST_DIR}/qa_audio_device.c"
     PROPERTIES COMPILE_OPTIONS "-Wno-conversion;-Wno-unused-function")
+endif()
+
+# miniaudio dlopens the platform audio APIs at runtime, so building needs
+# no audio dev headers — that is what keeps CI's Linux job from needing an
+# ALSA package. It does need the OS threading/dl primitives, and on Apple
+# the CoreAudio frameworks at LINK time.
+if(APPLE)
+  target_link_libraries(qa_engine
+    "-framework CoreFoundation" "-framework CoreAudio" "-framework AudioToolbox")
+elseif(UNIX AND NOT ANDROID)
+  find_package(Threads REQUIRED)
+  target_link_libraries(qa_engine Threads::Threads ${CMAKE_DL_LIBS})
+elseif(ANDROID)
+  target_link_libraries(qa_engine OpenSLES)
 endif()
 
 if(MSVC)

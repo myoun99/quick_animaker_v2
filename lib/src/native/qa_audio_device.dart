@@ -1,0 +1,286 @@
+import 'dart:ffi';
+import 'dart:io';
+
+import 'package:ffi/ffi.dart';
+
+import '../services/audio/audio_mixer_reference.dart';
+import 'qa_audio_native.dart';
+
+/// The output device and the transport (audio program 2C).
+///
+/// This is where "audio is the master clock" stops being a design note.
+/// [positionSamples] counts samples HANDED TO THE DEVICE, so it advances
+/// only when audio actually leaves — it cannot run ahead of what is heard,
+/// which a free-running timer can and does.
+///
+/// Dart's whole job here is upload, transport control, and polling. No Dart
+/// runs in the callback; that is the rule the realtime thread is built on.
+///
+/// Absence is graceful: no binary, or a device that refuses to open,
+/// leaves [isOpen] false and the caller on its existing path. Silence is
+/// never an acceptable outcome for audio.
+final class QaAudioDevice {
+  QaAudioDevice._(this._library);
+
+  final DynamicLibrary _library;
+
+  static QaAudioDevice? _instance;
+  static bool _tried = false;
+
+  /// Test hook: point the loader at a locally built binary.
+  static String? debugLibraryPathOverride;
+
+  static void debugResetForTests() {
+    _instance = null;
+    _tried = false;
+  }
+
+  static QaAudioDevice? get instance {
+    if (!_tried) {
+      _tried = true;
+      final library = _tryOpen();
+      _instance = library == null ? null : QaAudioDevice._(library);
+    }
+    return _instance;
+  }
+
+  static DynamicLibrary? _tryOpen() {
+    final overridePath =
+        debugLibraryPathOverride ?? Platform.environment['QA_ENGINE_PATH'];
+    if (overridePath != null && overridePath.isNotEmpty) {
+      try {
+        return DynamicLibrary.open(overridePath);
+      } on Object {
+        // Fall through to the platform defaults.
+      }
+    }
+    if (Platform.isIOS || Platform.isMacOS) {
+      try {
+        return DynamicLibrary.process();
+      } on Object {
+        // Fall through.
+      }
+    }
+    for (final candidate in [
+      if (Platform.isWindows) 'qa_engine.dll',
+      if (Platform.isLinux || Platform.isAndroid) 'libqa_engine.so',
+      if (Platform.isMacOS) 'libqa_engine.dylib',
+    ]) {
+      try {
+        return DynamicLibrary.open(candidate);
+      } on Object {
+        continue;
+      }
+    }
+    return null;
+  }
+
+  late final _open = _library
+      .lookupFunction<Int32 Function(Int32, Int32, Int32), int Function(int, int, int)>(
+        'qa_audio_device_open',
+      );
+  late final _close = _library
+      .lookupFunction<Void Function(), void Function()>('qa_audio_device_close');
+  late final _isOpen = _library
+      .lookupFunction<Int32 Function(), int Function()>('qa_audio_device_is_open');
+  late final _sampleRate = _library
+      .lookupFunction<Int32 Function(), int Function()>(
+        'qa_audio_device_sample_rate',
+      );
+  late final _channels = _library
+      .lookupFunction<Int32 Function(), int Function()>(
+        'qa_audio_device_channels',
+      );
+  late final _latency = _library
+      .lookupFunction<Int64 Function(), int Function()>(
+        'qa_audio_device_latency_samples',
+      );
+  late final _setSchedule = _library.lookupFunction<
+    Int32 Function(
+      Pointer<QaAudioClipStruct>,
+      Int32,
+      Pointer<QaAudioSourceStruct>,
+      Int32,
+      Pointer<Float>,
+      Int64,
+      Pointer<Int64>,
+    ),
+    int Function(
+      Pointer<QaAudioClipStruct>,
+      int,
+      Pointer<QaAudioSourceStruct>,
+      int,
+      Pointer<Float>,
+      int,
+      Pointer<Int64>,
+    )
+  >('qa_audio_device_set_schedule');
+  late final _play = _library
+      .lookupFunction<Int32 Function(Int64, Int64, Int32), int Function(int, int, int)>(
+        'qa_audio_device_play',
+      );
+  late final _stop = _library
+      .lookupFunction<Void Function(), void Function()>('qa_audio_device_stop');
+  late final _isPlaying = _library
+      .lookupFunction<Int32 Function(), int Function()>(
+        'qa_audio_device_is_playing',
+      );
+  late final _position = _library
+      .lookupFunction<Int64 Function(), int Function()>(
+        'qa_audio_device_position',
+      );
+  late final _seek = _library
+      .lookupFunction<Void Function(Int64), void Function(int)>(
+        'qa_audio_device_seek',
+      );
+
+  /// Opens the output device, returning its ACTUAL sample rate (0 = the
+  /// device could not be opened).
+  ///
+  /// The rate comes back rather than being assumed because a device may
+  /// refuse the one asked for, and conforming to a rate the device is not
+  /// running at would put every sound at the wrong speed.
+  ///
+  /// [useNullBackend] runs miniaudio's null device: a real callback on a
+  /// real thread with no hardware. That is how the transport is exercised
+  /// on a CI runner with no sound card.
+  int open({
+    int sampleRate = 48000,
+    int channels = 2,
+    bool useNullBackend = false,
+  }) => _open(sampleRate, channels, useNullBackend ? 1 : 0);
+
+  void close() => _close();
+  bool get isOpen => _isOpen() != 0;
+  int get sampleRate => _sampleRate();
+  int get channels => _channels();
+
+  /// The device's reported output latency in samples — how far ahead of
+  /// what is heard the buffer runs, and therefore how much the picture has
+  /// to be pulled forward. What this cannot account for is the residual
+  /// the user's A/V offset removes.
+  int get latencySamples => _latency();
+
+  /// Uploads the schedule and its PCM. Only legal while stopped — returns
+  /// false and changes nothing otherwise, rather than racing the realtime
+  /// thread.
+  ///
+  /// The PCM is flattened into one block and COPIED on the C side: the
+  /// callback must never chase a pointer into Dart-managed memory.
+  bool setSchedule({
+    required List<AudioMixClip> clips,
+    required List<AudioMixSource> sources,
+  }) {
+    var totalFloats = 0;
+    final offsets = <int>[];
+    for (final source in sources) {
+      offsets.add(totalFloats);
+      totalFloats += source.samples.length;
+    }
+
+    final clipArray = calloc<QaAudioClipStruct>(clips.isEmpty ? 1 : clips.length);
+    final sourceArray = calloc<QaAudioSourceStruct>(
+      sources.isEmpty ? 1 : sources.length,
+    );
+    final pcm = calloc<Float>(totalFloats <= 0 ? 1 : totalFloats);
+    final offsetArray = calloc<Int64>(offsets.isEmpty ? 1 : offsets.length);
+    try {
+      for (var index = 0; index < clips.length; index += 1) {
+        final clip = clips[index];
+        final target = clipArray[index];
+        target.gain = clip.gain;
+        target.startSample = clip.startSample;
+        target.endSample = clip.endSample;
+        target.sourceOffset = clip.sourceOffset;
+        target.fadeInSamples = clip.fadeInSamples;
+        target.fadeOutSamples = clip.fadeOutSamples;
+        target.sourceIndex = clip.sourceIndex;
+        target.reserved = 0;
+      }
+      for (var index = 0; index < sources.length; index += 1) {
+        final source = sources[index];
+        final target = sourceArray[index];
+        target.sourceStart = source.sourceStart;
+        target.length = source.length;
+        target.channels = source.channels;
+        target.reserved = 0;
+        target.samples = nullptr; // repointed at the C copy
+        offsetArray[index] = offsets[index];
+        if (source.samples.isNotEmpty) {
+          pcm
+              .asTypedList(totalFloats)
+              .setRange(
+                offsets[index],
+                offsets[index] + source.samples.length,
+                source.samples,
+              );
+        }
+      }
+      return _setSchedule(
+            clipArray,
+            clips.length,
+            sourceArray,
+            sources.length,
+            pcm,
+            totalFloats,
+            offsetArray,
+          ) !=
+          0;
+    } finally {
+      calloc.free(offsetArray);
+      calloc.free(pcm);
+      calloc.free(sourceArray);
+      calloc.free(clipArray);
+    }
+  }
+
+  /// Starts at [startSample]. [stopSample] is exclusive; pass a value at
+  /// or below the start for "no end".
+  bool play({
+    required int startSample,
+    int stopSample = -1,
+    bool looping = false,
+  }) => _play(startSample, stopSample, looping ? 1 : 0) != 0;
+
+  void stop() => _stop();
+  bool get isPlaying => _isPlaying() != 0;
+
+  /// Samples handed to the device — **the clock**. The picture reads this
+  /// and shows whatever frame it lands in; when rendering falls behind,
+  /// frames are dropped rather than the sound being made to wait.
+  int get positionSamples => _position();
+
+  /// Moves the transport without restarting anything. Because the mixer
+  /// builds a mix rather than starting clips, a seek is just a change of
+  /// where the next block is read from.
+  void seek(int sample) => _seek(sample);
+}
+
+/// Reads the played position as a frame index, pulled forward by the
+/// device's own reported latency so the picture matches what is being
+/// HEARD rather than what has merely been queued.
+///
+/// [extraOffsetSamples] is the user's A/V offset: the residual no device
+/// report can account for (screen pipeline, Bluetooth, an AV receiver).
+/// Every professional tool exposes this for the same reason — the part
+/// that is measurable gets corrected automatically, and the rest is a
+/// slider.
+int audioClockFrame({
+  required int positionSamples,
+  required int latencySamples,
+  required int extraOffsetSamples,
+  required int sampleRate,
+  required int frameRateNumerator,
+  required int frameRateDenominator,
+}) {
+  if (sampleRate <= 0 || frameRateNumerator <= 0 || frameRateDenominator <= 0) {
+    return 0;
+  }
+  final heard = positionSamples - latencySamples + extraOffsetSamples;
+  if (heard <= 0) {
+    return 0;
+  }
+  // Integer throughout, like every other frame/sample conversion in this
+  // program: a double here would drift over a long timeline.
+  return heard * frameRateNumerator ~/ (sampleRate * frameRateDenominator);
+}
