@@ -10,6 +10,10 @@
 // expressions produce identical bytes.
 
 #include <math.h>
+// ptrdiff_t lives here. MSVC drags it in through another header, so the
+// omission was invisible for as long as Windows was the only build —
+// Apple clang rejected the file outright on CI's first run.
+#include <stddef.h>
 #include <stdint.h>
 #include <string.h>
 
