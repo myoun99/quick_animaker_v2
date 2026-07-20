@@ -4,6 +4,7 @@ import 'canvas_size.dart';
 import 'layer.dart';
 import 'media_asset.dart';
 import 'project_background.dart';
+import 'project_frame_rate.dart';
 import 'project_id.dart';
 import 'timesheet_info.dart';
 import 'track.dart';
@@ -16,7 +17,7 @@ class Project {
     required this.name,
     required List<Track> tracks,
     required this.createdAt,
-    this.fps = 24,
+    this.frameRate = ProjectFrameRate.fps24,
     this.cameraSize = defaultProjectCameraSize,
     this.background = ProjectBackground.defaultBackground,
     this.timesheetInfo = TimesheetInfo.empty,
@@ -32,7 +33,15 @@ class Project {
   final String name;
   final List<Track> tracks;
   final DateTime createdAt;
-  final int fps;
+
+  /// The exact rate, fraction and all (23.976 = 24000/1001).
+  final ProjectFrameRate frameRate;
+
+  /// The integer rate the sheet, the grid and every frame index count
+  /// with. Timing lives in [frameRate]; counting lives here, and the two
+  /// differ only for the NTSC pulldown rates.
+  int get fps => frameRate.countingBase;
+
   final CanvasSize cameraSize;
 
   /// The movie's TRAILING GAP (UI-R20 #3): extra frames past the last
@@ -72,7 +81,7 @@ class Project {
     String? name,
     List<Track>? tracks,
     DateTime? createdAt,
-    int? fps,
+    ProjectFrameRate? frameRate,
     CanvasSize? cameraSize,
     ProjectBackground? background,
     TimesheetInfo? timesheetInfo,
@@ -85,7 +94,7 @@ class Project {
       name: name ?? this.name,
       tracks: tracks ?? this.tracks,
       createdAt: createdAt ?? this.createdAt,
-      fps: fps ?? this.fps,
+      frameRate: frameRate ?? this.frameRate,
       cameraSize: cameraSize ?? this.cameraSize,
       background: background ?? this.background,
       timesheetInfo: timesheetInfo ?? this.timesheetInfo,
@@ -100,7 +109,11 @@ class Project {
     'name': name,
     'tracks': tracks.map((track) => track.toJson()).toList(),
     'createdAt': createdAt.toIso8601String(),
+    // `fps` stays the counting base so a file written today still opens
+    // in a build that predates the fraction; `frameRate` carries the
+    // exact rate and wins on read.
     'fps': fps,
+    'frameRate': frameRate.toJson(),
     'cameraSize': cameraSize.toJson(),
     if (background != ProjectBackground.defaultBackground)
       'background': background.toJson(),
@@ -126,7 +139,11 @@ class Project {
       name: json['name'] as String,
       tracks: tracks,
       createdAt: DateTime.parse(json['createdAt'] as String),
-      fps: json['fps'] as int,
+      frameRate: json['frameRate'] == null
+          ? ProjectFrameRate.integer(json['fps'] as int)
+          : ProjectFrameRate.fromJson(
+              json['frameRate'] as Map<String, dynamic>,
+            ),
       cameraSize: json['cameraSize'] == null
           ? defaultProjectCameraSize
           : CanvasSize.fromJson(json['cameraSize'] as Map<String, dynamic>),
@@ -158,7 +175,7 @@ class Project {
           other.name == name &&
           listEquals(other.tracks, tracks) &&
           other.createdAt == createdAt &&
-          other.fps == fps &&
+          other.frameRate == frameRate &&
           other.cameraSize == cameraSize &&
           other.background == background &&
           other.timesheetInfo == timesheetInfo &&
@@ -172,7 +189,7 @@ class Project {
     name,
     Object.hashAll(tracks),
     createdAt,
-    fps,
+    frameRate,
     cameraSize,
     background,
     timesheetInfo,
@@ -183,7 +200,9 @@ class Project {
 
   @override
   String toString() =>
-      'Project(id: $id, name: $name, tracks: $tracks, createdAt: $createdAt, fps: $fps, cameraSize: $cameraSize)';
+      'Project(id: $id, name: $name, tracks: $tracks, '
+      'createdAt: $createdAt, frameRate: $frameRate, '
+      'cameraSize: $cameraSize)';
 }
 
 /// [stored] plus a synthesized entry (file-name display name) for every

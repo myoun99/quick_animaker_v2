@@ -19,6 +19,7 @@ import '../models/timeline_repeat.dart';
 import '../models/timesheet_info.dart';
 import '../models/project.dart';
 import '../models/project_background.dart';
+import '../models/project_frame_rate.dart';
 import '../models/stroke.dart';
 import '../models/transform_track.dart';
 import '../models/track.dart';
@@ -93,8 +94,8 @@ class ProjectRepository {
 
   /// The movie's trailing gap (UI-R20 #3).
   /// R26 #32: the project's frame rate — one axis for the whole project.
-  void updateProjectFps(int fps) {
-    updateProject((project) => project.copyWith(fps: fps));
+  void updateProjectFrameRate(ProjectFrameRate frameRate) {
+    updateProject((project) => project.copyWith(frameRate: frameRate));
   }
 
   void updateTrailingFrames(int trailingFrames) {

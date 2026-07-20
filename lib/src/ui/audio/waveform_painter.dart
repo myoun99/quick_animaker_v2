@@ -2,17 +2,18 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
+import '../../models/project_frame_rate.dart';
 import '../../services/audio/audio_peaks_extractor.dart';
 
 /// Paints a clip's |peak| envelope as a filled band mirrored around the
 /// row's center line, along [axis] (horizontal timeline rows, vertical
 /// X-sheet columns). The widget's main-axis extent is expected to be
-/// `durationFrames(fps) * pixelsPerFrame` — each bucket maps to
+/// `durationFrames(frameRate) * pixelsPerFrame` — each bucket maps to
 /// `pixelsPerFrame * fps / bucketsPerSecond` pixels.
 class WaveformPainter extends CustomPainter {
   const WaveformPainter({
     required this.peaks,
-    required this.fps,
+    required this.frameRate,
     required this.pixelsPerFrame,
     required this.color,
     this.axis = Axis.horizontal,
@@ -23,7 +24,7 @@ class WaveformPainter extends CustomPainter {
   });
 
   final AudioPeaks peaks;
-  final int fps;
+  final ProjectFrameRate frameRate;
   final double pixelsPerFrame;
   final Color color;
   final Axis axis;
@@ -44,14 +45,17 @@ class WaveformPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    if (peaks.peaks.isEmpty || fps <= 0 || pixelsPerFrame <= 0) {
+    if (peaks.peaks.isEmpty ||
+        frameRate.numerator <= 0 ||
+        pixelsPerFrame <= 0) {
       return;
     }
     final mainExtent = axis == Axis.horizontal ? size.width : size.height;
     final crossExtent = axis == Axis.horizontal ? size.height : size.width;
     final center = crossExtent / 2;
     final maxAmplitude = (crossExtent / 2) - 1;
-    final pixelsPerBucket = pixelsPerFrame * fps / peaks.bucketsPerSecond;
+    final pixelsPerBucket =
+        pixelsPerFrame * frameRate.approximateFps / peaks.bucketsPerSecond;
     if (pixelsPerBucket <= 0) {
       return;
     }
@@ -64,7 +68,7 @@ class WaveformPainter extends CustomPainter {
     // the file running out, whichever is first — the fade-out anchor.
     final audibleEndPixels = math.min(
       mainExtent,
-      (peaks.durationFrames(fps) - leadingFrames) * pixelsPerFrame,
+      (peaks.durationFrames(frameRate) - leadingFrames) * pixelsPerFrame,
     );
     final fadeInPixels = fadeInFrames * pixelsPerFrame;
     final fadeOutPixels = fadeOutFrames * pixelsPerFrame;
@@ -127,7 +131,7 @@ class WaveformPainter extends CustomPainter {
   @override
   bool shouldRepaint(covariant WaveformPainter oldDelegate) {
     return !identical(oldDelegate.peaks, peaks) ||
-        oldDelegate.fps != fps ||
+        oldDelegate.frameRate != frameRate ||
         oldDelegate.pixelsPerFrame != pixelsPerFrame ||
         oldDelegate.color != color ||
         oldDelegate.axis != axis ||

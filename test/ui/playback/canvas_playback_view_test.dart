@@ -17,6 +17,7 @@ import 'package:quick_animaker_v2/src/models/layer.dart';
 import 'package:quick_animaker_v2/src/models/layer_id.dart';
 import 'package:quick_animaker_v2/src/models/playback_quality.dart';
 import 'package:quick_animaker_v2/src/models/project.dart';
+import 'package:quick_animaker_v2/src/models/project_frame_rate.dart';
 import 'package:quick_animaker_v2/src/models/project_id.dart';
 import 'package:quick_animaker_v2/src/models/property_track.dart';
 import 'package:quick_animaker_v2/src/models/timeline_exposure.dart';
@@ -68,7 +69,7 @@ void main() {
   Project project({TransformTrack? transformTrack}) => Project(
     id: const ProjectId('project'),
     name: 'Project',
-    fps: 10,
+    frameRate: const ProjectFrameRate.integer(10),
     cameraSize: const CanvasSize(width: 4, height: 2),
     tracks: [
       Track(
@@ -122,7 +123,7 @@ void main() {
       resolveProject: () => project(transformTrack: transformTrack),
       resolveActiveCutId: () => const CutId('cut'),
       resolveActiveTrackId: () => const TrackId('track'),
-      resolveFps: () => 10,
+      resolveFrameRate: () => const ProjectFrameRate.integer(10),
     );
     return (composites: composites, controller: controller);
   }
@@ -362,7 +363,7 @@ void main() {
       resolveProject: () => Project(
         id: const ProjectId('project'),
         name: 'Project',
-        fps: 10,
+        frameRate: const ProjectFrameRate.integer(10),
         cameraSize: const CanvasSize(width: 4, height: 2),
         tracks: [
           Track(id: const TrackId('track'), name: 'Track', cuts: [gapCut]),
@@ -371,7 +372,7 @@ void main() {
       ),
       resolveActiveCutId: () => const CutId('cut'),
       resolveActiveTrackId: () => const TrackId('track'),
-      resolveFps: () => 10,
+      resolveFrameRate: () => const ProjectFrameRate.integer(10),
     );
     await tester.runAsync(() async {
       await composites.prepareComposite(

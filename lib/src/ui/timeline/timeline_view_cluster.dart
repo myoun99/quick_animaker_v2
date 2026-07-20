@@ -5,6 +5,8 @@ import '../widgets/field_slider.dart';
 import 'timeline_frame_range_policy.dart' show timelineSecondsLabel;
 import 'timeline_panel.dart' show TimelinePanel;
 
+import '../../models/project_frame_rate.dart';
+
 /// The right-side view cluster shared VERBATIM by the timeline and
 /// storyboard tabs: frame counter + seconds toggle + zoom slider, plus
 /// host-specific trailing controls (the timeline's orientation toggle).
@@ -17,7 +19,7 @@ class TimelineViewCluster extends StatelessWidget {
   const TimelineViewCluster({
     super.key,
     required this.frameCursor,
-    required this.projectFps,
+    required this.projectFrameRate,
     required this.showSeconds,
     required this.onShowSecondsChanged,
     required this.pixelsPerFrame,
@@ -38,7 +40,7 @@ class TimelineViewCluster extends StatelessWidget {
   /// cut-local counter.
   final ValueListenable<int?>? globalFrame;
 
-  final int projectFps;
+  final ProjectFrameRate projectFrameRate;
   final bool showSeconds;
   final ValueChanged<bool>? onShowSecondsChanged;
   final double pixelsPerFrame;
@@ -48,7 +50,7 @@ class TimelineViewCluster extends StatelessWidget {
   final List<Widget> trailing;
 
   String _frameLabel(int oneBasedFrame) => showSeconds
-      ? timelineSecondsLabel(oneBasedFrame, projectFps)
+      ? timelineSecondsLabel(oneBasedFrame, projectFrameRate.countingBase)
       : '$oneBasedFrame';
 
   /// One −/+ button step (UI-R11 #11): multiplicative (×1.25) like editor

@@ -13,6 +13,7 @@ import 'package:quick_animaker_v2/src/models/frame_id.dart';
 import 'package:quick_animaker_v2/src/models/layer.dart';
 import 'package:quick_animaker_v2/src/models/layer_id.dart';
 import 'package:quick_animaker_v2/src/models/layer_kind.dart';
+import 'package:quick_animaker_v2/src/models/project_frame_rate.dart';
 import 'package:quick_animaker_v2/src/models/property_track.dart';
 import 'package:quick_animaker_v2/src/ui/timeline/property_lane_model.dart'
     show PropertyLaneEditCallbacks;
@@ -106,7 +107,7 @@ Future<void> _pumpPanel(
             activeCutId: activeCutId,
             onCutSelected: (_) {},
             pixelsPerFrame: 12,
-            projectFps: 24,
+            projectFrameRate: const ProjectFrameRate.integer(24),
             audioPeaksFor: (path) => path == 'voice.wav' ? _peaks : null,
             expandedSeAudioRows: expandedAudio,
             onToggleSeRowLane: (track, slot) => setState(() {

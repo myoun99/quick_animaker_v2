@@ -12,6 +12,7 @@ import 'package:quick_animaker_v2/src/models/layer.dart';
 import 'package:quick_animaker_v2/src/models/layer_id.dart';
 import 'package:quick_animaker_v2/src/models/layer_kind.dart';
 import 'package:quick_animaker_v2/src/models/project.dart';
+import 'package:quick_animaker_v2/src/models/project_frame_rate.dart';
 import 'package:quick_animaker_v2/src/models/project_id.dart';
 import 'package:quick_animaker_v2/src/models/timeline_exposure.dart';
 import 'package:quick_animaker_v2/src/models/track.dart';
@@ -66,7 +67,7 @@ void main() {
             onLayerMarkSelected: (_, _) {},
             orientation: TimelineOrientation.horizontal,
             onOrientationChanged: (_) {},
-            projectFps: 24,
+            projectFrameRate: const ProjectFrameRate.integer(24),
             // Classic zoom: this file's pixel oracles assume 48 px/frame.
             pixelsPerFrame: 48,
             audioPeaksFor: (path) => path == 'voice.wav' ? _peaks : null,
@@ -130,7 +131,7 @@ void main() {
             activeCutId: const CutId('wave-cut'),
             onCutSelected: (_) {},
             pixelsPerFrame: 8,
-            projectFps: 24,
+            projectFrameRate: const ProjectFrameRate.integer(24),
             audioPeaksFor: (path) => path == 'voice.wav' ? _peaks : null,
           ),
         ),

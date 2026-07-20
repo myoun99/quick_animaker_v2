@@ -1,3 +1,4 @@
+import '../../models/project_frame_rate.dart';
 import '../command.dart';
 import '../project_repository.dart';
 
@@ -6,13 +7,19 @@ import '../project_repository.dart';
 /// The rate is a PROJECT-wide axis — the ruler's second boundaries, the
 /// timesheet's per-second rows, playback timing and audio placement all
 /// read it — so it lives on the project, never per cut.
-class UpdateProjectFpsCommand implements Command {
-  UpdateProjectFpsCommand({required this.repository, required this.fps});
+///
+/// RT: the payload is the exact rational rate, not an int, so moving a
+/// project to 23.976 is the same single undoable write as moving it to 24.
+class UpdateProjectFrameRateCommand implements Command {
+  UpdateProjectFrameRateCommand({
+    required this.repository,
+    required this.frameRate,
+  });
 
   final ProjectRepository repository;
-  final int fps;
+  final ProjectFrameRate frameRate;
 
-  int? _previousFps;
+  ProjectFrameRate? _previousFrameRate;
   bool _hasExecuted = false;
 
   @override
@@ -20,17 +27,17 @@ class UpdateProjectFpsCommand implements Command {
 
   @override
   void execute() {
-    _previousFps ??= repository.requireProject().fps;
-    repository.updateProjectFps(fps);
+    _previousFrameRate ??= repository.requireProject().frameRate;
+    repository.updateProjectFrameRate(frameRate);
     _hasExecuted = true;
   }
 
   @override
   void undo() {
-    final previous = _previousFps;
+    final previous = _previousFrameRate;
     if (!_hasExecuted || previous == null) {
       throw StateError('Command has not been executed.');
     }
-    repository.updateProjectFps(previous);
+    repository.updateProjectFrameRate(previous);
   }
 }

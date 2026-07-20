@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import '../../models/layer.dart';
 import '../../models/layer_id.dart';
 import '../../models/layer_kind.dart';
+import '../../models/project_frame_rate.dart';
 import '../../models/se_audio_spans.dart';
 import '../../services/audio/audio_peaks_extractor.dart';
 import '../audio/waveform_painter.dart';
@@ -144,7 +145,7 @@ class SeAudioLaneFrameRow extends StatelessWidget {
     required this.leadingFrameSpacerWidth,
     required this.trailingFrameSpacerWidth,
     required this.metrics,
-    required this.fps,
+    required this.frameRate,
     this.audioPeaksFor,
     this.onSetClipOffset,
     this.offsetDrag,
@@ -160,7 +161,7 @@ class SeAudioLaneFrameRow extends StatelessWidget {
   final double leadingFrameSpacerWidth;
   final double trailingFrameSpacerWidth;
   final TimelineGridMetrics metrics;
-  final int fps;
+  final ProjectFrameRate frameRate;
   final AudioPeaks? Function(String filePath)? audioPeaksFor;
 
   /// Commits a span's dragged offset (one undo); null makes the slide
@@ -213,7 +214,7 @@ class SeAudioLaneFrameRow extends StatelessWidget {
         ),
         span: span,
         peaks: audioPeaksFor?.call(span.clip.filePath),
-        fps: fps,
+        frameRate: frameRate,
         frameCellExtent: cellExtent,
         axis: axis,
         onSetOffset: onSetClipOffset == null
@@ -310,7 +311,7 @@ class _SeAudioLaneSpan extends StatefulWidget {
     super.key,
     required this.span,
     required this.peaks,
-    required this.fps,
+    required this.frameRate,
     required this.frameCellExtent,
     required this.axis,
     required this.onSetOffset,
@@ -321,7 +322,7 @@ class _SeAudioLaneSpan extends StatefulWidget {
 
   final SeAudioSpan span;
   final AudioPeaks? peaks;
-  final int fps;
+  final ProjectFrameRate frameRate;
   final double frameCellExtent;
   final Axis axis;
   final ValueChanged<int>? onSetOffset;
@@ -350,7 +351,8 @@ class _SeAudioLaneSpanState extends State<_SeAudioLaneSpan> {
   /// preview, one undo on release).
   bool _liveActive = false;
 
-  int get _fileFrames => widget.peaks?.durationFrames(widget.fps) ?? (1 << 20);
+  int get _fileFrames =>
+      widget.peaks?.durationFrames(widget.frameRate) ?? (1 << 20);
 
   int get _deltaFrames => (_dragDelta / widget.frameCellExtent).round();
 
@@ -576,7 +578,7 @@ class _SeAudioLaneSpanState extends State<_SeAudioLaneSpan> {
             child: CustomPaint(
               painter: WaveformPainter(
                 peaks: peaks,
-                fps: widget.fps,
+                frameRate: widget.frameRate,
                 pixelsPerFrame: widget.frameCellExtent,
                 // Editing strip: stronger ink than the row's underlay.
                 color: timelineDrawingInkColor.withValues(alpha: 0.45),

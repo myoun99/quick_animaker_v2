@@ -17,6 +17,8 @@ import 'timeline_frame_cells_row.dart';
 import 'timeline_grid_metrics.dart';
 import 'timeline_lane_rows.dart';
 
+import '../../models/project_frame_rate.dart';
+
 /// See [TimelineFrameRowsScrollBody.memoAux].
 class TimelineRowMemoAux {
   const TimelineRowMemoAux({this.cameraTrack, this.instructionDefs});
@@ -50,7 +52,7 @@ class TimelineFrameRowsScrollBody extends StatefulWidget {
     this.onActivateCell,
     this.instructionDefById,
     this.audioPeaksFor,
-    this.projectFps = 24,
+    this.projectFrameRate = ProjectFrameRate.fps24,
     this.onRemoveAudioClip,
     this.onDropMediaAsset,
     this.onSetAudioClipOffset,
@@ -111,7 +113,7 @@ class TimelineFrameRowsScrollBody extends StatefulWidget {
   final CameraInstructionDef? Function(String instructionId)?
   instructionDefById;
   final AudioPeaks? Function(String filePath)? audioPeaksFor;
-  final int projectFps;
+  final ProjectFrameRate projectFrameRate;
   final void Function(LayerId layerId, int clipIndex)? onRemoveAudioClip;
   final void Function(LayerId layerId, int blockStartFrame, String path)?
   onDropMediaAsset;
@@ -182,7 +184,7 @@ typedef _RowMemoInputs = ({
   double leadingFrameSpacerWidth,
   double trailingFrameSpacerWidth,
   TimelineGridMetrics metrics,
-  int projectFps,
+  ProjectFrameRate projectFrameRate,
   TimelineCellExposureState Function(Layer layer, int frameIndex)
   exposureStateForLayer,
   String? Function(Layer layer, int frameIndex)? frameNameForLayer,
@@ -233,7 +235,7 @@ class _TimelineFrameRowsScrollBodyState
         a.leadingFrameSpacerWidth == b.leadingFrameSpacerWidth &&
         a.trailingFrameSpacerWidth == b.trailingFrameSpacerWidth &&
         a.metrics == b.metrics &&
-        a.projectFps == b.projectFps &&
+        a.projectFrameRate == b.projectFrameRate &&
         a.exposureStateForLayer == b.exposureStateForLayer &&
         a.frameNameForLayer == b.frameNameForLayer &&
         a.hasCommaDrag == b.hasCommaDrag &&
@@ -271,7 +273,7 @@ class _TimelineFrameRowsScrollBodyState
       onActivateCell: widget.onActivateCell,
       instructionDefById: widget.instructionDefById,
       audioPeaksFor: widget.audioPeaksFor,
-      projectFps: widget.projectFps,
+      projectFrameRate: widget.projectFrameRate,
       onRemoveAudioClip: widget.onRemoveAudioClip,
       onDropMediaAsset: widget.onDropMediaAsset,
       commaDrag: widget.commaDrag,
@@ -292,7 +294,7 @@ class _TimelineFrameRowsScrollBodyState
             leadingFrameSpacerWidth: widget.leadingFrameSpacerWidth,
             trailingFrameSpacerWidth: widget.trailingFrameSpacerWidth,
             metrics: widget.metrics,
-            fps: widget.projectFps,
+            frameRate: widget.projectFrameRate,
             audioPeaksFor: widget.audioPeaksFor,
             onSetClipOffset: widget.onSetAudioClipOffset == null
                 ? null
@@ -366,7 +368,7 @@ class _TimelineFrameRowsScrollBodyState
       leadingFrameSpacerWidth: widget.leadingFrameSpacerWidth,
       trailingFrameSpacerWidth: widget.trailingFrameSpacerWidth,
       metrics: widget.metrics,
-      projectFps: widget.projectFps,
+      projectFrameRate: widget.projectFrameRate,
       exposureStateForLayer: widget.exposureStateForLayer,
       frameNameForLayer: widget.frameNameForLayer,
       hasCommaDrag: widget.commaDrag != null,

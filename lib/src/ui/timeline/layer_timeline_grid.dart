@@ -51,6 +51,8 @@ import 'timeline_section_bracket_rail.dart';
 import 'timeline_vertical_scrollbar_rail.dart';
 import 'timeline_visible_range.dart';
 
+import '../../models/project_frame_rate.dart';
+
 class LayerTimelineGrid extends StatefulWidget {
   const LayerTimelineGrid({
     super.key,
@@ -68,7 +70,7 @@ class LayerTimelineGrid extends StatefulWidget {
     this.onActivateCell,
     this.instructionDefById,
     this.audioPeaksFor,
-    this.projectFps = 24,
+    this.projectFrameRate = ProjectFrameRate.fps24,
     this.showSeconds = false,
     this.onRemoveAudioClip,
     this.onDropMediaAsset,
@@ -171,7 +173,7 @@ class LayerTimelineGrid extends StatefulWidget {
 
   /// Waveform peaks for SE rows' audio clips + the removal hook.
   final AudioPeaks? Function(String filePath)? audioPeaksFor;
-  final int projectFps;
+  final ProjectFrameRate projectFrameRate;
 
   /// The ruler's bottom-line mode (UI-R10 #27): seconds display repeats
   /// 1..fps per second instead of absolute frame numbers.
@@ -345,6 +347,11 @@ typedef _LegendMemoInputs = ({
 });
 
 class _LayerTimelineGridState extends State<LayerTimelineGrid> {
+  /// The integer rate the grid COUNTS with — the ruler's second marks
+  /// and row labels are frame arithmetic, never real time (see
+  /// [ProjectFrameRate.countingBase]).
+  int get _countingFps => widget.projectFrameRate.countingBase;
+
   TimelineGridMetrics get _metrics => widget.metrics;
 
   /// Identity-gated RAIL row memo (UI-R7 #1, the frame rows' memo idiom):
@@ -1258,7 +1265,7 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                                                   onSelectFrame:
                                                       _selectClampedFrameFromRuler,
                                                   framesPerSecond:
-                                                      widget.projectFps,
+                                                      _countingFps,
                                                   showSeconds:
                                                       widget.showSeconds,
                                                   isFrameCached:
@@ -1598,8 +1605,8 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                                                             .instructionDefById,
                                                         audioPeaksFor: widget
                                                             .audioPeaksFor,
-                                                        projectFps:
-                                                            widget.projectFps,
+                                                        projectFrameRate:
+                                                            widget.projectFrameRate,
                                                         onRemoveAudioClip: widget
                                                             .onRemoveAudioClip,
                                                         onDropMediaAsset: widget
@@ -1642,8 +1649,7 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                                                                 _metrics
                                                                     .frameCellWidth,
                                                             framesPerSecond:
-                                                                widget
-                                                                    .projectFps,
+                                                                _countingFps,
                                                             colorScheme:
                                                                 colorScheme,
                                                             crossCellExtent:

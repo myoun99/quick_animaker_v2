@@ -1000,7 +1000,7 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
           onPixelsPerFrameChanged: widget.onPixelsPerFrameChanged,
           showSeconds: widget.showSeconds,
           onShowSecondsChanged: widget.onShowSecondsChanged,
-          projectFps: _session.projectFps,
+          projectFrameRate: _session.projectFrameRate,
           expandedLaneLayerIds: widget.expandedLaneLayerIds,
           onToggleLayerLanes: widget.onToggleLayerLanes,
           hiddenSections: widget.hiddenSections,

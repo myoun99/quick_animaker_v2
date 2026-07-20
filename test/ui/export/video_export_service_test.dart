@@ -2,6 +2,7 @@ import 'dart:io';
 import 'dart:ui' as ui;
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:quick_animaker_v2/src/models/project_frame_rate.dart';
 import 'package:quick_animaker_v2/src/ui/export/video_export_service.dart';
 
 import 'fake_ffmpeg_process.dart';
@@ -27,7 +28,7 @@ void main() {
       count: 3,
       renderImage: noImage,
       outputFilePath: 'C:/out/take.mp4',
-      fps: 12,
+      frameRate: const ProjectFrameRate.integer(12),
     );
 
     expect(capturedExecutable, 'ffmpeg');
@@ -42,7 +43,7 @@ void main() {
   group('buildFfmpegArguments', () {
     test('without audio the command is the original video-only shape', () {
       final args = VideoExportService.buildFfmpegArguments(
-        fps: 24,
+        frameRate: const ProjectFrameRate.integer(24),
         outputFilePath: 'out.mp4',
       );
 
@@ -55,7 +56,7 @@ void main() {
 
     test('one clip: seek/trim at the input, delay in the graph, aac out', () {
       final args = VideoExportService.buildFfmpegArguments(
-        fps: 24,
+        frameRate: const ProjectFrameRate.integer(24),
         outputFilePath: 'out.mp4',
         audioClips: const [
           ExportAudioClip(
@@ -83,7 +84,7 @@ void main() {
 
     test('multiple clips mix without renormalizing volumes', () {
       final args = VideoExportService.buildFfmpegArguments(
-        fps: 24,
+        frameRate: const ProjectFrameRate.integer(24),
         outputFilePath: 'out.mp4',
         audioClips: const [
           ExportAudioClip(filePath: 'a.wav', durationSeconds: 1),
@@ -106,7 +107,7 @@ void main() {
 
     test('gain and fades chain volume/afade before adelay, in clip time', () {
       final args = VideoExportService.buildFfmpegArguments(
-        fps: 24,
+        frameRate: const ProjectFrameRate.integer(24),
         outputFilePath: 'out.mp4',
         audioClips: const [
           ExportAudioClip(
@@ -132,7 +133,7 @@ void main() {
 
     test('a default envelope emits the exact legacy adelay-only chain', () {
       final args = VideoExportService.buildFfmpegArguments(
-        fps: 24,
+        frameRate: const ProjectFrameRate.integer(24),
         outputFilePath: 'out.mp4',
         audioClips: const [
           ExportAudioClip(
@@ -161,7 +162,7 @@ void main() {
         count: 1,
         renderImage: noImage,
         outputFilePath: 'out.mp4',
-        fps: 24,
+        frameRate: const ProjectFrameRate.integer(24),
       ),
       throwsA(
         isA<VideoExportException>().having(
@@ -187,7 +188,7 @@ void main() {
         count: 1,
         renderImage: noImage,
         outputFilePath: 'out.mp4',
-        fps: 24,
+        frameRate: const ProjectFrameRate.integer(24),
       ),
       throwsA(
         isA<VideoExportException>().having(
@@ -209,7 +210,7 @@ void main() {
       count: 5,
       renderImage: noImage,
       outputFilePath: 'out.mp4',
-      fps: 24,
+      frameRate: const ProjectFrameRate.integer(24),
       isCancelled: () => true,
     );
 
@@ -231,7 +232,7 @@ void main() {
         return noImage(index);
       },
       outputFilePath: 'out.mp4',
-      fps: 24,
+      frameRate: const ProjectFrameRate.integer(24),
       isCancelled: () => rendered >= 2,
     );
 

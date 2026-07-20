@@ -3,6 +3,7 @@ import 'package:quick_animaker_v2/src/models/canvas_size.dart';
 import 'package:quick_animaker_v2/src/models/cut.dart';
 import 'package:quick_animaker_v2/src/models/cut_id.dart';
 import 'package:quick_animaker_v2/src/models/project.dart';
+import 'package:quick_animaker_v2/src/models/project_frame_rate.dart';
 import 'package:quick_animaker_v2/src/models/project_id.dart';
 import 'package:quick_animaker_v2/src/models/track.dart';
 import 'package:quick_animaker_v2/src/models/track_id.dart';
@@ -23,7 +24,7 @@ void main() {
     id: const ProjectId('project'),
     name: 'Project',
     // fps 10: one frame per 100ms keeps the test math readable.
-    fps: 10,
+    frameRate: const ProjectFrameRate.integer(10),
     tracks: [
       Track(
         id: const TrackId('track'),
@@ -42,7 +43,7 @@ void main() {
       resolveProject: project,
       resolveActiveCutId: () => const CutId('cut-a'),
       resolveActiveTrackId: () => const TrackId('track'),
-      resolveFps: () => 10,
+      resolveFrameRate: () => const ProjectFrameRate.integer(10),
       onStopped: onStopped,
       onPlaylistWarmRequested: onWarm == null
           ? null

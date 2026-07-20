@@ -5,6 +5,7 @@ import 'package:flutter/scheduler.dart';
 
 import '../../models/cut_id.dart';
 import '../../models/project.dart';
+import '../../models/project_frame_rate.dart';
 import '../../models/track_id.dart';
 import '../../services/playback/playback_frame_mapping.dart';
 import '../storyboard_timeline_layout.dart';
@@ -26,7 +27,7 @@ class CanvasPlaybackController extends ChangeNotifier {
     required this.resolveProject,
     required this.resolveActiveCutId,
     required this.resolveActiveTrackId,
-    required this.resolveFps,
+    required this.resolveFrameRate,
     this.onStopped,
     this.onStoppedInGap,
     this.onPlaylistWarmRequested,
@@ -38,7 +39,7 @@ class CanvasPlaybackController extends ChangeNotifier {
   /// active-cut-scoped [play] resolves an empty playlist and no-ops.
   final CutId? Function() resolveActiveCutId;
   final TrackId Function() resolveActiveTrackId;
-  final int Function() resolveFps;
+  final ProjectFrameRate Function() resolveFrameRate;
 
   /// Fired on [stop] with the last position so the owner can sync the real
   /// playhead (and switch the active cut after a play-all run).
@@ -333,7 +334,8 @@ class CanvasPlaybackController extends ChangeNotifier {
       return;
     }
     final total = _playbackTotalFrames(playlist);
-    var frame = _baseGlobalFrame + elapsedToGlobalFrame(elapsed, resolveFps());
+    var frame =
+        _baseGlobalFrame + elapsedToGlobalFrame(elapsed, resolveFrameRate());
     // Dropped-frame accounting on the raw (pre-wrap) frame: any advance of
     // more than one frame between ticks means rendering fell behind. The
     // counter reports the CURRENT loop pass only, resetting on wrap.

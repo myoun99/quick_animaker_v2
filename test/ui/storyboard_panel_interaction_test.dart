@@ -6,6 +6,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:quick_animaker_v2/src/models/canvas_point.dart';
 import 'package:quick_animaker_v2/src/models/canvas_size.dart';
 import 'package:quick_animaker_v2/src/models/cut.dart';
+import 'package:quick_animaker_v2/src/models/project_frame_rate.dart';
 import 'package:quick_animaker_v2/src/models/transform_track.dart';
 import 'package:quick_animaker_v2/src/models/cut_id.dart';
 import 'package:quick_animaker_v2/src/models/frame.dart';
@@ -954,7 +955,7 @@ void main() {
         activeCutId: const CutId('cut-a'),
         onCutSelected: (_) {},
         showSeconds: true,
-        projectFps: 24,
+        projectFrameRate: const ProjectFrameRate.integer(24),
       );
       expect(
         tester
@@ -1249,7 +1250,7 @@ Future<void> _pumpStoryboardPanel(
   ui.Image? Function(Cut cut)? thumbnailFor,
   double pixelsPerFrame = 8,
   bool showSeconds = false,
-  int projectFps = 24,
+  ProjectFrameRate projectFrameRate = const ProjectFrameRate.integer(24),
 }) async {
   // The rail widened to the timeline's 372 (UI-R5): keep every cut block
   // of the three-cut fixtures on screen for the drag gestures.
@@ -1278,7 +1279,7 @@ Future<void> _pumpStoryboardPanel(
           thumbnailFor: thumbnailFor,
           pixelsPerFrame: pixelsPerFrame,
           showSeconds: showSeconds,
-          projectFps: projectFps,
+          projectFrameRate: projectFrameRate,
         ),
       ),
     ),

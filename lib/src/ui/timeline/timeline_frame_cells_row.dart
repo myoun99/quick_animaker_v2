@@ -8,6 +8,7 @@ import '../../models/layer.dart';
 import '../../services/audio/audio_peaks_extractor.dart';
 import '../../models/layer_id.dart';
 import '../../models/layer_kind.dart';
+import '../../models/project_frame_rate.dart';
 import '../../models/timeline_coverage.dart';
 import 'timeline_cell_editor_policy.dart';
 import 'timeline_cell_exposure_state.dart';
@@ -49,7 +50,7 @@ class TimelineFrameCellsRow extends StatelessWidget {
     this.onActivateCell,
     this.instructionDefById,
     this.audioPeaksFor,
-    this.projectFps = 24,
+    this.projectFrameRate = ProjectFrameRate.fps24,
     this.onRemoveAudioClip,
     this.onDropMediaAsset,
     this.commaDrag,
@@ -96,7 +97,7 @@ class TimelineFrameCellsRow extends StatelessWidget {
 
   /// Waveform peaks resolver for SE rows' audio clips; null hides them.
   final AudioPeaks? Function(String filePath)? audioPeaksFor;
-  final int projectFps;
+  final ProjectFrameRate projectFrameRate;
 
   /// Removes an audio clip by index (the waveform's context menu).
   final void Function(LayerId layerId, int clipIndex)? onRemoveAudioClip;
@@ -244,7 +245,7 @@ class TimelineFrameCellsRow extends StatelessWidget {
             frameCellExtent: metrics.frameCellWidth,
             crossAxisExtent: metrics.layerRowHeight,
             axis: Axis.horizontal,
-            fps: projectFps,
+            frameRate: projectFrameRate,
             audioPeaksFor: audioPeaksFor!,
             onRemoveClip: onRemoveAudioClip == null
                 ? null

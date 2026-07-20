@@ -26,6 +26,8 @@ import 'timeline_orientation.dart';
 import 'timeline_section_policy.dart';
 import 'xsheet_timeline_grid.dart';
 
+import '../../models/project_frame_rate.dart';
+
 class TimelinePanel extends StatefulWidget {
   const TimelinePanel({
     super.key,
@@ -74,7 +76,7 @@ class TimelinePanel extends StatefulWidget {
     this.onPixelsPerFrameChanged,
     this.showSeconds = false,
     this.onShowSecondsChanged,
-    this.projectFps = 24,
+    this.projectFrameRate = ProjectFrameRate.fps24,
     this.expandedLaneLayerIds = const {},
     this.onToggleLayerLanes,
     this.lanesForLayer,
@@ -147,7 +149,7 @@ class TimelinePanel extends StatefulWidget {
   instructionDefById;
 
   /// Waveform peaks for SE rows' audio clips + the removal hook (both
-  /// orientations; frames↔seconds via [projectFps]).
+  /// orientations; frames↔seconds via [projectFrameRate]).
   final AudioPeaks? Function(String filePath)? audioPeaksFor;
   final void Function(LayerId layerId, int clipIndex)? onRemoveAudioClip;
 
@@ -250,7 +252,7 @@ class TimelinePanel extends StatefulWidget {
   /// storyboard cut totals (conte-sheet `s+ff` notation).
   final bool showSeconds;
   final ValueChanged<bool>? onShowSecondsChanged;
-  final int projectFps;
+  final ProjectFrameRate projectFrameRate;
 
   /// AE-style property lanes (twirl-down rows under a layer): expansion
   /// state, toggle and the generic lane provider.
@@ -340,7 +342,7 @@ class _TimelinePanelState extends State<TimelinePanel> {
                 const SizedBox(width: 8),
                 TimelineViewCluster(
                   frameCursor: widget.frameCursor,
-                  projectFps: widget.projectFps,
+                  projectFrameRate: widget.projectFrameRate,
                   showSeconds: widget.showSeconds,
                   onShowSecondsChanged: widget.onShowSecondsChanged,
                   pixelsPerFrame: widget.pixelsPerFrame,
@@ -381,7 +383,7 @@ class _TimelinePanelState extends State<TimelinePanel> {
                     onActivateCell: widget.onActivateCell,
                     instructionDefById: widget.instructionDefById,
                     audioPeaksFor: widget.audioPeaksFor,
-                    projectFps: widget.projectFps,
+                    projectFrameRate: widget.projectFrameRate,
                     showSeconds: widget.showSeconds,
                     onRemoveAudioClip: widget.onRemoveAudioClip,
                     onDropMediaAsset: widget.onDropMediaAsset,
@@ -445,7 +447,7 @@ class _TimelinePanelState extends State<TimelinePanel> {
                     onActivateCell: widget.onActivateCell,
                     instructionDefById: widget.instructionDefById,
                     audioPeaksFor: widget.audioPeaksFor,
-                    projectFps: widget.projectFps,
+                    projectFrameRate: widget.projectFrameRate,
                     showSeconds: widget.showSeconds,
                     onRemoveAudioClip: widget.onRemoveAudioClip,
                     onDropMediaAsset: widget.onDropMediaAsset,

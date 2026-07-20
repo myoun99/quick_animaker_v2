@@ -8,6 +8,7 @@ import 'package:quick_animaker_v2/src/models/frame_id.dart';
 import 'package:quick_animaker_v2/src/models/layer.dart';
 import 'package:quick_animaker_v2/src/models/layer_id.dart';
 import 'package:quick_animaker_v2/src/models/project.dart';
+import 'package:quick_animaker_v2/src/models/project_frame_rate.dart';
 import 'package:quick_animaker_v2/src/models/project_id.dart';
 import 'package:quick_animaker_v2/src/models/track.dart';
 import 'package:quick_animaker_v2/src/models/track_id.dart';
@@ -18,6 +19,8 @@ import 'package:quick_animaker_v2/src/ui/export/export_plan.dart';
 import 'package:quick_animaker_v2/src/ui/export/video_export_service.dart';
 
 void main() {
+  const rate10 = ProjectFrameRate.integer(10);
+
   Frame frame(String id) =>
       Frame(id: FrameId(id), duration: 1, strokes: const []);
 
@@ -448,7 +451,7 @@ void main() {
         range: ExportRange.activeCut,
       );
 
-      final clips = buildExportAudioPlan(plan: plan, fps: 10);
+      final clips = buildExportAudioPlan(plan: plan, frameRate: rate10);
 
       expect(clips.map((clip) => clip.filePath), ['b.wav']);
     });
@@ -466,7 +469,7 @@ void main() {
         range: ExportRange.allCuts,
       );
 
-      final clips = buildExportAudioPlan(plan: plan, fps: 10);
+      final clips = buildExportAudioPlan(plan: plan, frameRate: rate10);
 
       expect(clips, const [
         // a.wav fills its whole cut.
@@ -499,7 +502,7 @@ void main() {
         rangeEndFrame: 5,
       );
 
-      final clips = buildExportAudioPlan(plan: plan, fps: 10);
+      final clips = buildExportAudioPlan(plan: plan, frameRate: rate10);
 
       expect(clips, const [
         // a.wav began 4 frames before the range: seek 0.4s in, play from
@@ -538,7 +541,7 @@ void main() {
         range: ExportRange.allCuts,
       );
 
-      expect(buildExportAudioPlan(plan: fullPlan, fps: 10), const [
+      expect(buildExportAudioPlan(plan: fullPlan, frameRate: rate10), const [
         // The block starts at frame 2 with a 5-frame trim: the source is
         // seeked 0.5 s in, the video delay stays the block's position.
         ExportAudioClip(
@@ -560,7 +563,7 @@ void main() {
         rangeEndFrame: 7,
       );
 
-      expect(buildExportAudioPlan(plan: rangedPlan, fps: 10), const [
+      expect(buildExportAudioPlan(plan: rangedPlan, frameRate: rate10), const [
         // 2 frames of the block precede the range (0.2 s) + the 0.5 s trim.
         ExportAudioClip(
           filePath: 'a.wav',
@@ -600,7 +603,7 @@ void main() {
         includeGaps: true,
       );
       expect(
-        buildExportAudioPlan(plan: videoPlan, fps: 10, project: proj),
+        buildExportAudioPlan(plan: videoPlan, frameRate: rate10, project: proj),
         const [
           ExportAudioClip(
             filePath: 'g.wav',
@@ -624,7 +627,11 @@ void main() {
         range: ExportRange.allCuts,
       );
       expect(
-        buildExportAudioPlan(plan: collapsedPlan, fps: 10, project: proj),
+        buildExportAudioPlan(
+          plan: collapsedPlan,
+          frameRate: rate10,
+          project: proj,
+        ),
         const [
           ExportAudioClip(
             filePath: 'g.wav',
@@ -674,7 +681,7 @@ void main() {
         activeCutId: const CutId('a'),
         range: ExportRange.allCuts,
       );
-      expect(buildExportAudioPlan(plan: fullPlan, fps: 10), const [
+      expect(buildExportAudioPlan(plan: fullPlan, frameRate: rate10), const [
         ExportAudioClip(
           filePath: 'a.wav',
           delaySeconds: 0.2,
@@ -697,7 +704,7 @@ void main() {
         rangeStartFrame: 4,
         rangeEndFrame: 9,
       );
-      expect(buildExportAudioPlan(plan: rangedPlan, fps: 10), const [
+      expect(buildExportAudioPlan(plan: rangedPlan, frameRate: rate10), const [
         ExportAudioClip(
           filePath: 'a.wav',
           seekSeconds: 0.2,

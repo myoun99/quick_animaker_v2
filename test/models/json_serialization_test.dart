@@ -9,6 +9,7 @@ import 'package:quick_animaker_v2/src/models/layer.dart';
 import 'package:quick_animaker_v2/src/models/layer_id.dart';
 import 'package:quick_animaker_v2/src/models/layer_section_defaults.dart';
 import 'package:quick_animaker_v2/src/models/project.dart';
+import 'package:quick_animaker_v2/src/models/project_frame_rate.dart';
 import 'package:quick_animaker_v2/src/models/project_id.dart';
 import 'package:quick_animaker_v2/src/models/stroke.dart';
 import 'package:quick_animaker_v2/src/models/stroke_id.dart';
@@ -72,7 +73,7 @@ void main() {
         ),
       ],
       createdAt: DateTime.utc(2026, 6, 2),
-      fps: 24,
+      frameRate: const ProjectFrameRate.integer(24),
     );
 
     final restored = Project.fromJson(project.toJson());

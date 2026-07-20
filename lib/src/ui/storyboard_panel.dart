@@ -14,6 +14,7 @@ import '../models/layer.dart';
 import '../models/layer_id.dart';
 import '../models/layer_mark.dart';
 import '../models/project.dart';
+import '../models/project_frame_rate.dart';
 import '../models/se_audio_spans.dart';
 import '../models/timeline_coverage.dart' show TimelineBlockEdge, drawingBlocks;
 import '../models/track.dart';
@@ -173,7 +174,7 @@ class StoryboardPanel extends StatefulWidget {
     this.movieEnd,
     this.pixelsPerFrame = 8,
     this.showSeconds = false,
-    this.projectFps = 24,
+    this.projectFrameRate = ProjectFrameRate.fps24,
     this.playheadFrame,
     this.cacheProgress,
     this.onSeekGlobalFrame,
@@ -302,7 +303,7 @@ class StoryboardPanel extends StatefulWidget {
   /// Conte-sheet time display for the cut totals: frames (`48f`) or
   /// seconds+frames (`2+00`), toggled by the panel header's shared button.
   final bool showSeconds;
-  final int projectFps;
+  final ProjectFrameRate projectFrameRate;
 
   /// Track-global frame the playhead line sits on (playback position while
   /// playing, the active cut's playhead otherwise) — a LISTENABLE, the
@@ -455,6 +456,11 @@ class StoryboardPanel extends StatefulWidget {
 }
 
 class _StoryboardPanelState extends State<StoryboardPanel> {
+  /// The integer rate the grid COUNTS with — the ruler's second marks
+  /// and row labels are frame arithmetic, never real time (see
+  /// [ProjectFrameRate.countingBase]).
+  int get _countingFps => widget.projectFrameRate.countingBase;
+
   final ScrollController _verticalController = ScrollController();
   final ScrollController _horizontalController = ScrollController();
 
@@ -1017,7 +1023,7 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
           thumbnailFor: widget.thumbnailFor,
           timelineScale: scale,
           showSeconds: widget.showSeconds,
-          projectFps: widget.projectFps,
+          projectFrameRate: widget.projectFrameRate,
         ),
       ),
       if (widget.expandedTransformTracks.contains(track.id.value))
@@ -1048,7 +1054,7 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
       layoutEntries: entries,
       width: width,
       timelineScale: scale,
-      projectFps: widget.projectFps,
+      projectFrameRate: widget.projectFrameRate,
       audioPeaksFor: widget.audioPeaksFor,
       onSelectSeBlock: widget.onSelectSeBlock,
       seCommaDrag: widget.seCommaDrag,
@@ -1082,7 +1088,7 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
               layoutEntries: entries,
               width: width,
               timelineScale: scale,
-              projectFps: widget.projectFps,
+              projectFrameRate: widget.projectFrameRate,
               audioPeaksFor: widget.audioPeaksFor,
               activeCutId: widget.activeCutId,
               onSetAudioClipOffset: widget.onSetAudioClipOffset,
@@ -1389,7 +1395,7 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
                               onScrubEnd: widget.onScrubEnd,
                               isFrameCached: widget.isFrameCached,
                               onEdgeAutoPan: _autoPanRulerEdge,
-                              framesPerSecond: widget.projectFps,
+                              framesPerSecond: _countingFps,
                               showSeconds: widget.showSeconds,
                             ),
                             builder: (context, offset, child) =>
@@ -1499,7 +1505,7 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
                                                           timelineBaseGridAlpha,
                                                     ),
                                                 framesPerSecond:
-                                                    widget.projectFps,
+                                                    _countingFps,
                                                 colorScheme: colorScheme,
                                               ),
                                             ),
@@ -2382,7 +2388,7 @@ class _StoryboardSeRow extends StatelessWidget {
     required this.layoutEntries,
     required this.width,
     required this.timelineScale,
-    required this.projectFps,
+    required this.projectFrameRate,
     this.audioPeaksFor,
     this.onSelectSeBlock,
     this.seCommaDrag,
@@ -2396,7 +2402,7 @@ class _StoryboardSeRow extends StatelessWidget {
   final List<StoryboardTimelineLayoutEntry> layoutEntries;
   final double width;
   final TimelineScale timelineScale;
-  final int projectFps;
+  final ProjectFrameRate projectFrameRate;
   final AudioPeaks? Function(String filePath)? audioPeaksFor;
 
   /// Timeline parity: SE blocks tap-select (any cut) and EVERY block
@@ -2461,7 +2467,7 @@ class _StoryboardSeRow extends StatelessWidget {
           // timeline rows and playback).
           final endExclusive = math.min(
             span.startFrame +
-                peaks.durationFrames(projectFps) -
+                peaks.durationFrames(projectFrameRate) -
                 span.clip.offsetFrames,
             span.endFrameExclusive,
           );
@@ -2484,7 +2490,7 @@ class _StoryboardSeRow extends StatelessWidget {
                 child: CustomPaint(
                   painter: WaveformPainter(
                     peaks: peaks,
-                    fps: projectFps,
+                    frameRate: projectFrameRate,
                     pixelsPerFrame: timelineScale.pixelsPerFrame,
                     // Ink on the paper spans, like the timeline SE rows.
                     color: timelineDrawingInkColor.withValues(alpha: 0.22),
@@ -2620,7 +2626,7 @@ class _StoryboardAudioLaneRow extends StatelessWidget {
     required this.layoutEntries,
     required this.width,
     required this.timelineScale,
-    required this.projectFps,
+    required this.projectFrameRate,
     this.audioPeaksFor,
     this.activeCutId,
     this.onSetAudioClipOffset,
@@ -2634,7 +2640,7 @@ class _StoryboardAudioLaneRow extends StatelessWidget {
   final List<StoryboardTimelineLayoutEntry> layoutEntries;
   final double width;
   final TimelineScale timelineScale;
-  final int projectFps;
+  final ProjectFrameRate projectFrameRate;
   final AudioPeaks? Function(String filePath)? audioPeaksFor;
   final CutId? activeCutId;
   final void Function(LayerId layerId, int clipIndex, int offsetFrames)?
@@ -2669,7 +2675,7 @@ class _StoryboardAudioLaneRow extends StatelessWidget {
               leadingFrameSpacerWidth: 0,
               trailingFrameSpacerWidth: 0,
               metrics: laneMetrics,
-              fps: projectFps,
+              frameRate: projectFrameRate,
               audioPeaksFor: audioPeaksFor,
               keyPrefix: 'storyboard-${layer.id}',
               onSetClipOffset: onSetAudioClipOffset == null
@@ -3458,7 +3464,7 @@ class _StoryboardTrackRow extends StatelessWidget {
     required this.thumbnailFor,
     required this.timelineScale,
     required this.showSeconds,
-    required this.projectFps,
+    required this.projectFrameRate,
   });
 
   final Track track;
@@ -3475,11 +3481,11 @@ class _StoryboardTrackRow extends StatelessWidget {
   final ui.Image? Function(Cut cut)? thumbnailFor;
   final TimelineScale timelineScale;
   final bool showSeconds;
-  final int projectFps;
+  final ProjectFrameRate projectFrameRate;
 
   String _totalLabelFor(StoryboardTimelineLayoutEntry entry) {
     return showSeconds
-        ? timelineSecondsLabel(entry.endFrame, projectFps)
+        ? timelineSecondsLabel(entry.endFrame, projectFrameRate.countingBase)
         : '${entry.endFrame}f';
   }
 

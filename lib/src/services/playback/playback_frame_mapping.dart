@@ -1,11 +1,16 @@
 import '../../models/cut.dart';
 import '../../models/cut_id.dart';
+import '../../models/project_frame_rate.dart';
 import '../../ui/storyboard_timeline_layout.dart';
 
-/// Wall-clock elapsed time → global frame index at [fps]. Elapsed-based
+/// Wall-clock elapsed time → global frame index at [rate]. Elapsed-based
 /// mapping is what makes playback drop frames instead of slowing down.
-int elapsedToGlobalFrame(Duration elapsed, int fps) {
-  return (elapsed.inMicroseconds * fps) ~/ Duration.microsecondsPerSecond;
+///
+/// RT: the rate is the exact fraction, so a 23.976 project maps time to
+/// frames without the 0.1% error a rounded 24 would accumulate — after an
+/// hour that error is 3.6 seconds of drift.
+int elapsedToGlobalFrame(Duration elapsed, ProjectFrameRate rate) {
+  return rate.frameAtElapsed(elapsed);
 }
 
 /// Where a global playlist frame lands: which cut, and which local frame.

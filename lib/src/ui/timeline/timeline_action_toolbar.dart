@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import '../../models/attached_mode.dart';
 import '../../models/attached_placement.dart';
 import '../../models/layer_kind.dart';
+import '../../models/project_frame_rate.dart';
 import '../cut_command_group.dart';
 import '../editor_session_manager.dart';
 import '../widgets/panel_flyout.dart';
@@ -329,21 +330,26 @@ class TimelineActionToolbar extends StatelessWidget {
     ];
   }
 
-  /// R26 #32: the frame-rate presets. Integer rates only for now — the
-  /// NTSC pulldown rates (23.976 / 29.97) need the project's `fps` to
-  /// stop being an `int`, which is a separate migration (every timing
-  /// consumer does integer frame math today).
-  static const List<int> fpsPresets = [8, 12, 15, 24, 25, 30, 48, 50, 60];
+  /// R26 #32: the frame-rate presets. RT made the project rate an exact
+  /// rational, so the NTSC pulldown rates are here alongside the whole
+  /// ones — 23.976 is stored and played as 24000/1001, never as a
+  /// rounded decimal.
+  static const List<ProjectFrameRate> fpsPresets = ProjectFrameRate.presets;
 
   List<PanelFlyoutEntry> _fpsEntries(BuildContext context) {
-    final current = session.projectFps;
+    final current = session.projectFrameRate;
     return [
-      for (final fps in fpsPresets)
+      for (final rate in fpsPresets)
         PanelFlyoutItem(
-          keyValue: 'timeline-fps-$fps',
-          label: '$fps fps',
-          checked: fps == current,
-          onSelected: () => session.setProjectFps(fps),
+          // Integer rates keep their original key (`timeline-fps-24`);
+          // the pulldown rates key off the fraction, since `23.976` in a
+          // key string would be the same rounding we just removed.
+          keyValue: rate.isInteger
+              ? 'timeline-fps-${rate.numerator}'
+              : 'timeline-fps-${rate.numerator}-${rate.denominator}',
+          label: rate.label,
+          checked: rate == current,
+          onSelected: () => session.setProjectFrameRate(rate),
         ),
       const PanelFlyoutDivider(),
       PanelFlyoutItem(
@@ -540,7 +546,7 @@ class TimelineActionToolbar extends StatelessWidget {
                   // timed reads. One rate per project, never per cut.
                   PanelFlyoutButton(
                     key: const ValueKey<String>('timeline-fps-menu-button'),
-                    label: '${session.projectFps} fps',
+                    label: session.projectFrameRate.label,
                     tooltip: 'Project frame rate',
                     entriesBuilder: () => _fpsEntries(context),
                   ),

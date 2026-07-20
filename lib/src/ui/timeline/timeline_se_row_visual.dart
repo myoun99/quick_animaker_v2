@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../../models/layer.dart';
 import '../../models/layer_kind.dart';
+import '../../models/project_frame_rate.dart';
 import '../../models/se_audio_spans.dart';
 import '../../models/timeline_coverage.dart';
 import '../../services/audio/audio_peaks_extractor.dart';
@@ -182,7 +183,7 @@ List<Widget> timelineRowAudioOverlays({
   required double frameCellExtent,
   required double crossAxisExtent,
   required Axis axis,
-  required int fps,
+  required ProjectFrameRate frameRate,
   required AudioPeaks? Function(String filePath) audioPeaksFor,
   void Function(int clipIndex)? onRemoveClip,
   required Color color,
@@ -198,7 +199,7 @@ List<Widget> timelineRowAudioOverlays({
     // the same amount (a fully skipped-past file falls silent).
     final audibleFrames = math.min(
       span.lengthFrames,
-      peaks.durationFrames(fps) - span.clip.offsetFrames,
+      peaks.durationFrames(frameRate) - span.clip.offsetFrames,
     );
     if (audibleFrames <= 0) {
       continue;
@@ -222,7 +223,7 @@ List<Widget> timelineRowAudioOverlays({
         leadingShift: 0,
         strip: _AudioClipStrip(
           peaks: peaks,
-          fps: fps,
+          frameRate: frameRate,
           pixelsPerFrame: frameCellExtent,
           axis: axis,
           color: color,
@@ -374,7 +375,7 @@ Widget _positionedAudioWindow({
 class _AudioClipStrip extends StatelessWidget {
   const _AudioClipStrip({
     required this.peaks,
-    required this.fps,
+    required this.frameRate,
     required this.pixelsPerFrame,
     required this.axis,
     required this.color,
@@ -386,7 +387,7 @@ class _AudioClipStrip extends StatelessWidget {
   });
 
   final AudioPeaks peaks;
-  final int fps;
+  final ProjectFrameRate frameRate;
   final double pixelsPerFrame;
   final Axis axis;
   final Color color;
@@ -423,7 +424,7 @@ class _AudioClipStrip extends StatelessWidget {
     final waveform = CustomPaint(
       painter: WaveformPainter(
         peaks: peaks,
-        fps: fps,
+        frameRate: frameRate,
         pixelsPerFrame: pixelsPerFrame,
         color: color,
         axis: axis,

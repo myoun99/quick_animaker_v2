@@ -406,12 +406,12 @@ class ExportDialogState extends State<ExportDialog> {
           renderImage: (index) =>
               renderer.renderCompositeForVideo(videoPlan[index], sizeMode),
           outputFilePath: videoPath!,
-          fps: widget.session.projectFps,
+          frameRate: widget.session.projectFrameRate,
           // SE audio clips muxed onto the video timeline (silent export
           // when none are attached).
           audioClips: buildExportAudioPlan(
             plan: videoPlan,
-            fps: widget.session.projectFps,
+            frameRate: widget.session.projectFrameRate,
             // Track-owned SE rows lay in from the tracks' global axes.
             project: widget.session.repository.requireProject(),
           ),

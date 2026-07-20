@@ -307,7 +307,7 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
             // Global · cut-local pair (UI-R9 #6) — the channel already
             // follows scrubs, gap parking and playback ticks.
             globalFrame: _playheadGlobalFrame,
-            projectFps: _session.projectFps,
+            projectFrameRate: _session.projectFrameRate,
             showSeconds: widget.showSeconds,
             onShowSecondsChanged: widget.onShowSecondsChanged,
             pixelsPerFrame: widget.pixelsPerFrame,
@@ -359,7 +359,7 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
               onCutReordered: _session.reorderCut,
               pixelsPerFrame: widget.pixelsPerFrame,
               showSeconds: widget.showSeconds,
-              projectFps: _session.projectFps,
+              projectFrameRate: _session.projectFrameRate,
               // Edge-grip trims preview live and commit ONE undo on
               // release, like the timeline's comma drags.
               cutTrim: StoryboardCutTrimCallbacks(

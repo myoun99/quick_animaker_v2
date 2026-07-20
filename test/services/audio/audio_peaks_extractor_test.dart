@@ -4,6 +4,7 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:quick_animaker_v2/src/models/project_frame_rate.dart';
 import 'package:quick_animaker_v2/src/services/audio/audio_peaks_extractor.dart';
 
 /// Stands in for ffmpeg decoding to PCM: emits [pcm] on stdout in small
@@ -75,7 +76,7 @@ void main() {
         expect(peak, closeTo(0.5, 0.001));
       }
       expect(peaks.durationSeconds, closeTo(1.0, 0.001));
-      expect(peaks.durationFrames(24), 24);
+      expect(peaks.durationFrames(const ProjectFrameRate.integer(24)), 24);
     },
   );
 

@@ -6,6 +6,7 @@ import '../../models/frame.dart';
 import '../../models/layer.dart';
 import '../../models/layer_kind.dart';
 import '../../models/project.dart';
+import '../../models/project_frame_rate.dart';
 import '../../models/se_audio_spans.dart';
 import '../../models/track.dart';
 import 'video_export_service.dart' show ExportAudioClip;
@@ -197,11 +198,10 @@ List<ExportFrameTask> buildExportFramePlan({
 /// bleeds into the next cut); shorter sources simply end early.
 List<ExportAudioClip> buildExportAudioPlan({
   required List<ExportFrameTask> plan,
-  required int fps,
+  required ProjectFrameRate frameRate,
   Project? project,
 }) {
   final clips = <ExportAudioClip>[];
-  final safeFps = math.max(1, fps);
 
   void emit({
     required int spanExportStart,
@@ -228,13 +228,14 @@ List<ExportAudioClip> buildExportAudioPlan({
         filePath: span.clip.filePath,
         // The clip's offset trim seeks past the skipped file head on top
         // of any range clipping.
-        seekSeconds:
-            (audibleStart - spanExportStart + span.clip.offsetFrames) / safeFps,
-        delaySeconds: audibleStart / safeFps,
-        durationSeconds: audibleFrames / safeFps,
+        seekSeconds: frameRate.frameStartSeconds(
+          audibleStart - spanExportStart + span.clip.offsetFrames,
+        ),
+        delaySeconds: frameRate.frameStartSeconds(audibleStart),
+        durationSeconds: frameRate.frameStartSeconds(audibleFrames),
         gain: span.clip.gain,
-        fadeInSeconds: fadeInFrames / safeFps,
-        fadeOutSeconds: fadeOutFrames / safeFps,
+        fadeInSeconds: frameRate.frameStartSeconds(fadeInFrames),
+        fadeOutSeconds: frameRate.frameStartSeconds(fadeOutFrames),
       ),
     );
   }
