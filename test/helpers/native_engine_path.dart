@@ -47,3 +47,17 @@ const String nativeEngineMissingSkipReason =
     'cmake -S packages/qa_native/src -B build/native_standalone && '
     'cmake --build build/native_standalone --config Release '
     '(or set QA_ENGINE_PATH)';
+
+/// Whether a missing engine must FAIL rather than skip.
+///
+/// A skipped parity suite and a passing one look identical in a CI summary,
+/// and this project has now been bitten by that twice: #614 (the pins were
+/// hardcoded to a Windows path, so macOS and Linux could only skip) and the
+/// Linux job that never built an engine at all. Every CI job that builds a
+/// binary sets `QA_REQUIRE_NATIVE=1`, so if the build silently stops
+/// producing one, the suites say so instead of going quiet.
+///
+/// Local runs leave it unset and keep skipping gracefully — nobody should
+/// need cmake installed to run the Dart tests.
+bool get nativeEngineRequired =>
+    Platform.environment['QA_REQUIRE_NATIVE'] == '1';

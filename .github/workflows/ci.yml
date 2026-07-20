@@ -67,6 +67,7 @@ jobs:
       - name: Run tests against the gcc-built engine
         env:
           QA_ENGINE_PATH: ${{ github.workspace }}/build/native_standalone/libqa_engine.so
+          QA_REQUIRE_NATIVE: '1'
         run: flutter test
 
   android:
@@ -113,4 +114,5 @@ jobs:
       - name: Run tests with the engine on PATH
         env:
           QA_ENGINE_PATH: build/native_standalone/Release/qa_engine.dll
+          QA_REQUIRE_NATIVE: '1'
         run: flutter test
