@@ -1,9 +1,10 @@
-import 'dart:io';
 import 'dart:math';
 import 'dart:typed_data';
 import 'dart:ui' show Color;
 
 import 'package:flutter_test/flutter_test.dart';
+
+import '../helpers/native_engine_path.dart';
 import 'package:quick_animaker_v2/src/native/qa_native_engine.dart';
 import 'package:quick_animaker_v2/src/ui/timeline/timeline_grid_tile_ops.dart';
 
@@ -13,9 +14,10 @@ import 'package:quick_animaker_v2/src/ui/timeline/timeline_grid_tile_ops.dart';
 /// both paths and compared per pixel. Skips (loudly) when no locally
 /// built binary is found.
 void main() {
-  final dllPath =
-      '${Directory.current.path}\\build\\native_standalone\\Release\\qa_engine.dll';
-  final available = File(dllPath).existsSync();
+  // R26/2A: resolved per platform (and via QA_ENGINE_PATH on CI) so these
+  // byte-parity pins are not silently Windows-only.
+  final dllPath = nativeEngineLibraryPathOrNull();
+  final available = dllPath != null;
 
   setUp(() {
     QaNativeEngine.debugResetForTests();

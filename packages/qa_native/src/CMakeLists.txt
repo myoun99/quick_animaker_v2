@@ -37,9 +37,16 @@ if(MSVC)
   target_compile_options(qa_engine PRIVATE /O2 /fp:precise)
 else()
   # -O3 auto-vectorizes the pixel loops (SSE/AVX on x86, NEON on ARM);
-  # no hand-written intrinsics needed. fp semantics stay strict so the
-  # double math matches the Dart reference byte-exactly.
-  target_compile_options(qa_engine PRIVATE -O3)
+  # no hand-written intrinsics needed.
+  #
+  # -ffp-contract=off is the byte-parity contract, not a micro-tuning
+  # knob: clang fuses `a*b + c` into a single FMA whenever the target has
+  # one, and an FMA rounds ONCE where Dart rounds twice. On x86 that
+  # never fired (no FMA in the baseline target) so five rounds of engine
+  # work looked fine — the first parity run on Apple silicon came back
+  # 182 where the reference says 181. Contraction stays off so the same
+  # source produces the same pixels on every CPU.
+  target_compile_options(qa_engine PRIVATE -O3 -ffp-contract=off)
   find_library(QA_M_LIB m)
   if(QA_M_LIB)
     target_link_libraries(qa_engine ${QA_M_LIB})

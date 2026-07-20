@@ -1,7 +1,8 @@
-import 'dart:io';
 import 'dart:math';
 
 import 'package:flutter_test/flutter_test.dart';
+
+import '../helpers/native_engine_path.dart';
 import 'package:quick_animaker_v2/src/models/brush_dab.dart';
 import 'package:quick_animaker_v2/src/models/brush_tip_shape.dart';
 import 'package:quick_animaker_v2/src/models/canvas_point.dart';
@@ -15,9 +16,10 @@ import 'package:quick_animaker_v2/src/services/brush_tip_stamp_cache.dart';
 /// randomized dabs, resolved through the tip-stamp cache exactly like
 /// the real input funnel. Skips loudly without the locally built DLL.
 void main() {
-  final dllPath =
-      '${Directory.current.path}\\build\\native_standalone\\Release\\qa_engine.dll';
-  final available = File(dllPath).existsSync();
+  // R26/2A: resolved per platform (and via QA_ENGINE_PATH on CI) so these
+  // byte-parity pins are not silently Windows-only.
+  final dllPath = nativeEngineLibraryPathOrNull();
+  final available = dllPath != null;
 
   tearDown(() {
     QaNativeEngine.debugResetForTests();
