@@ -1,0 +1,34 @@
+name: qa_native
+description: >-
+  QuickAnimaker's native core as an FFI plugin: ONE portable C source,
+  compiled into the app by each platform's own toolchain.
+version: 0.0.1
+publish_to: none
+
+environment:
+  sdk: ^3.11.3
+  flutter: '>=3.10.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+# An FFI plugin has no platform channels and no Dart entry point of its
+# own: declaring the platforms is what makes each platform's build
+# compile packages/qa_native/src and ship the result with the app.
+#
+# WINDOWS IS DELIBERATELY ABSENT (2A staging): the app's Windows runner
+# already builds the same sources through native/CMakeLists.txt, and two
+# builders producing qa_engine.dll would collide. Windows moves here last,
+# once the other platforms are proven green on CI.
+flutter:
+  plugin:
+    platforms:
+      android:
+        ffiPlugin: true
+      ios:
+        ffiPlugin: true
+      linux:
+        ffiPlugin: true
+      macos:
+        ffiPlugin: true
