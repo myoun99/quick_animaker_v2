@@ -84,8 +84,8 @@ void main() {
     expect(data[5].kind, TimesheetCellKind.held);
   });
 
-  test('a rear HOLD (止め) prints the hold word normally and ONE verbatim '
-      'label at the ghost start in DATA mode', () {
+  test('R26 #26: a rear HOLD prints the hold word normally and, in DATA '
+      'mode, ONE cel at the run start with held rows after it', () {
     var layer = Layer(
       id: const LayerId('h'),
       name: 'H',
@@ -120,11 +120,61 @@ void main() {
     expect(notation[2].kind, TimesheetCellKind.empty);
 
     final data = _document(layer, dataSheet: true).columns.first.cells;
-    // One drawing label at the hold ghost's start (the XDTS value-change
-    // row), then plain held rows to the cut end — no label tiling.
-    expect(data[2].kind, TimesheetCellKind.drawing);
-    expect(data[2].label, '1');
-    for (var row = 3; row < 12; row += 1) {
+    // R26 #26: a hold is the SAME cel exposed longer — the real data is
+    // ONE drawing at row 0 held to the cut end, never a second label at
+    // the ghost's start.
+    expect(data[0].kind, TimesheetCellKind.drawing);
+    expect(data[0].label, '1');
+    expect(data[0].spanLength, 12, reason: 'the run swallows the hold');
+    for (var row = 1; row < 12; row += 1) {
+      expect(data[row].kind, TimesheetCellKind.held, reason: 'row $row');
+      expect(data[row].label, isNull, reason: 'row $row prints no cel');
+    }
+  });
+
+  test('R26 #26: a FRONT + REAR hold around one block is ONE cel in DATA '
+      'mode — the label prints at the fused run start only', () {
+    var layer = Layer(
+      id: const LayerId('h'),
+      name: 'H',
+      frames: [
+        Frame(
+          id: const FrameId('cel'),
+          name: '1',
+          duration: 1,
+          strokes: const [],
+        ),
+      ],
+      timeline: const {
+        4: TimelineExposure.drawing(FrameId('cel'), length: 2),
+      },
+      runBehaviors: const [
+        TimelineRunBehavior(
+          anchorFrameId: FrameId('cel'),
+          side: TimelineRunEdgeSide.start,
+          mode: TimelineRunEdgeMode.hold,
+        ),
+        TimelineRunBehavior(
+          anchorFrameId: FrameId('cel'),
+          side: TimelineRunEdgeSide.end,
+          mode: TimelineRunEdgeMode.hold,
+        ),
+      ],
+    );
+    layer = rederiveRunBehaviors(layer, cutFrameCount: 12);
+
+    final data = _document(layer, dataSheet: true).columns.first.cells;
+    final drawingRows = [
+      for (var row = 0; row < 12; row += 1)
+        if (data[row].kind == TimesheetCellKind.drawing) row,
+    ];
+    expect(
+      drawingRows,
+      <int>[0],
+      reason: 'one cel, at the first row of the fused run',
+    );
+    expect(data[0].label, '1');
+    for (var row = 1; row < 12; row += 1) {
       expect(data[row].kind, TimesheetCellKind.held, reason: 'row $row');
     }
   });

@@ -380,6 +380,22 @@ class TimelineController {
     fillsByLayer, {
     String description = 'Create selected cells',
   }) {
+    _executeCommands(
+      drawingFramesCommandsForLayers(fillsByLayer),
+      description: description,
+    );
+  }
+
+  /// The same authoring as [createDrawingFramesForLayers], handed back as
+  /// commands so a caller can fold them into a LARGER single undo step —
+  /// the range create spans camera/instruction rows too (R26 #1).
+  List<Command> drawingFramesCommandsForLayers(
+    Map<
+      LayerId,
+      List<({int startIndex, int length, FrameId frameId, String? name})>
+    >
+    fillsByLayer,
+  ) {
     final commands = <Command>[];
     for (final entry in fillsByLayer.entries) {
       final before = _requireLayer(entry.key);
@@ -429,7 +445,7 @@ class TimelineController {
         ),
       );
     }
-    _executeCommands(commands, description: description);
+    return commands;
   }
 
   /// The cross-layer form (UI-R17 #8): every layer's deletions compose

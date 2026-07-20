@@ -108,6 +108,17 @@ import 'timeline/transform_lane_editing.dart'
         transformTrackWithLaneKeyToggled,
         transformTrackWithLaneKeysShifted;
 
+/// A planned SE row-change pair in COMMIT (global track) form: the source
+/// row after its blocks leave, the target row after they arrive.
+typedef SeRowMovePair = ({
+  LayerId sourceId,
+  LayerId targetId,
+  Layer sourceBefore,
+  Layer sourceAfter,
+  Layer targetBefore,
+  Layer targetAfter,
+});
+
 /// Owns the editable project session for [HomePage]: the repository, undo
 /// history, cut/layer/timeline controllers, the cut command coordinator and the
 /// transient clipboards.
@@ -1963,23 +1974,30 @@ class EditorSessionManager extends ChangeNotifier {
       case LayerKind.animation:
       case LayerKind.storyboard:
       case LayerKind.art:
-        // With an attach row active, the new regular layer lands ABOVE the
-        // whole attach group — never inside it (the list keeps a base's
-        // attach rows adjacent, W5).
+        // An attach group is INDIVISIBLE (R26 #36): a new regular layer
+        // lands past the whole group, never between a base and its attach
+        // rows — whether the active row is the base itself or one of its
+        // attach rows (W5).
         final active = activeLayer;
-        if (active != null && isAttachedLayer(active)) {
+        final baseId = active == null
+            ? null
+            : isAttachedLayer(active)
+            ? active.attachedToLayerId
+            : active.id;
+        if (baseId != null) {
           final cut = requireActiveCut;
-          _layerController.addLayer(
-            layer: createDefaultAnimationLayer(
-              layerId: layerId,
-              cut: cut,
-            ).copyWith(kind: kind),
-            insertionIndex: attachedGroupEndIndex(
-              active.attachedToLayerId!,
-              cut.layers,
-            ),
-          );
-          break;
+          final groupEnd = attachedGroupEndIndex(baseId, cut.layers);
+          final baseIndex = cut.layers.indexWhere((l) => l.id == baseId);
+          if (groupEnd > baseIndex + 1) {
+            _layerController.addLayer(
+              layer: createDefaultAnimationLayer(
+                layerId: layerId,
+                cut: cut,
+              ).copyWith(kind: kind),
+              insertionIndex: groupEnd,
+            );
+            break;
+          }
         }
         _layerController.addLayerWithDefaults(layerId: layerId, kind: kind);
       case LayerKind.camera:
@@ -3163,17 +3181,28 @@ class EditorSessionManager extends ChangeNotifier {
           LayerId,
           List<({int startIndex, int length, FrameId frameId, String? name})>
         >{};
+    // R26 #1: every row of the selection composes into ONE undo step.
+    // Camera goes FIRST — its undo restores a whole-project snapshot, so it
+    // must be the last command undone (CompositeCommand undoes in reverse).
+    final cameraCommands = <Command>[];
+    final instructionCommands = <Command>[];
     for (final layerId in selection.spanLayerIds) {
       final layer = displayById[layerId];
       if (layer == null) {
         continue;
       }
       if (layer.kind == LayerKind.camera) {
-        _createCameraKeysForRange(selection);
+        final command = _cameraKeysCommandForRange(selection);
+        if (command != null) {
+          cameraCommands.add(command);
+        }
         continue;
       }
       if (layer.kind == LayerKind.instruction) {
-        _createInstructionEventsForRange(layer, selection);
+        final command = _instructionEventsCommandForRange(layer, selection);
+        if (command != null) {
+          instructionCommands.add(command);
+        }
         continue;
       }
       if (!layerKindHoldsDrawings(layer.kind) || isSyncedAttachedLayer(layer)) {
@@ -3194,8 +3223,24 @@ class EditorSessionManager extends ChangeNotifier {
         fills[layer.id] = layerFills;
       }
     }
-    if (fills.isNotEmpty) {
-      _timelineController.createDrawingFramesForLayers(fills);
+    final commands = <Command>[
+      ...cameraCommands,
+      ...instructionCommands,
+      if (fills.isNotEmpty)
+        ..._timelineController.drawingFramesCommandsForLayers(fills),
+    ];
+    if (commands.isNotEmpty) {
+      _historyManager.execute(
+        commands.length == 1
+            ? commands.single
+            : CompositeCommand(
+                description: 'Create selected cells',
+                commands: commands,
+              ),
+      );
+      if (cameraCommands.isNotEmpty || instructionCommands.isNotEmpty) {
+        _refreshAfterCutCommand();
+      }
     }
     notifyListeners();
     return true;
@@ -3231,11 +3276,11 @@ class EditorSessionManager extends ChangeNotifier {
     return gaps;
   }
 
-  void _createCameraKeysForRange(TimelineFrameRangeSelection selection) {
+  Command? _cameraKeysCommandForRange(TimelineFrameRangeSelection selection) {
     final cut = activeCutOrNull;
     final cutId = _editingSession.activeCutId;
     if (cut == null || cutId == null) {
-      return;
+      return null;
     }
     var camera = cut.camera;
     var changed = false;
@@ -3260,25 +3305,26 @@ class EditorSessionManager extends ChangeNotifier {
       changed = true;
     }
     if (!changed) {
-      return;
+      return null;
     }
-    _cutCommandCoordinator.updateCutCamera(
+    return UpdateCutCameraCommand(
+      repository: _repository,
       cutId: cutId,
       camera: camera,
       description: 'Create camera keys',
     );
-    _refreshAfterCutCommand();
   }
 
-  void _createInstructionEventsForRange(
+  Command? _instructionEventsCommandForRange(
     Layer layer,
     TimelineFrameRangeSelection selection,
   ) {
+    final cutId = _editingSession.activeCutId;
     final defaultDef = cameraInstructionSet.defs.isEmpty
         ? null
         : cameraInstructionSet.defs.first;
-    if (defaultDef == null) {
-      return;
+    if (defaultDef == null || cutId == null) {
+      return null;
     }
     bool covered(int index) {
       for (final entry in layer.instructions.entries) {
@@ -3312,9 +3358,16 @@ class EditorSessionManager extends ChangeNotifier {
         gapStart = null;
       }
     }
-    if (changed) {
-      updateLayerInstructions(layer.id, next, description: 'Create events');
+    if (!changed) {
+      return null;
     }
+    return UpdateLayerInstructionsCommand(
+      repository: _repository,
+      cutId: cutId,
+      layerId: layer.id,
+      instructions: next,
+      description: 'Create events',
+    );
   }
 
   /// The lane-selection create (UI-R25 #3): a key frozen at the resolved
@@ -4811,6 +4864,12 @@ class EditorSessionManager extends ChangeNotifier {
     Layer targetAfter,
   })?
   _rangeMoveSeRowChange;
+
+  /// The SE rows riding a MULTI-ROW rigid move (R26 #2): a span that also
+  /// covers a track-SE row moves that row's blocks by the same row delta
+  /// within the SE lattice — "if a block is movable, it moves no matter
+  /// how many rows you select" applies to SE rows too.
+  List<SeRowMovePair>? _rangeMoveMultiSeRowChanges;
   ({
     LayerId sourceId,
     LayerId targetId,
@@ -4839,6 +4898,7 @@ class EditorSessionManager extends ChangeNotifier {
     _rangeMoveMultiSources = null;
     _rangeMoveMultiPlans = null;
     _rangeMoveMultiRowPlan = null;
+    _rangeMoveMultiSeRowChanges = null;
     _rangeMoveCameraBefore = null;
     _rangeMoveCameraLayerId = null;
     _rangeMoveInstructionSources = null;
@@ -5092,8 +5152,25 @@ class EditorSessionManager extends ChangeNotifier {
     bool anyKeyIn(Iterable<int> keys) => keys.any(
       (key) => key >= selection.startIndex && key < selection.endIndexExclusive,
     );
+    bool carriesBlockInRange(Layer layer) => drawingBlocks(layer.timeline).any(
+      (block) =>
+          !block.entry.ghost &&
+          block.startIndex < selection.endIndexExclusive &&
+          block.endIndexExclusive > selection.startIndex,
+    );
+    // R26 #2: track-SE rows in the span are PASSENGERS of the rigid move —
+    // they shift the same row delta inside the SE lattice instead of
+    // vetoing the whole step.
+    final sePassengerIds = <LayerId>[];
     for (final id in selection.spanLayerIds) {
       if (_blockMoveEligible(id)) {
+        continue;
+      }
+      if (isTrackSeLayerId(id)) {
+        final display = _rangeLayerById(id);
+        if (display != null && carriesBlockInRange(display)) {
+          sePassengerIds.add(id);
+        }
         continue;
       }
       // An INELIGIBLE row may ride along only while it contributes
@@ -5113,46 +5190,75 @@ class EditorSessionManager extends ChangeNotifier {
           anyKeyIn(layer.instructions.keys)) {
         return false;
       }
-      final hasBlockInRange = drawingBlocks(layer.timeline).any(
-        (block) =>
-            !block.entry.ghost &&
-            block.startIndex < selection.endIndexExclusive &&
-            block.endIndexExclusive > selection.startIndex,
-      );
-      if (hasBlockInRange) {
+      if (carriesBlockInRange(layer)) {
         return false;
       }
     }
     final lattice = _blockMoveLattice();
-    final anchorIndex = lattice.indexWhere((l) => l.id == selection.layerId);
-    if (anchorIndex == -1) {
-      return false;
+    final seLattice = activeTrack.seLayers;
+    int? rowDeltaWithin(List<Layer> rows) {
+      final anchorIndex = rows.indexWhere((l) => l.id == selection.layerId);
+      final targetIndex = rows.indexWhere((l) => l.id == targetLayerId);
+      if (anchorIndex == -1 || targetIndex == -1) {
+        return null;
+      }
+      return targetIndex - anchorIndex;
     }
-    final targetIndex = lattice.indexWhere((l) => l.id == targetLayerId);
-    if (targetIndex == -1) {
-      // The pointer left the drawing lattice — an illegal landing for the
-      // rigid shift; HOLD the last valid preview (UI-R23 #10).
-      return true;
+
+    final rowDelta = rowDeltaWithin(lattice) ?? rowDeltaWithin(seLattice);
+    if (rowDelta == null) {
+      // Anchor and pointer share no lattice. When the anchor row IS
+      // movable the pointer merely wandered off — HOLD the last valid
+      // preview (UI-R23 #10); otherwise the plain slide owns the step.
+      final anchorMovable =
+          lattice.any((l) => l.id == selection.layerId) ||
+          seLattice.any((l) => l.id == selection.layerId);
+      return anchorMovable;
     }
-    final rowDelta = targetIndex - anchorIndex;
     if (rowDelta == 0) {
       // No row change this step — the plain frame slide owns it.
       return false;
     }
-    final plan = planMultiRowRangeMove(
-      orderedLayers: lattice,
-      sourceLayerIds: selection.spanLayerIds,
-      rangeStartIndex: selection.startIndex,
-      rangeEndIndexExclusive: selection.endIndexExclusive,
-      frameDelta: frameDelta,
-      rowDelta: rowDelta,
-    );
-    if (plan == null) {
-      // An illegal rigid landing HOLDS the last valid preview (UI-R23 #10).
-      return true;
+    final drawingCarriesContent = selection.spanLayerIds.any((id) {
+      if (!_blockMoveEligible(id)) {
+        return false;
+      }
+      final layer = _layerById(id);
+      return layer != null && carriesBlockInRange(layer);
+    });
+    MultiRowRangeMovePlan? plan;
+    if (drawingCarriesContent) {
+      plan = planMultiRowRangeMove(
+        orderedLayers: lattice,
+        sourceLayerIds: selection.spanLayerIds,
+        rangeStartIndex: selection.startIndex,
+        rangeEndIndexExclusive: selection.endIndexExclusive,
+        frameDelta: frameDelta,
+        rowDelta: rowDelta,
+      );
+      if (plan == null) {
+        // An illegal rigid landing HOLDS the last valid preview (R23 #10).
+        return true;
+      }
+    }
+    final sePlans = sePassengerIds.isEmpty
+        ? const <SeRowMovePair>[]
+        : _planMultiRowSePassengers(
+            seSourceIds: sePassengerIds,
+            seLattice: seLattice,
+            selection: selection,
+            frameDelta: frameDelta,
+            rowDelta: rowDelta,
+          );
+    if (sePlans == null) {
+      return true; // An SE passenger cannot land — the whole move voids.
+    }
+    if (plan == null && sePlans.isEmpty) {
+      return false; // Nothing to carry — the plain slide owns the step.
     }
     // A valid rigid landing supersedes the slide / row-change plans.
     _rangeMoveMultiRowPlan = plan;
+    _rangeMoveMultiSeRowChanges = sePlans.isEmpty ? null : sePlans;
     _rangeMoveMultiPlans = null;
     _rangeMoveSeRowChange = null;
     _rangeMoveInstructionRowChange = null;
@@ -5161,11 +5267,16 @@ class EditorSessionManager extends ChangeNotifier {
     _cameraKeysDragPreview = null;
     dragPreview.value = BlockMoveDragPreview(
       previewLayers: {
-        for (final entry in plan.layersAfter.entries)
-          entry.key: rederiveRunBehaviors(
-            entry.value,
-            cutFrameCount: _activeCutFrameCount,
-          ),
+        if (plan != null)
+          for (final entry in plan.layersAfter.entries)
+            entry.key: rederiveRunBehaviors(
+              entry.value,
+              cutFrameCount: _activeCutFrameCount,
+            ),
+        for (final se in sePlans) ...{
+          se.sourceId: trackSeWindow.displayLayer(se.sourceAfter),
+          se.targetId: trackSeWindow.displayLayer(se.targetAfter),
+        },
       },
     );
     // The outline rides the rigid shift to the target rows (rows that
@@ -5174,11 +5285,17 @@ class EditorSessionManager extends ChangeNotifier {
     final indexById = {
       for (var i = 0; i < lattice.length; i += 1) lattice[i].id: i,
     };
+    final seIndexById = {
+      for (var i = 0; i < seLattice.length; i += 1) seLattice[i].id: i,
+    };
     final landedLayerIds = [
       for (final id in selection.spanLayerIds)
         if (indexById[id] case final index?
             when index + rowDelta >= 0 && index + rowDelta < lattice.length)
-          lattice[index + rowDelta].id,
+          lattice[index + rowDelta].id
+        else if (seIndexById[id] case final index?
+            when index + rowDelta >= 0 && index + rowDelta < seLattice.length)
+          seLattice[index + rowDelta].id,
     ];
     final newStart = selection.startIndex + frameDelta;
     if (newStart >= 0) {
@@ -5190,6 +5307,62 @@ class EditorSessionManager extends ChangeNotifier {
       );
     }
     return true;
+  }
+
+  /// Plans the SE passengers of a multi-row rigid move (R26 #2): every
+  /// track-SE row in [seSourceIds] shifts [rowDelta] rows inside the SE
+  /// lattice, carrying its selected blocks (and their audio clips, which
+  /// anchor to the cels). Null when ANY passenger cannot land — the whole
+  /// move voids, the multi-row all-or-nothing rule.
+  List<SeRowMovePair>? _planMultiRowSePassengers({
+    required List<LayerId> seSourceIds,
+    required List<Layer> seLattice,
+    required TimelineFrameRangeSelection selection,
+    required int frameDelta,
+    required int rowDelta,
+  }) {
+    final sourceIndexes = <int>{
+      for (final id in seSourceIds) seLattice.indexWhere((l) => l.id == id),
+    };
+    if (sourceIndexes.contains(-1)) {
+      return null;
+    }
+    final plans = <SeRowMovePair>[];
+    for (final sourceId in seSourceIds) {
+      final sourceIndex = seLattice.indexWhere((l) => l.id == sourceId);
+      final targetIndex = sourceIndex + rowDelta;
+      if (targetIndex < 0 || targetIndex >= seLattice.length) {
+        return null; // Off the SE lattice.
+      }
+      if (sourceIndexes.contains(targetIndex)) {
+        return null; // A chained/swapped landing — voided rather than
+        // ordered (two SE rows never shift the same delta legally).
+      }
+      final source = seLattice[sourceIndex];
+      final target = seLattice[targetIndex];
+      final offset =
+          _commitBlockStart(sourceId, selection.startIndex) -
+          selection.startIndex;
+      final plan = planSeRangeRowMove(
+        source: source,
+        target: target,
+        rangeStartIndex: selection.startIndex + offset,
+        rangeEndIndexExclusive: selection.endIndexExclusive + offset,
+        frameDelta: frameDelta,
+      );
+      if (plan == null) {
+        return null;
+      }
+      plans.add((
+        sourceId: sourceId,
+        targetId: target.id,
+        sourceBefore: source,
+        sourceAfter: plan.sourceAfter,
+        targetBefore: target,
+        targetAfter: plan.targetAfter,
+      ));
+    }
+    return plans;
   }
 
   /// A range-move drag step: live preview on [dragPreview] (repository
@@ -5224,6 +5397,7 @@ class EditorSessionManager extends ChangeNotifier {
       _rangeMoveSeRowChange = null;
       _rangeMoveInstructionRowChange = null;
       _rangeMoveMultiRowPlan = null;
+      _rangeMoveMultiSeRowChanges = null;
       // Cross-layer slide (UI-R18 #1): every spanned layer plans the SAME
       // frame delta on itself; any illegal landing HOLDS the last valid
       // preview (all-or-nothing, the single-layer discipline). KEY
@@ -5407,6 +5581,7 @@ class EditorSessionManager extends ChangeNotifier {
     final seRowChange = _rangeMoveSeRowChange;
     final instructionRowChange = _rangeMoveInstructionRowChange;
     final multiRowPlan = _rangeMoveMultiRowPlan;
+    final multiSeRowChanges = _rangeMoveMultiSeRowChanges;
     final landedSelection = frameRangeSelection.value;
     _rangeMoveSourceBefore = null;
     _rangeMoveSelectionBefore = null;
@@ -5415,6 +5590,7 @@ class EditorSessionManager extends ChangeNotifier {
     _rangeMoveMultiSources = null;
     _rangeMoveMultiPlans = null;
     _rangeMoveMultiRowPlan = null;
+    _rangeMoveMultiSeRowChanges = null;
     _rangeMoveCameraBefore = null;
     _rangeMoveCameraLayerId = null;
     _rangeMoveInstructionSources = null;
@@ -5483,13 +5659,31 @@ class EditorSessionManager extends ChangeNotifier {
       }
       return;
     }
-    if (selection != null && multiRowPlan != null) {
+    if (selection != null &&
+        (multiRowPlan != null || multiSeRowChanges != null)) {
       // MULTI-ROW rigid move commit (UI-R23 #9): every affected drawing row
       // rewrites in one composite undo, and each cross-row cel re-keys its
-      // brush frame to the target row.
+      // brush frame to the target row. Track-SE passengers (R26 #2) join
+      // the SAME undo step through their global-form layer pair.
       final cut = activeCutOrNull;
       final commands = <Command>[];
-      for (final entry in multiRowPlan.layersAfter.entries) {
+      for (final se in multiSeRowChanges ?? const <SeRowMovePair>[]) {
+        commands.add(
+          UpdateLayerTimelineCommand(
+            repository: _repository,
+            before: se.sourceBefore,
+            after: se.sourceAfter,
+          ),
+        );
+        commands.add(
+          UpdateLayerTimelineCommand(
+            repository: _repository,
+            before: se.targetBefore,
+            after: se.targetAfter,
+          ),
+        );
+      }
+      for (final entry in multiRowPlan?.layersAfter.entries ?? const <MapEntry<LayerId, Layer>>[]) {
         final before = _layerById(entry.key);
         if (before == null) {
           continue;
@@ -5509,12 +5703,12 @@ class EditorSessionManager extends ChangeNotifier {
           ),
         );
       }
-      if (cut != null && multiRowPlan.rekeys.isNotEmpty) {
+      if (cut != null && (multiRowPlan?.rekeys.isNotEmpty ?? false)) {
         commands.add(
           RekeyBrushFramesCommand(
             store: brushFrameStore,
             pairs: [
-              for (final rekey in multiRowPlan.rekeys)
+              for (final rekey in multiRowPlan!.rekeys)
                 (
                   brushFrameKeyForCut(cut, rekey.from, rekey.frameId),
                   brushFrameKeyForCut(cut, rekey.to, rekey.frameId),
@@ -5661,6 +5855,7 @@ class EditorSessionManager extends ChangeNotifier {
     _rangeMoveMultiSources = null;
     _rangeMoveMultiPlans = null;
     _rangeMoveMultiRowPlan = null;
+    _rangeMoveMultiSeRowChanges = null;
     _rangeMoveCameraBefore = null;
     _rangeMoveCameraLayerId = null;
     _rangeMoveInstructionSources = null;

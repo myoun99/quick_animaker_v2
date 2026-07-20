@@ -801,6 +801,71 @@ void main() {
     expect(layer(cId).timeline.keys, isEmpty);
   });
 
+  test('R26 #2: a MULTI-ROW selection that also covers an SE row carries '
+      'that row to its sibling SE row — one undo restores everything', () {
+    final s = EditorSessionManager(initialProject: createDefaultProject());
+    addTearDown(s.dispose);
+    s.createDrawingAtCurrentFrame(); // block on A at frame 0
+    final aId = s.activeLayer!.id;
+    s.addLayer();
+    final bId = s.activeLayer!.id; // empty drawing row below A
+
+    final seIds = [for (final l in s.activeTrack.seLayers) l.id];
+    expect(seIds, hasLength(2));
+    s.repository.replaceLayer(
+      layer: s.activeTrack.seLayers.first.copyWith(
+        frames: [
+          Frame(id: const FrameId('se-cel'), duration: 1, strokes: const []),
+        ],
+        timeline: const {
+          0: TimelineExposure.drawing(FrameId('se-cel'), length: 1),
+        },
+        audioClips: const [
+          AudioClip(filePath: 'a.wav', frameId: FrameId('se-cel')),
+        ],
+      ),
+    );
+
+    Layer layer(LayerId id) => s.layers.firstWhere((l) => l.id == id);
+    Layer seLayer(int index) =>
+        s.activeTrack.seLayers.firstWhere((l) => l.id == seIds[index]);
+    final aFrameId = layer(aId).frames.single.id;
+
+    s.selectLayer(aId);
+    s.updateFrameRangeSelectionDrag(
+      layerId: aId,
+      anchorIndex: 0,
+      headIndex: 0,
+      headLayerId: seIds[0],
+    );
+    final span = s.frameRangeSelection.value!.spanLayerIds;
+    expect(span, containsAll(<LayerId>[aId, seIds[0]]));
+    expect(s.beginFrameRangeMoveDrag(), isTrue);
+    s.updateFrameRangeMoveDrag(frameDelta: 0, targetLayerId: bId);
+    final preview = s.dragPreview.value! as BlockMoveDragPreview;
+    expect(
+      preview.previewLayers.keys,
+      containsAll(<LayerId>[seIds[0], seIds[1]]),
+      reason: 'the SE passenger previews on both SE rows',
+    );
+    s.endFrameRangeMoveDrag();
+
+    expect(layer(aId).timeline, isEmpty);
+    expect(layer(bId).timeline[0]!.frameId, aFrameId);
+    expect(
+      seLayer(0).timeline,
+      isEmpty,
+      reason: 'the SE row travelled with the rigid shift (R26 #2)',
+    );
+    expect(seLayer(1).timeline.containsKey(0), isTrue);
+    expect(seLayer(1).audioClips.single.frameId, const FrameId('se-cel'));
+
+    s.undo();
+    expect(layer(aId).timeline[0]!.frameId, aFrameId);
+    expect(seLayer(0).timeline.containsKey(0), isTrue);
+    expect(seLayer(1).timeline, isEmpty);
+  });
+
   test('a multi-row shift that would push a row off the lattice HOLDS the '
       'last valid landing (UI-R23 #9 + #10)', () {
     final s = EditorSessionManager(initialProject: createDefaultProject());

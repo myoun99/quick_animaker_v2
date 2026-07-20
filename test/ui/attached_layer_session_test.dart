@@ -41,8 +41,8 @@ void main() {
     expect(above.attachedPlacement, AttachedPlacement.above);
     expect(above.kind, base.kind);
     expect(above.onTimesheet, isFalse);
-    // Signed default names (UI-R20 #11): above rows count +1, +2, …
-    expect(above.name, '+1');
+    // Signed default names hang off the BASE name (R26 #29): B+1, B+2, …
+    expect(above.name, '${base.name}+1');
     expect(
       cutLayers(s).indexWhere((layer) => layer.id == above.id),
       baseIndexBefore + 1,
@@ -54,7 +54,7 @@ void main() {
     s.addAttachedLayer(AttachedPlacement.below);
     final below = s.activeLayer!;
     expect(below.attachedToLayerId, base.id);
-    expect(below.name, '-1');
+    expect(below.name, '${base.name}-1');
     final layers = cutLayers(s);
     final baseIndex = layers.indexWhere((layer) => layer.id == base.id);
     expect(layers[baseIndex - 1].id, below.id);

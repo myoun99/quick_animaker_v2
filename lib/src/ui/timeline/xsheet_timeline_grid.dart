@@ -2259,6 +2259,7 @@ class _LayerHeader extends StatelessWidget {
                             'xsheet-lane-toggle-${layer.id}',
                           ),
                           onTap: () => onToggleLanes!(layer.id),
+                          customBorder: const CircleBorder(), // R26 #28
                           child: SizedBox(
                             width: 16,
                             height: 24,

@@ -171,13 +171,14 @@ void main() {
       const LayerId('attach'),
     ]);
     expect(attachedGroupEndIndex(const LayerId('base'), layers), 3);
-    // Signed, per-side numbering (UI-R20 #11): one above and one below
-    // exist, so the next of each side is +2 / -2.
-    expect(nextAttachedLayerName(base, layers, AttachedPlacement.above), '+2');
-    expect(nextAttachedLayerName(base, layers, AttachedPlacement.below), '-2');
+    // Signed, per-side numbering (UI-R20 #11) on the BASE's name
+    // (R26 #29): one above and one below exist, so the next of each side
+    // is A+2 / A-2.
+    expect(nextAttachedLayerName(base, layers, AttachedPlacement.above), 'A+2');
+    expect(nextAttachedLayerName(base, layers, AttachedPlacement.below), 'A-2');
     expect(
       nextAttachedLayerName(base, [base], AttachedPlacement.below),
-      '-1',
+      'A-1',
       reason: 'each side numbers its own count',
     );
   });

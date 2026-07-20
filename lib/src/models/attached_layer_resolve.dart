@@ -246,6 +246,9 @@ int attachedGroupEndIndex(LayerId baseId, List<Layer> layers) {
 /// A fresh attach-row name, signed by placement (UI-R20 #11, the
 /// mathematical read): rows stacking ABOVE the base are `+1`, `+2`, …,
 /// rows below are `-1`, `-2`, … — each side numbers its own count.
+///
+/// R26 #29: the sign hangs off the BASE's name, no space — a row attached
+/// above layer `B` is `B+1`, below is `B-1`.
 String nextAttachedLayerName(
   Layer base,
   List<Layer> layers,
@@ -258,5 +261,5 @@ String nextAttachedLayerName(
     }
   }
   final sign = placement == AttachedPlacement.above ? '+' : '-';
-  return '$sign${existing + 1}';
+  return '${base.name}$sign${existing + 1}';
 }

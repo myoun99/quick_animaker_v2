@@ -106,6 +106,43 @@ void main() {
     );
   });
 
+  test('R26 #1: a span across camera + instruction + drawing rows is ONE '
+      'undo step - a single undo clears every created instance', () {
+    final s = session();
+    final cameraId = s.layers.firstWhere((l) => l.kind == LayerKind.camera).id;
+    s.addLayerOfKind(LayerKind.instruction);
+    final instrId = s.activeLayer!.id;
+    final drawingId = s.layers
+        .firstWhere((l) => layerKindHoldsDrawings(l.kind))
+        .id;
+
+    s.updateFrameRangeSelectionDrag(
+      layerId: cameraId,
+      anchorIndex: 0,
+      headIndex: 3,
+      headLayerId: drawingId,
+    );
+    final span = s.frameRangeSelection.value!.spanLayerIds;
+    expect(
+      span,
+      containsAll(<LayerId>[cameraId, instrId, drawingId]),
+      reason: 'the span must cover all three row kinds for this contract',
+    );
+    expect(s.createInstancesForSelection(), isTrue);
+    expect(s.activeCutOrNull!.camera.keyframeAt(2), isNotNull);
+    expect(layerOf(s, instrId).instructions, isNotEmpty);
+    expect(layerOf(s, drawingId).timeline, isNotEmpty);
+
+    s.undo();
+    expect(
+      s.activeCutOrNull!.camera.keyframeAt(2),
+      isNull,
+      reason: 'ONE undo, not three',
+    );
+    expect(layerOf(s, instrId).instructions, isEmpty);
+    expect(layerOf(s, drawingId).timeline, isEmpty);
+  });
+
   test('a LANE selection freezes keys on every unkeyed frame of the '
       'range in ONE undo', () {
     final s = session();

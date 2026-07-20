@@ -44,6 +44,20 @@ int timelineGridLineEveryFrames(double frameCellExtent) => frameCellExtent >= 16
         frameCellWidth: frameCellExtent,
       ).frameLabelEveryFrames;
 
+/// The glyph size that FITS a cell of [frameCellExtent] (R26 #38/#4).
+///
+/// Text used to blank out below ~14px cells; the user's rule is "엄청
+/// 작아지는 한이 있어도 절대 안 사라지도록" — so the type shrinks with the
+/// cell instead, down to a hard floor that still reads as a mark.
+double timelineFittedGlyphFontSize(double baseFontSize, double frameCellExtent) {
+  if (frameCellExtent >= 14) {
+    return baseFontSize;
+  }
+  const floor = 4.0;
+  final fitted = frameCellExtent * 0.78;
+  return fitted.clamp(floor, baseFontSize);
+}
+
 /// The plain grid's border ink — FLAT faint (UI-R18 #8: the zoom fade is
 /// gone; density is handled by [timelineGridLineEveryFrames]).
 Color timelineBaseGridInk(

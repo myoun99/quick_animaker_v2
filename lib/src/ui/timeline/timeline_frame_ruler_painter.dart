@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
 import 'package:flutter/semantics.dart' show SemanticsProperties;
 
+import 'timeline_beat_lines.dart';
 import 'timeline_cell_style.dart';
 import 'timeline_frame_window.dart';
 import 'timeline_glyph_cache.dart';
@@ -152,17 +153,18 @@ class TimelineFrameRulerPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    final narrow = metrics.frameCellWidth < 16;
     final labelEveryFrames = metrics.frameLabelEveryFrames;
     final fillPaint = Paint();
-    final borderPaint = Paint()
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 1;
     final linePaint = Paint()..strokeWidth = 1;
 
     // Self-windowing (UI-R15): only the headers under the live viewport
     // record — a scroll is a repaint of this thin pass, never a rebuild.
     final window = visibleHeaderWindow();
+
+    // PASS 1 — paper (backgrounds + the cached strip). Painting every
+    // background BEFORE any label is what keeps a narrow cell's label
+    // alive: the old single pass let the next cell's fill erase the half
+    // that overflowed (R26 #39, "텍스트 절반이 사라짐").
     for (
       var frameIndex = window.startIndex;
       frameIndex < window.endIndexExclusive;
@@ -171,37 +173,63 @@ class TimelineFrameRulerPainter extends CustomPainter {
       final model = headerModelAt(frameIndex);
       final rect = headerRectFor(frameIndex);
       canvas.drawRect(rect, fillPaint..color = model.background);
-
-      // Per-cell borders draw the shared FAINT grid ink (UI-R14 #4 —
-      // the ruler reads as the same quiet grid as the rows; the strip's
-      // structural baseline paints once after the loop).
-      final borderColor = timelineBaseGridInk(
-        colorScheme,
-        frameCellExtent: metrics.frameCellWidth,
-      );
-      final labeled = frameIndex % labelEveryFrames == 0;
-      if (borderColor.a > 0) {
-        if (narrow) {
-          // Zoomed-out cells drop the per-cell border noise: labeled
-          // cells keep a left tick (G8 contract).
-          if (labeled) {
-            canvas.drawLine(
-              Offset(rect.left + 0.5, rect.top),
-              Offset(rect.left + 0.5, rect.bottom),
-              linePaint..color = borderColor,
-            );
-          }
-        } else {
-          canvas.drawRect(rect.deflate(0.5), borderPaint..color = borderColor);
-        }
+      if (model.cached) {
+        // The AE-style cached-range strip along the bottom edge.
+        canvas.drawRect(
+          Rect.fromLTWH(rect.left, rect.bottom - 3, rect.width, 3),
+          fillPaint..color = const Color(0xFF54B435),
+        );
       }
+    }
 
+    // PASS 2 — the SAME grid the cells use (R26 #40): base cadence lines,
+    // 6f stronger, second boundaries strongest.
+    for (
+      var frameIndex = window.startIndex;
+      frameIndex < window.endIndexExclusive;
+      frameIndex += 1
+    ) {
+      final ink = timelineFrameBoundaryLineInk(
+        frameIndex: frameIndex,
+        frameCellExtent: metrics.frameCellWidth,
+        framesPerSecond: framesPerSecond,
+        colorScheme: colorScheme,
+      );
+      if (ink == null) {
+        continue;
+      }
+      final rect = headerRectFor(frameIndex);
+      canvas.drawLine(
+        Offset(rect.left + 0.5, rect.top),
+        Offset(rect.left + 0.5, rect.bottom),
+        linePaint
+          ..color = ink.color
+          ..strokeWidth = ink.strokeWidth,
+      );
+    }
+    linePaint.strokeWidth = 1;
+
+    // PASS 3 — labels last, so nothing can paint over them.
+    for (
+      var frameIndex = window.startIndex;
+      frameIndex < window.endIndexExclusive;
+      frameIndex += 1
+    ) {
+      final model = headerModelAt(frameIndex);
+      final rect = headerRectFor(frameIndex);
       // Bottom line: in-cell centered when every cell labels itself, the
       // every-Nth overlay style (left-anchored) otherwise (UI-R10 #27).
       if (model.label.isNotEmpty) {
-        // Labels keep one ink whatever the playhead range (UI-R18 #9).
+        // Labels keep one ink whatever the playhead range (UI-R18 #9),
+        // and SHRINK rather than vanish at deep zoom-outs (R26 #38).
         final style = labelEveryFrames == 1
-            ? TextStyle(fontSize: 11, color: colorScheme.onSurface)
+            ? TextStyle(
+                fontSize: timelineFittedGlyphFontSize(
+                  11,
+                  metrics.frameCellWidth,
+                ),
+                color: colorScheme.onSurface,
+              )
             : TextStyle(fontSize: 10, color: colorScheme.onSurfaceVariant);
         final painter = _label(model.label, style);
         if (labelEveryFrames == 1) {
@@ -231,14 +259,6 @@ class TimelineFrameRulerPainter extends CustomPainter {
           ),
         );
         painter.paint(canvas, Offset(rect.left + 2, rect.top + 1));
-      }
-
-      // The AE-style cached-range strip along the bottom edge.
-      if (model.cached) {
-        canvas.drawRect(
-          Rect.fromLTWH(rect.left, rect.bottom - 3, rect.width, 3),
-          fillPaint..color = const Color(0xFF54B435),
-        );
       }
     }
 

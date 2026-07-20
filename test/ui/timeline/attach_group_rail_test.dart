@@ -276,6 +276,12 @@ void main() {
     await tester.pumpWidget(const MaterialApp(home: HomePage()));
     await tester.pumpAndSettle();
 
+    // R26 #29: attach names hang off the BASE's name (B+1, B-1), so the
+    // rail assertions match the SUFFIX.
+    Finder attachNamed(String suffix) => find.byWidgetPredicate(
+      (widget) => widget is Text && (widget.data?.endsWith(suffix) ?? false),
+    );
+
     Future<void> addViaFlyout(String itemKey) async {
       await tester.tap(
         find.byKey(const ValueKey<String>('timeline-toolbar-add-layer-menu')),
@@ -286,11 +292,11 @@ void main() {
     }
 
     await addViaFlyout('add-layer-attach-above');
-    expect(find.text('+1'), findsWidgets);
+    expect(attachNamed('+1'), findsWidgets);
 
     // The fresh attach row is active; adding below still targets ITS base.
     await addViaFlyout('add-layer-attach-below');
-    expect(find.text('-1'), findsWidgets);
+    expect(attachNamed('-1'), findsWidgets);
 
     // Both rows render with the placement arrow (no kind icon), and the
     // base row grew the fold twirl.
@@ -312,8 +318,8 @@ void main() {
     // "active row stays and blocks the fold" limbo.
     await tester.tap(twirls);
     await tester.pumpAndSettle();
-    expect(find.text('+1'), findsNothing);
-    expect(find.text('-1'), findsNothing);
+    expect(attachNamed('+1'), findsNothing);
+    expect(attachNamed('-1'), findsNothing);
     expect(
       find.byKey(const ValueKey<String>('timeline-selected-layer')),
       findsOneWidget,

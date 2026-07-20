@@ -10,6 +10,7 @@ import '../../models/layer_id.dart';
 import '../../models/layer_kind.dart';
 import '../../models/timeline_repeat.dart';
 import '../input/app_input_settings.dart' show AppInput;
+import 'timeline_cell_double_tap.dart';
 import 'timeline_cell_exposure_state.dart';
 import 'timeline_cell_style.dart';
 import 'timeline_exposure_block_visual.dart';
@@ -205,8 +206,6 @@ class TimelineRowCellsPainter extends CustomPainter {
     String glyph;
     if (holdGhost) {
       glyph = _holdDashGlyph;
-    } else if (frameCellExtent < 14) {
-      glyph = '';
     } else if (ghost) {
       // Ghosts are TEXT-ONLY (UI-R10 #11): a repeat ghost prints just the
       // cel names, exactly like before — the SHEET alone carries the
@@ -497,6 +496,12 @@ class TimelineRowCellsPainter extends CustomPainter {
     final isEmptyX = model.exposureState == TimelineCellExposureState.uncovered;
     return baseTextStyle.copyWith(
       color: foregroundInkFor(model),
+      // R26 #38/#4: names and marks SHRINK with the cell instead of
+      // blanking out below ~14px — "절대 안 사라지도록".
+      fontSize: timelineFittedGlyphFontSize(
+        baseTextStyle.fontSize ?? 12,
+        frameCellExtent,
+      ),
       fontWeight:
           !model.ghost &&
               !isEmptyX &&
@@ -720,6 +725,7 @@ Widget timelineRowCellsPaintArea({
             touchTapPointer = event.pointer;
             touchTapDownAt = event.position;
             touchTapFrameIndex = frameIndex;
+            TimelineCellDoubleTapGate.recordTapDown(layer.id, frameIndex);
           }
         }
         return;
@@ -728,9 +734,13 @@ Widget timelineRowCellsPaintArea({
         final frameIndex = painter.frameIndexAt(event.localPosition);
         // A press INSIDE the frame-range selection initiates a MOVE — it
         // must not re-seek the playhead first (UI-R10 #12).
-        if (inWindow(frameIndex) &&
-            !(suppressPointerDownSelect?.call(frameIndex) ?? false)) {
-          select(frameIndex);
+        if (inWindow(frameIndex)) {
+          // R26 #37: remember WHICH cell this tap hit — the double-tap
+          // recognizer only reports the second tap's position.
+          TimelineCellDoubleTapGate.recordTapDown(layer.id, frameIndex);
+          if (!(suppressPointerDownSelect?.call(frameIndex) ?? false)) {
+            select(frameIndex);
+          }
         }
       }
     },
@@ -769,7 +779,14 @@ Widget timelineRowCellsPaintArea({
           ? null
           : (details) {
               final frameIndex = painter.frameIndexAt(details.localPosition);
-              if (inWindow(frameIndex)) {
+              // R26 #37: two taps on DIFFERENT cells of the same block are
+              // two seeks, not a rename — the recognizer's 100px slop made
+              // them one double tap.
+              if (inWindow(frameIndex) &&
+                  TimelineCellDoubleTapGate.acceptsActivation(
+                    layer.id,
+                    frameIndex,
+                  )) {
                 select(frameIndex);
                 onActivateCell(layer.id, frameIndex);
               }

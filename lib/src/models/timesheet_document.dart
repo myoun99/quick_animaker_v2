@@ -541,11 +541,20 @@ class TimesheetDocument {
       }
       final exposure = entries[index].value;
 
-      // DATA sheet (UI-R24 #1): ghost chains skip the notation shorthand
-      // entirely and fall through to the plain-block path below — every
+      // DATA sheet (UI-R24 #1): ghost REPEAT chains skip the notation
+      // shorthand and fall through to the plain-block path below — every
       // derived entry prints its concrete cel label at its own start,
-      // exactly the value-change data XDTS/TDTS write (holds stay holds).
-      if (exposure.ghost && !dataSheet) {
+      // the value-change data XDTS/TDTS write.
+      //
+      // HOLD chains do NOT (R26 #26): a hold is the SAME cel exposed
+      // longer, so its real data is one drawing at the run's first row
+      // and held rows after it. Printing the label again per ghost entry
+      // made one cel look like two (or three, with a front + end hold).
+      final ghostHold =
+          exposure.ghost &&
+          runBehaviorOwningGhostAt(layer, start)?.mode ==
+              TimelineRunEdgeMode.hold;
+      if (exposure.ghost && (!dataSheet || ghostHold)) {
         // The contiguous chain the same behavior owns.
         final ownerId = exposure.ghostOwnerId;
         var chainEndExclusive = start + exposure.length!;
@@ -596,6 +605,42 @@ class TimesheetDocument {
             }
             if (block != null) {
               mergedBlockStarts.add(chainEndExclusive);
+            }
+          } else if (dataSheet) {
+            // END hold, DATA sheet (R26 #26): no second cel — the owning
+            // run simply runs longer. Find the drawing cell that owns
+            // these rows (a front-hold merge may have relocated it) and
+            // stretch its span across the held rows.
+            var runStart = start - 1;
+            while (runStart > 0 &&
+                cells[runStart].kind != TimesheetCellKind.drawing) {
+              runStart -= 1;
+            }
+            if (cells[runStart].kind != TimesheetCellKind.drawing) {
+              runStart = start;
+            }
+            final runLength = rowsEnd - runStart;
+            final owner = cells[runStart];
+            if (owner.kind == TimesheetCellKind.drawing) {
+              cells[runStart] = TimesheetCell(
+                TimesheetCellKind.drawing,
+                label: owner.label,
+                spanLength: runLength,
+                seName: owner.seName,
+              );
+            }
+            for (var row = runStart + 1; row < rowsEnd; row += 1) {
+              final prior = cells[row];
+              cells[row] = TimesheetCell(
+                // Breakdown dots already written for the block's own
+                // rows keep their glyph; the hold rows are plain holds.
+                row < start && prior.kind == TimesheetCellKind.mark
+                    ? TimesheetCellKind.mark
+                    : TimesheetCellKind.held,
+                spanLength: runLength,
+                spanOffset: row - runStart,
+              );
+              covered[row] = true;
             }
           } else if (singleCelDisplay) {
             // One cel held from row 1: the hold word prints RIGHT AFTER
