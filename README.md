@@ -2,6 +2,10 @@
 
 QuickAnimaker v2 is a Flutter/Dart 2D bitmap animation tool targeting a TVPaint-style production workflow.
 
+**License: all rights reserved.** This repository is public so the source
+can be read and so CI can build it on every platform — that is not a
+grant of rights. See [LICENSE](LICENSE) and [THIRD_PARTY.md](THIRD_PARTY.md).
+
 For current project policy and architecture direction, start here:
 
 - `docs/Current_Docs_Index.md`
