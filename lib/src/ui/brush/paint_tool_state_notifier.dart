@@ -18,9 +18,32 @@ class PaintToolStateNotifier extends ValueNotifier<BrushToolState> {
   final Map<CanvasTool, BrushToolState> _paintToolBank =
       <CanvasTool, BrushToolState>{};
 
+  /// The tool-switch GUARD (R26 #13): returns a refusal MESSAGE to block
+  /// the switch, null to allow it. Installed once by the shell — every
+  /// entrance (toolbar, library panel, shortcut, Ctrl+T, mapped pen
+  /// button) writes through this one setter, so a refusal cannot be
+  /// routed around.
+  String? Function(CanvasTool tool)? switchGuard;
+
+  /// Where a refusal is announced (the shared cursor notice).
+  void Function(String message)? onSwitchRefused;
+
   @override
   set value(BrushToolState next) {
     final previous = value;
+    if (next.tool != previous.tool) {
+      final refusal = switchGuard?.call(next.tool);
+      if (refusal != null) {
+        onSwitchRefused?.call(refusal);
+        // The refusal blocks the TOOL only — settings carried in the
+        // same write still apply (a preset landing while blocked).
+        final kept = next.copyWith(tool: previous.tool);
+        if (kept != previous) {
+          super.value = kept;
+        }
+        return;
+      }
+    }
     if (next.tool != previous.tool) {
       if (canvasToolPaints(previous.tool)) {
         _paintToolBank[previous.tool] = previous;

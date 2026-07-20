@@ -47,25 +47,25 @@
 | 2 | 멀티 행 이동 시 SE→다른 SE 블록 이동 불가 | A | DONE | #606 |
 | 3 | 트랜스폼/fx 행 = 프레임 셀과 완전 동일한 선택 도메인(액티브 레이어 불변, 화살표 내비는 건너뜀) | B 선택 도메인 | TODO | |
 | 4 | 타임시트 줌 35% 미만에서 텍스트 소멸 | C 비주얼 | DONE | #606 |
-| 5 | 터치 드로잉 모드에서 타임시트 패널 2핑거 조작이 선을 그림 | D 입력 | DONE | #2 |
+| 5 | 터치 드로잉 모드에서 타임시트 패널 2핑거 조작이 선을 그림 | D 입력 | DONE | #607 |
 | 6 | 1핑거 플립이 타임시트 패널에서 어떻게 동작하나(막고 있나? 페이지 전환?) | D | ANSWERED | — |
 | 7 | 프레임 블록에 콤마/초수 표시(스토리보드 컷 블록 로직 재사용, 블록 끝 칸 우하단) | C | TODO | |
 | 8 | 컷 블록 엣지 색 = 배경 밝기별 2종 + 호버색 추가 | C | TODO | |
 | 9 | 브러시 자체 블렌딩 모드(컬러/배경에 묘화/삭제 + 레이어 공통 모드) | E 툴 | TODO | |
 | 10 | 브러시 사이즈·블렌딩 모드는 브러시 선택과 독립 | E | TODO | |
 | 11 | 브러시 설정: 컬러/팁셰이프 삭제 + 클튜식 세팅별 필압 커브 | E | TODO | |
-| 12 | 선택툴 세팅에서 사각/올가미 선택 항목 삭제(툴 라이브러리가 제공) | E | DONE | #2 |
-| 13 | 변형툴: 선택 없어도 전체 그림 이동 / 대상 없으면 안내문구+툴 전환 무시(공통 안내 시스템) | E | TODO | |
+| 12 | 선택툴 세팅에서 사각/올가미 선택 항목 삭제(툴 라이브러리가 제공) | E | DONE | #607 |
+| 13 | 변형툴: 선택 없어도 전체 그림 이동 / 대상 없으면 안내문구+툴 전환 무시(공통 안내 시스템) | E | 부분 DONE | #608 |
 | 14 | 변형툴 x/y/각도/스케일 = 캔버스 하단 드래그 숫자 위젯 공통 로직 재사용 | E | TODO | |
 | 15 | 선택툴: 프레임 없어도 범위 선택 가능 | E | TODO | |
 | 16 | 선택툴 모드 4종(갱신/추가/삭제/선택중), 기본=추가 | E | TODO | |
-| 17 | Ctrl+T = 변형툴로 전환(별도 변형 동작 아님) | E | DONE | #2 |
+| 17 | Ctrl+T = 변형툴로 전환(별도 변형 동작 아님) | E | DONE | #607 |
 | 18 | 선택 상태에서 다른 툴 사용 가능(선택 내부만 그리기/칠하기) | E | TODO | |
-| 19 | 와콤 펜 아래 버튼(우클릭)에 스포이드 할당해도 미작동 | D | 부분 DONE | #2 |
-| 20 | 우클릭 스포이드 = 툴을 스포이드로 전환해 실행(UI 동일) | D/E | 부분 DONE | #2 |
-| 21 | 스포이드 사용 중 커서 우상단 실시간 색 표시 ON | E | TODO | |
-| 22 | 스포이드 커서 = 스포이드 아이콘 | E | TODO | |
-| 23 | 필 툴 커서 = 바케츠 아이콘 | E | TODO | |
+| 19 | 와콤 펜 아래 버튼(우클릭)에 스포이드 할당해도 미작동 | D | 부분 DONE | #607 |
+| 20 | 우클릭 스포이드 = 툴을 스포이드로 전환해 실행(UI 동일) | D/E | 부분 DONE | #607 |
+| 21 | 스포이드 사용 중 커서 우상단 실시간 색 표시 ON | E | 기존 구현(원인=19·20) | #607 |
+| 22 | 스포이드 커서 = 스포이드 아이콘 | E | DONE | #608 |
+| 23 | 필 툴 커서 = 바케츠 아이콘 | E | DONE | #608 |
 | 24 | 상단 메뉴의 "Quick Animaker" 삭제 | G 셸 | DONE | #606 |
 | 25 | 전체창/창모드 옵션 + 전체화면 메리트 질문 | G | 미착수 답변만 | — |
 | 26 | 실 데이터 표기모드가 홀드 셀까지 실데이터로 표기 | A | DONE | #606 |
@@ -77,7 +77,7 @@
 | 32 | 타임라인에 프로젝트 FPS 설정 버튼(프리셋 8/12/23.976/24…) | G | TODO | |
 | 33 | 인풋 인스펙터 정식 기능화 + 열고닫을 때 레이아웃 점프 제거 | D | TODO | |
 | 34 | 팬 숏컷(2핑거/휠클릭)이 타임라인에서도 팬 — 공통 로직화, none이면 팬 없음 | D | TODO | |
-| 35 | 프레임 없는 곳/액션섹션 아닌 곳에서 그리기 시도 = 커서 옆 1초 안내(공통 로직) | E | TODO | |
+| 35 | 프레임 없는 곳/액션섹션 아닌 곳에서 그리기 시도 = 커서 옆 1초 안내(공통 로직) | E | DONE | #608 |
 | 36 | 어태치 레이어는 항상 주인 레이어에 인접(사이 삽입 금지) + 트랜스폼 설정 아래 배치 | F | 부분 DONE | #606 |
 | 37 | 더블탭 이름변경 = 같은 인덱스 연속 탭일 때만 | A | DONE | #606 |
 | 38 | 타임라인 줌 50% 이하에서 블록 텍스트/룰러 텍스트 소멸 금지 | C | DONE | #606 |
@@ -97,23 +97,23 @@
 
 ### A. 타임라인 코어 (1, 2, 26, 37)
 
-**#1 범위 생성 = 1언두 (DONE, PR#1)**
+**#1 범위 생성 = 1언두 (DONE, PR #606)**
 - 구현: `EditorSessionManager.createInstancesForSelection`이 카메라/지시/드로잉 3경로의 커맨드를 **수집**해 하나의 `CompositeCommand`로 실행. 카메라 커맨드가 **반드시 첫 번째**(그 undo가 프로젝트 스냅샷 복원 = 역순 undo의 마지막이어야 전체가 되돌아감). `TimelineController.drawingFramesCommandsForLayers`를 신설해 커맨드만 반환(기존 `createDrawingFramesForLayers`는 그 위의 래퍼).
 - 검증 포인트: 카메라+지시+드로잉을 모두 덮는 범위 선택 → Add → **undo 1회**로 전부 소멸. 파일: [create_for_selection_test.dart](test/ui/create_for_selection_test.dart) 'R26 #1'.
 - 주의(감사용): 커맨드 순서가 바뀌면 undo가 부분 복원된다. 이 순서 계약이 코드 주석에 명시돼 있는지 확인할 것.
 
-**#2 멀티 행 이동 시 SE 행 (DONE, PR#1)**
+**#2 멀티 행 이동 시 SE 행 (DONE, PR #606)**
 - 원인: `_updateMultiRowRangeMove`가 드로잉 격자(lattice)만 알아서, 범위에 내용 있는 SE 행이 끼면 **전체를 프레임 슬라이드로 강등**시켰다.
 - 구현: SE 행을 리지드 이동의 **승객(passenger)** 으로 승격 — `_planMultiRowSePassengers`가 동일 rowDelta를 SE 격자(`activeTrack.seLayers`)에 적용, `planSeRangeRowMove` 재사용(오디오 클립은 셀에 앵커돼 자동 추종). 하나라도 못 내려앉으면 전체 무효(멀티행 all-or-nothing) → 마지막 유효 프리뷰 유지(R23 #10). 커밋=글로벌 폼 `UpdateLayerTimelineCommand` 쌍이 같은 합성 언두에 합류. 앵커가 SE 행이어도 rowDelta 계산됨(`rowDeltaWithin` 2격자 폴백).
 - 검증 포인트: [editor_session_manager_range_move_test.dart](test/ui/editor_session_manager_range_move_test.dart) 'R26 #2'.
 
-**#26 실 데이터 시트 = 홀드는 한 셀 (DONE, PR#1)**
+**#26 실 데이터 시트 = 홀드는 한 셀 (DONE, PR #606)**
 - 원인: 데이터 모드가 **모든 고스트를 verbatim**으로 인쇄 → 홀드 고스트마다 같은 셀 라벨이 재출력(앞홀드+뒤홀드면 3개).
 - 구현: [timesheet_document.dart](lib/src/models/timesheet_document.dart) — 데이터 모드에서 **리피트 고스트만** verbatim, **홀드 고스트는 노테이션 경로**로 유지. 뒤홀드는 데이터 모드 전용 분기로 소유 런의 drawing 셀 span을 늘리고 나머지 행은 `held`. 앞홀드는 기존 relocation(첫 행에 셀) 재사용.
 - 검증 포인트: [timesheet_data_sheet_test.dart](test/models/timesheet_data_sheet_test.dart) 'R26 #26' 2건 — 뒤홀드/앞+뒤홀드 모두 **drawing 셀은 정확히 1개**.
 - 유저 질문 "토메 표기도 간단해지나": 노테이션(止め) 경로는 손대지 않았다. 데이터 모드만 바뀜.
 
-**#37 더블탭 이름변경 = 같은 인덱스 (DONE, PR#1)**
+**#37 더블탭 이름변경 = 같은 인덱스 (DONE, PR #606)**
 - 원인: Flutter `DoubleTapGestureRecognizer`는 2번째 탭이 **100px 슬롭** 안이면 같은 더블탭으로 받는다 → 블록 안 다른 셀 연속 탭이 이름변경.
 - 구현: [timeline_cell_double_tap.dart](lib/src/ui/timeline/timeline_cell_double_tap.dart) `TimelineCellDoubleTapGate` — 행의 raw `Listener`가 탭다운 셀을 기록하고, `onDoubleTapDown`이 같은 셀일 때만 활성화. **시간 검사 없음**(인식기가 이미 300ms 창을 강제; 월클럭 검사는 풀 스위트 부하에서 플레이키 — 실제로 1차 풀런에서 이 사고가 났고 그래서 제거함).
 - 이벤트 순서 계약: 자식(GestureDetector)이 조상(Listener)보다 먼저 이벤트를 받으므로, 두 번째 탭다운 시점의 기록은 **첫 탭의 것**이다. 이 계약을 [cell_double_tap_same_index_test.dart](test/ui/timeline/cell_double_tap_same_index_test.dart)의 "다른 셀" 케이스가 핀한다(순서가 반대였다면 통과 못 함).
@@ -124,29 +124,29 @@
 
 ### C. 비주얼 (4, 7, 8, 27, 28, 38, 39, 40, 42, 44)
 
-**#38 + #4 텍스트 소멸 → 축소 (DONE, PR#1)**
+**#38 + #4 텍스트 소멸 → 축소 (DONE, PR #606)**
 - 원인: `timeline_row_cells_painter.dart`가 `frameCellExtent < 14`에서 glyph를 `''`로 비웠다(타임라인/x시트 공통 경로라 35% 축소 시 시트 텍스트도 같이 사라짐).
 - 구현: 그 가드 삭제 + [timeline_cell_style.dart](lib/src/ui/timeline/timeline_cell_style.dart) `timelineFittedGlyphFontSize(base, extent)` — 14px 미만이면 `extent*0.78`, 하한 4.0. `glyphStyleFor`가 이 크기를 쓰므로 **타일 베이크 키에도 자동 반영**(폰트 크기가 캐시 키 구성요소).
 - 룰러 라벨(매 프레임 라벨 모드)도 같은 함수 적용.
 
-**#39 룰러 텍스트 잘림 (DONE, PR#1)** — 원인: 룰러가 셀마다 `배경→라벨`을 한 루프에서 그려서, 좁은 칸의 라벨이 **다음 칸 배경에 덮여** 반쯤 사라졌다. 구현: [timeline_frame_ruler_painter.dart](lib/src/ui/timeline/timeline_frame_ruler_painter.dart) 3패스(배경 → 그리드선 → 라벨)로 분리.
+**#39 룰러 텍스트 잘림 (DONE, PR #606)** — 원인: 룰러가 셀마다 `배경→라벨`을 한 루프에서 그려서, 좁은 칸의 라벨이 **다음 칸 배경에 덮여** 반쯤 사라졌다. 구현: [timeline_frame_ruler_painter.dart](lib/src/ui/timeline/timeline_frame_ruler_painter.dart) 3패스(배경 → 그리드선 → 라벨)로 분리.
 
-**#40 룰러 그리드 통일 (DONE, PR#1)** — [timeline_beat_lines.dart](lib/src/ui/timeline/timeline_beat_lines.dart)에 `timelineFrameBoundaryLineInk()` 공용 함수(베이스 케이던스/6f/초 경계) 신설, 룰러 2패스가 이걸 사용. 셀 그리드와 같은 색·굵기.
+**#40 룰러 그리드 통일 (DONE, PR #606)** — [timeline_beat_lines.dart](lib/src/ui/timeline/timeline_beat_lines.dart)에 `timelineFrameBoundaryLineInk()` 공용 함수(베이스 케이던스/6f/초 경계) 신설, 룰러 2패스가 이걸 사용. 셀 그리드와 같은 색·굵기.
 
-**#28 아이콘 호버 원형 (DONE, PR#1)** — 레이어 타입 버튼/레인 트월/어태치 트월 InkWell에 `customBorder: CircleBorder()` (타임라인+x시트).
+**#28 아이콘 호버 원형 (DONE, PR #606)** — 레이어 타입 버튼/레인 트월/어태치 트월 InkWell에 `customBorder: CircleBorder()` (타임라인+x시트).
 
 **#7 / #8 / #27 / #42 / #44**: 미착수.
 
 ### D. 입력 (5, 6, 19, 20, 33, 34)
 
-**#5 타임시트 2핑거가 선을 그림 (DONE, PR#2)**
+**#5 타임시트 2핑거가 선을 그림 (DONE, PR #607)**
 - 원인: 멀티터치 방어가 **뷰 인스턴스 로컬**이었는데, 타임시트는 시트 창마다 `InteractiveBrushEditCanvasView`를 하나씩 마운트한다 → 두 손가락이 서로 다른 뷰에 내려앉으면 각 뷰는 "손가락 1개"만 보고 둘 다 그린다.
 - 구현: [canvas_touch_contacts.dart](lib/src/ui/canvas/canvas_touch_contacts.dart) `CanvasTouchContacts` — 앱 전역 손가락 센서스 + **멀티터치 리스너**. 두 번째 접촉이 어디든 내려오면 이미 진행 중이던 (미커밋) 터치 스트로크가 형제 뷰에서도 스탠드다운. dispose 시 자기 접촉 정리(누수=영구 차단 방지).
 - 검증 포인트: [shared_touch_census_test.dart](test/ui/canvas/shared_touch_census_test.dart) — **이 테스트는 픽스를 되돌리면 실제로 실패함을 확인했다**(되돌린 상태 = 커밋 2건, 픽스 = 0건). 테스트 전제: 1핑거 슬롯을 `draw`로 세팅해야 의미가 있음(안 그러면 애초에 안 그려져 공허 통과 — 최초 작성 시 실제로 그 함정에 빠졌다가 잡음).
 
 **#6 (답변)**: 1핑거 플립은 **캔버스 뷰포트 제스처 레이어에만** 배선돼 있다(`canvas_viewport_gesture_layer.dart`). 타임시트 패널은 그 위젯 트리 밖이라 구조적으로 플립이 발동하지 않는다 = "제대로 막고 있다"가 맞다. 좌우 플립=페이지 전환 아이디어는 #41(페이지뷰) 작업에서 함께 검토 예정(미구현).
 
-**#19 + #20 (부분 DONE, PR#2)**
+**#19 + #20 (부분 DONE, PR #607)**
 - 원인 진단: 와콤 배럴 버튼은 **호버 중** 우클릭 비트로 도착하는데, 캔버스 매핑(`CanvasPointerAction.eyedropper`)은 `_handlePointerDown`에서만 처리됐고 호버 경로는 undo/redo만 처리하고 스포이드는 `break`(주석: "hold-tools need a contact")였다 → 눌러도 아무 일도 안 일어나고 UI도 안 뜸.
 - 구현: 호버 프레스 엣지에서 `onTemporaryToolHold(CanvasTool.eyedropper)` 발화 = **툴 자체가 스포이드로 전환**(유저 #20 설계) → 커서/스와치/패널이 따라옴. 릴리즈 엣지에서 스프링백(또는 keep). 접촉이 생기면 기존 매핑 다운 경로가 인계(홀드 세션 1개 유지).
 - **실기 검증 필요**: 와콤 드라이버가 호버 배럴 프레스를 보고하지 않는 구성도 있다(Windows Ink 설정). 실기에서 Input Inspector로 확인 요망.
@@ -155,23 +155,32 @@
 
 ### E. 툴 (9~18, 21, 22, 23, 35)
 
-**#12 선택 변형(사각/올가미) 설정 삭제 (DONE, PR#2)** — 툴 세팅의 `selection-variant-segments` 제거. 마스크 노브(grow/feather/AA)는 유지.
+**#35 + #13 공통 안내(커서 노티스) 시스템 (DONE=#35 전체·#13 툴 가드, PR #608)**
+- 신설: [cursor_notice.dart](lib/src/ui/widgets/cursor_notice.dart) — `CursorNoticeController`(메시지 1개+revision+타이머)·앱 전역 `cursorNotices`·`CursorNoticeOverlay`(셸 전체를 감싸며 포인터를 수동 추적, 커서 옆 알약으로 ~1초 표시). **UI 교체 시 오버레이만 손대면 됨**(유저 요구: "ui 바껴도 다른데도 적용가능하게"). 문구는 [app_strings.dart](lib/src/ui/text/app_strings.dart)에 5개 언어 추가.
+- 사용처 1(#35): `MainCanvasBrushHost.onDrawRefused` — 편집 가능한 셀이 없을 때 페인트 툴로 누르면 셸이 **섹션 판정**해서 "프레임이 존재하지 않습니다"(드로잉 섹션) 또는 "액션 섹션에서만 그릴 수 있습니다"(그 외)를 띄움. Listener는 translucent라 뷰포트 조작을 먹지 않음.
+- 사용처 2(#13 전반): **툴 전환 가드 퍼널** — `PaintToolStateNotifier.switchGuard`/`onSwitchRefused`. 모든 툴 진입점(라이브러리 패널·단축키·Ctrl+T·펜 버튼)이 이 세터 하나를 통과하므로 우회 불가. HomePage가 `move` 전환 시 `celHasRenderableContent`로 그림 유무 확인 → 없으면 안내+전환 무시.
+- **#13 잔여**: "선택이 없어도 그림 전체를 변형 대상으로" 자체는 미구현(현재는 그림이 있으면 툴 전환은 되고, 변형 박스가 선택 없이 전체를 잡는 동작은 CanvasSelectionLayer 쪽 후속 작업).
+- 검증 포인트: [cursor_notice_test.dart](test/ui/cursor_notice_test.dart) — 오버레이 표시/자동 소멸, 가드가 툴만 거부하고 같은 write의 설정은 통과시키는 계약. **함정 기록**: 전역 컨트롤러의 타이머가 위젯 트리보다 오래 살아 "Timer still pending"으로 무관한 테스트를 깨뜨렸다 → 오버레이 dispose에서 `clear()`.
 
-**#17 Ctrl+T = 변형툴 전환 (DONE, PR#2)** — `selection-free-transform` 액션이 `beginTransform()` 직접 호출 대신 `CanvasTool.move`로 툴을 바꾼다.
+**#22 스포이드 커서 / #23 필 바케츠 커서 (DONE, PR #608)** — 시스템 커서를 `none`으로 감추고 툴 아이콘(`Icons.colorize` / `Icons.format_color_fill`)을 포인터에 그림(`_ToolCursorIcon`: 흰 글리프+어두운 헤일로). 필은 자체 호버 추적 노티파이어(`_toolCursorHover`) 사용. **#21은 이미 충족**(스포이드 툴 활성 시 커서 우상단 실시간 스와치가 기존에 있었음 — 안 뜨던 원인이 #19/#20이었고 그건 batch2에서 해결).
+
+**#12 선택 변형(사각/올가미) 설정 삭제 (DONE, PR #607)** — 툴 세팅의 `selection-variant-segments` 제거. 마스크 노브(grow/feather/AA)는 유지.
+
+**#17 Ctrl+T = 변형툴 전환 (DONE, PR #607)** — `selection-free-transform` 액션이 `beginTransform()` 직접 호출 대신 `CanvasTool.move`로 툴을 바꾼다.
 
 **#9~#11, #13~#16, #18, #21~#23, #35**: 미착수. (#13/#35의 공통 안내 UI가 다음 배치 1순위)
 
 ### F. 레이어 (29, 30, 36)
 
-**#29 어태치 이름 = 베이스+부호 (DONE, PR#1)** — `nextAttachedLayerName`이 `'${base.name}$sign${n}'` 반환(`B+1`, `B-1`). 기존 테스트 3곳 기대값 갱신.
+**#29 어태치 이름 = 베이스+부호 (DONE, PR #606)** — `nextAttachedLayerName`이 `'${base.name}$sign${n}'` 반환(`B+1`, `B-1`). 기존 테스트 3곳 기대값 갱신.
 
-**#36 어태치 그룹 불가분 (부분 DONE, PR#1)** — 베이스가 액티브일 때 새 레이어가 **그룹 끝 뒤**에 삽입되도록(기존엔 베이스 바로 위 = 그룹 내부 침입). **잔여**: "트랜스폼 설정 열면 어태치 레이어 밑에 오도록"(행 순서 = 베이스 → 어태치 → 트랜스폼 레인)은 미구현 — 표시 순서 방향(리버스 여부)을 실앱에서 확인해야 안전해서 보류. Fable 검증 시 여기 우선.
+**#36 어태치 그룹 불가분 (부분 DONE, PR #606)** — 베이스가 액티브일 때 새 레이어가 **그룹 끝 뒤**에 삽입되도록(기존엔 베이스 바로 위 = 그룹 내부 침입). **잔여**: "트랜스폼 설정 열면 어태치 레이어 밑에 오도록"(행 순서 = 베이스 → 어태치 → 트랜스폼 레인)은 미구현 — 표시 순서 방향(리버스 여부)을 실앱에서 확인해야 안전해서 보류. Fable 검증 시 여기 우선.
 
 **#30**: 미착수.
 
 ### G. 셸/프로젝트 (24, 25, 31, 32, 41, 43)
 
-**#24 상단 앱 이름 삭제 (DONE, PR#1)** — home_page 상단 스트립의 'QuickAnimaker' 텍스트 제거, widget_test 기대값 `findsNothing`으로 갱신.
+**#24 상단 앱 이름 삭제 (DONE, PR #606)** — home_page 상단 스트립의 'QuickAnimaker' 텍스트 제거, widget_test 기대값 `findsNothing`으로 갱신.
 
 **#25 / #31 / #32 / #41 / #43**: 미착수.
 

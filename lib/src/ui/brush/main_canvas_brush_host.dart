@@ -1,3 +1,4 @@
+import 'package:flutter/gestures.dart' show kPrimaryButton;
 import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
 
@@ -63,6 +64,7 @@ class MainCanvasBrushHost extends StatefulWidget {
     this.selectionCommands,
     this.onStrokeInputActiveChanged,
     this.onSelectionInteractionChanged,
+    this.onDrawRefused,
   });
 
   final BrushFrameKey? activeFrameKey;
@@ -146,6 +148,12 @@ class MainCanvasBrushHost extends StatefulWidget {
   /// seek lock).
   final ValueChanged<bool>? onSelectionInteractionChanged;
 
+  /// R26 #35: a paint attempt with NO editable cel under the playhead.
+  /// The shell answers through the shared cursor notice ("no frame here"
+  /// / "only the Action section can be drawn on") — the host cannot know
+  /// WHICH refusal applies, so it only reports the attempt.
+  final VoidCallback? onDrawRefused;
+
   BrushFrameKey? get resolvedActiveFrameKey =>
       activeFrameKey ?? selection?.toBrushFrameKey();
 
@@ -198,6 +206,36 @@ class _MainCanvasBrushHostState extends State<MainCanvasBrushHost> {
         widget.contentOverride ??
         (hasEditableFrame ? null : _blankCanvasContent);
 
+    final panel = _buildPanel(coordinator, hasEditableFrame, contentOverride);
+    final onDrawRefused = widget.onDrawRefused;
+    if (hasEditableFrame || onDrawRefused == null) {
+      return panel;
+    }
+    // R26 #35: without an editable cel a paint press does nothing at all
+    // — the passive Listener above the panel turns that silence into the
+    // shared cursor notice. Translucent: it observes, never consumes, so
+    // viewport navigation over the paper keeps working.
+    return Listener(
+      behavior: HitTestBehavior.translucent,
+      onPointerDown: (event) {
+        if (event.buttons != 0 && (event.buttons & kPrimaryButton) == 0) {
+          return;
+        }
+        final tool = widget.brushToolState.tool;
+        if (!canvasToolPaints(tool) && tool != CanvasTool.fill) {
+          return; // Eyedropper/selection/pan have their own meaning.
+        }
+        onDrawRefused();
+      },
+      child: panel,
+    );
+  }
+
+  Widget _buildPanel(
+    BrushFrameEditingCoordinator? coordinator,
+    bool hasEditableFrame,
+    Widget Function(BuildContext, CanvasViewport)? contentOverride,
+  ) {
     return BrushCanvasPanel(
       key: const ValueKey<String>('main-canvas-brush-host'),
       coordinator: hasEditableFrame ? coordinator : null,

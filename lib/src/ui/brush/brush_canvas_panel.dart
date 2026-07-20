@@ -244,6 +244,10 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel> {
   final ValueNotifier<({Offset position, int color})?> _eyedropperHover =
       ValueNotifier<({Offset position, int color})?>(null);
 
+  /// R26 #23: the pointer position for tool cursors that draw an ICON but
+  /// sample nothing (the fill bucket).
+  final ValueNotifier<Offset?> _toolCursorHover = ValueNotifier<Offset?>(null);
+
   @override
   void initState() {
     super.initState();
@@ -265,6 +269,7 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel> {
     }
     HardwareKeyboard.instance.removeHandler(_handleKeyEvent);
     _eyedropperHover.dispose();
+    _toolCursorHover.dispose();
     widget.viewCommands?.unbind();
     super.dispose();
   }
@@ -279,6 +284,10 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel> {
     }
     return false;
   }
+
+  /// R26 #23: the fill tool's own cursor icon (no sampling involved).
+  bool get _fillCursorActive =>
+      widget.brushToolState.tool == CanvasTool.fill && !_eyedropperCursorActive;
 
   /// Whether the eyedropper cursor + hover swatch are armed: the tool
   /// itself, or Alt held over a painting tool (the temporary pick).
@@ -609,7 +618,11 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel> {
                                   if (_eyedropperCursorActive) ...[
                                     Positioned.fill(
                                       child: MouseRegion(
-                                        cursor: SystemMouseCursors.precise,
+                                        // R26 #22: the eyedropper wears its
+                                        // OWN icon, not a crosshair — the
+                                        // system cursor hides and the icon
+                                        // below rides the pointer.
+                                        cursor: SystemMouseCursors.none,
                                         opaque: false,
                                         hitTestBehavior:
                                             HitTestBehavior.translucent,
@@ -668,6 +681,74 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel> {
                                                   ),
                                                 ],
                                               ),
+                                            ),
+                                          ),
+                                        );
+                                      },
+                                    ),
+                                    // R26 #22: the eyedropper ICON as the
+                                    // cursor. Its tip is the hot spot, so
+                                    // the glyph hangs up-left of the point
+                                    // being sampled.
+                                    ValueListenableBuilder<
+                                      ({Offset position, int color})?
+                                    >(
+                                      valueListenable: _eyedropperHover,
+                                      builder: (context, hover, _) {
+                                        if (hover == null) {
+                                          return const SizedBox.shrink();
+                                        }
+                                        return Positioned(
+                                          left: hover.position.dx - 3,
+                                          top: hover.position.dy - 21,
+                                          child: const IgnorePointer(
+                                            child: _ToolCursorIcon(
+                                              keyValue:
+                                                  'eyedropper-cursor-icon',
+                                              icon: Icons.colorize,
+                                            ),
+                                          ),
+                                        );
+                                      },
+                                    ),
+                                  ],
+                                  // R26 #23: the fill tool wears the bucket.
+                                  if (_fillCursorActive) ...[
+                                    Positioned.fill(
+                                      child: MouseRegion(
+                                        cursor: SystemMouseCursors.none,
+                                        opaque: false,
+                                        hitTestBehavior:
+                                            HitTestBehavior.translucent,
+                                        onExit: (_) =>
+                                            _toolCursorHover.value = null,
+                                        child: Listener(
+                                          key: const ValueKey<String>(
+                                            'fill-cursor-tracker',
+                                          ),
+                                          behavior: HitTestBehavior.translucent,
+                                          onPointerHover: (event) =>
+                                              _toolCursorHover.value =
+                                                  event.localPosition,
+                                          onPointerMove: (event) =>
+                                              _toolCursorHover.value =
+                                                  event.localPosition,
+                                        ),
+                                      ),
+                                    ),
+                                    ValueListenableBuilder<Offset?>(
+                                      valueListenable: _toolCursorHover,
+                                      builder: (context, position, _) {
+                                        if (position == null) {
+                                          return const SizedBox.shrink();
+                                        }
+                                        return Positioned(
+                                          left: position.dx - 3,
+                                          top: position.dy - 20,
+                                          child: const IgnorePointer(
+                                            child: _ToolCursorIcon(
+                                              keyValue: 'fill-cursor-icon',
+                                              icon: Icons.format_color_fill,
                                             ),
                                           ),
                                         );
@@ -1702,6 +1783,30 @@ class _CanvasViewportPanbar extends StatelessWidget {
           );
         },
       ),
+    );
+  }
+}
+
+/// R26 #22/#23: a tool's own icon standing in for the mouse cursor —
+/// white glyph with a dark halo so it reads on any artwork.
+class _ToolCursorIcon extends StatelessWidget {
+  const _ToolCursorIcon({required this.keyValue, required this.icon});
+
+  final String keyValue;
+  final IconData icon;
+
+  @override
+  Widget build(BuildContext context) {
+    return Stack(
+      key: ValueKey<String>(keyValue),
+      children: [
+        Icon(icon, size: 22, color: Colors.black.withValues(alpha: 0.55)),
+        Positioned(
+          left: 1,
+          top: 1,
+          child: Icon(icon, size: 20, color: Colors.white),
+        ),
+      ],
     );
   }
 }
