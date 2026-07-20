@@ -6,12 +6,12 @@ import 'package:flutter/services.dart' show Clipboard, ClipboardData;
 
 import '../../models/attached_mode.dart';
 import '../../models/attached_placement.dart';
+import '../../services/persistence/app_documents.dart';
+import '../../services/persistence/app_save_settings.dart';
 import '../../services/persistence/project_autosave_service.dart';
 import '../dialogs/canvas_size_dialog.dart';
 import '../dialogs/delete_layer_dialog.dart';
-import '../dialogs/language_settings_dialog.dart';
-import '../dialogs/accent_settings_dialog.dart';
-import '../dialogs/input_settings_dialog.dart';
+import '../dialogs/preferences_dialog.dart';
 import '../debug/input_inspector.dart';
 import '../dialogs/project_background_dialog.dart';
 import '../dialogs/rename_cut_dialog.dart';
@@ -83,6 +83,8 @@ class EditorMenuBar extends StatelessWidget {
 
   static Future<String?> _defaultOpenPicker() async {
     final file = await openFile(
+      // SAVE-1: pickers start in the app's project home (앱 문서 폴더).
+      initialDirectory: await ensuredAppDocumentsDirectory(),
       acceptedTypeGroups: const [
         XTypeGroup(label: 'QuickAnimaker project', extensions: ['qap']),
       ],
@@ -102,13 +104,17 @@ class EditorMenuBar extends StatelessWidget {
       return;
     }
     // A newer autosave sidecar offers recovery (crash / sync loss).
+    // SAVE-1: the sidecar may live beside the file OR in the user's
+    // sidecar directory (and the setting may have changed since it was
+    // written) — every candidate location is checked, newest wins.
     var openPath = path;
     String? recoverAs;
-    final sidecar = '$path.autosave';
-    if (ProjectAutosaveService.sidecarIsNewer(
-      filePath: path,
-      sidecarPath: sidecar,
-    )) {
+    final sidecar = AppSave.newestExistingSidecarFor(path);
+    if (sidecar != null &&
+        ProjectAutosaveService.sidecarIsNewer(
+          filePath: path,
+          sidecarPath: sidecar,
+        )) {
       final recover = await showDialog<bool>(
         context: context,
         builder: (context) => AlertDialog(
@@ -288,25 +294,14 @@ class EditorMenuBar extends StatelessWidget {
               );
             },
     ),
+    // SAVE-1: Input/Autosave/Language/Accent collapsed into ONE
+    // Preferences window (the per-domain dialogs live on as thin
+    // wrappers around the same section widgets).
     _item(
-      id: 'edit-language-settings',
-      label: 'Language Settings…',
+      id: 'edit-preferences',
+      label: 'Preferences…',
       onPressed: () {
-        unawaited(showLanguageSettingsDialog(context, session: session));
-      },
-    ),
-    _item(
-      id: 'edit-accent-settings',
-      label: 'Accent Colors…',
-      onPressed: () {
-        unawaited(showAccentSettingsDialog(context, session: session));
-      },
-    ),
-    _item(
-      id: 'edit-input-settings',
-      label: 'Input Settings…',
-      onPressed: () {
-        unawaited(showInputSettingsDialog(context, session: session));
+        unawaited(showPreferencesDialog(context, session: session));
       },
     ),
     // The pen program's diagnosis overlay (PEN-1): toggles the live
@@ -689,7 +684,9 @@ class EditorMenuBar extends StatelessWidget {
 }
 
 /// PEN-12 #8: the shared Save As flow — the File menu and the
-/// unsaved-autosave prompt land in the same picker + writer.
+/// unsaved-autosave prompt land in the same picker + writer. SAVE-1: a
+/// never-saved project's picker starts in the app's project home (앱
+/// 문서 폴더); a saved one starts beside its current file.
 Future<void> promptSaveProjectAs(
   BuildContext context,
   EditorSessionManager session, {
@@ -697,7 +694,13 @@ Future<void> promptSaveProjectAs(
 }) async {
   final suggested =
       '${sanitizeExportFileComponent(session.repository.requireProject().name)}.qap';
-  var path = await (savePicker ?? _defaultQapSavePicker)(suggested);
+  final currentPath = session.projectFilePath?.replaceAll('\\', '/');
+  final initialDirectory = currentPath != null && currentPath.contains('/')
+      ? currentPath.substring(0, currentPath.lastIndexOf('/'))
+      : await ensuredAppDocumentsDirectory();
+  var path =
+      await (savePicker ??
+          (name) => _defaultQapSavePicker(name, initialDirectory))(suggested);
   if (path == null || !context.mounted) {
     return;
   }
@@ -715,9 +718,13 @@ Future<void> promptSaveProjectAs(
   }
 }
 
-Future<String?> _defaultQapSavePicker(String suggestedName) async {
+Future<String?> _defaultQapSavePicker(
+  String suggestedName,
+  String initialDirectory,
+) async {
   final location = await getSaveLocation(
     suggestedName: suggestedName,
+    initialDirectory: initialDirectory,
     acceptedTypeGroups: const [
       XTypeGroup(label: 'QuickAnimaker project', extensions: ['qap']),
     ],

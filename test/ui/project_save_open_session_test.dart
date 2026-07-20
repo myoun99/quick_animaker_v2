@@ -124,7 +124,7 @@ void main() {
     final autosave = ProjectAutosaveService(
       isDirty: () => s.hasUnsavedChanges,
       writeSnapshot: s.writeAutosaveSnapshot,
-      autosavePath: () => s.autosaveSidecarPath,
+      autosavePath: () => s.autosaveSidecarPath!,
     );
     // Clean session: nothing written.
     await autosave.tick();

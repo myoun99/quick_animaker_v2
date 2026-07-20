@@ -28,6 +28,15 @@ void main() {
     expect(prompts, 1);
   });
 
+  test('SAVE-1: the default cadence is five minutes', () {
+    final service = ProjectAutosaveService(
+      isDirty: () => false,
+      writeSnapshot: (_) async {},
+      autosavePath: () => '/x',
+    );
+    expect(service.interval, const Duration(minutes: 5));
+  });
+
   test('clean sessions neither write nor prompt', () async {
     final written = <String>[];
     var prompts = 0;

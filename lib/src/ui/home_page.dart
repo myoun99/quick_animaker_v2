@@ -11,6 +11,8 @@ import '../models/project.dart';
 import '../services/persistence/app_language_settings_store.dart';
 import '../services/persistence/app_accent_settings_store.dart';
 import '../services/persistence/app_input_settings_store.dart';
+import '../services/persistence/app_save_settings.dart';
+import '../services/persistence/app_save_settings_store.dart';
 import '../services/persistence/project_autosave_service.dart';
 import '../services/project_repository.dart';
 import 'brush/brush_tool_state.dart';
@@ -123,6 +125,9 @@ class _HomePageState extends State<HomePage> {
       inputSettingsStore: Platform.environment.containsKey('FLUTTER_TEST')
           ? null
           : AppInputSettingsStore(),
+      saveSettingsStore: Platform.environment.containsKey('FLUTTER_TEST')
+          ? null
+          : AppSaveSettingsStore(),
     );
     // R16-①: undo/redo over a PENDING move session adopts it into history
     // first — an undo never pops out from under the unadopted lift.
@@ -147,18 +152,10 @@ class _HomePageState extends State<HomePage> {
           break;
       }
     };
-    if (!Platform.environment.containsKey('FLUTTER_TEST')) {
-      _autosave = ProjectAutosaveService(
-        isDirty: () => _session.hasUnsavedChanges,
-        writeSnapshot: _session.writeAutosaveSnapshot,
-        autosavePath: () => _session.autosaveSidecarPath,
-        // PEN-12 #8: a NEVER-SAVED project autosaves nowhere — instead
-        // of piling sidecars into hidden app-data dirs, the first dirty
-        // tick asks the user to pick a real file (OpenToonz-style).
-        needsProjectFile: () => _session.projectFilePath == null,
-        onUnsavedProject: _promptUnsavedAutosave,
-      )..start();
-    }
+    // SAVE-1: the autosave service follows the LIVE policy — on/off and
+    // the interval rebuild it; the settings notifier is the one source.
+    _syncAutosaveService();
+    AppSave.settings.addListener(_syncAutosaveService);
     _lifecycle = AppLifecycleListener(onExitRequested: _handleExitRequested);
     // R26 #13: the transform tool refuses to engage with nothing to
     // transform — announced through the shared cursor notice, never a
@@ -192,9 +189,34 @@ class _HomePageState extends State<HomePage> {
     ).noticeNothingToTransform;
   }
 
+  /// SAVE-1: (re)builds the autosave service to the current policy —
+  /// disabled tears it down; an interval change restarts the timer.
+  /// FLUTTER_TEST never runs the timer (tests drive [tick] directly).
+  void _syncAutosaveService() {
+    _autosave?.dispose();
+    _autosave = null;
+    if (Platform.environment.containsKey('FLUTTER_TEST') ||
+        !AppSave.settings.value.autosaveEnabled) {
+      return;
+    }
+    _autosave = ProjectAutosaveService(
+      isDirty: () => _session.hasUnsavedChanges,
+      writeSnapshot: _session.writeAutosaveSnapshot,
+      // Only called once needsProjectFile says a real file exists.
+      autosavePath: () => _session.autosaveSidecarPath!,
+      // PEN-12 #8: a NEVER-SAVED project autosaves nowhere — instead
+      // of piling sidecars into hidden app-data dirs, the first dirty
+      // tick asks the user to pick a real file (OpenToonz-style).
+      needsProjectFile: () => _session.projectFilePath == null,
+      onUnsavedProject: _promptUnsavedAutosave,
+      interval: AppSave.autosaveInterval,
+    )..start();
+  }
+
   @override
   void dispose() {
     PencilInteractionService.instance.onPencilTap = null;
+    AppSave.settings.removeListener(_syncAutosaveService);
     _lifecycle?.dispose();
     _autosave?.dispose();
     _session.dispose();

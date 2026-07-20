@@ -9,6 +9,8 @@ import '../models/app_language.dart';
 import '../services/persistence/app_language_settings_store.dart';
 import '../services/persistence/app_accent_settings_store.dart';
 import '../services/persistence/app_input_settings_store.dart';
+import '../services/persistence/app_save_settings.dart';
+import '../services/persistence/app_save_settings_store.dart';
 import 'input/app_input_settings.dart';
 import 'theme/app_accents.dart';
 import 'theme/app_theme.dart' show AppColors;
@@ -136,15 +138,18 @@ class EditorSessionManager extends ChangeNotifier {
     AppLanguageSettingsStore? languageSettingsStore,
     AppAccentSettingsStore? accentSettingsStore,
     AppInputSettingsStore? inputSettingsStore,
+    AppSaveSettingsStore? saveSettingsStore,
   }) : _editingSession = EditingSessionState.forProject(initialProject),
        _injectedAudioPeaksStore = audioPeaksStore,
        _languageSettingsStore = languageSettingsStore,
        _accentSettingsStore = accentSettingsStore,
        _inputSettingsStore = inputSettingsStore,
+       _saveSettingsStore = saveSettingsStore,
        _repository = ProjectRepository(initialProject: initialProject) {
     unawaited(_restoreLanguageSettings());
     unawaited(_restoreAccentSettings());
     unawaited(_restoreInputSettings());
+    unawaited(_restoreSaveSettings());
     _historyManager = HistoryManager();
     _cutCommandCoordinator = CutCommandCoordinator(
       repository: _repository,
@@ -238,6 +243,29 @@ class EditorSessionManager extends ChangeNotifier {
     }
     AppInput.settings.value = settings;
     final store = _inputSettingsStore;
+    if (store != null) {
+      unawaited(store.save(settings));
+    }
+  }
+
+  // --- Save settings (SAVE-1) -----------------------------------------------
+
+  /// Injectable persistence; null (tests) keeps the in-memory defaults.
+  final AppSaveSettingsStore? _saveSettingsStore;
+
+  Future<void> _restoreSaveSettings() async {
+    final restored = await _saveSettingsStore?.load();
+    if (restored != null) {
+      AppSave.settings.value = restored;
+    }
+  }
+
+  void setSaveSettings(AppSaveSettings settings) {
+    if (settings == AppSave.settings.value) {
+      return;
+    }
+    AppSave.settings.value = settings;
+    final store = _saveSettingsStore;
     if (store != null) {
       unawaited(store.save(settings));
     }
@@ -5721,7 +5749,9 @@ class EditorSessionManager extends ChangeNotifier {
           ),
         );
       }
-      for (final entry in multiRowPlan?.layersAfter.entries ?? const <MapEntry<LayerId, Layer>>[]) {
+      for (final entry
+          in multiRowPlan?.layersAfter.entries ??
+              const <MapEntry<LayerId, Layer>>[]) {
         final before = _layerById(entry.key);
         if (before == null) {
           continue;
@@ -6862,22 +6892,21 @@ class EditorSessionManager extends ChangeNotifier {
     _hasUnsavedChanges = true;
   }
 
-  /// The autosave sidecar for the CURRENT state: next to the saved file,
-  /// or in the app-data autosave folder while never saved.
-  String get autosaveSidecarPath {
+  /// The autosave sidecar for the CURRENT state (SAVE-1: beside the file
+  /// or in the user's sidecar directory — [AppSave.sidecarPathFor]);
+  /// null while the project has never been saved (the service prompts
+  /// for a real file instead of writing into hidden app-data dirs).
+  String? get autosaveSidecarPath {
     final path = _projectFilePath;
-    if (path != null) {
-      return '$path.autosave';
-    }
-    final projectId = _repository.requireProject().id.value;
-    return '${ProjectAutosaveService.defaultUnsavedAutosaveDirectory()}/'
-        '$projectId.qap.autosave';
+    return path == null ? null : AppSave.sidecarPathFor(path);
   }
 
   /// Writes the current state to [path] WITHOUT touching the dirty flag or
-  /// the project path — the autosave service's snapshot writer.
-  Future<void> writeAutosaveSnapshot(String path) {
-    return _qapFileService.save(
+  /// the project path — the autosave service's snapshot writer. Creates
+  /// the parent folder (a custom sidecar directory may not exist yet).
+  Future<void> writeAutosaveSnapshot(String path) async {
+    await File(path).parent.create(recursive: true);
+    await _qapFileService.save(
       project: _repository.requireProject(),
       brushFrameStore: brushFrameStore,
       filePath: path,
@@ -6898,9 +6927,15 @@ class EditorSessionManager extends ChangeNotifier {
     _projectFilePath = filePath;
     _hasUnsavedChanges = false;
     // Awaited: a still-in-flight delete could otherwise race a following
-    // autosave tick and eat its fresh sidecar.
-    await ProjectAutosaveService.deleteSidecar(previousSidecar);
-    await ProjectAutosaveService.deleteSidecar('$filePath.autosave');
+    // autosave tick and eat its fresh sidecar. EVERY candidate location
+    // retires (the sidecar-directory setting may have moved since the
+    // stale one was written).
+    if (previousSidecar != null) {
+      await ProjectAutosaveService.deleteSidecar(previousSidecar);
+    }
+    for (final candidate in AppSave.sidecarCandidatesFor(filePath)) {
+      await ProjectAutosaveService.deleteSidecar(candidate);
+    }
     notifyListeners();
   }
 

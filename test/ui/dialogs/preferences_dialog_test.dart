@@ -1,0 +1,130 @@
+import 'package:flutter/material.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:quick_animaker_v2/src/controllers/default_project_helpers.dart';
+import 'package:quick_animaker_v2/src/services/persistence/app_save_settings.dart';
+import 'package:quick_animaker_v2/src/ui/dialogs/preferences_dialog.dart';
+import 'package:quick_animaker_v2/src/ui/editor_session_manager.dart';
+import 'package:quick_animaker_v2/src/ui/input/app_input_settings.dart';
+
+/// SAVE-1: the unified Preferences dialog — sections switch in place and
+/// the Autosave section drives the live save policy.
+void main() {
+  late EditorSessionManager session;
+
+  setUp(() {
+    session = EditorSessionManager(initialProject: createDefaultProject());
+  });
+  tearDown(() {
+    session.dispose();
+    AppSave.settings.value = const AppSaveSettings();
+    AppInput.settings.value = AppInputSettings.testCorpusBaseline;
+  });
+
+  Future<void> pumpPreferences(
+    WidgetTester tester, {
+    PreferencesSection initialSection = PreferencesSection.input,
+  }) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: Builder(
+            builder: (context) => TextButton(
+              onPressed: () => showPreferencesDialog(
+                context,
+                session: session,
+                initialSection: initialSection,
+              ),
+              child: const Text('open'),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.tap(find.text('open'));
+    await tester.pumpAndSettle();
+  }
+
+  testWidgets('sections switch in place: Input first, every section '
+      'reachable from the rail', (tester) async {
+    await pumpPreferences(tester);
+    expect(
+      find.byKey(const ValueKey<String>('preferences-dialog')),
+      findsOneWidget,
+    );
+    // Input is the landing section.
+    expect(
+      find.byKey(const ValueKey<String>('settings-touch-timeline-scroll')),
+      findsOneWidget,
+    );
+
+    await tester.tap(
+      find.byKey(const ValueKey<String>('preferences-section-autosave')),
+    );
+    await tester.pumpAndSettle();
+    expect(
+      find.byKey(const ValueKey<String>('settings-autosave-enabled')),
+      findsOneWidget,
+    );
+
+    await tester.tap(
+      find.byKey(const ValueKey<String>('preferences-section-language')),
+    );
+    await tester.pumpAndSettle();
+    expect(
+      find.byKey(const ValueKey<String>('settings-program-language')),
+      findsOneWidget,
+    );
+
+    await tester.tap(
+      find.byKey(const ValueKey<String>('preferences-section-accent')),
+    );
+    await tester.pumpAndSettle();
+    expect(
+      find.byKey(const ValueKey<String>('settings-accent2-auto')),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('the Autosave section drives the live policy: toggle, '
+      'interval commit, and the sidecar folder switch', (tester) async {
+    await pumpPreferences(tester, initialSection: PreferencesSection.autosave);
+
+    await tester.tap(
+      find.byKey(const ValueKey<String>('settings-autosave-enabled')),
+    );
+    await tester.pumpAndSettle();
+    expect(AppSave.settings.value.autosaveEnabled, isFalse);
+
+    // Interval: bad input snaps back, good input commits.
+    final interval = find.byKey(
+      const ValueKey<String>('settings-autosave-interval'),
+    );
+    // Re-enable so the field accepts input.
+    await tester.tap(
+      find.byKey(const ValueKey<String>('settings-autosave-enabled')),
+    );
+    await tester.pumpAndSettle();
+    await tester.enterText(interval, '0');
+    await tester.testTextInput.receiveAction(TextInputAction.done);
+    await tester.pumpAndSettle();
+    expect(AppSave.settings.value.autosaveIntervalMinutes, 5);
+    await tester.enterText(interval, '12');
+    await tester.testTextInput.receiveAction(TextInputAction.done);
+    await tester.pumpAndSettle();
+    expect(AppSave.settings.value.autosaveIntervalMinutes, 12);
+
+    // The sidecar switch turns the custom folder on (empty until chosen)
+    // and back off to "beside the file".
+    await tester.tap(
+      find.byKey(const ValueKey<String>('settings-sidecar-custom')),
+    );
+    await tester.pumpAndSettle();
+    expect(AppSave.settings.value.sidecarDirectory, '');
+    expect(find.text('No folder chosen yet'), findsOneWidget);
+    await tester.tap(
+      find.byKey(const ValueKey<String>('settings-sidecar-custom')),
+    );
+    await tester.pumpAndSettle();
+    expect(AppSave.settings.value.sidecarDirectory, isNull);
+  });
+}

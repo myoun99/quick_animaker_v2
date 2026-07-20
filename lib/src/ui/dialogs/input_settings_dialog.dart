@@ -25,286 +25,295 @@ class _InputSettingsDialog extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Input Settings'),
+      // Scrollable: the dialog outgrew short windows once the canvas
+      // mappings joined (PEN-7a).
+      content: SingleChildScrollView(
+        child: InputSettingsSection(session: session),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Close'),
+        ),
+      ],
+    );
+  }
+}
+
+/// The input-settings CONTENT, dialog-free (SAVE-1: the Preferences
+/// dialog embeds it as a section; the standalone dialog wraps it).
+class InputSettingsSection extends StatelessWidget {
+  const InputSettingsSection({super.key, required this.session});
+
+  final EditorSessionManager session;
+
+  @override
+  Widget build(BuildContext context) {
     return ValueListenableBuilder<AppInputSettings>(
       valueListenable: AppInput.settings,
       builder: (context, settings, _) {
-        return AlertDialog(
-          title: const Text('Input Settings'),
-          // Scrollable: the dialog outgrew short windows once the canvas
-          // mappings joined (PEN-7a).
-          content: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                SwitchListTile(
-                  key: const ValueKey<String>('settings-touch-timeline-scroll'),
-                  contentPadding: EdgeInsets.zero,
-                  dense: true,
-                  title: const Text('Touch scrolls the timeline'),
-                  subtitle: const Text(
-                    'ON (default): finger pans scroll the grids — the edit '
-                    'gestures release touch entirely.\n'
-                    'OFF: touch edits exactly like the pen (select, move, '
-                    'drag grips) — the safety net for pens that report as '
-                    'touch.',
-                  ),
-                  value: settings.touchTimelineScroll,
-                  onChanged: (enabled) => session.setInputSettings(
-                    settings.copyWith(touchTimelineScroll: enabled),
-                  ),
-                ),
-                // The pen pressure response curve (PEN-3) — every
-                // platform: output = input^gamma; drag live, persist on
-                // release.
-                const Divider(height: 16),
-                Text(
-                  'Pen pressure response',
-                  style: Theme.of(context).textTheme.labelLarge,
-                ),
-                Padding(
-                  padding: const EdgeInsets.only(top: 6, bottom: 2),
-                  // Fixed box: FieldSlider builds through a LayoutBuilder,
-                  // which cannot answer the AlertDialog's intrinsic-size
-                  // probes — tight constraints shield it.
-                  child: SizedBox(
-                    width: 320,
-                    height: 24,
-                    child: FieldSlider(
-                      key: const ValueKey<String>('settings-pressure-curve'),
-                      value: settings.pressureCurveGamma,
-                      min: 0.25,
-                      max: 4.0,
-                      scale: FieldSliderScale.exponential,
-                      label: 'Soft ↔ Hard',
-                      valueText: settings.pressureCurveGamma == 1.0
-                          ? 'Linear'
-                          : '×${settings.pressureCurveGamma.toStringAsFixed(2)}',
-                      onChanged: (gamma) => AppInput.settings.value = AppInput
-                          .settings
-                          .value
-                          .copyWith(pressureCurveGamma: gamma),
-                      onChangeEnd: (gamma) => session.setInputSettings(
-                        settings.copyWith(pressureCurveGamma: gamma),
-                      ),
-                    ),
+        return Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            SwitchListTile(
+              key: const ValueKey<String>('settings-touch-timeline-scroll'),
+              contentPadding: EdgeInsets.zero,
+              dense: true,
+              title: const Text('Touch scrolls the timeline'),
+              subtitle: const Text(
+                'ON (default): finger pans scroll the grids — the edit '
+                'gestures release touch entirely.\n'
+                'OFF: touch edits exactly like the pen (select, move, '
+                'drag grips) — the safety net for pens that report as '
+                'touch.',
+              ),
+              value: settings.touchTimelineScroll,
+              onChanged: (enabled) => session.setInputSettings(
+                settings.copyWith(touchTimelineScroll: enabled),
+              ),
+            ),
+            // The pen pressure response curve (PEN-3) — every
+            // platform: output = input^gamma; drag live, persist on
+            // release.
+            const Divider(height: 16),
+            Text(
+              'Pen pressure response',
+              style: Theme.of(context).textTheme.labelLarge,
+            ),
+            Padding(
+              padding: const EdgeInsets.only(top: 6, bottom: 2),
+              // Fixed box: FieldSlider builds through a LayoutBuilder,
+              // which cannot answer the AlertDialog's intrinsic-size
+              // probes — tight constraints shield it.
+              child: SizedBox(
+                width: 320,
+                height: 24,
+                child: FieldSlider(
+                  key: const ValueKey<String>('settings-pressure-curve'),
+                  value: settings.pressureCurveGamma,
+                  min: 0.25,
+                  max: 4.0,
+                  scale: FieldSliderScale.exponential,
+                  label: 'Soft ↔ Hard',
+                  valueText: settings.pressureCurveGamma == 1.0
+                      ? 'Linear'
+                      : '×${settings.pressureCurveGamma.toStringAsFixed(2)}',
+                  onChanged: (gamma) => AppInput.settings.value = AppInput
+                      .settings
+                      .value
+                      .copyWith(pressureCurveGamma: gamma),
+                  onChangeEnd: (gamma) => session.setInputSettings(
+                    settings.copyWith(pressureCurveGamma: gamma),
                   ),
                 ),
-                // PEN-7a: the CANVAS mappings for standard secondary
-                // inputs — pen side/barrel + S-Pen button + mouse right
-                // all arrive as 'right-click'; pen upper + wheel click as
-                // 'wheel click'. Hold switches the tool temporarily;
-                // release springs back or keeps it.
-                const Divider(height: 16),
-                Text('Canvas', style: Theme.of(context).textTheme.labelLarge),
-                _CanvasMappingRow(
-                  keyPrefix: 'settings-canvas-right',
-                  label: 'Right click / pen side button',
-                  mapping: settings.canvasRightClick,
-                  onChanged: (mapping) => session.setInputSettings(
-                    settings.copyWith(canvasRightClick: mapping),
-                  ),
-                ),
-                _CanvasMappingRow(
-                  keyPrefix: 'settings-canvas-wheel',
-                  label: 'Wheel click / pen upper button',
-                  mapping: settings.canvasWheelClick,
-                  onChanged: (mapping) => session.setInputSettings(
-                    settings.copyWith(canvasWheelClick: mapping),
-                  ),
-                ),
-                // PEN-7b: the CANVAS TOUCH system — the finger-count
-                // drag slots (all assignable; PEN-12 #4 folded the old
-                // control/draw mode into the ONE-FINGER slot's Drawing
-                // action), the +1-finger modifier and the snap tables.
-                const Divider(height: 16),
-                Text(
-                  'Canvas touch',
-                  style: Theme.of(context).textTheme.labelLarge,
-                ),
-                _EnumDropdownRow<CanvasTouchDragAction>(
-                  rowKey: 'settings-touch-slot-1',
-                  label: '1-finger drag',
-                  value: settings.touchDragOneFinger,
-                  values: CanvasTouchDragAction.values,
-                  labelOf: _dragActionLabel,
-                  onChanged: (action) => session.setInputSettings(
-                    settings.copyWith(touchDragOneFinger: action),
-                  ),
-                ),
-                _EnumDropdownRow<CanvasTouchDragAction>(
-                  rowKey: 'settings-touch-slot-2',
-                  label: '2-finger drag',
-                  // Drawing is single-finger by nature — the multi-finger
-                  // slots never offer it.
-                  values: const [
-                    CanvasTouchDragAction.flip,
-                    CanvasTouchDragAction.navigate,
-                    CanvasTouchDragAction.brushSize,
-                    CanvasTouchDragAction.none,
-                  ],
-                  value: settings.touchDragTwoFingers,
-                  labelOf: _dragActionLabel,
-                  onChanged: (action) => session.setInputSettings(
-                    settings.copyWith(touchDragTwoFingers: action),
-                  ),
-                ),
-                _EnumDropdownRow<CanvasTouchDragAction>(
-                  rowKey: 'settings-touch-slot-3',
-                  label: '3-finger drag',
-                  values: const [
-                    CanvasTouchDragAction.flip,
-                    CanvasTouchDragAction.navigate,
-                    CanvasTouchDragAction.brushSize,
-                    CanvasTouchDragAction.none,
-                  ],
-                  value: settings.touchDragThreeFingers,
-                  labelOf: _dragActionLabel,
-                  onChanged: (action) => session.setInputSettings(
-                    settings.copyWith(touchDragThreeFingers: action),
-                  ),
-                ),
-                SwitchListTile(
-                  key: const ValueKey<String>('settings-extra-finger'),
-                  contentPadding: EdgeInsets.zero,
-                  dense: true,
-                  title: const Text('Extra-finger modifier'),
-                  subtitle: const Text(
-                    'A finger added DURING a gesture constrains it — '
-                    'snap zoom/rotation/size, fine frame steps.',
-                  ),
-                  value: settings.extraFingerModifier,
-                  onChanged: (enabled) => session.setInputSettings(
-                    settings.copyWith(extraFingerModifier: enabled),
-                  ),
-                ),
-                SwitchListTile(
-                  key: const ValueKey<String>('settings-nav-rotation'),
-                  contentPadding: EdgeInsets.zero,
-                  dense: true,
-                  title: const Text('Two-finger rotation'),
-                  subtitle: const Text(
-                    'OFF: the navigate gesture pans and zooms only '
-                    '(the rotate buttons/shortcut stay).',
-                  ),
-                  value: settings.navigationRotationEnabled,
-                  onChanged: (enabled) => session.setInputSettings(
-                    settings.copyWith(navigationRotationEnabled: enabled),
-                  ),
-                ),
-                SwitchListTile(
-                  key: const ValueKey<String>('settings-nav-rot-lock'),
-                  contentPadding: EdgeInsets.zero,
-                  dense: true,
-                  title: const Text('Modifier locks rotation'),
-                  subtitle: const Text(
-                    'ON: the extra finger FREEZES the angle (pure pan + '
-                    'snapped zoom). OFF (default): it snaps the angle.',
-                  ),
-                  value: settings.navigationModifierRotationLock,
-                  onChanged: settings.navigationRotationEnabled
-                      ? (enabled) => session.setInputSettings(
-                          settings.copyWith(
-                            navigationModifierRotationLock: enabled,
-                          ),
-                        )
-                      : null,
-                ),
-                _SnapListField(
-                  fieldKey: 'settings-snap-rotation',
-                  label: 'Rotation snap (°)',
-                  text: settings.rotationSnapDegrees.toStringAsFixed(0),
-                  onSubmitted: (text) {
-                    final value = double.tryParse(text.trim());
-                    if (value != null && value > 0) {
-                      session.setInputSettings(
-                        settings.copyWith(rotationSnapDegrees: value),
-                      );
-                    }
-                  },
-                ),
-                _SnapListField(
-                  fieldKey: 'settings-snap-zoom',
-                  label: 'Zoom snaps (%)',
-                  text: settings.zoomSnapPercents
-                      .map((value) => value.toStringAsFixed(0))
-                      .join(', '),
-                  onSubmitted: (text) {
-                    final values = _parseDoubleList(text);
-                    if (values.isNotEmpty) {
-                      session.setInputSettings(
-                        settings.copyWith(zoomSnapPercents: values),
-                      );
-                    }
-                  },
-                ),
-                _SnapListField(
-                  fieldKey: 'settings-snap-size',
-                  label: 'Brush size snaps (px)',
-                  text: settings.brushSizeSnaps
-                      .map((value) => value.toStringAsFixed(0))
-                      .join(', '),
-                  onSubmitted: (text) {
-                    final values = _parseDoubleList(text);
-                    if (values.isNotEmpty) {
-                      session.setInputSettings(
-                        settings.copyWith(brushSizeSnaps: values),
-                      );
-                    }
-                  },
-                ),
-                // The CSP-style tablet service switch (PEN-2) — Windows
-                // only: other platforms have a single native pen path.
-                if (defaultTargetPlatform == TargetPlatform.windows) ...[
-                  const Divider(height: 16),
-                  Text(
-                    'Tablet service',
-                    style: Theme.of(context).textTheme.labelLarge,
-                  ),
-                  RadioGroup<TabletService>(
-                    groupValue: settings.tabletService,
-                    onChanged: (service) => session.setInputSettings(
-                      settings.copyWith(tabletService: service),
-                    ),
-                    child: const Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        RadioListTile<TabletService>(
-                          key: ValueKey<String>('settings-tablet-standard'),
-                          contentPadding: EdgeInsets.zero,
-                          dense: true,
-                          title: Text('Standard (default)'),
-                          subtitle: Text(
-                            'The OS pointer pipeline (Windows Ink) — right '
-                            'for up-to-date drivers and built-in pens.',
-                          ),
-                          value: TabletService.standard,
-                        ),
-                        RadioListTile<TabletService>(
-                          key: ValueKey<String>('settings-tablet-wintab'),
-                          contentPadding: EdgeInsets.zero,
-                          dense: true,
-                          title: Text('Wintab'),
-                          subtitle: Text(
-                            'Reads pressure straight from the tablet driver '
-                            '— the escape hatch when the pen arrives without '
-                            'pressure or as touch/mouse.',
-                          ),
-                          value: TabletService.wintab,
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
+              ),
+            ),
+            // PEN-7a: the CANVAS mappings for standard secondary
+            // inputs — pen side/barrel + S-Pen button + mouse right
+            // all arrive as 'right-click'; pen upper + wheel click as
+            // 'wheel click'. Hold switches the tool temporarily;
+            // release springs back or keeps it.
+            const Divider(height: 16),
+            Text('Canvas', style: Theme.of(context).textTheme.labelLarge),
+            _CanvasMappingRow(
+              keyPrefix: 'settings-canvas-right',
+              label: 'Right click / pen side button',
+              mapping: settings.canvasRightClick,
+              onChanged: (mapping) => session.setInputSettings(
+                settings.copyWith(canvasRightClick: mapping),
+              ),
+            ),
+            _CanvasMappingRow(
+              keyPrefix: 'settings-canvas-wheel',
+              label: 'Wheel click / pen upper button',
+              mapping: settings.canvasWheelClick,
+              onChanged: (mapping) => session.setInputSettings(
+                settings.copyWith(canvasWheelClick: mapping),
+              ),
+            ),
+            // PEN-7b: the CANVAS TOUCH system — the finger-count
+            // drag slots (all assignable; PEN-12 #4 folded the old
+            // control/draw mode into the ONE-FINGER slot's Drawing
+            // action), the +1-finger modifier and the snap tables.
+            const Divider(height: 16),
+            Text('Canvas touch', style: Theme.of(context).textTheme.labelLarge),
+            _EnumDropdownRow<CanvasTouchDragAction>(
+              rowKey: 'settings-touch-slot-1',
+              label: '1-finger drag',
+              value: settings.touchDragOneFinger,
+              values: CanvasTouchDragAction.values,
+              labelOf: _dragActionLabel,
+              onChanged: (action) => session.setInputSettings(
+                settings.copyWith(touchDragOneFinger: action),
+              ),
+            ),
+            _EnumDropdownRow<CanvasTouchDragAction>(
+              rowKey: 'settings-touch-slot-2',
+              label: '2-finger drag',
+              // Drawing is single-finger by nature — the multi-finger
+              // slots never offer it.
+              values: const [
+                CanvasTouchDragAction.flip,
+                CanvasTouchDragAction.navigate,
+                CanvasTouchDragAction.brushSize,
+                CanvasTouchDragAction.none,
               ],
+              value: settings.touchDragTwoFingers,
+              labelOf: _dragActionLabel,
+              onChanged: (action) => session.setInputSettings(
+                settings.copyWith(touchDragTwoFingers: action),
+              ),
             ),
-          ),
-          actions: [
-            TextButton(
-              key: const ValueKey<String>('settings-input-close'),
-              onPressed: () => Navigator.of(context).pop(),
-              child: const Text('Close'),
+            _EnumDropdownRow<CanvasTouchDragAction>(
+              rowKey: 'settings-touch-slot-3',
+              label: '3-finger drag',
+              values: const [
+                CanvasTouchDragAction.flip,
+                CanvasTouchDragAction.navigate,
+                CanvasTouchDragAction.brushSize,
+                CanvasTouchDragAction.none,
+              ],
+              value: settings.touchDragThreeFingers,
+              labelOf: _dragActionLabel,
+              onChanged: (action) => session.setInputSettings(
+                settings.copyWith(touchDragThreeFingers: action),
+              ),
             ),
+            SwitchListTile(
+              key: const ValueKey<String>('settings-extra-finger'),
+              contentPadding: EdgeInsets.zero,
+              dense: true,
+              title: const Text('Extra-finger modifier'),
+              subtitle: const Text(
+                'A finger added DURING a gesture constrains it — '
+                'snap zoom/rotation/size, fine frame steps.',
+              ),
+              value: settings.extraFingerModifier,
+              onChanged: (enabled) => session.setInputSettings(
+                settings.copyWith(extraFingerModifier: enabled),
+              ),
+            ),
+            SwitchListTile(
+              key: const ValueKey<String>('settings-nav-rotation'),
+              contentPadding: EdgeInsets.zero,
+              dense: true,
+              title: const Text('Two-finger rotation'),
+              subtitle: const Text(
+                'OFF: the navigate gesture pans and zooms only '
+                '(the rotate buttons/shortcut stay).',
+              ),
+              value: settings.navigationRotationEnabled,
+              onChanged: (enabled) => session.setInputSettings(
+                settings.copyWith(navigationRotationEnabled: enabled),
+              ),
+            ),
+            SwitchListTile(
+              key: const ValueKey<String>('settings-nav-rot-lock'),
+              contentPadding: EdgeInsets.zero,
+              dense: true,
+              title: const Text('Modifier locks rotation'),
+              subtitle: const Text(
+                'ON: the extra finger FREEZES the angle (pure pan + '
+                'snapped zoom). OFF (default): it snaps the angle.',
+              ),
+              value: settings.navigationModifierRotationLock,
+              onChanged: settings.navigationRotationEnabled
+                  ? (enabled) => session.setInputSettings(
+                      settings.copyWith(
+                        navigationModifierRotationLock: enabled,
+                      ),
+                    )
+                  : null,
+            ),
+            _SnapListField(
+              fieldKey: 'settings-snap-rotation',
+              label: 'Rotation snap (°)',
+              text: settings.rotationSnapDegrees.toStringAsFixed(0),
+              onSubmitted: (text) {
+                final value = double.tryParse(text.trim());
+                if (value != null && value > 0) {
+                  session.setInputSettings(
+                    settings.copyWith(rotationSnapDegrees: value),
+                  );
+                }
+              },
+            ),
+            _SnapListField(
+              fieldKey: 'settings-snap-zoom',
+              label: 'Zoom snaps (%)',
+              text: settings.zoomSnapPercents
+                  .map((value) => value.toStringAsFixed(0))
+                  .join(', '),
+              onSubmitted: (text) {
+                final values = _parseDoubleList(text);
+                if (values.isNotEmpty) {
+                  session.setInputSettings(
+                    settings.copyWith(zoomSnapPercents: values),
+                  );
+                }
+              },
+            ),
+            _SnapListField(
+              fieldKey: 'settings-snap-size',
+              label: 'Brush size snaps (px)',
+              text: settings.brushSizeSnaps
+                  .map((value) => value.toStringAsFixed(0))
+                  .join(', '),
+              onSubmitted: (text) {
+                final values = _parseDoubleList(text);
+                if (values.isNotEmpty) {
+                  session.setInputSettings(
+                    settings.copyWith(brushSizeSnaps: values),
+                  );
+                }
+              },
+            ),
+            // The CSP-style tablet service switch (PEN-2) — Windows
+            // only: other platforms have a single native pen path.
+            if (defaultTargetPlatform == TargetPlatform.windows) ...[
+              const Divider(height: 16),
+              Text(
+                'Tablet service',
+                style: Theme.of(context).textTheme.labelLarge,
+              ),
+              RadioGroup<TabletService>(
+                groupValue: settings.tabletService,
+                onChanged: (service) => session.setInputSettings(
+                  settings.copyWith(tabletService: service),
+                ),
+                child: const Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    RadioListTile<TabletService>(
+                      key: ValueKey<String>('settings-tablet-standard'),
+                      contentPadding: EdgeInsets.zero,
+                      dense: true,
+                      title: Text('Standard (default)'),
+                      subtitle: Text(
+                        'The OS pointer pipeline (Windows Ink) — right '
+                        'for up-to-date drivers and built-in pens.',
+                      ),
+                      value: TabletService.standard,
+                    ),
+                    RadioListTile<TabletService>(
+                      key: ValueKey<String>('settings-tablet-wintab'),
+                      contentPadding: EdgeInsets.zero,
+                      dense: true,
+                      title: Text('Wintab'),
+                      subtitle: Text(
+                        'Reads pressure straight from the tablet driver '
+                        '— the escape hatch when the pen arrives without '
+                        'pressure or as touch/mouse.',
+                      ),
+                      value: TabletService.wintab,
+                    ),
+                  ],
+                ),
+              ),
+            ],
           ],
         );
       },
