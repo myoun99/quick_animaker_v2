@@ -3,6 +3,7 @@ import 'package:quick_animaker_v2/src/models/canvas_size.dart';
 import 'package:quick_animaker_v2/src/models/cut.dart';
 import 'package:quick_animaker_v2/src/models/cut_id.dart';
 import 'package:quick_animaker_v2/src/models/project.dart';
+import 'package:quick_animaker_v2/src/models/project_frame_rate.dart';
 import 'package:quick_animaker_v2/src/models/project_id.dart';
 import 'package:quick_animaker_v2/src/models/track.dart';
 import 'package:quick_animaker_v2/src/models/track_id.dart';
@@ -36,11 +37,51 @@ void main() {
   }
 
   test('elapsedToGlobalFrame maps wall clock to frames at fps', () {
-    expect(elapsedToGlobalFrame(Duration.zero, 24), 0);
-    expect(elapsedToGlobalFrame(const Duration(milliseconds: 41), 24), 0);
-    expect(elapsedToGlobalFrame(const Duration(milliseconds: 42), 24), 1);
-    expect(elapsedToGlobalFrame(const Duration(seconds: 1), 24), 24);
-    expect(elapsedToGlobalFrame(const Duration(seconds: 2), 12), 24);
+    const fps24 = ProjectFrameRate.integer(24);
+    const fps12 = ProjectFrameRate.integer(12);
+    expect(elapsedToGlobalFrame(Duration.zero, fps24), 0);
+    expect(elapsedToGlobalFrame(const Duration(milliseconds: 41), fps24), 0);
+    expect(elapsedToGlobalFrame(const Duration(milliseconds: 42), fps24), 1);
+    expect(elapsedToGlobalFrame(const Duration(seconds: 1), fps24), 24);
+    expect(elapsedToGlobalFrame(const Duration(seconds: 2), fps12), 24);
+  });
+
+  test('23.976 runs slower than 24 by exactly the NTSC 1000/1001', () {
+    const ntsc = ProjectFrameRate.ntsc(24);
+    // One second of wall clock shows frame 23, not 24 — the pulldown rate
+    // genuinely is slower, and the clock must not round that away.
+    expect(elapsedToGlobalFrame(const Duration(seconds: 1), ntsc), 23);
+    // 1001/1000 seconds is exactly 24 frames.
+    expect(elapsedToGlobalFrame(const Duration(milliseconds: 1001), ntsc), 24);
+  });
+
+  test('the clock does not drift over an hour of playback', () {
+    // The failure this whole program exists to prevent: a rate held as a
+    // double accumulates error, and after an hour the picture and the
+    // sound are seconds apart. Frame N must land on frame N no matter how
+    // far from zero it is, so we check the clock against the exact frame
+    // boundary at the one-hour mark rather than integrating small steps.
+    for (final rate in const [
+      ProjectFrameRate.integer(24),
+      ProjectFrameRate.ntsc(24),
+      ProjectFrameRate.ntsc(30),
+    ]) {
+      final anHourOfFrames = rate.countingBase * 60 * 60;
+      final boundary = rate.frameStart(anHourOfFrames);
+      expect(
+        elapsedToGlobalFrame(boundary, rate),
+        anHourOfFrames,
+        reason: '$rate lands exactly on its own frame boundary',
+      );
+      expect(
+        elapsedToGlobalFrame(
+          boundary - const Duration(microseconds: 1),
+          rate,
+        ),
+        anHourOfFrames - 1,
+        reason: '$rate is still on the previous frame a microsecond before',
+      );
+    }
   });
 
   test('resolvePlaybackPosition finds the cut and local frame', () {

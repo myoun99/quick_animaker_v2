@@ -9,6 +9,7 @@ import 'package:quick_animaker_v2/src/models/layer.dart';
 import 'package:quick_animaker_v2/src/models/layer_id.dart';
 import 'package:quick_animaker_v2/src/models/layer_kind.dart';
 import 'package:quick_animaker_v2/src/models/project.dart';
+import 'package:quick_animaker_v2/src/models/project_frame_rate.dart';
 import 'package:quick_animaker_v2/src/models/project_id.dart';
 import 'package:quick_animaker_v2/src/models/timeline_exposure.dart';
 import 'package:quick_animaker_v2/src/models/track.dart';
@@ -118,11 +119,11 @@ void main() {
       resolveProject: () => _project,
       resolveActiveCutId: () => const CutId('cut-a'),
       resolveActiveTrackId: () => const TrackId('track'),
-      resolveFps: () => 10,
+      resolveFrameRate: () => const ProjectFrameRate.integer(10),
     );
     final sync = AudioPlaybackSync(
       controller: controller,
-      resolveFps: () => 10,
+      resolveFrameRate: () => const ProjectFrameRate.integer(10),
       durationSecondsFor: (path) => _durations[path],
       playerFactory: () => _FakeClipPlayer(log),
     )..attach();
@@ -292,11 +293,11 @@ void main() {
       resolveProject: () => project,
       resolveActiveCutId: () => const CutId('trim-cut'),
       resolveActiveTrackId: () => const TrackId('trim-track'),
-      resolveFps: () => 10,
+      resolveFrameRate: () => const ProjectFrameRate.integer(10),
     );
     final sync = AudioPlaybackSync(
       controller: trimmedController,
-      resolveFps: () => 10,
+      resolveFrameRate: () => const ProjectFrameRate.integer(10),
       durationSecondsFor: (path) => _durations[path],
       playerFactory: () => _FakeClipPlayer(trimmedLog),
     )..attach();
@@ -358,11 +359,11 @@ void main() {
       resolveProject: () => project,
       resolveActiveCutId: () => const CutId('mute-cut'),
       resolveActiveTrackId: () => const TrackId('mute-track'),
-      resolveFps: () => 10,
+      resolveFrameRate: () => const ProjectFrameRate.integer(10),
     );
     final sync = AudioPlaybackSync(
       controller: mutedController,
-      resolveFps: () => 10,
+      resolveFrameRate: () => const ProjectFrameRate.integer(10),
       durationSecondsFor: (path) => _durations[path],
       playerFactory: () => _FakeClipPlayer(mutedLog),
     )..attach();
@@ -416,11 +417,11 @@ void main() {
       resolveProject: () => project,
       resolveActiveCutId: () => const CutId('gap-a'),
       resolveActiveTrackId: () => const TrackId('gap-track'),
-      resolveFps: () => 10,
+      resolveFrameRate: () => const ProjectFrameRate.integer(10),
     );
     final sync = AudioPlaybackSync(
       controller: gapController,
-      resolveFps: () => 10,
+      resolveFrameRate: () => const ProjectFrameRate.integer(10),
       durationSecondsFor: (path) => const {'g.wav': 1.0, 'h.wav': 0.5}[path],
       playerFactory: () => _FakeClipPlayer(gapLog),
       resolveProject: () => project,
@@ -499,11 +500,11 @@ void main() {
       resolveProject: () => project,
       resolveActiveCutId: () => const CutId('ramp-cut'),
       resolveActiveTrackId: () => const TrackId('ramp-track'),
-      resolveFps: () => 10,
+      resolveFrameRate: () => const ProjectFrameRate.integer(10),
     );
     final sync = AudioPlaybackSync(
       controller: rampController,
-      resolveFps: () => 10,
+      resolveFrameRate: () => const ProjectFrameRate.integer(10),
       durationSecondsFor: (path) => _durations[path],
       playerFactory: () => _FakeClipPlayer(rampLog, volumeLog: volumeLog),
     )..attach();

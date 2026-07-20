@@ -5,6 +5,7 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/foundation.dart' show visibleForTesting;
 
+import '../../models/project_frame_rate.dart';
 import 'png_sequence_export_service.dart' show ExportWriteSummary;
 
 /// Injectable process launcher so tests can stand in for the real ffmpeg.
@@ -112,9 +113,13 @@ class VideoExportService {
   /// (seeked/trimmed at the input) and a filter graph delays each onto the
   /// output timeline and mixes them (`normalize=0` keeps original volumes —
   /// needs ffmpeg ≥ 5.1). `-shortest` pins the output to the video length.
+  ///
+  /// The rate goes out as ffmpeg's own fraction (`24000/1001`), so a
+  /// 23.976 project exports at exactly the rate it was authored at — not
+  /// at a decimal ffmpeg would have to round.
   @visibleForTesting
   static List<String> buildFfmpegArguments({
-    required int fps,
+    required ProjectFrameRate frameRate,
     required String outputFilePath,
     List<ExportAudioClip> audioClips = const [],
   }) {
@@ -125,7 +130,7 @@ class VideoExportService {
       '-f',
       'image2pipe',
       '-framerate',
-      '$fps',
+      frameRate.ffmpegRateArgument,
       '-i',
       '-',
     ];
@@ -209,7 +214,7 @@ class VideoExportService {
     required int count,
     required Future<ui.Image?> Function(int index) renderImage,
     required String outputFilePath,
-    required int fps,
+    required ProjectFrameRate frameRate,
     List<ExportAudioClip> audioClips = const [],
     void Function(int completed, int total)? onProgress,
     bool Function()? isCancelled,
@@ -219,7 +224,7 @@ class VideoExportService {
       process = await processStarter(
         executable,
         buildFfmpegArguments(
-          fps: fps,
+          frameRate: frameRate,
           outputFilePath: outputFilePath,
           audioClips: audioClips,
         ),

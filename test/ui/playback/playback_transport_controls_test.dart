@@ -5,6 +5,7 @@ import 'package:quick_animaker_v2/src/models/cut.dart';
 import 'package:quick_animaker_v2/src/models/cut_id.dart';
 import 'package:quick_animaker_v2/src/models/playback_quality.dart';
 import 'package:quick_animaker_v2/src/models/project.dart';
+import 'package:quick_animaker_v2/src/models/project_frame_rate.dart';
 import 'package:quick_animaker_v2/src/models/project_id.dart';
 import 'package:quick_animaker_v2/src/models/track.dart';
 import 'package:quick_animaker_v2/src/models/track_id.dart';
@@ -15,7 +16,7 @@ void main() {
   Project project() => Project(
     id: const ProjectId('project'),
     name: 'Project',
-    fps: 10,
+    frameRate: const ProjectFrameRate.integer(10),
     tracks: [
       Track(
         id: const TrackId('track'),
@@ -38,7 +39,7 @@ void main() {
     resolveProject: project,
     resolveActiveCutId: () => const CutId('cut'),
     resolveActiveTrackId: () => const TrackId('track'),
-    resolveFps: () => 10,
+    resolveFrameRate: () => const ProjectFrameRate.integer(10),
   );
 
   Future<void> pumpControls(

@@ -11,6 +11,7 @@ import 'package:quick_animaker_v2/src/models/layer.dart';
 import 'package:quick_animaker_v2/src/models/layer_id.dart';
 import 'package:quick_animaker_v2/src/models/layer_section_defaults.dart';
 import 'package:quick_animaker_v2/src/models/project.dart';
+import 'package:quick_animaker_v2/src/models/project_frame_rate.dart';
 import 'package:quick_animaker_v2/src/models/project_id.dart';
 import 'package:quick_animaker_v2/src/models/stroke.dart';
 import 'package:quick_animaker_v2/src/models/stroke_id.dart';
@@ -154,7 +155,7 @@ Project _sampleProject() {
     name: 'Sample Project',
     tracks: [_sampleTrack()],
     createdAt: DateTime.utc(2026, 6, 2, 12),
-    fps: 12,
+    frameRate: const ProjectFrameRate.integer(12),
   );
 }
 

@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 
+import '../../models/project_frame_rate.dart';
 import 'ffmpeg_locator.dart';
 
 /// Injectable process launcher so tests can stand in for the real ffmpeg
@@ -24,9 +25,21 @@ class AudioPeaks {
   double get durationSeconds =>
       bucketsPerSecond <= 0 ? 0 : peaks.length / bucketsPerSecond;
 
-  /// Whole frames the clip covers at [fps] (at least 1 for non-empty audio).
-  int durationFrames(int fps) {
-    final frames = (durationSeconds * fps).ceil();
+  /// Whole frames the clip covers at [rate] (at least 1 for non-empty
+  /// audio).
+  ///
+  /// The length is exactly `peaks.length / bucketsPerSecond` seconds —
+  /// a ratio of two integers — so the frame count is computed from that
+  /// ratio directly. Going through [durationSeconds] as a double was how
+  /// an exactly-2-second file at 24fps used to measure 49 frames.
+  int durationFrames(ProjectFrameRate rate) {
+    if (bucketsPerSecond <= 0) {
+      return 1;
+    }
+    final frames = rate.framesCoveringExactSeconds(
+      peaks.length,
+      bucketsPerSecond,
+    );
     return frames < 1 ? 1 : frames;
   }
 }

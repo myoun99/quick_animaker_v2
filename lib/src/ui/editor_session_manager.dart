@@ -45,6 +45,7 @@ import '../models/timesheet_document.dart' show timesheetMemoInstructionLine;
 import '../models/project_background.dart';
 import '../models/timesheet_info.dart';
 import '../models/project.dart';
+import '../models/project_frame_rate.dart';
 import '../models/property_track.dart';
 import '../models/timeline_coverage.dart';
 import '../models/timeline_frame_range.dart';
@@ -85,7 +86,7 @@ import '../services/commands/update_layer_instructions_command.dart';
 import '../services/commands/update_layer_mark_command.dart';
 import '../services/commands/update_layer_timeline_command.dart';
 import '../services/commands/update_layer_timesheet_command.dart';
-import '../services/commands/update_project_fps_command.dart';
+import '../services/commands/update_project_frame_rate_command.dart';
 import '../services/commands/update_project_trailing_frames_command.dart';
 import '../services/onion_skin_plan.dart';
 import '../services/persistence/project_autosave_service.dart';
@@ -340,7 +341,7 @@ class EditorSessionManager extends ChangeNotifier {
     resolveProject: () => _repository.requireProject(),
     resolveActiveCutId: () => _editingSession.activeCutId,
     resolveActiveTrackId: () => activeCutTrackId,
-    resolveFps: () => projectFps,
+    resolveFrameRate: () => projectFrameRate,
     onStopped: _onPlaybackStopped,
     onStoppedInGap: _onPlaybackStoppedInGap,
     onPlaylistWarmRequested: _onPlaybackPlaylistWarmRequested,
@@ -350,7 +351,7 @@ class EditorSessionManager extends ChangeNotifier {
   /// come from the waveform peaks store.
   late final AudioPlaybackSync audioPlaybackSync = AudioPlaybackSync(
     controller: playback,
-    resolveFps: () => projectFps,
+    resolveFrameRate: () => projectFrameRate,
     durationSecondsFor: (filePath) =>
         audioPeaksStore.peaksFor(filePath)?.durationSeconds,
     playerFactory: AudioplayersClipPlayer.new,
@@ -952,21 +953,42 @@ class EditorSessionManager extends ChangeNotifier {
   /// view rect on canvas is this divided by the pose zoom.
   CanvasSize get cameraFrameSize => _repository.requireProject().cameraSize;
 
+  /// The exact rate, for the surfaces that convert frames to REAL TIME
+  /// (playback clock, audio placement, export). Everything that merely
+  /// COUNTS frames wants [projectFps] instead.
+  ProjectFrameRate get projectFrameRate =>
+      _repository.requireProject().frameRate;
+
   int get projectFps => _repository.requireProject().fps;
 
   /// R26 #32: sets the PROJECT's frame rate (one undo step, no-op when
   /// unchanged). Everything timed — ruler seconds, sheet rows, playback,
-  /// audio placement — reads [projectFps], so this one write moves the
-  /// whole project's time axis.
-  void setProjectFps(int fps) {
-    if (fps < 1 || fps == projectFps) {
+  /// audio placement — reads this one axis, so this single write moves
+  /// the whole project's time.
+  void setProjectFrameRate(ProjectFrameRate frameRate) {
+    if (frameRate.numerator < 1 ||
+        frameRate.denominator < 1 ||
+        frameRate.countingBase < 1 ||
+        frameRate == projectFrameRate) {
       return;
     }
     _historyManager.execute(
-      UpdateProjectFpsCommand(repository: _repository, fps: fps),
+      UpdateProjectFrameRateCommand(
+        repository: _repository,
+        frameRate: frameRate,
+      ),
     );
     _warmActiveCut();
     notifyListeners();
+  }
+
+  /// Whole-number convenience for the callers that only ever mean an
+  /// integer rate (the custom-rate dialog, tests).
+  void setProjectFps(int fps) {
+    if (fps < 1) {
+      return;
+    }
+    setProjectFrameRate(ProjectFrameRate.integer(fps));
   }
 
   /// Resolved camera pose at an arbitrary playback frame (for rendering).

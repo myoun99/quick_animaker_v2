@@ -4,6 +4,7 @@ import 'dart:math' as math;
 import '../../models/cut_id.dart';
 import '../../models/layer_kind.dart';
 import '../../models/project.dart';
+import '../../models/project_frame_rate.dart';
 import '../../models/se_audio_spans.dart';
 import '../../models/track.dart';
 import '../storyboard_timeline_layout.dart';
@@ -46,7 +47,7 @@ typedef AudioClipPlayerFactory = AudioClipPlayer Function();
 ///
 /// - activation → build the schedule, create ONE player per scheduled clip
 ///   and prepare (load) them all up front; then start every clip
-///   overlapping the start frame at position `(frame - clipStart) / fps`;
+///   overlapping the start frame at the exact time of `frame - clipStart`;
 /// - forward ticking → start clips whose start frame was crossed, stop
 ///   clips past their end (clip length, clamped at the cut boundary — an SE
 ///   clip belongs to its cut, it never bleeds into the next one). Starting
@@ -67,14 +68,17 @@ typedef AudioClipPlayerFactory = AudioClipPlayer Function();
 class AudioPlaybackSync {
   AudioPlaybackSync({
     required this.controller,
-    required this.resolveFps,
+    required this.resolveFrameRate,
     required this.durationSecondsFor,
     required this.playerFactory,
     this.resolveProject,
   });
 
   final CanvasPlaybackController controller;
-  final int Function() resolveFps;
+
+  /// The exact rate: clip positions are REAL TIME, so this is one of the
+  /// few places that needs the fraction rather than the counting base.
+  final ProjectFrameRate Function() resolveFrameRate;
   final double? Function(String filePath) durationSecondsFor;
   final AudioClipPlayerFactory playerFactory;
 
@@ -98,7 +102,8 @@ class AudioPlaybackSync {
 
   /// Forward jumps beyond half a second restart overlapping clips at the
   /// new position; anything smaller is treated as dropped frames.
-  int get resyncThresholdFrames => math.max(2, resolveFps() ~/ 2);
+  int get resyncThresholdFrames =>
+      math.max(2, resolveFrameRate().countingBase ~/ 2);
 
   void attach() {
     if (_attached) {
@@ -236,20 +241,17 @@ class AudioPlaybackSync {
       return;
     }
     final clip = _schedule[index];
-    final fps = math.max(1, resolveFps());
+    final rate = resolveFrameRate();
     // Volume lands before the first samples so a fade-in never pops.
     final volume = _volumeAt(clip, frame);
     _sentVolume[index] = volume;
     unawaited(_players[index].setVolume(volume));
     unawaited(
       _players[index].startAt(
-        Duration(
-          // The clip's offset trim seeks past the skipped head of the file.
-          microseconds:
-              (frame - clip.startFrame + clip.offsetFrames) *
-              Duration.microsecondsPerSecond ~/
-              fps,
-        ),
+        // The clip's offset trim seeks past the skipped head of the file.
+        // Exact at any distance from zero: the seek for frame 100000 is
+        // as accurate as the seek for frame 1.
+        rate.frameStart(frame - clip.startFrame + clip.offsetFrames),
       ),
     );
   }
@@ -279,12 +281,19 @@ class AudioPlaybackSync {
   }
 
   /// Clamps [endFrameExclusive] to the file's own audible length.
+  ///
+  /// Rounding UP is deliberate — a file ending mid-frame still has audio
+  /// in that frame, and truncating would clip real sound. What must not
+  /// happen is rounding up on float noise alone: a 2.000s file at 24fps
+  /// computes as 48.000000000000004, and a bare `.ceil()` would hand it a
+  /// 49th frame of silence. [ProjectFrameRate.framesCoveringSeconds]
+  /// treats a value within a millionth of a frame of whole as whole.
   int _clampToFileLength({
     required int startFrame,
     required int endFrameExclusive,
     required String filePath,
     required int offsetFrames,
-    required int fps,
+    required ProjectFrameRate rate,
   }) {
     final seconds = durationSecondsFor(filePath);
     if (seconds == null) {
@@ -292,14 +301,14 @@ class AudioPlaybackSync {
     }
     return math.min(
       endFrameExclusive,
-      startFrame + (seconds * fps).ceil() - offsetFrames,
+      startFrame + rate.framesCoveringSeconds(seconds) - offsetFrames,
     );
   }
 
   List<_ScheduledClip> _buildSchedule(
     List<StoryboardTimelineLayoutEntry> playlist,
   ) {
-    final fps = math.max(1, resolveFps());
+    final rate = resolveFrameRate();
     final schedule = <_ScheduledClip>[];
 
     // Legacy path: cut-owned SE layers (test fixtures; production cuts no
@@ -323,7 +332,7 @@ class AudioPlaybackSync {
             endFrameExclusive: endFrameExclusive,
             filePath: span.clip.filePath,
             offsetFrames: span.clip.offsetFrames,
-            fps: fps,
+            rate: rate,
           );
           if (endFrameExclusive <= startFrame) {
             continue;
@@ -457,7 +466,7 @@ class AudioPlaybackSync {
               endFrameExclusive: endFrameExclusive,
               filePath: span.clip.filePath,
               offsetFrames: offsetFrames,
-              fps: fps,
+              rate: rate,
             );
             if (endFrameExclusive <= startFrame) {
               continue;

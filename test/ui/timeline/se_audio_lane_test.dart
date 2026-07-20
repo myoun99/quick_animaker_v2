@@ -8,6 +8,7 @@ import 'package:quick_animaker_v2/src/models/frame_id.dart';
 import 'package:quick_animaker_v2/src/models/layer.dart';
 import 'package:quick_animaker_v2/src/models/layer_id.dart';
 import 'package:quick_animaker_v2/src/models/layer_kind.dart';
+import 'package:quick_animaker_v2/src/models/project_frame_rate.dart';
 import 'package:quick_animaker_v2/src/models/timeline_exposure.dart';
 import 'package:quick_animaker_v2/src/services/audio/audio_peaks_extractor.dart';
 import 'package:quick_animaker_v2/src/ui/timeline/se_audio_lane.dart';
@@ -104,7 +105,7 @@ void main() {
               leadingFrameSpacerWidth: 0,
               trailingFrameSpacerWidth: 0,
               metrics: TimelineGridMetrics.defaults,
-              fps: 24,
+              frameRate: const ProjectFrameRate.integer(24),
               audioPeaksFor: (_) => _peaks,
               onSetClipOffset: onSetClipOffset,
               onSetClipFades: onSetClipFades,

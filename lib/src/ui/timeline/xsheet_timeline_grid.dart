@@ -20,6 +20,7 @@ import 'timeline_cut_end_handle.dart';
 import 'timeline_drag_preview.dart';
 import 'timeline_exposure_block_visual.dart';
 import 'timeline_exposure_comma_drag_policy.dart';
+import '../../models/project_frame_rate.dart';
 import '../../models/timeline_repeat.dart';
 import 'timeline_block_move_handle.dart' show resolveBlockMoveTargetLayer;
 import 'timeline_frame_range_gesture.dart';
@@ -81,7 +82,7 @@ class XSheetTimelineGrid extends StatefulWidget {
     this.onActivateCell,
     this.instructionDefById,
     this.audioPeaksFor,
-    this.projectFps = 24,
+    this.projectFrameRate = ProjectFrameRate.fps24,
     this.showSeconds = false,
     this.onRemoveAudioClip,
     this.onDropMediaAsset,
@@ -165,7 +166,7 @@ class XSheetTimelineGrid extends StatefulWidget {
 
   /// Waveform peaks for SE columns' audio clips + the removal hook.
   final AudioPeaks? Function(String filePath)? audioPeaksFor;
-  final int projectFps;
+  final ProjectFrameRate projectFrameRate;
 
   /// The frame rail's number mode (UI-R10 #27): seconds display repeats
   /// 1..fps per second instead of absolute frame numbers.
@@ -292,6 +293,11 @@ class XSheetTimelineGrid extends StatefulWidget {
 }
 
 class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
+  /// The integer rate the grid COUNTS with — the ruler's second marks
+  /// and row labels are frame arithmetic, never real time (see
+  /// [ProjectFrameRate.countingBase]).
+  int get _countingFps => widget.projectFrameRate.countingBase;
+
   /// Resolves range-move column deltas against the entries built this pass.
   final TimelineRangeMoveRowResolver _rangeMoveResolver =
       TimelineRangeMoveRowResolver();
@@ -620,7 +626,7 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
               leadingFrameSpacerWidth: plan.leadingFrameSpacerWidth,
               trailingFrameSpacerWidth: plan.trailingFrameSpacerWidth,
               metrics: _metrics,
-              fps: widget.projectFps,
+              frameRate: widget.projectFrameRate,
               audioPeaksFor: widget.audioPeaksFor,
               onSetClipOffset: widget.onSetAudioClipOffset == null
                   ? null
@@ -673,7 +679,7 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
       onActivateCell: widget.onActivateCell,
       instructionDefById: widget.instructionDefById,
       audioPeaksFor: widget.audioPeaksFor,
-      projectFps: widget.projectFps,
+      projectFrameRate: widget.projectFrameRate,
       onRemoveAudioClip: widget.onRemoveAudioClip,
       onDropMediaAsset: widget.onDropMediaAsset,
       layer: layer,
@@ -906,7 +912,7 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
                                                           onSelectFrame:
                                                               _selectClampedFrameFromRail,
                                                           framesPerSecond:
-                                                              widget.projectFps,
+                                                              _countingFps,
                                                           showSeconds: widget
                                                               .showSeconds,
                                                           isFrameCached: widget
@@ -1235,8 +1241,7 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
                                                                       _metrics
                                                                           .layerRowHeight,
                                                                   framesPerSecond:
-                                                                      widget
-                                                                          .projectFps,
+                                                                      _countingFps,
                                                                   colorScheme:
                                                                       colorScheme,
                                                                 ),
@@ -1715,7 +1720,7 @@ class _XSheetFrameCellsColumn extends StatelessWidget {
     this.onActivateCell,
     this.instructionDefById,
     this.audioPeaksFor,
-    this.projectFps = 24,
+    this.projectFrameRate = ProjectFrameRate.fps24,
     this.onRemoveAudioClip,
     this.onDropMediaAsset,
     this.commaDrag,
@@ -1748,7 +1753,7 @@ class _XSheetFrameCellsColumn extends StatelessWidget {
   final CameraInstructionDef? Function(String instructionId)?
   instructionDefById;
   final AudioPeaks? Function(String filePath)? audioPeaksFor;
-  final int projectFps;
+  final ProjectFrameRate projectFrameRate;
   final void Function(LayerId layerId, int clipIndex)? onRemoveAudioClip;
 
   /// Links a media-browser asset to an SE block (drag-drop); null hides
@@ -1889,7 +1894,7 @@ class _XSheetFrameCellsColumn extends StatelessWidget {
               frameCellExtent: metrics.frameCellWidth,
               crossAxisExtent: metrics.layerRowHeight,
               axis: Axis.vertical,
-              fps: projectFps,
+              frameRate: projectFrameRate,
               audioPeaksFor: audioPeaksFor!,
               onRemoveClip: onRemoveAudioClip == null
                   ? null
