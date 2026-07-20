@@ -92,22 +92,10 @@ class _SelectionSettings extends StatelessWidget {
       key: const ValueKey<String>('tool-settings-selection'),
       padding: const EdgeInsets.all(12),
       children: [
+        // R26 #12: the rectangle/lasso CHOICE lives in the tool library
+        // (two tools there), so the settings panel no longer duplicates
+        // it — only the mask knobs remain.
         Text('Select', style: theme.textTheme.titleSmall),
-        const SizedBox(height: 8),
-        SegmentedButton<CanvasTool>(
-          key: const ValueKey<String>('selection-variant-segments'),
-          showSelectedIcon: false,
-          segments: const [
-            ButtonSegment(
-              value: CanvasTool.selectRect,
-              label: Text('Rectangle'),
-            ),
-            ButtonSegment(value: CanvasTool.lasso, label: Text('Lasso')),
-          ],
-          selected: {state.tool},
-          onSelectionChanged: (selection) =>
-              onChanged(state.copyWith(tool: selection.single)),
-        ),
         if (onMask != null) ...[
           const SizedBox(height: 8),
           FieldSlider(
