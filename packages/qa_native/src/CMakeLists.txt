@@ -8,7 +8,14 @@
 cmake_minimum_required(VERSION 3.14)
 project(qa_engine LANGUAGES C)
 
-add_library(qa_engine SHARED "${CMAKE_CURRENT_LIST_DIR}/qa_engine.c")
+# qa_audio_decode.c is a second translation unit rather than more of
+# qa_engine.c: it pulls in ~27k lines of vendored dr_libs, and compiling
+# that alongside the hot loops would slow every build and mix third-party
+# warnings into ours.
+add_library(qa_engine SHARED
+  "${CMAKE_CURRENT_LIST_DIR}/qa_engine.c"
+  "${CMAKE_CURRENT_LIST_DIR}/qa_audio_decode.c"
+)
 
 set_target_properties(qa_engine PROPERTIES
   C_STANDARD 99
@@ -25,6 +32,18 @@ if(WIN32)
     C_STANDARD 99
     C_STANDARD_REQUIRED ON
   )
+endif()
+
+# Vendored dr_libs emits a few benign conversion warnings. We do not edit
+# those files (see third_party/dr_libs/PROVENANCE.md — updates must stay a
+# straight overwrite), so the warnings are silenced on THIS translation
+# unit only. Our own code keeps every warning it had.
+if(MSVC)
+  set_source_files_properties("${CMAKE_CURRENT_LIST_DIR}/qa_audio_decode.c"
+    PROPERTIES COMPILE_OPTIONS "/wd4267;/wd4244;/wd4996")
+else()
+  set_source_files_properties("${CMAKE_CURRENT_LIST_DIR}/qa_audio_decode.c"
+    PROPERTIES COMPILE_OPTIONS "-Wno-conversion;-Wno-unused-function")
 endif()
 
 if(MSVC)

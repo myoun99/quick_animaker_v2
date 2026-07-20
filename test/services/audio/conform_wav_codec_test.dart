@@ -37,17 +37,28 @@ void main() {
       }
     });
 
-    test('full scale round trips exactly, not off by an LSB', () {
-      // Dividing by 32767 mirrors the multiply, so +/-1.0 lands back on
-      // itself. Dividing by 32768 (a common shortcut) would not.
+    test('raw int16 values round trip bit-exactly', () {
+      // The 32768 convention (dr_wav's, and the industry's) means every
+      // stored sample comes back as itself. -1.0 maps to -32768 exactly;
+      // +1.0 is the one value that clamps, since 32768 does not fit an
+      // int16 — so it returns 32767/32768, an LSB short of full scale.
+      final raw = <int>[-32768, -32767, -1, 0, 1, 16384, 32767];
+      final samples = Float32List.fromList([
+        for (final value in raw) value / 32768.0,
+      ]);
       final decoded = decodeConformWav(
+        encodeConformWav(samples: samples, channels: 1, sampleRate: 48000),
+      );
+      expect(decoded.samples.toList(), samples.toList());
+
+      final edges = decodeConformWav(
         encodeConformWav(
           samples: Float32List.fromList([1.0, -1.0, 0.0]),
           channels: 1,
           sampleRate: 48000,
         ),
       );
-      expect(decoded.samples.toList(), [1.0, -1.0, 0.0]);
+      expect(edges.samples.toList(), [32767 / 32768.0, -1.0, 0.0]);
     });
 
     test('values past full scale clip — a container has no headroom', () {
@@ -58,7 +69,9 @@ void main() {
           sampleRate: 48000,
         ),
       );
-      expect(decoded.samples.toList(), [1.0, -1.0]);
+      // The positive rail is 32767/32768 — an LSB short of 1.0, because
+      // 32768 does not fit an int16. The negative rail reaches -1.0 exactly.
+      expect(decoded.samples.toList(), [32767 / 32768.0, -1.0]);
     });
 
     test('an odd sample count stays word-aligned and readable', () {

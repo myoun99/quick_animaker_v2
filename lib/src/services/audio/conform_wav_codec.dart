@@ -186,7 +186,12 @@ Uint8List encodeConformWav({
     } else if (value < -1.0) {
       value = -1.0;
     }
-    view.setInt16(offset + index * 2, (value * 32767.0).round(), Endian.little);
+    // 32768, not 32767 — see the note on the decoder below.
+    var scaled = (value * 32768.0).round();
+    if (scaled > 32767) {
+      scaled = 32767;
+    }
+    view.setInt16(offset + index * 2, scaled, Endian.little);
   }
   return out;
 }
@@ -276,10 +281,17 @@ ConformAudio decodeConformWav(Uint8List bytes) {
   final sampleCount = dataLength ~/ 2;
   final samples = Float32List(sampleCount);
   for (var index = 0; index < sampleCount; index += 1) {
-    // Divide by 32767 to mirror encodeConformWav's multiply, so a
-    // round trip is exact rather than off by one LSB at full scale.
+    // 32768 — the industry convention, and what dr_wav uses (it multiplies
+    // by the literal 0.000030517578125f). Matching it is not cosmetic:
+    // every OTHER format arrives through dr_libs, so a conform read with
+    // a different scale than an imported WAV would put the same audio at
+    // two different levels depending on which path it took.
+    //
+    // It also makes a unity-gain clip round trip BIT-EXACTLY through the
+    // whole chain: raw ÷ 32768 → mix → × 32768 → the same raw sample. The
+    // 32767 convention loses that, being off by one LSB at full scale.
     samples[index] =
-        view.getInt16(dataStart + index * 2, Endian.little) / 32767.0;
+        view.getInt16(dataStart + index * 2, Endian.little) / 32768.0;
   }
   return ConformAudio(
     samples: samples,

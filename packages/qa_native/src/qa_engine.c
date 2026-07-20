@@ -3007,6 +3007,13 @@ QA_EXPORT void qa_audio_bus_to_float(const double* bus,
 // is what headroom is), and only the conversion to a fixed-point device
 // format has to decide what to do about it. llround matches Dart's
 // double.round() - both round half away from zero.
+//
+// Scaling by 32768 (not 32767) is what makes the whole chain lossless at
+// unity gain: a decoder hands us raw/32768 (dr_wav multiplies by the
+// literal 0.000030517578125f), so multiplying back by 32768 returns the
+// SAME int16 the file held. -32768 survives too, which the 32767
+// convention cannot represent. Only +1.0 needs the clamp, since 32768
+// does not fit an int16.
 QA_EXPORT void qa_audio_bus_to_int16(const double* bus,
                                      int32_t count,
                                      int16_t* out) {
@@ -3020,7 +3027,11 @@ QA_EXPORT void qa_audio_bus_to_int16(const double* bus,
     } else if (value < -1.0) {
       value = -1.0;
     }
-    out[index] = (int16_t)llround(value * 32767.0);
+    long long scaled = llround(value * 32768.0);
+    if (scaled > 32767) {
+      scaled = 32767;
+    }
+    out[index] = (int16_t)scaled;
   }
 }
 

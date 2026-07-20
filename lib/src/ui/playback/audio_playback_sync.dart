@@ -2,7 +2,6 @@ import 'dart:async';
 import 'dart:math' as math;
 
 import '../../models/cut_id.dart';
-import '../../models/layer_kind.dart';
 import '../../models/project.dart';
 import '../../models/project_frame_rate.dart';
 import '../../models/se_audio_spans.dart';
@@ -49,11 +48,11 @@ typedef AudioClipPlayerFactory = AudioClipPlayer Function();
 ///   and prepare (load) them all up front; then start every clip
 ///   overlapping the start frame at the exact time of `frame - clipStart`;
 /// - forward ticking → start clips whose start frame was crossed, stop
-///   clips past their end (clip length, clamped at the cut boundary — an SE
-///   clip belongs to its cut, it never bleeds into the next one). Starting
-///   and stopping only seeks/resumes/stops prepared players; no media
-///   pipeline is opened or torn down on a tick, so cut boundaries never
-///   stall the frame ticker;
+///   clips past their end. A sound is TRACK-owned, so it runs to its own
+///   end and across cut boundaries — dialogue and music span cuts, and a
+///   cut boundary never restarts anything. Starting and stopping only
+///   seeks/resumes/stops prepared players; no media pipeline is opened or
+///   torn down on a tick, so boundaries never stall the frame ticker;
 /// - pause / resume / stop → forwarded to every playing player;
 /// - backward jumps (loop wrap, seeks) and forward jumps larger than
 ///   [resyncThresholdFrames] → stop everything and restart what overlaps.
@@ -82,10 +81,9 @@ class AudioPlaybackSync {
   final double? Function(String filePath) durationSecondsFor;
   final AudioClipPlayerFactory playerFactory;
 
-  /// Resolves the project for the TRACK-owned SE rows (sounds on the
-  /// track's global axis, allowed to cross cut boundaries). Null skips
-  /// them (legacy fixtures with cut-owned SE layers keep working through
-  /// the per-cut loop).
+  /// Resolves the project the SE rows live on. SE is TRACK-owned and sits
+  /// on the track's global frame axis, so this is the ONLY source of
+  /// scheduled audio — null means no sound at all, not a fallback.
   final Project? Function()? resolveProject;
 
   List<_ScheduledClip> _schedule = const [];
@@ -311,53 +309,18 @@ class AudioPlaybackSync {
     final rate = resolveFrameRate();
     final schedule = <_ScheduledClip>[];
 
-    // Legacy path: cut-owned SE layers (test fixtures; production cuts no
-    // longer carry SE rows). Ends clamp at the cut boundary as before.
-    for (final entry in playlist) {
-      for (final layer in entry.cut.layers) {
-        if (layer.kind != LayerKind.se || layer.muted) {
-          continue;
-        }
-        for (final span in seAudioSpans(layer)) {
-          if (span.startFrame >= entry.duration) {
-            continue;
-          }
-          final startFrame = entry.startFrame + span.startFrame;
-          var endFrameExclusive = math.min(
-            entry.endFrame,
-            startFrame + span.lengthFrames,
-          );
-          endFrameExclusive = _clampToFileLength(
-            startFrame: startFrame,
-            endFrameExclusive: endFrameExclusive,
-            filePath: span.clip.filePath,
-            offsetFrames: span.clip.offsetFrames,
-            rate: rate,
-          );
-          if (endFrameExclusive <= startFrame) {
-            continue;
-          }
-          schedule.add(
-            _ScheduledClip(
-              filePath: span.clip.filePath,
-              startFrame: startFrame,
-              endFrameExclusive: endFrameExclusive,
-              offsetFrames: span.clip.offsetFrames,
-              gain: span.clip.gain,
-              fadeInFrames: span.clip.fadeInFrames,
-              fadeOutFrames: span.clip.fadeOutFrames,
-            ),
-          );
-        }
-      }
-    }
-
-    // Track-owned SE rows: spans live on each track's GLOBAL frame axis
-    // and may cross cut boundaries. Each span maps into the playlist axis
-    // once — at the entry containing its start (or the first overlapping
-    // entry when the playlist begins mid-sound, bumping the file offset by
-    // the clipped lead) — and its end runs to the span's true end, clamped
-    // only where the playlist run stops being contiguous with the track.
+    // SE rows are TRACK-owned and live on each track's GLOBAL frame axis;
+    // a cut merely shows a window onto them. Cut-owned SE is a legacy file
+    // shape that `Track.fromJson` lifts onto the track at load, so no
+    // loaded project can carry one — and scheduling from cut layers would
+    // clamp sounds at cut boundaries, which is exactly the restart-per-cut
+    // behaviour the global model exists to remove.
+    //
+    // Spans map into the playlist axis once — at the entry containing the
+    // start (or the first overlapping entry when the playlist begins
+    // mid-sound, bumping the file offset by the clipped lead) — and run to
+    // the span's true end, clamped only where the playlist run stops being
+    // contiguous with the track.
     final project = resolveProject?.call();
     if (project != null && playlist.isNotEmpty) {
       final trackStartByCutId = <CutId, int>{};

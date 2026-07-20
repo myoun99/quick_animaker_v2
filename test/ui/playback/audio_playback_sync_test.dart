@@ -72,10 +72,15 @@ Layer _seLayer(
   audioClips: [AudioClip(filePath: file, frameId: FrameId('$id-frame'))],
 );
 
-// fps 10: cut-a (10 frames) carries a.wav on a full-cut block (1.0 s = the
-// whole window) and b.wav on a 6..10 block (unknown length → clamped to
-// the block/cut end); cut-b (20 frames, global 10..30) carries c.wav on a
-// block at local 3 (0.5 s → global 13..18).
+// SE lives on the TRACK's global frame axis; a cut only shows a window
+// onto it. (Cut-owned SE is a legacy file shape that `Track.fromJson`
+// lifts on load, so no loaded project can carry one — a fixture that built
+// it was pinning a shape production cannot produce.)
+//
+// fps 10, cut-a = global 0..10 and cut-b = global 10..30:
+//   a.wav  global 0..10  (1.0 s = exactly its window)
+//   b.wav  global 6..10  (unknown length → the block is the window)
+//   c.wav  global 13..30 (0.5 s → audible 13..18, then it simply ends)
 final Project _project = Project(
   id: const ProjectId('sync-project'),
   name: 'Sync',
@@ -90,18 +95,20 @@ final Project _project = Project(
           name: 'A',
           duration: 10,
           canvasSize: const CanvasSize(width: 640, height: 360),
-          layers: [
-            _seLayer('se-a1', file: 'a.wav', start: 0, length: 10),
-            _seLayer('se-a2', file: 'b.wav', start: 6, length: 4),
-          ],
+          layers: const [],
         ),
         Cut(
           id: const CutId('cut-b'),
           name: 'B',
           duration: 20,
           canvasSize: const CanvasSize(width: 640, height: 360),
-          layers: [_seLayer('se-b', file: 'c.wav', start: 3, length: 17)],
+          layers: const [],
         ),
+      ],
+      seLayers: [
+        _seLayer('se-a1', file: 'a.wav', start: 0, length: 10),
+        _seLayer('se-a2', file: 'b.wav', start: 6, length: 4),
+        _seLayer('se-b', file: 'c.wav', start: 13, length: 17),
       ],
     ),
   ],
@@ -126,6 +133,8 @@ void main() {
       resolveFrameRate: () => const ProjectFrameRate.integer(10),
       durationSecondsFor: (path) => _durations[path],
       playerFactory: () => _FakeClipPlayer(log),
+      // The schedule reads TRACK-owned SE, so it needs the project.
+      resolveProject: () => _project,
     )..attach();
     addTearDown(sync.dispose);
     addTearDown(controller.dispose);
@@ -268,20 +277,16 @@ void main() {
               name: 'T',
               duration: 10,
               canvasSize: const CanvasSize(width: 640, height: 360),
-              layers: [
-                _seLayer(
-                  'se-trim',
-                  file: 'a.wav',
-                  start: 0,
-                  length: 10,
-                ).copyWith(
-                  audioClips: const [
-                    AudioClip(
-                      filePath: 'a.wav',
-                      frameId: FrameId('se-trim-frame'),
-                      offsetFrames: 4,
-                    ),
-                  ],
+              layers: const [],
+            ),
+          ],
+          seLayers: [
+            _seLayer('se-trim', file: 'a.wav', start: 0, length: 10).copyWith(
+              audioClips: const [
+                AudioClip(
+                  filePath: 'a.wav',
+                  frameId: FrameId('se-trim-frame'),
+                  offsetFrames: 4,
                 ),
               ],
             ),
@@ -300,6 +305,7 @@ void main() {
       resolveFrameRate: () => const ProjectFrameRate.integer(10),
       durationSecondsFor: (path) => _durations[path],
       playerFactory: () => _FakeClipPlayer(trimmedLog),
+      resolveProject: () => project,
     )..attach();
     addTearDown(sync.dispose);
     addTearDown(trimmedController.dispose);
@@ -341,16 +347,17 @@ void main() {
               name: 'M',
               duration: 10,
               canvasSize: const CanvasSize(width: 640, height: 360),
-              layers: [
-                _seLayer(
-                  'se-muted',
-                  file: 'a.wav',
-                  start: 0,
-                  length: 10,
-                ).copyWith(muted: true),
-                _seLayer('se-live', file: 'c.wav', start: 0, length: 10),
-              ],
+              layers: const [],
             ),
+          ],
+          seLayers: [
+            _seLayer(
+              'se-muted',
+              file: 'a.wav',
+              start: 0,
+              length: 10,
+            ).copyWith(muted: true),
+            _seLayer('se-live', file: 'c.wav', start: 0, length: 10),
           ],
         ),
       ],
@@ -366,6 +373,7 @@ void main() {
       resolveFrameRate: () => const ProjectFrameRate.integer(10),
       durationSecondsFor: (path) => _durations[path],
       playerFactory: () => _FakeClipPlayer(mutedLog),
+      resolveProject: () => project,
     )..attach();
     addTearDown(sync.dispose);
     addTearDown(mutedController.dispose);
@@ -473,22 +481,18 @@ void main() {
               name: 'R',
               duration: 10,
               canvasSize: const CanvasSize(width: 640, height: 360),
-              layers: [
-                _seLayer(
-                  'se-ramp',
-                  file: 'a.wav',
-                  start: 0,
-                  length: 10,
-                ).copyWith(
-                  audioClips: const [
-                    AudioClip(
-                      filePath: 'a.wav',
-                      frameId: FrameId('se-ramp-frame'),
-                      gain: 2.0,
-                      fadeInFrames: 4,
-                      fadeOutFrames: 5,
-                    ),
-                  ],
+              layers: const [],
+            ),
+          ],
+          seLayers: [
+            _seLayer('se-ramp', file: 'a.wav', start: 0, length: 10).copyWith(
+              audioClips: const [
+                AudioClip(
+                  filePath: 'a.wav',
+                  frameId: FrameId('se-ramp-frame'),
+                  gain: 2.0,
+                  fadeInFrames: 4,
+                  fadeOutFrames: 5,
                 ),
               ],
             ),
@@ -507,6 +511,7 @@ void main() {
       resolveFrameRate: () => const ProjectFrameRate.integer(10),
       durationSecondsFor: (path) => _durations[path],
       playerFactory: () => _FakeClipPlayer(rampLog, volumeLog: volumeLog),
+      resolveProject: () => project,
     )..attach();
     addTearDown(sync.dispose);
     addTearDown(rampController.dispose);

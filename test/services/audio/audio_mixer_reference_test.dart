@@ -264,7 +264,28 @@ void main() {
   group('output stage', () {
     test('int16 conversion clips, the bus does not', () {
       final bus = Float64List.fromList([0, 1.0, -1.0, 2.5, -2.5, 0.5]);
-      expect(audioBusToInt16(bus).toList(), [0, 32767, -32767, 32767, -32767, 16384]);
+      // -1.0 reaches -32768: the full negative range is representable, and
+      // only +1.0 needs clamping because 32768 does not fit an int16.
+      expect(audioBusToInt16(bus).toList(), [
+        0,
+        32767,
+        -32768,
+        32767,
+        -32768,
+        16384,
+      ]);
+    });
+
+    test('a unity-gain clip survives the chain bit-exactly', () {
+      // The property the 32768 convention buys, and the reason it is worth
+      // stating: decode gives raw/32768, the mixer passes it through at
+      // unity, and the output stage multiplies back — landing on the SAME
+      // int16 the file held, for every value including -32768.
+      final raw = <int>[-32768, -32767, -1, 0, 1, 16384, 32766, 32767];
+      final bus = Float64List.fromList([
+        for (final value in raw) value / 32768.0,
+      ]);
+      expect(audioBusToInt16(bus).toList(), raw);
     });
 
     test('float conversion narrows without clipping', () {
@@ -273,10 +294,10 @@ void main() {
     });
 
     test('rounding is half away from zero, like the C llround', () {
-      // 0.5/32767 lands exactly on .5 — Dart's round() and C's llround
+      // 0.5/32768 lands exactly on .5 — Dart's round() and C's llround
       // both go away from zero, which is the arithmetic contract the
       // whole native core rests on.
-      final bus = Float64List.fromList([0.5 / 32767.0, -0.5 / 32767.0]);
+      final bus = Float64List.fromList([0.5 / 32768.0, -0.5 / 32768.0]);
       expect(audioBusToInt16(bus).toList(), [1, -1]);
     });
   });
