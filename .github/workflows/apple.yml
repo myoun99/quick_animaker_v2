@@ -1,0 +1,72 @@
+name: Apple (macOS + iOS)
+
+# The EXPENSIVE tier. macOS runners are free for this public repository,
+# but a build is minutes rather than seconds - so this runs once a day
+# and on demand, not on every push. Its job is COMPILE verification:
+# nobody here owns a Mac, so "it builds and links on Apple platforms" is
+# the guarantee this workflow buys (see docs/Audio_Sync_Program.md §5).
+on:
+  schedule:
+    # 03:00 UTC = 12:00 KST, once a day.
+    - cron: '0 3 * * *'
+  workflow_dispatch:
+  push:
+    # Also whenever the native core or the Apple projects change - those
+    # are exactly the edits this workflow exists to catch.
+    paths:
+      - 'native/**'
+      - 'packages/**'
+      - 'ios/**'
+      - 'macos/**'
+      - '.github/workflows/apple.yml'
+
+concurrency:
+  group: apple-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  FLUTTER_VERSION: '3.44.2'
+
+jobs:
+  apple:
+    name: macOS app + iOS simulator + native C
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Cheapest signal first: does the portable C core compile with
+      # Apple clang for both host and iOS targets?
+      - name: Native core (Apple clang, host)
+        run: |
+          cmake -S native -B build/ci-apple -DCMAKE_BUILD_TYPE=Release
+          cmake --build build/ci-apple --config Release
+          ls -la build/ci-apple
+
+      - name: Native core (arm64 iOS target)
+        run: |
+          SDK=$(xcrun --sdk iphoneos --show-sdk-path)
+          xcrun --sdk iphoneos clang -c native/qa_engine.c \
+            -o /tmp/qa_engine_ios.o \
+            -arch arm64 -isysroot "$SDK" -miphoneos-version-min=13.0 \
+            -O3 -std=c99 -Wall
+          ls -la /tmp/qa_engine_ios.o
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+      - run: flutter pub get
+
+      # No signing needed for either of these: the macOS build is local,
+      # and simulator builds never sign.
+      - name: Build macOS app (debug)
+        run: flutter build macos --debug
+
+      - name: Build iOS for the simulator (no codesign)
+        run: flutter build ios --debug --simulator --no-codesign
+
+      # The suite runs here too: platform-conditional code (Platform.isMacOS
+      # branches in the input/sidecar layers) only executes on this runner.
+      - name: Run tests
+        run: flutter test
