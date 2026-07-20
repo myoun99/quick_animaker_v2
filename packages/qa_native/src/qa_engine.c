@@ -2835,9 +2835,199 @@ QA_EXPORT int32_t qa_grid_raster_tile(
   return 0;
 }
 
+// ---------------------------------------------------------------------
+// Audio mixer (audio program 2B).
+//
+// The mixer does NOT "play clips" - it BUILDS a mix. For any sample range
+// [S, S+N) it pulls those exact samples out of every overlapping clip,
+// applies gain and fades, and sums. There is no "start the clip" moment,
+// so a clip's start accuracy is +/-1 sample no matter how far into the
+// movie it sits, and the platform player's 50-200ms start latency (which
+// the old path shipped uncompensated, once per cut) stops existing.
+//
+// Realtime contract: no allocation, no I/O, no locks, no Dart. Everything
+// this needs is passed in. A sample outside a source's available window
+// contributes SILENCE rather than waiting - the audio callback can never
+// block, and keeping the device fed is the caller's job (the streaming
+// reader thread lands with the device stage).
+//
+// Positions are SAMPLES (per channel), never "frames": in this codebase a
+// frame is a picture. ProjectFrameRate.frameToSample is what converts.
+// ---------------------------------------------------------------------
+
+// One scheduled clip on the timeline. Layout: double, then int64s, then an
+// even number of int32s - natural alignment, no implicit padding on any
+// supported ABI (the loader cross-checks qa_audio_clip_sizeof).
+typedef struct {
+  double gain;
+  int64_t start_sample;      // timeline position, inclusive
+  int64_t end_sample;        // timeline position, exclusive
+  int64_t source_offset;     // sample index into the source at start_sample
+  int64_t fade_in_samples;   // 0 = none
+  int64_t fade_out_samples;  // 0 = none
+  int32_t source_index;
+  int32_t reserved;
+} qa_audio_clip;
+
+// A block of decoded samples, interleaved by channel.
+//
+// [source_start] is the source-sample index that samples[0] holds, which
+// is what lets a STREAMED clip present a sliding window through the exact
+// same struct a fully-resident one uses: residency is a policy the mixer
+// never sees.
+typedef struct {
+  int64_t source_start;
+  int64_t length;  // samples per channel available from source_start
+  int32_t channels;
+  int32_t reserved;
+  const float* samples;
+} qa_audio_source;
+
+QA_EXPORT int32_t qa_audio_clip_sizeof(void) {
+  return (int32_t)sizeof(qa_audio_clip);
+}
+
+QA_EXPORT int32_t qa_audio_source_sizeof(void) {
+  return (int32_t)sizeof(qa_audio_source);
+}
+
+// The clip's volume envelope at one timeline position - the same shape the
+// Dart path has always used (linear ramps anchored to the clip's own start
+// and end).
+//
+// Deliberately NOT clamped to [0, 1]. The old preview path clamped because
+// a platform player's volume tops out at 1.0, while EXPORT applied gain
+// exactly - so a clip boosted past unity sounded different in preview than
+// in the file. A mix bus has no such ceiling: gain applies exactly here and
+// clipping belongs to the output stage, which is where
+// qa_audio_bus_to_int16 does it.
+static double qa_audio_clip_volume(const qa_audio_clip* clip,
+                                   int64_t position_sample) {
+  double volume = clip->gain;
+  const int64_t position = position_sample - clip->start_sample;
+  if (clip->fade_in_samples > 0 && position < clip->fade_in_samples) {
+    const double ramp = (double)position / (double)clip->fade_in_samples;
+    volume *= ramp < 0.0 ? 0.0 : ramp;
+  }
+  const int64_t remaining = clip->end_sample - position_sample;
+  if (clip->fade_out_samples > 0 && remaining < clip->fade_out_samples) {
+    const double ramp = (double)remaining / (double)clip->fade_out_samples;
+    volume *= ramp < 0.0 ? 0.0 : ramp;
+  }
+  return volume;
+}
+
+// Which source channel feeds output channel [out_channel]: a mono source
+// feeds every output channel (a mono SE is heard from both speakers, and
+// duplicating it in memory to say so would waste half the RAM animation
+// projects spend on sound), and anything wider maps straight across,
+// holding the last channel if the output is wider than the source.
+static int32_t qa_audio_source_channel(int32_t source_channels,
+                                       int32_t out_channel) {
+  if (source_channels <= 1) {
+    return 0;
+  }
+  return out_channel < source_channels ? out_channel : source_channels - 1;
+}
+
+// Mixes [sample_count] samples starting at timeline sample [start_sample]
+// into [out], an interleaved DOUBLE bus of sample_count * out_channels.
+//
+// The bus is double, not float, on purpose. Pro Tools sums in 64-bit float
+// for the same reason: narrowing after every clip would round dozens of
+// times per sample in an SE-heavy scene. It also makes the Dart reference
+// bit-identical for free - Dart has only 64-bit doubles, so a float bus
+// would round in C at points Dart cannot reproduce.
+QA_EXPORT void qa_audio_mix(
+    const qa_audio_clip* clips,
+    int32_t clip_count,
+    const qa_audio_source* sources,
+    int32_t source_count,
+    int64_t start_sample,
+    int32_t sample_count,
+    int32_t out_channels,
+    double* out) {
+  if (out == NULL || sample_count <= 0 || out_channels <= 0) {
+    return;
+  }
+  const size_t total = (size_t)sample_count * (size_t)out_channels;
+  memset(out, 0, total * sizeof(double));
+  if (clips == NULL || sources == NULL || clip_count <= 0 || source_count <= 0) {
+    return;
+  }
+
+  const int64_t block_end = start_sample + sample_count;
+  for (int32_t index = 0; index < clip_count; index += 1) {
+    const qa_audio_clip* clip = &clips[index];
+    if (clip->source_index < 0 || clip->source_index >= source_count) {
+      continue;
+    }
+    const qa_audio_source* source = &sources[clip->source_index];
+    if (source->samples == NULL || source->channels <= 0 ||
+        source->length <= 0) {
+      continue;
+    }
+
+    int64_t from = clip->start_sample > start_sample ? clip->start_sample
+                                                     : start_sample;
+    int64_t to = clip->end_sample < block_end ? clip->end_sample : block_end;
+    for (int64_t position = from; position < to; position += 1) {
+      const int64_t source_index =
+          clip->source_offset + (position - clip->start_sample);
+      const int64_t offset = source_index - source->source_start;
+      if (offset < 0 || offset >= source->length) {
+        continue;  // Outside the available window: silence, never a wait.
+      }
+      const double volume = qa_audio_clip_volume(clip, position);
+      const float* frame = &source->samples[offset * source->channels];
+      double* destination =
+          &out[(size_t)(position - start_sample) * (size_t)out_channels];
+      for (int32_t channel = 0; channel < out_channels; channel += 1) {
+        const int32_t source_channel =
+            qa_audio_source_channel(source->channels, channel);
+        destination[channel] += (double)frame[source_channel] * volume;
+      }
+    }
+  }
+}
+
+// Output stage: the mix bus to the device's sample format.
+QA_EXPORT void qa_audio_bus_to_float(const double* bus,
+                                     int32_t count,
+                                     float* out) {
+  if (bus == NULL || out == NULL) {
+    return;
+  }
+  for (int32_t index = 0; index < count; index += 1) {
+    out[index] = (float)bus[index];
+  }
+}
+
+// Clipping lives HERE, not in the mix: the bus is allowed past unity (that
+// is what headroom is), and only the conversion to a fixed-point device
+// format has to decide what to do about it. llround matches Dart's
+// double.round() - both round half away from zero.
+QA_EXPORT void qa_audio_bus_to_int16(const double* bus,
+                                     int32_t count,
+                                     int16_t* out) {
+  if (bus == NULL || out == NULL) {
+    return;
+  }
+  for (int32_t index = 0; index < count; index += 1) {
+    double value = bus[index];
+    if (value > 1.0) {
+      value = 1.0;
+    } else if (value < -1.0) {
+      value = -1.0;
+    }
+    out[index] = (int16_t)llround(value * 32767.0);
+  }
+}
+
 // Engine ABI version - the Dart loader refuses a mismatched binary.
 // v12: fill raster RGB -> RGBX (R22-D flood SIMD).
 // v13: qa_flood_fill_wave - wave-parallel flood (R22-E3).
 // v14: qa_fill_compose_batch - pooled fill compose (R25-3).
 // v15: qa_grid_raster_tile - timeline grid tile rasterizer (UI-R18 O7 T1).
-QA_EXPORT int32_t qa_engine_abi_version(void) { return 15; }
+// v16: qa_audio_mix + output stage - the audio mixer core (2B).
+QA_EXPORT int32_t qa_engine_abi_version(void) { return 16; }

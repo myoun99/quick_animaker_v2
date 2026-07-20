@@ -79,4 +79,9 @@ jobs:
       - name: Run tests (engine loaded, parity tests live)
         env:
           QA_ENGINE_PATH: ${{ github.workspace }}/build/ci-apple/libqa_engine.dylib
+          # And QA_REQUIRE_NATIVE turns a MISSING engine into a failure
+          # instead of a quiet skip. A skipped parity suite and a passing
+          # one look identical in a CI summary, which is precisely how #614
+          # hid for five rounds.
+          QA_REQUIRE_NATIVE: '1'
         run: flutter test
