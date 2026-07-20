@@ -3035,10 +3035,208 @@ QA_EXPORT void qa_audio_bus_to_int16(const double* bus,
   }
 }
 
+// ---------------------------------------------------------------------
+// Sample-rate conversion (audio program 2B) - the C twin of
+// lib/src/services/audio/audio_resampler_reference.dart.
+//
+// Kaiser-windowed sinc, run in polyphase form. LINEAR PHASE, and the
+// constant group delay is cancelled in the INDEX ARITHMETIC rather than by
+// trimming afterwards: at these filter lengths the delay exceeds a frame
+// at 24fps, so an uncompensated conform would put every resampled clip a
+// frame late - the exact defect this program exists to remove.
+//
+// Every expression here mirrors the Dart line for line, including the
+// Bessel series' termination, because the parity suite compares the two
+// bit for bit. Arithmetic is double throughout for the same reason.
+//
+// Not realtime: conforming happens once at import.
+// ---------------------------------------------------------------------
+
+static int64_t qa_audio_gcd(int64_t a, int64_t b) {
+  int64_t x = a < 0 ? -a : a;
+  int64_t y = b < 0 ? -b : b;
+  while (y != 0) {
+    const int64_t t = x % y;
+    x = y;
+    y = t;
+  }
+  return x;
+}
+
+// Modified Bessel function of the first kind, order 0 - the Kaiser
+// window's kernel. FIXED termination (relative epsilon, hard cap) so both
+// sides run the identical number of terms; a loop that stopped "when it
+// looks converged" would be a parity hazard.
+static double qa_audio_bessel_i0(double x) {
+  const double half = x / 2.0;
+  double term = 1.0;
+  double sum = 1.0;
+  for (int32_t k = 1; k <= 64; k += 1) {
+    const double ratio = half / (double)k;
+    term *= ratio * ratio;
+    sum += term;
+    if (term < sum * 1e-16) {
+      break;
+    }
+  }
+  return sum;
+}
+
+static double qa_audio_kaiser_beta(double stopband_db) {
+  if (stopband_db > 50.0) {
+    return 0.1102 * (stopband_db - 8.7);
+  }
+  if (stopband_db >= 21.0) {
+    return 0.5842 * pow(stopband_db - 21.0, 0.4) +
+           0.07886 * (stopband_db - 21.0);
+  }
+  return 0.0;
+}
+
+static double qa_audio_sinc(double x) {
+  if (x == 0.0) {
+    return 1.0;
+  }
+  const double pix = 3.14159265358979323846 * x;
+  return sin(pix) / pix;
+}
+
+QA_EXPORT int32_t qa_audio_resample_taps(int32_t input_rate,
+                                         int32_t output_rate,
+                                         double stopband_db,
+                                         double bandwidth) {
+  if (input_rate <= 0 || output_rate <= 0 || input_rate == output_rate) {
+    return 0;
+  }
+  const int64_t divisor = qa_audio_gcd(input_rate, output_rate);
+  const int64_t interpolation = output_rate / divisor;
+  const int64_t decimation = input_rate / divisor;
+  const int64_t larger = interpolation > decimation ? interpolation : decimation;
+
+  const double nyquist = 0.5 / (double)larger;
+  const double transition = nyquist - nyquist * bandwidth;
+  int64_t taps;
+  if (transition <= 0.0) {
+    taps = 131071;
+  } else {
+    taps = (int64_t)ceil((stopband_db - 8.0) /
+                         (2.285 * 2.0 * 3.14159265358979323846 * transition));
+  }
+  if (taps < 15) {
+    taps = 15;
+  }
+  if (taps > 131071) {
+    taps = 131071;
+  }
+  if (taps % 2 == 0) {
+    taps += 1;
+  }
+  return (int32_t)taps;
+}
+
+// Resamples interleaved [samples] from input_rate to output_rate into
+// [out], which the caller sizes with qa_audio_resample_frames.
+//
+// Returns the number of output frames written, or 0 on bad geometry. Equal
+// rates are NOT handled here - the caller skips the whole path and keeps
+// the input bit-exact, which is the common case.
+QA_EXPORT int64_t qa_audio_resample(
+    const float* samples,
+    int64_t input_frames,
+    int32_t channels,
+    int32_t input_rate,
+    int32_t output_rate,
+    double stopband_db,
+    double bandwidth,
+    float* out) {
+  if (samples == NULL || out == NULL || channels <= 0 || input_frames <= 0 ||
+      input_rate <= 0 || output_rate <= 0 || input_rate == output_rate) {
+    return 0;
+  }
+  const int64_t divisor = qa_audio_gcd(input_rate, output_rate);
+  const int64_t interpolation = output_rate / divisor;
+  const int64_t decimation = input_rate / divisor;
+  const int64_t larger = interpolation > decimation ? interpolation : decimation;
+
+  const double nyquist = 0.5 / (double)larger;
+  const double passband_edge = nyquist * bandwidth;
+  const double cutoff = (passband_edge + nyquist) / 2.0;
+  const double beta = qa_audio_kaiser_beta(stopband_db);
+  const int64_t taps =
+      qa_audio_resample_taps(input_rate, output_rate, stopband_db, bandwidth);
+  if (taps <= 0) {
+    return 0;
+  }
+  const int64_t half_length = (taps - 1) / 2;
+
+  double* kernel = (double*)malloc((size_t)taps * sizeof(double));
+  if (kernel == NULL) {
+    return 0;
+  }
+  {
+    const double center = (double)(taps - 1) / 2.0;
+    const double denominator = qa_audio_bessel_i0(beta);
+    for (int64_t index = 0; index < taps; index += 1) {
+      const double offset = (double)index - center;
+      const double ratio = offset / center;
+      const double inside = 1.0 - ratio * ratio;
+      const double window =
+          inside <= 0.0 ? 0.0
+                        : qa_audio_bessel_i0(beta * sqrt(inside)) / denominator;
+      kernel[index] = 2.0 * cutoff * qa_audio_sinc(2.0 * cutoff * offset) *
+                      window * (double)interpolation;
+    }
+  }
+
+  const int64_t output_frames = input_frames * interpolation / decimation;
+  for (int64_t frame = 0; frame < output_frames; frame += 1) {
+    // + half_length centres the filter on the output instant: the delay
+    // compensation, applied here so it never has to be a whole number of
+    // output samples.
+    const int64_t position = frame * decimation + half_length;
+    const int64_t phase = position % interpolation;
+    const int64_t base = position / interpolation;
+
+    for (int32_t channel = 0; channel < channels; channel += 1) {
+      double sum = 0.0;
+      int64_t tap = phase;
+      int64_t source = base;
+      while (tap < taps && source >= 0) {
+        if (source < input_frames) {
+          sum += kernel[tap] * (double)samples[source * channels + channel];
+        }
+        tap += interpolation;
+        source -= 1;
+      }
+      out[frame * channels + channel] = (float)sum;
+    }
+  }
+  free(kernel);
+  return output_frames;
+}
+
+// How many frames qa_audio_resample will write - the caller's allocation
+// size, computed the same way so the two can never disagree.
+QA_EXPORT int64_t qa_audio_resample_frames(int64_t input_frames,
+                                           int32_t input_rate,
+                                           int32_t output_rate) {
+  if (input_frames <= 0 || input_rate <= 0 || output_rate <= 0) {
+    return 0;
+  }
+  if (input_rate == output_rate) {
+    return input_frames;
+  }
+  const int64_t divisor = qa_audio_gcd(input_rate, output_rate);
+  const int64_t interpolation = output_rate / divisor;
+  const int64_t decimation = input_rate / divisor;
+  return input_frames * interpolation / decimation;
+}
+
 // Engine ABI version - the Dart loader refuses a mismatched binary.
 // v12: fill raster RGB -> RGBX (R22-D flood SIMD).
 // v13: qa_flood_fill_wave - wave-parallel flood (R22-E3).
 // v14: qa_fill_compose_batch - pooled fill compose (R25-3).
 // v15: qa_grid_raster_tile - timeline grid tile rasterizer (UI-R18 O7 T1).
 // v16: qa_audio_mix + output stage - the audio mixer core (2B).
-QA_EXPORT int32_t qa_engine_abi_version(void) { return 16; }
+// v17: qa_audio_resample - the polyphase resampler (2B).
+QA_EXPORT int32_t qa_engine_abi_version(void) { return 17; }

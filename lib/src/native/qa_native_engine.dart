@@ -36,7 +36,7 @@ class QaNativeEngine {
     this._gridRasterTile,
   ) : _spec = calloc<QaDabSpecStruct>();
 
-  static const int _abiVersion = 16;
+  static const int _abiVersion = 17;
 
   /// R25-③ batched fill compose: packs compose-tile items + their
   /// ordered layer blends into grow-only native arrays and fans the
