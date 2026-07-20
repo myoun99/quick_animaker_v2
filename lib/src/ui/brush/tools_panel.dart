@@ -32,7 +32,10 @@ class ToolsPanel extends StatelessWidget {
   Widget build(BuildContext context) {
     // Left-aligned like a PS tool column: docked into a wide dock the
     // buttons must hug the panel's left edge, not float centered.
-    return Padding(
+    // R26 #31: the library now shares the left wide dock with the tool
+    // settings below it, so its column can be shorter than the buttons —
+    // it scrolls instead of overflowing.
+    return SingleChildScrollView(
       padding: const EdgeInsets.only(left: 6, top: 6),
       child: Column(
         key: const ValueKey<String>('tools-panel'),

@@ -1,3 +1,4 @@
+import 'dart:async' show unawaited;
 import 'package:flutter/material.dart';
 
 import '../../models/attached_mode.dart';
@@ -45,6 +46,45 @@ Future<void> showTimelineCommaCountDialog(
   );
   if (comma != null && comma >= 1) {
     session.setCommaForSelectionOrCurrent(comma);
+  }
+}
+
+/// R26 #32: the custom frame-rate input — the presets cover the standard
+/// rates, this covers everything else (a project axis, so one undo step).
+Future<void> showTimelineFpsDialog(
+  BuildContext context,
+  EditorSessionManager session,
+) async {
+  final controller = TextEditingController(text: '${session.projectFps}');
+  final fps = await showDialog<int>(
+    context: context,
+    builder: (context) => AlertDialog(
+      key: const ValueKey<String>('project-fps-dialog'),
+      title: const Text('Project frame rate'),
+      content: TextField(
+        key: const ValueKey<String>('project-fps-field'),
+        controller: controller,
+        autofocus: true,
+        keyboardType: TextInputType.number,
+        decoration: const InputDecoration(labelText: 'Frames per second'),
+        onSubmitted: (value) => Navigator.of(context).pop(int.tryParse(value)),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          key: const ValueKey<String>('project-fps-apply'),
+          onPressed: () =>
+              Navigator.of(context).pop(int.tryParse(controller.text)),
+          child: const Text('Apply'),
+        ),
+      ],
+    ),
+  );
+  if (fps != null && fps >= 1) {
+    session.setProjectFps(fps);
   }
 }
 
@@ -289,6 +329,32 @@ class TimelineActionToolbar extends StatelessWidget {
     ];
   }
 
+  /// R26 #32: the frame-rate presets. Integer rates only for now — the
+  /// NTSC pulldown rates (23.976 / 29.97) need the project's `fps` to
+  /// stop being an `int`, which is a separate migration (every timing
+  /// consumer does integer frame math today).
+  static const List<int> fpsPresets = [8, 12, 15, 24, 25, 30, 48, 50, 60];
+
+  List<PanelFlyoutEntry> _fpsEntries(BuildContext context) {
+    final current = session.projectFps;
+    return [
+      for (final fps in fpsPresets)
+        PanelFlyoutItem(
+          keyValue: 'timeline-fps-$fps',
+          label: '$fps fps',
+          checked: fps == current,
+          onSelected: () => session.setProjectFps(fps),
+        ),
+      const PanelFlyoutDivider(),
+      PanelFlyoutItem(
+        keyValue: 'timeline-fps-custom',
+        label: 'Custom…',
+        icon: Icons.edit_outlined,
+        onSelected: () => unawaited(showTimelineFpsDialog(context, session)),
+      ),
+    ];
+  }
+
   List<PanelFlyoutEntry> _frameEntries() {
     return [
       PanelFlyoutItem(
@@ -468,6 +534,15 @@ class TimelineActionToolbar extends StatelessWidget {
                     label: 'Frame',
                     tooltip: 'Frame commands',
                     entriesBuilder: _frameEntries,
+                  ),
+                  const SizedBox(width: 4),
+                  // R26 #32: the PROJECT frame rate — the axis everything
+                  // timed reads. One rate per project, never per cut.
+                  PanelFlyoutButton(
+                    key: const ValueKey<String>('timeline-fps-menu-button'),
+                    label: '${session.projectFps} fps',
+                    tooltip: 'Project frame rate',
+                    entriesBuilder: () => _fpsEntries(context),
                   ),
                 ],
               ),

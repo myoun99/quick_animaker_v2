@@ -85,6 +85,7 @@ import '../services/commands/update_layer_instructions_command.dart';
 import '../services/commands/update_layer_mark_command.dart';
 import '../services/commands/update_layer_timeline_command.dart';
 import '../services/commands/update_layer_timesheet_command.dart';
+import '../services/commands/update_project_fps_command.dart';
 import '../services/commands/update_project_trailing_frames_command.dart';
 import '../services/onion_skin_plan.dart';
 import '../services/persistence/project_autosave_service.dart';
@@ -952,6 +953,21 @@ class EditorSessionManager extends ChangeNotifier {
   CanvasSize get cameraFrameSize => _repository.requireProject().cameraSize;
 
   int get projectFps => _repository.requireProject().fps;
+
+  /// R26 #32: sets the PROJECT's frame rate (one undo step, no-op when
+  /// unchanged). Everything timed — ruler seconds, sheet rows, playback,
+  /// audio placement — reads [projectFps], so this one write moves the
+  /// whole project's time axis.
+  void setProjectFps(int fps) {
+    if (fps < 1 || fps == projectFps) {
+      return;
+    }
+    _historyManager.execute(
+      UpdateProjectFpsCommand(repository: _repository, fps: fps),
+    );
+    _warmActiveCut();
+    notifyListeners();
+  }
 
   /// Resolved camera pose at an arbitrary playback frame (for rendering).
   CameraPose cameraPoseAtFrame(int frameIndex) => resolveCameraPoseAt(

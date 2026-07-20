@@ -517,34 +517,65 @@ class _HomePageState extends State<HomePage> {
     if (_exitDialogOpen) {
       return false;
     }
+    // R26 #43: an UNEDITED project just closes — the prompt exists to
+    // protect work, and there is none. "Edited" is the dirty flag the
+    // history manager raises on every executed command.
+    if (!_session.hasUnsavedChanges) {
+      return true;
+    }
     _exitDialogOpen = true;
     try {
-      final close = await showDialog<bool>(
+      final choice = await showDialog<_ExitChoice>(
         context: context,
         builder: (context) => AlertDialog(
           key: const ValueKey<String>('system-exit-dialog'),
           title: const Text('Close project?'),
-          content: Text(
-            _session.hasUnsavedChanges
-                ? 'There are unsaved changes. The autosave keeps a recovery '
-                      'snapshot, but the project file itself is not updated.'
-                : 'The app will close.',
-          ),
+          content: const Text('Your changes are not saved. Close anyway?'),
           actions: [
             TextButton(
               key: const ValueKey<String>('system-exit-cancel'),
-              onPressed: () => Navigator.of(context).pop(false),
+              onPressed: () => Navigator.of(context).pop(_ExitChoice.cancel),
               child: const Text('Cancel'),
+            ),
+            TextButton(
+              key: const ValueKey<String>('system-exit-save-as'),
+              onPressed: () => Navigator.of(context).pop(_ExitChoice.saveAs),
+              child: const Text('Save As…'),
+            ),
+            TextButton(
+              key: const ValueKey<String>('system-exit-save'),
+              onPressed: () => Navigator.of(context).pop(_ExitChoice.save),
+              child: const Text('Save'),
             ),
             FilledButton(
               key: const ValueKey<String>('system-exit-close'),
-              onPressed: () => Navigator.of(context).pop(true),
+              onPressed: () => Navigator.of(context).pop(_ExitChoice.close),
               child: const Text('Close'),
             ),
           ],
         ),
       );
-      return close ?? false;
+      switch (choice) {
+        case null || _ExitChoice.cancel:
+          return false;
+        case _ExitChoice.close:
+          return true;
+        case _ExitChoice.save:
+        case _ExitChoice.saveAs:
+          if (!mounted) {
+            return false;
+          }
+          // The existing File-menu flows do the work (one writer, one
+          // picker); a save that fails or a cancelled picker leaves the
+          // project dirty, so the close is called off.
+          final path = _session.projectFilePath;
+          if (choice == _ExitChoice.saveAs || path == null) {
+            await promptSaveProjectAs(context, _session);
+          } else {
+            await _session.saveProjectToFile(path);
+          }
+          return !_session.hasUnsavedChanges;
+      }
     } finally {
       _exitDialogOpen = false;
     }
@@ -592,3 +623,6 @@ class _HomePageState extends State<HomePage> {
     }
   }
 }
+
+/// R26 #43: the exit prompt's four answers.
+enum _ExitChoice { cancel, save, saveAs, close }
