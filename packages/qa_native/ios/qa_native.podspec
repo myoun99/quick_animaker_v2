@@ -15,7 +15,7 @@ Pod::Spec.new do |s|
   s.source_files     = 'Classes/**/*'
   # miniaudio needs the CoreAudio stack at LINK time (it dlopens nothing
   # on Apple).
-  s.frameworks       = 'CoreFoundation', 'CoreAudio', 'AudioToolbox'
+  s.frameworks       = 'CoreFoundation', 'CoreAudio', 'AudioToolbox', 'AVFoundation'
   s.dependency 'Flutter'
   s.platform = :ios, '13.0'
   # -ffp-contract=off must be repeated here, NOT only in
