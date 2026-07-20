@@ -5,6 +5,7 @@ import 'dart:typed_data';
 import 'package:ffi/ffi.dart';
 
 import '../services/audio/audio_mixer_reference.dart';
+import '../services/audio/audio_resampler_reference.dart';
 
 /// FFI binding for the native audio mixer (2B).
 ///
@@ -19,10 +20,16 @@ import '../services/audio/audio_mixer_reference.dart';
 /// missing symbol or a layout disagreement stands the native path down
 /// rather than reading garbage.
 final class QaAudioNative {
-  QaAudioNative._(this._mix, this._busToFloat, this._busToInt16);
+  QaAudioNative._(
+    this._mix,
+    this._busToFloat,
+    this._busToInt16,
+    this._resample,
+    this._resampleFrames,
+  );
 
   /// Must match `qa_engine_abi_version()` in the C.
-  static const int _abiVersion = 16;
+  static const int _abiVersion = 17;
 
   final void Function(
     Pointer<QaAudioClipStruct>,
@@ -37,6 +44,18 @@ final class QaAudioNative {
   _mix;
   final void Function(Pointer<Double>, int, Pointer<Float>) _busToFloat;
   final void Function(Pointer<Double>, int, Pointer<Int16>) _busToInt16;
+  final int Function(
+    Pointer<Float>,
+    int,
+    int,
+    int,
+    int,
+    double,
+    double,
+    Pointer<Float>,
+  )
+  _resample;
+  final int Function(int, int, int) _resampleFrames;
 
   static QaAudioNative? _instance;
   static bool _tried = false;
@@ -130,6 +149,32 @@ final class QaAudioNative {
           Void Function(Pointer<Double>, Int32, Pointer<Int16>),
           void Function(Pointer<Double>, int, Pointer<Int16>)
         >('qa_audio_bus_to_int16'),
+        library.lookupFunction<
+          Int64 Function(
+            Pointer<Float>,
+            Int64,
+            Int32,
+            Int32,
+            Int32,
+            Double,
+            Double,
+            Pointer<Float>,
+          ),
+          int Function(
+            Pointer<Float>,
+            int,
+            int,
+            int,
+            int,
+            double,
+            double,
+            Pointer<Float>,
+          )
+        >('qa_audio_resample'),
+        library.lookupFunction<
+          Int64 Function(Int64, Int32, Int32),
+          int Function(int, int, int)
+        >('qa_audio_resample_frames'),
       );
     } on Object {
       return null;
@@ -295,6 +340,63 @@ final class QaAudioNative {
     } finally {
       calloc.free(out);
       calloc.free(bus);
+    }
+  }
+}
+
+/// Extension point for the resampler, kept apart from the mixer calls
+/// because it belongs to a different moment: this runs ONCE at import,
+/// while the mixer runs on the device thread.
+extension QaAudioNativeResampling on QaAudioNative {
+  /// Converts [samples] to [outputRate] through the native polyphase
+  /// resampler.
+  ///
+  /// Equal rates return the input UNCHANGED — the caller should not even
+  /// reach here in that case, but making it explicit keeps the bit-exact
+  /// promise from depending on the caller remembering.
+  Float32List resample({
+    required Float32List samples,
+    required int channels,
+    required int inputRate,
+    required int outputRate,
+    double stopbandDb = defaultResamplerStopbandDb,
+    double bandwidth = defaultResamplerBandwidth,
+  }) {
+    if (channels <= 0 || inputRate <= 0 || outputRate <= 0) {
+      return Float32List(0);
+    }
+    if (inputRate == outputRate) {
+      return samples;
+    }
+    final inputFrames = samples.length ~/ channels;
+    if (inputFrames <= 0) {
+      return Float32List(0);
+    }
+    final outputFrames = _resampleFrames(inputFrames, inputRate, outputRate);
+    if (outputFrames <= 0) {
+      return Float32List(0);
+    }
+
+    final input = calloc<Float>(samples.length);
+    final output = calloc<Float>(outputFrames * channels);
+    try {
+      input.asTypedList(samples.length).setAll(0, samples);
+      final written = _resample(
+        input,
+        inputFrames,
+        channels,
+        inputRate,
+        outputRate,
+        stopbandDb,
+        bandwidth,
+        output,
+      );
+      final result = Float32List(written * channels);
+      result.setAll(0, output.asTypedList(written * channels));
+      return result;
+    } finally {
+      calloc.free(output);
+      calloc.free(input);
     }
   }
 }
