@@ -15,6 +15,37 @@ import 'timeline_cell_style.dart';
 /// is the full built content), so lines land on absolute frame
 /// boundaries; painting is a handful of `drawLine`s — no windowing
 /// needed.
+/// The ink of the grid line at the boundary STARTING frame [frameIndex]
+/// — the one grid language shared by the cell grid overlay and the frame
+/// ruler (R26 #40: "룰러도 프레임 셀 그리드랑 통일감").
+///
+/// Null when the base cadence thins this boundary out at the current
+/// zoom. 6f boundaries read slightly stronger, second (fps) boundaries
+/// strongest — the sheet convention, zoom-independent.
+({Color color, double strokeWidth})? timelineFrameBoundaryLineInk({
+  required int frameIndex,
+  required double frameCellExtent,
+  required int framesPerSecond,
+  required ColorScheme colorScheme,
+}) {
+  if (frameIndex <= 0 || frameCellExtent <= 0) {
+    return null;
+  }
+  if (frameIndex % 6 == 0) {
+    return framesPerSecond > 0 && frameIndex % framesPerSecond == 0
+        ? (color: colorScheme.onSurfaceVariant, strokeWidth: 1.5)
+        : (color: colorScheme.outline, strokeWidth: 1.0);
+  }
+  final cadence = timelineGridLineEveryFrames(frameCellExtent);
+  if (frameIndex % cadence != 0) {
+    return null;
+  }
+  return (
+    color: colorScheme.outlineVariant.withValues(alpha: timelineBaseGridAlpha),
+    strokeWidth: 1.0,
+  );
+}
+
 class TimelineBeatLinesPainter extends CustomPainter {
   TimelineBeatLinesPainter({
     required this.frameCellExtent,

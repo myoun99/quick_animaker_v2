@@ -23,6 +23,9 @@
 4. 문제 발견 시 **고칠 것**: 유저 위임 범위 안이다. 수정 후 이 문서의 해당 항목에 `Fable 검증:` 줄을 추가하고 무엇을 고쳤는지 적는다.
 5. **미착수/부분 구현 항목**은 표의 상태로 정직하게 표기되어 있어야 한다. 상태가 실제와 다르면 그것 자체가 결함이다.
 
+### 라벨 주의 (이름 충돌)
+이 프로그램의 코드 주석 마커는 **`R26 #<피드백 번호>`** 다(예: `R26 #26`). 캔버스/선택 코드에 이미 존재하는 **`R26 (C2)` / 무번호 `R26`** 주석은 **다른 세션 라운드**(선택 마스크 후처리 작업)의 라벨이므로 이 프로그램 산출물이 아니다 — baseline `7939725` 이전 커밋에 들어있다. 감사 시 `git log 7939725..master`로 범위를 먼저 자르면 혼동이 없다.
+
 ### 이 프로그램에서 지켜야 할 프로젝트 규율(요약)
 - PR 바디는 `--body-file`(PowerShell 5.1에서 인라인 큰따옴표 금지), `gh pr create --head <branch>` 명시.
 - 생성 플러그인 5파일(`linux/flutter/generated_*`, `macos/Flutter/GeneratedPluginRegistrant.swift`, `windows/flutter/generated_*`)은 **커밋 금지**.
@@ -94,17 +97,67 @@
 
 ### A. 타임라인 코어 (1, 2, 26, 37)
 
+**#1 범위 생성 = 1언두 (DONE, PR#1)**
+- 구현: `EditorSessionManager.createInstancesForSelection`이 카메라/지시/드로잉 3경로의 커맨드를 **수집**해 하나의 `CompositeCommand`로 실행. 카메라 커맨드가 **반드시 첫 번째**(그 undo가 프로젝트 스냅샷 복원 = 역순 undo의 마지막이어야 전체가 되돌아감). `TimelineController.drawingFramesCommandsForLayers`를 신설해 커맨드만 반환(기존 `createDrawingFramesForLayers`는 그 위의 래퍼).
+- 검증 포인트: 카메라+지시+드로잉을 모두 덮는 범위 선택 → Add → **undo 1회**로 전부 소멸. 파일: [create_for_selection_test.dart](test/ui/create_for_selection_test.dart) 'R26 #1'.
+- 주의(감사용): 커맨드 순서가 바뀌면 undo가 부분 복원된다. 이 순서 계약이 코드 주석에 명시돼 있는지 확인할 것.
+
+**#2 멀티 행 이동 시 SE 행 (DONE, PR#1)**
+- 원인: `_updateMultiRowRangeMove`가 드로잉 격자(lattice)만 알아서, 범위에 내용 있는 SE 행이 끼면 **전체를 프레임 슬라이드로 강등**시켰다.
+- 구현: SE 행을 리지드 이동의 **승객(passenger)** 으로 승격 — `_planMultiRowSePassengers`가 동일 rowDelta를 SE 격자(`activeTrack.seLayers`)에 적용, `planSeRangeRowMove` 재사용(오디오 클립은 셀에 앵커돼 자동 추종). 하나라도 못 내려앉으면 전체 무효(멀티행 all-or-nothing) → 마지막 유효 프리뷰 유지(R23 #10). 커밋=글로벌 폼 `UpdateLayerTimelineCommand` 쌍이 같은 합성 언두에 합류. 앵커가 SE 행이어도 rowDelta 계산됨(`rowDeltaWithin` 2격자 폴백).
+- 검증 포인트: [editor_session_manager_range_move_test.dart](test/ui/editor_session_manager_range_move_test.dart) 'R26 #2'.
+
+**#26 실 데이터 시트 = 홀드는 한 셀 (DONE, PR#1)**
+- 원인: 데이터 모드가 **모든 고스트를 verbatim**으로 인쇄 → 홀드 고스트마다 같은 셀 라벨이 재출력(앞홀드+뒤홀드면 3개).
+- 구현: [timesheet_document.dart](lib/src/models/timesheet_document.dart) — 데이터 모드에서 **리피트 고스트만** verbatim, **홀드 고스트는 노테이션 경로**로 유지. 뒤홀드는 데이터 모드 전용 분기로 소유 런의 drawing 셀 span을 늘리고 나머지 행은 `held`. 앞홀드는 기존 relocation(첫 행에 셀) 재사용.
+- 검증 포인트: [timesheet_data_sheet_test.dart](test/models/timesheet_data_sheet_test.dart) 'R26 #26' 2건 — 뒤홀드/앞+뒤홀드 모두 **drawing 셀은 정확히 1개**.
+- 유저 질문 "토메 표기도 간단해지나": 노테이션(止め) 경로는 손대지 않았다. 데이터 모드만 바뀜.
+
+**#37 더블탭 이름변경 = 같은 인덱스 (DONE, PR#1)**
+- 원인: Flutter `DoubleTapGestureRecognizer`는 2번째 탭이 **100px 슬롭** 안이면 같은 더블탭으로 받는다 → 블록 안 다른 셀 연속 탭이 이름변경.
+- 구현: [timeline_cell_double_tap.dart](lib/src/ui/timeline/timeline_cell_double_tap.dart) `TimelineCellDoubleTapGate` — 행의 raw `Listener`가 탭다운 셀을 기록하고, `onDoubleTapDown`이 같은 셀일 때만 활성화. **시간 검사 없음**(인식기가 이미 300ms 창을 강제; 월클럭 검사는 풀 스위트 부하에서 플레이키 — 실제로 1차 풀런에서 이 사고가 났고 그래서 제거함).
+- 이벤트 순서 계약: 자식(GestureDetector)이 조상(Listener)보다 먼저 이벤트를 받으므로, 두 번째 탭다운 시점의 기록은 **첫 탭의 것**이다. 이 계약을 [cell_double_tap_same_index_test.dart](test/ui/timeline/cell_double_tap_same_index_test.dart)의 "다른 셀" 케이스가 핀한다(순서가 반대였다면 통과 못 함).
+
 ### B. 선택 도메인 (3)
+
+미착수.
 
 ### C. 비주얼 (4, 7, 8, 27, 28, 38, 39, 40, 42, 44)
 
+**#38 + #4 텍스트 소멸 → 축소 (DONE, PR#1)**
+- 원인: `timeline_row_cells_painter.dart`가 `frameCellExtent < 14`에서 glyph를 `''`로 비웠다(타임라인/x시트 공통 경로라 35% 축소 시 시트 텍스트도 같이 사라짐).
+- 구현: 그 가드 삭제 + [timeline_cell_style.dart](lib/src/ui/timeline/timeline_cell_style.dart) `timelineFittedGlyphFontSize(base, extent)` — 14px 미만이면 `extent*0.78`, 하한 4.0. `glyphStyleFor`가 이 크기를 쓰므로 **타일 베이크 키에도 자동 반영**(폰트 크기가 캐시 키 구성요소).
+- 룰러 라벨(매 프레임 라벨 모드)도 같은 함수 적용.
+
+**#39 룰러 텍스트 잘림 (DONE, PR#1)** — 원인: 룰러가 셀마다 `배경→라벨`을 한 루프에서 그려서, 좁은 칸의 라벨이 **다음 칸 배경에 덮여** 반쯤 사라졌다. 구현: [timeline_frame_ruler_painter.dart](lib/src/ui/timeline/timeline_frame_ruler_painter.dart) 3패스(배경 → 그리드선 → 라벨)로 분리.
+
+**#40 룰러 그리드 통일 (DONE, PR#1)** — [timeline_beat_lines.dart](lib/src/ui/timeline/timeline_beat_lines.dart)에 `timelineFrameBoundaryLineInk()` 공용 함수(베이스 케이던스/6f/초 경계) 신설, 룰러 2패스가 이걸 사용. 셀 그리드와 같은 색·굵기.
+
+**#28 아이콘 호버 원형 (DONE, PR#1)** — 레이어 타입 버튼/레인 트월/어태치 트월 InkWell에 `customBorder: CircleBorder()` (타임라인+x시트).
+
+**#7 / #8 / #27 / #42 / #44**: 미착수.
+
 ### D. 입력 (5, 6, 19, 20, 33, 34)
+
+미착수.
 
 ### E. 툴 (9~18, 21, 22, 23, 35)
 
+미착수.
+
 ### F. 레이어 (29, 30, 36)
 
+**#29 어태치 이름 = 베이스+부호 (DONE, PR#1)** — `nextAttachedLayerName`이 `'${base.name}$sign${n}'` 반환(`B+1`, `B-1`). 기존 테스트 3곳 기대값 갱신.
+
+**#36 어태치 그룹 불가분 (부분 DONE, PR#1)** — 베이스가 액티브일 때 새 레이어가 **그룹 끝 뒤**에 삽입되도록(기존엔 베이스 바로 위 = 그룹 내부 침입). **잔여**: "트랜스폼 설정 열면 어태치 레이어 밑에 오도록"(행 순서 = 베이스 → 어태치 → 트랜스폼 레인)은 미구현 — 표시 순서 방향(리버스 여부)을 실앱에서 확인해야 안전해서 보류. Fable 검증 시 여기 우선.
+
+**#30**: 미착수.
+
 ### G. 셸/프로젝트 (24, 25, 31, 32, 41, 43)
+
+**#24 상단 앱 이름 삭제 (DONE, PR#1)** — home_page 상단 스트립의 'QuickAnimaker' 텍스트 제거, widget_test 기대값 `findsNothing`으로 갱신.
+
+**#25 / #31 / #32 / #41 / #43**: 미착수.
 
 ---
 

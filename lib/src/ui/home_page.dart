@@ -353,11 +353,8 @@ class _HomePageState extends State<HomePage> {
                             color: colorScheme.surfaceContainerHigh,
                             child: Row(
                               children: [
-                                const SizedBox(width: 12),
-                                Text(
-                                  'QuickAnimaker',
-                                  style: Theme.of(context).textTheme.titleSmall,
-                                ),
+                                // R26 #24: no app-name label in the strip —
+                                // the menu bar starts at the left edge.
                                 const SizedBox(width: 8),
                                 Expanded(
                                   // Narrow windows scroll the menu bar instead of

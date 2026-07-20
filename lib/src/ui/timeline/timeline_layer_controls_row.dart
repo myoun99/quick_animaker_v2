@@ -139,6 +139,9 @@ class TimelineLayerControlsRow extends StatelessWidget {
                 InkWell(
                   key: ValueKey<String>('timeline-lane-toggle-${layer.id}'),
                   onTap: () => onToggleLanes!(layer.id),
+                  // R26 #28: icon buttons hover ROUND, like every other
+                  // icon control — the square ink silhouette is retired.
+                  customBorder: const CircleBorder(),
                   child: SizedBox(
                     width: layerLaneToggleSlotWidth,
                     height: 24,
@@ -181,6 +184,7 @@ class TimelineLayerControlsRow extends StatelessWidget {
               InkWell(
                 key: ValueKey<String>('timeline-layer-type-button-${layer.id}'),
                 onTap: () => onSelectLayer(layer.id),
+                customBorder: const CircleBorder(), // R26 #28
                 child: SizedBox(
                   width: 22,
                   height: 24,
@@ -256,6 +260,7 @@ class TimelineLayerControlsRow extends StatelessWidget {
                               'timeline-attach-twirl-${layer.id}',
                             ),
                             onTap: () => onToggleAttachGroup!(layer.id),
+                            customBorder: const CircleBorder(), // R26 #28
                             child: SizedBox(
                               width: layerLaneToggleSlotWidth,
                               height: 24,

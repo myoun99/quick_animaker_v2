@@ -622,7 +622,8 @@ void main() {
     // PEN-8 #1: the editor body sits inside a SafeArea so tablet OS
     // chrome (status bar, gesture areas) never overlaps the app.
     expect(find.byType(SafeArea), findsWidgets);
-    expect(find.text('QuickAnimaker'), findsOneWidget);
+    // R26 #24: the app-name label is gone from the top strip.
+    expect(find.text('QuickAnimaker'), findsNothing);
     expect(
       find.byKey(const ValueKey<String>('new-frame-button')),
       findsOneWidget,
