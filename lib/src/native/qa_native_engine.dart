@@ -855,8 +855,26 @@ class QaNativeEngine {
   static DynamicLibrary? _tryOpen() {
     final overridePath =
         debugLibraryPathOverride ?? Platform.environment['QA_ENGINE_PATH'];
+    if (overridePath != null && overridePath.isNotEmpty) {
+      try {
+        return DynamicLibrary.open(overridePath);
+      } on Object {
+        // Fall through to the platform defaults.
+      }
+    }
+    // APPLE: the qa_native FFI plugin compiles the engine INTO the app
+    // binary (iOS forbids loading a standalone dylib from the bundle),
+    // so the symbols live in the process. `process()` itself always
+    // succeeds — a missing engine surfaces as a failed symbol lookup in
+    // the caller's try, which is the same graceful stand-down as before.
+    if (Platform.isIOS || Platform.isMacOS) {
+      try {
+        return DynamicLibrary.process();
+      } on Object {
+        // Fall through: a standalone dylib build is still honored below.
+      }
+    }
     for (final candidate in [
-      if (overridePath != null && overridePath.isNotEmpty) overridePath,
       if (Platform.isWindows) 'qa_engine.dll',
       if (Platform.isLinux || Platform.isAndroid) 'libqa_engine.so',
       if (Platform.isMacOS) 'libqa_engine.dylib',

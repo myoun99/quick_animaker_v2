@@ -1,0 +1,23 @@
+// The Android side of the FFI plugin: Gradle drives the SAME CMake the
+// desktop builds use, and the resulting libqa_engine.so lands in jniLibs
+// for every ABI the app builds.
+group = 'com.quickanimaker.qa_native'
+version = '1.0'
+
+apply plugin: 'com.android.library'
+
+android {
+    namespace = 'com.quickanimaker.qa_native'
+    compileSdk = 35
+
+    defaultConfig {
+        // Below the app's own minimum; the C has no API dependencies.
+        minSdk = 21
+    }
+
+    externalNativeBuild {
+        cmake {
+            path = file('../src/CMakeLists.txt')
+        }
+    }
+}
