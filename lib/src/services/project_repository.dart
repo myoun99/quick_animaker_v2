@@ -92,6 +92,11 @@ class ProjectRepository {
   }
 
   /// The movie's trailing gap (UI-R20 #3).
+  /// R26 #32: the project's frame rate — one axis for the whole project.
+  void updateProjectFps(int fps) {
+    updateProject((project) => project.copyWith(fps: fps));
+  }
+
   void updateTrailingFrames(int trailingFrames) {
     updateProject(
       (project) => project.copyWith(trailingFrames: trailingFrames),

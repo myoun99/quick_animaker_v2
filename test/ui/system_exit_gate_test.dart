@@ -4,10 +4,21 @@ import 'package:quick_animaker_v2/src/ui/home_page.dart';
 
 /// PEN-11: the Android back button never silently kills the editor — a
 /// system pop lands in the exit dialog, and Cancel keeps the app alive.
+/// R26 #43: the dialog only appears when the project was EDITED, and it
+/// offers Save / Save As alongside Cancel and Close.
 void main() {
-  testWidgets('system back opens the exit gate; Cancel stays', (tester) async {
+  Future<void> makeDirty(WidgetTester tester) async {
+    // Any command marks the session dirty (the history manager raises the
+    // flag) — creating a drawing is the cheapest one from the toolbar.
+    await tester.tap(find.byKey(const ValueKey<String>('new-frame-button')));
+    await tester.pumpAndSettle();
+  }
+
+  testWidgets('an EDITED project: system back opens the gate with all four '
+      'answers; Cancel stays', (tester) async {
     await tester.pumpWidget(const MaterialApp(home: HomePage()));
     await tester.pump();
+    await makeDirty(tester);
 
     final popped = await tester.binding.handlePopRoute();
     await tester.pumpAndSettle();
@@ -16,6 +27,14 @@ void main() {
       find.byKey(const ValueKey<String>('system-exit-dialog')),
       findsOneWidget,
     );
+    for (final key in const [
+      'system-exit-cancel',
+      'system-exit-save',
+      'system-exit-save-as',
+      'system-exit-close',
+    ]) {
+      expect(find.byKey(ValueKey<String>(key)), findsOneWidget, reason: key);
+    }
 
     await tester.tap(find.byKey(const ValueKey<String>('system-exit-cancel')));
     await tester.pumpAndSettle();
@@ -24,5 +43,18 @@ void main() {
       findsNothing,
     );
     expect(find.byType(HomePage), findsOneWidget);
+  });
+
+  testWidgets('R26 #43: an UNEDITED project never asks — there is nothing '
+      'to lose', (tester) async {
+    await tester.pumpWidget(const MaterialApp(home: HomePage()));
+    await tester.pump();
+
+    await tester.binding.handlePopRoute();
+    await tester.pumpAndSettle();
+    expect(
+      find.byKey(const ValueKey<String>('system-exit-dialog')),
+      findsNothing,
+    );
   });
 }
