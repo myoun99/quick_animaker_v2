@@ -34,6 +34,7 @@ import 'active_stroke_overlay.dart';
 import 'bitmap_tile_image_cache.dart';
 import 'brush_edit_canvas_input_settings.dart';
 import 'brush_edit_canvas_view.dart';
+import 'canvas_touch_contacts.dart';
 
 /// The committed-surface tiles inside [bounds] (every stored tile when the
 /// bounds are unknown): the set whose decodes gate the settling overlay
@@ -253,6 +254,25 @@ class _InteractiveBrushEditCanvasViewState
   void initState() {
     super.initState();
     BitmapTileImageCache.instance.addListener(_onTileImagesChanged);
+    CanvasTouchContacts.addMultiTouchListener(_handleSharedMultiTouch);
+  }
+
+  /// R26 #5: a second finger landed SOMEWHERE on the ink surfaces — maybe
+  /// on a sibling view, whose pointer this view will never see. A live
+  /// sub-slop touch stroke here is really the first half of a pinch, so
+  /// it stands down exactly as it would for a local second contact.
+  void _handleSharedMultiTouch() {
+    final drawingPointer = _activeDrawingPointer;
+    if (drawingPointer == null ||
+        !_activeTouchPointers.contains(drawingPointer)) {
+      return; // No touch stroke here (a pen stroke keeps drawing).
+    }
+    if (_touchStrokeCommitted) {
+      return; // A committed line survives extra fingers (PEN-12 #4).
+    }
+    _multiTouchNavigation = true;
+    _endStrokeInput();
+    _resetOverlay();
   }
 
   @override
@@ -296,6 +316,10 @@ class _InteractiveBrushEditCanvasViewState
     // native tiles still return to the engine's free list.
     _pendingPenUp?.rasterizer?.clear();
     _pendingPenUp = null;
+    // R26 #5: a view disposed mid-touch never sees its pointer-up — its
+    // contacts must leave the app-wide census or ink stays blocked.
+    CanvasTouchContacts.removeAll(_activeTouchPointers);
+    CanvasTouchContacts.removeMultiTouchListener(_handleSharedMultiTouch);
     super.dispose();
   }
 
@@ -358,7 +382,11 @@ class _InteractiveBrushEditCanvasViewState
         return;
       }
       _activeTouchPointers.add(event.pointer);
-      if (_activeTouchPointers.length >= 2) {
+      CanvasTouchContacts.add(event.pointer);
+      // R26 #5: the census is APP-WIDE — the timesheet mounts one ink
+      // view per sheet window, so the second finger often lands on a
+      // SIBLING view. Counting locally let both of them draw.
+      if (CanvasTouchContacts.count >= 2) {
         final drawingPointer = _activeDrawingPointer;
         final touchStroke =
             drawingPointer != null &&
@@ -420,6 +448,11 @@ class _InteractiveBrushEditCanvasViewState
           _mappedHoldPointer = event.pointer;
           _mappedHoldRelease = mapping.release;
           _mappedHoldIsEyedropper = true;
+          // The contact takes over a hover-engaged hold (R26 #19/#20):
+          // one hold session, one release.
+          _hoverToolHoldActive = false;
+          _hoverToolHoldRelease = null;
+          _hoverToolHoldButton = 0;
           widget.onTemporaryToolHold?.call(CanvasTool.eyedropper);
           final pickPosition = _canvasPositionFromLocal(event.localPosition);
           if (_isInsideSurface(pickPosition)) {
@@ -788,6 +821,7 @@ class _InteractiveBrushEditCanvasViewState
 
   void _forgetTouchPointer(int pointer) {
     _activeTouchPointers.remove(pointer);
+    CanvasTouchContacts.remove(pointer);
     if (_activeTouchPointers.isEmpty) {
       _multiTouchNavigation = false;
     }
@@ -822,12 +856,30 @@ class _InteractiveBrushEditCanvasViewState
           (kSecondaryButton | kTertiaryButton)) !=
       0;
 
+  /// R26 #19/#20: a mapped HOLD tool (eyedropper) engaged from a hover
+  /// button press — a Wacom barrel button pressed while the pen hovers
+  /// never produced a pointer DOWN, so the mapping silently did nothing
+  /// and no eyedropper UI appeared. The tool switches on the press edge
+  /// and springs back on the release edge.
+  bool _hoverToolHoldActive = false;
+  CanvasPointerRelease? _hoverToolHoldRelease;
+  int _hoverToolHoldButton = 0;
+
   void _handlePointerHover(PointerHoverEvent event) {
     if (event.kind == PointerDeviceKind.touch) {
       return;
     }
-    final pressed = event.buttons & ~_lastHoverButtons;
+    final previousButtons = _lastHoverButtons;
+    final pressed = event.buttons & ~previousButtons;
+    final released = previousButtons & ~event.buttons;
     _lastHoverButtons = event.buttons;
+    if (_hoverToolHoldActive && (released & _hoverToolHoldButton) != 0) {
+      final keep = _hoverToolHoldRelease == CanvasPointerRelease.keep;
+      _hoverToolHoldActive = false;
+      _hoverToolHoldRelease = null;
+      _hoverToolHoldButton = 0;
+      widget.onTemporaryToolRelease?.call(keep: keep);
+    }
     if (pressed == 0) {
       return;
     }
@@ -840,15 +892,24 @@ class _InteractiveBrushEditCanvasViewState
     } else {
       return;
     }
-    // Only the ONE-SHOT actions fire from hover — the hold-tools need a
-    // contact to mean anything.
     switch (mapping.action) {
       case CanvasPointerAction.undo:
         widget.onInvokeAction?.call('edit-undo');
+      case CanvasPointerAction.eyedropper:
+        // R26 #19/#20: engage the eyedropper on the HOVER press edge —
+        // the pen barrel button is a right-click that never touches the
+        // surface, and the tool switch is what brings the eyedropper's
+        // cursor + live swatch up. The pick itself still happens on
+        // contact (the mapped-down path below).
+        if (!_hoverToolHoldActive && _mappedHoldPointer == null) {
+          _hoverToolHoldActive = true;
+          _hoverToolHoldRelease = mapping.release;
+          _hoverToolHoldButton = pressed & (kSecondaryButton | kTertiaryButton);
+          widget.onTemporaryToolHold?.call(CanvasTool.eyedropper);
+        }
       case CanvasPointerAction.redo:
         widget.onInvokeAction?.call('edit-redo');
-      case CanvasPointerAction.eyedropper ||
-          CanvasPointerAction.eraser ||
+      case CanvasPointerAction.eraser ||
           CanvasPointerAction.pan ||
           CanvasPointerAction.none:
         break;

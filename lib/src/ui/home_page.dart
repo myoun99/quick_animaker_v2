@@ -270,7 +270,10 @@ class _HomePageState extends State<HomePage> {
           _timelineLayerNav.step(1);
         }
       case EditorActionIds.selectionFreeTransform:
-        _canvasSelectionCommands.beginTransform();
+        // R26 #17: Ctrl+T is not its own transform mode — it SWITCHES to
+        // the Move tool, so one code path (and one set of guards) owns
+        // transforming.
+        _brushTool.value = _brushTool.value.copyWith(tool: CanvasTool.move);
       case EditorActionIds.selectionTransformCommit:
         _canvasSelectionCommands.commitTransform();
       case EditorActionIds.selectionTransformCancel:
