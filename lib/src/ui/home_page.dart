@@ -31,7 +31,9 @@ import 'shortcuts/editor_shortcut_bindings.dart';
 import 'shortcuts/shortcut_settings_store.dart';
 import 'timeline/timeline_action_toolbar.dart'
     show showTimelineCommaCountDialog;
+import 'text/app_strings.dart';
 import 'timeline/timeline_layer_nav.dart' show TimelineLayerNavCommands;
+import 'widgets/cursor_notice.dart';
 
 /// The editor shell: a slim top menu strip (menu bar + quick actions —
 /// the AppBar retired so the editor keeps the vertical space) plus the
@@ -158,6 +160,36 @@ class _HomePageState extends State<HomePage> {
       )..start();
     }
     _lifecycle = AppLifecycleListener(onExitRequested: _handleExitRequested);
+    // R26 #13: the transform tool refuses to engage with nothing to
+    // transform — announced through the shared cursor notice, never a
+    // dialog, and the tool simply stays where it was. Installed on the
+    // notifier so EVERY entrance (library panel, shortcut, Ctrl+T, pen
+    // button) is covered by one guard.
+    final toolNotifier = _brushTool;
+    if (toolNotifier is PaintToolStateNotifier) {
+      toolNotifier
+        ..switchGuard = _refusalForTool
+        ..onSwitchRefused = cursorNotices.show;
+    }
+  }
+
+  /// The refusal message for switching to [tool], or null to allow it.
+  String? _refusalForTool(CanvasTool tool) {
+    if (tool != CanvasTool.move) {
+      return null;
+    }
+    final selection = _session.activeBrushEditorSelection;
+    final hasPicture =
+        selection != null &&
+        _session.brushFrameStore.celHasRenderableContent(
+          selection.toBrushFrameKey(),
+        );
+    if (hasPicture) {
+      return null;
+    }
+    return AppStrings.of(
+      _session.languageSettings.value.programLanguage,
+    ).noticeNothingToTransform;
   }
 
   @override
@@ -347,107 +379,113 @@ class _HomePageState extends State<HomePage> {
                     // The pen program's diagnosis overlay (Edit ▸ Input
                     // Inspector) — inert until toggled, observes raw events
                     // only (never a gesture-arena participant).
-                    child: InputInspectorHost(
-                      child: Column(
-                        children: [
-                          // The top strip: title, the menu bar, and the quick actions
-                          // (undo/redo/export keep their long-standing keys).
-                          Material(
-                            color: colorScheme.surfaceContainerHigh,
-                            child: Row(
-                              children: [
-                                // R26 #24: no app-name label in the strip —
-                                // the menu bar starts at the left edge.
-                                const SizedBox(width: 8),
-                                Expanded(
-                                  // Narrow windows scroll the menu bar instead of
-                                  // overflowing the strip.
-                                  child: SingleChildScrollView(
-                                    scrollDirection: Axis.horizontal,
-                                    // The menu re-reads its enablement per notify: the
-                                    // history manager is merged in because brush strokes
-                                    // execute into it straight from the canvas (no session
-                                    // notify fires for a pen-up), the playback controller
-                                    // for the Playback menu's state, the panels bridge for
-                                    // the Window checkboxes.
-                                    child: ListenableBuilder(
-                                      listenable: Listenable.merge([
-                                        _session,
-                                        _session.historyManager,
-                                        _session.playback,
-                                        _panelsMenu,
-                                      ]),
-                                      builder: (context, _) => EditorMenuBar(
-                                        session: _session,
-                                        panelsMenu: _panelsMenu,
-                                        shortcuts: _shortcuts,
+                    // R26 #35/#13: the shared cursor-notice surface wraps
+                    // the whole editor, so any refusal anywhere prints
+                    // next to the pointer.
+                    child: CursorNoticeOverlay(
+                      child: InputInspectorHost(
+                        child: Column(
+                          children: [
+                            // The top strip: title, the menu bar, and the quick actions
+                            // (undo/redo/export keep their long-standing keys).
+                            Material(
+                              color: colorScheme.surfaceContainerHigh,
+                              child: Row(
+                                children: [
+                                  // R26 #24: no app-name label in the strip —
+                                  // the menu bar starts at the left edge.
+                                  const SizedBox(width: 8),
+                                  Expanded(
+                                    // Narrow windows scroll the menu bar instead of
+                                    // overflowing the strip.
+                                    child: SingleChildScrollView(
+                                      scrollDirection: Axis.horizontal,
+                                      // The menu re-reads its enablement per notify: the
+                                      // history manager is merged in because brush strokes
+                                      // execute into it straight from the canvas (no session
+                                      // notify fires for a pen-up), the playback controller
+                                      // for the Playback menu's state, the panels bridge for
+                                      // the Window checkboxes.
+                                      child: ListenableBuilder(
+                                        listenable: Listenable.merge([
+                                          _session,
+                                          _session.historyManager,
+                                          _session.playback,
+                                          _panelsMenu,
+                                        ]),
+                                        builder: (context, _) => EditorMenuBar(
+                                          session: _session,
+                                          panelsMenu: _panelsMenu,
+                                          shortcuts: _shortcuts,
+                                        ),
                                       ),
                                     ),
                                   ),
-                                ),
-                                ListenableBuilder(
-                                  listenable: Listenable.merge([
-                                    _session,
-                                    _session.historyManager,
-                                  ]),
-                                  builder: (context, _) => Row(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      IconButton(
-                                        key: const ValueKey<String>(
-                                          'undo-button',
+                                  ListenableBuilder(
+                                    listenable: Listenable.merge([
+                                      _session,
+                                      _session.historyManager,
+                                    ]),
+                                    builder: (context, _) => Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        IconButton(
+                                          key: const ValueKey<String>(
+                                            'undo-button',
+                                          ),
+                                          tooltip: 'Undo',
+                                          onPressed: _session.canUndo
+                                              ? _session.undo
+                                              : null,
+                                          icon: const Icon(Icons.undo),
                                         ),
-                                        tooltip: 'Undo',
-                                        onPressed: _session.canUndo
-                                            ? _session.undo
-                                            : null,
-                                        icon: const Icon(Icons.undo),
-                                      ),
-                                      IconButton(
-                                        key: const ValueKey<String>(
-                                          'redo-button',
+                                        IconButton(
+                                          key: const ValueKey<String>(
+                                            'redo-button',
+                                          ),
+                                          tooltip: 'Redo',
+                                          onPressed: _session.canRedo
+                                              ? _session.redo
+                                              : null,
+                                          icon: const Icon(Icons.redo),
                                         ),
-                                        tooltip: 'Redo',
-                                        onPressed: _session.canRedo
-                                            ? _session.redo
-                                            : null,
-                                        icon: const Icon(Icons.redo),
-                                      ),
-                                    ],
+                                      ],
+                                    ),
                                   ),
-                                ),
-                                IconButton(
-                                  key: const ValueKey<String>(
-                                    'export-png-button',
+                                  IconButton(
+                                    key: const ValueKey<String>(
+                                      'export-png-button',
+                                    ),
+                                    tooltip: 'Export',
+                                    onPressed: () {
+                                      unawaited(
+                                        showDialog<void>(
+                                          context: context,
+                                          builder: (context) =>
+                                              ExportDialog(session: _session),
+                                        ),
+                                      );
+                                    },
+                                    icon: const Icon(Icons.save_alt),
                                   ),
-                                  tooltip: 'Export',
-                                  onPressed: () {
-                                    unawaited(
-                                      showDialog<void>(
-                                        context: context,
-                                        builder: (context) =>
-                                            ExportDialog(session: _session),
-                                      ),
-                                    );
-                                  },
-                                  icon: const Icon(Icons.save_alt),
-                                ),
-                                const SizedBox(width: 8),
-                              ],
+                                  const SizedBox(width: 8),
+                                ],
+                              ),
                             ),
-                          ),
-                          Expanded(
-                            child: EditorWorkspace(
-                              session: _session,
-                              panelsMenu: _panelsMenu,
-                              brushTool: _brushTool,
-                              canvasViewCommands: _canvasViewCommands,
-                              canvasSelectionCommands: _canvasSelectionCommands,
-                              layerNav: _timelineLayerNav,
-                              onInvokeAction: _invokeAction,
+                            Expanded(
+                              child: EditorWorkspace(
+                                session: _session,
+                                panelsMenu: _panelsMenu,
+                                brushTool: _brushTool,
+                                canvasViewCommands: _canvasViewCommands,
+                                canvasSelectionCommands:
+                                    _canvasSelectionCommands,
+                                layerNav: _timelineLayerNav,
+                                onInvokeAction: _invokeAction,
+                              ),
                             ),
-                          ),
-                        ],
+                          ],
+                        ),
                       ),
                     ),
                   ),

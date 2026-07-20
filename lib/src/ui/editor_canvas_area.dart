@@ -24,7 +24,10 @@ import 'editor_session_manager.dart';
 import 'playback/canvas_playback_view.dart';
 import 'playback/canvas_scrub_preview.dart';
 import 'storyboard_cut_fade_policy.dart' show cutFadeTargetColor;
+import 'text/app_strings.dart';
 import 'timeline/layer_label_controls.dart';
+import 'timeline/timeline_section_policy.dart';
+import 'widgets/cursor_notice.dart';
 import 'timeline/transform_lane_editing.dart';
 
 /// The central drawing area: the interactive brush canvas with its layer
@@ -199,6 +202,24 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
     );
   }
 
+  /// R26 #35: WHY the paint press did nothing — a drawing row simply has
+  /// no cel at this frame; every other section cannot hold artwork at
+  /// all. One shared message table, so the wording stays consistent
+  /// wherever this refusal is reused.
+  String _drawRefusalFor(EditorSessionManager session) {
+    final strings = AppStrings.of(
+      session.languageSettings.value.programLanguage,
+    );
+    final activeLayer = session.activeLayer;
+    final drawable =
+        activeLayer != null &&
+        timelineSectionForLayerKind(activeLayer.kind) ==
+            TimelineSection.drawing;
+    return drawable
+        ? strings.noticeNoFrameHere
+        : strings.noticeActionSectionOnly;
+  }
+
   Widget _buildInteractiveCanvas(
     EditorSessionManager session, {
     required bool isCameraLayerActive,
@@ -308,6 +329,10 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
               onSelectionInteractionChanged: (active) => active
                   ? session.beginSelectionInteraction()
                   : session.endSelectionInteraction(),
+              // R26 #35: a paint press with no cel here says WHY, at the
+              // cursor. Which refusal applies is a SECTION question, so
+              // only the shell can answer it.
+              onDrawRefused: () => cursorNotices.show(_drawRefusalFor(session)),
               // P5 eyedropper: sample the VISIBLE composite ("pick what you
               // see"). Picks NEVER switch tools (R11-②): the eyedropper stays
               // armed until the user changes tools, Alt-picks keep the
