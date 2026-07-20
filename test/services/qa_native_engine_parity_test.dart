@@ -1,8 +1,9 @@
-import 'dart:io';
 import 'dart:math';
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
+
+import '../helpers/native_engine_path.dart';
 import 'package:quick_animaker_v2/src/models/bitmap_surface.dart';
 import 'package:quick_animaker_v2/src/models/bitmap_tile.dart';
 import 'package:quick_animaker_v2/src/models/brush_dab.dart';
@@ -31,9 +32,10 @@ import 'package:quick_animaker_v2/src/ui/canvas/bitmap_tile_image_cache.dart';
 /// compared per pixel. Skips (loudly) when no locally built binary is
 /// found; CI/dev machines with the standalone cmake build run it.
 void main() {
-  final dllPath =
-      '${Directory.current.path}\\build\\native_standalone\\Release\\qa_engine.dll';
-  final available = File(dllPath).existsSync();
+  // R26/2A: resolved per platform (and via QA_ENGINE_PATH on CI) so these
+  // byte-parity pins are not silently Windows-only.
+  final dllPath = nativeEngineLibraryPathOrNull();
+  final available = dllPath != null;
 
   setUp(() {
     QaNativeEngine.debugResetForTests();

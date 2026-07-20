@@ -1,7 +1,8 @@
-import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
+
+import '../helpers/native_engine_path.dart';
 import 'package:quick_animaker_v2/src/models/bitmap_surface.dart';
 import 'package:quick_animaker_v2/src/models/bitmap_tile.dart';
 import 'package:quick_animaker_v2/src/models/brush_frame_key.dart';
@@ -30,9 +31,10 @@ import 'package:quick_animaker_v2/src/services/canvas_flood_fill.dart';
 /// loaded. Prints FILL2340 lines; run with
 /// `--dart-define=BRUSH_LAB_PROFILE=true` for the inner probes too.
 void main() {
-  final dllPath =
-      '${Directory.current.path}\\build\\native_standalone\\Release\\qa_engine.dll';
-  final available = File(dllPath).existsSync();
+  // R26/2A: resolved per platform (and via QA_ENGINE_PATH on CI) so this
+  // benchmark can run wherever an engine was built.
+  final dllPath = nativeEngineLibraryPathOrNull();
+  final available = dllPath != null;
 
   setUp(() {
     QaNativeEngine.debugResetForTests();
