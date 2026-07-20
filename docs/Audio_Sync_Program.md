@@ -152,4 +152,11 @@ packages/qa_native/
 
 ## 6. 진행 로그
 
-- 2026-07-20: 계획 확정, 이 문서 작성. 공개 전환 + 라이선스(#610) 완료.
+- **2026-07-20**: 계획 확정, 이 문서 작성. 공개 전환 + 라이선스(#610) 완료.
+- **2026-07-20 · 2A 완료** (#611~#614). CI가 도입 당일 **네이티브 코어의 실제 결함 3건**을 잡았다:
+  1. **#612 `<stddef.h>` 누락** — `ptrdiff_t`를 파일 전체에서 쓰면서 헤더가 없었다. MSVC가 다른 헤더로 가려주고 있었고, Apple clang은 20개 에러로 거부. 엔진 다섯 라운드 동안 아무도 몰랐다.
+  2. **#613 플러그인 구조** — `packages/qa_native` FFI 플러그인으로 Android/iOS/macOS/Linux 배선. Windows는 `native/CMakeLists.txt` shim으로 기존 경로 유지(마지막 이행). iOS는 정적 링크 + `DynamicLibrary.process()` 분기.
+  3. **#614 패리티 테스트가 Windows 전용이었다** — 4개 스위트가 `build\native_standalone\Release\qa_engine.dll`을 하드코딩해, 맥/리눅스에선 **구조적으로 skip**만 가능했다. 공용 리졸버(`test/helpers/native_engine_path.dart`)로 교체 + macOS CI가 `QA_ENGINE_PATH`를 물림.
+  4. **#614 ★ Apple 실리콘에서 픽셀이 달랐다** — 살아난 패리티가 즉시 **182 vs 181**(50% 불투명도 스탬프 블렌드) 검출. 원인: clang이 `a*b+c`를 **FMA로 융합**해 Dart(2회 반올림)와 다르게 1회 반올림. x86 베이스라인엔 FMA가 없어 드러날 수 없었다. `-ffp-contract=off`로 해결 → macOS 3282 통과·실패 0. **같은 .qap이 아이패드와 윈도우에서 다른 픽셀을 낼 뻔했다.**
+  - CI 현황: Linux 풀 스위트 ✓ · Android APK ✓ · Windows(실 DLL 패리티) ✓ · macOS/iOS(빌드 + 패리티 라이브) ✓
+- **다음**: RT(유리수 타임베이스) → 2B(믹서 코어) → 2C(장치) → 2D(도구). Windows 플러그인 이행은 2B 이후.
