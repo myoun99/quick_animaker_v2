@@ -171,6 +171,11 @@ Float32List audioBusToFloat(Float64List bus, {Float32List? into}) {
 /// (that is what headroom is), and only the conversion to a fixed-point
 /// format has to decide what to do about it. Dart's `double.round()` rounds
 /// half away from zero, exactly like C's `llround`.
+///
+/// Scaling by 32768 (not 32767) is what makes the chain lossless at unity
+/// gain: a decoder hands us `raw / 32768`, so multiplying back by 32768
+/// returns the SAME int16 the file held. -32768 survives too, which the
+/// 32767 convention cannot represent. Only +1.0 needs the clamp.
 Int16List audioBusToInt16(Float64List bus, {Int16List? into}) {
   final out = into ?? Int16List(bus.length);
   for (var index = 0; index < bus.length; index += 1) {
@@ -180,7 +185,11 @@ Int16List audioBusToInt16(Float64List bus, {Int16List? into}) {
     } else if (value < -1.0) {
       value = -1.0;
     }
-    out[index] = (value * 32767.0).round();
+    var scaled = (value * 32768.0).round();
+    if (scaled > 32767) {
+      scaled = 32767;
+    }
+    out[index] = scaled;
   }
   return out;
 }

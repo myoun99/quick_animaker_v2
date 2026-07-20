@@ -44,6 +44,66 @@ class AudioPeaks {
   }
 }
 
+/// Folds decoded PCM into the same `|peak|` envelope the waveform paints,
+/// taking the LOUDEST channel at each point rather than mixing them down.
+///
+/// The ffmpeg path this replaces asked for `-ac 1`, a mono downmix, and
+/// measured that. Downmixing SUMS the channels — so a stereo pair in
+/// opposite phase cancels to silence, and the waveform shows nothing while
+/// the sound plays perfectly well. A hard-panned effect shows at half its
+/// real size for the same reason. No professional tool does this: Pro
+/// Tools, Logic and Premiere all draw per-channel lanes, precisely so a
+/// waveform can never hide audible sound.
+///
+/// Per-channel lanes need track height this app does not have (SE rows are
+/// a fixed 28px, and there is no vertical zoom), so the channel MAXIMUM is
+/// the honest single-lane answer: it can never cancel, and what you see is
+/// the loudest thing you will hear.
+AudioPeaks peaksFromSamples({
+  required Float32List samples,
+  required int channels,
+  required int sampleRate,
+  int bucketsPerSecond = 40,
+}) {
+  if (channels <= 0 || sampleRate <= 0 || bucketsPerSecond <= 0) {
+    return AudioPeaks(
+      bucketsPerSecond: bucketsPerSecond < 1 ? 1 : bucketsPerSecond,
+      peaks: Float32List(0),
+    );
+  }
+  final samplesPerBucket = sampleRate ~/ bucketsPerSecond;
+  if (samplesPerBucket <= 0) {
+    return AudioPeaks(bucketsPerSecond: bucketsPerSecond, peaks: Float32List(0));
+  }
+  final frameCount = samples.length ~/ channels;
+  final peaks = <double>[];
+  var bucketMax = 0.0;
+  var bucketCount = 0;
+  for (var frame = 0; frame < frameCount; frame += 1) {
+    final base = frame * channels;
+    for (var channel = 0; channel < channels; channel += 1) {
+      final value = samples[base + channel];
+      final magnitude = value < 0 ? -value : value;
+      if (magnitude > bucketMax) {
+        bucketMax = magnitude;
+      }
+    }
+    bucketCount += 1;
+    if (bucketCount == samplesPerBucket) {
+      peaks.add(bucketMax > 1.0 ? 1.0 : bucketMax);
+      bucketMax = 0;
+      bucketCount = 0;
+    }
+  }
+  if (bucketCount > 0) {
+    peaks.add(bucketMax > 1.0 ? 1.0 : bucketMax);
+  }
+  return AudioPeaks(
+    bucketsPerSecond: bucketsPerSecond,
+    peaks: Float32List.fromList(peaks),
+  );
+}
+
 /// The outcome of one extraction attempt: [peaks] on success, otherwise a
 /// human-readable [error] (spawn failure per candidate, ffmpeg's stderr
 /// tail, empty stream) so the store can log WHY a waveform is missing
