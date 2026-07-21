@@ -1,12 +1,18 @@
 import 'package:flutter/material.dart';
 
-import '../../models/brush_tip_shape.dart';
+import '../../models/app_language.dart';
+import '../../models/brush_blend_mode.dart';
 import '../panels/editor_panel_frame.dart';
 import '../widgets/field_slider.dart';
-import 'brush_tool_color_swatch.dart';
+import '../widgets/panel_flyout.dart';
 import 'brush_tool_state.dart';
 
-/// Editable brush tool properties (sliders, tip shape, pressure, color).
+/// Editable brush tool properties — the CSP-style GROUPED layout (BB-2,
+/// user-picked candidate B, 07-22): 브러시 크기 / 잉크 / 브러시 끝 /
+/// 보정, with the BRUSH BLEND dropdown living in the ink group exactly
+/// where Clip Studio keeps its 합성 모드. The color swatches and the tip
+/// shape segment are GONE (R26 #11): color belongs to the color wheel
+/// panel, the tip belongs to brush presets.
 ///
 /// The brush library lives in the separate [BrushPresetPanel]; this panel
 /// only mutates the live [BrushToolState].
@@ -15,17 +21,15 @@ class BrushSettingsPanel extends StatelessWidget {
     super.key,
     required this.state,
     required this.onChanged,
+    this.language = AppLanguage.en,
   });
 
   final BrushToolState state;
   final ValueChanged<BrushToolState> onChanged;
 
-  static const swatches = <_BrushSwatch>[
-    _BrushSwatch('Black', 0xFF000000),
-    _BrushSwatch('Red', 0xFFE53935),
-    _BrushSwatch('Blue', 0xFF1E88E5),
-    _BrushSwatch('White', 0xFFFFFFFF),
-  ];
+  /// The program language — the blend mode labels localize (ja = CSP
+  /// terms); the rest of the panel keeps the incremental-coverage rule.
+  final AppLanguage language;
 
   @override
   Widget build(BuildContext context) {
@@ -43,6 +47,7 @@ class BrushSettingsPanel extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         mainAxisSize: MainAxisSize.min,
         children: [
+          _GroupHeader('Brush size', first: true),
           _PanelSlider(
             label: 'Size',
             valueLabel: sizeLabel,
@@ -55,6 +60,8 @@ class BrushSettingsPanel extends StatelessWidget {
             keyValue: 'brush-tool-size-slider',
             onChanged: (value) => onChanged(state.copyWith(size: value)),
           ),
+          _GroupHeader('Ink'),
+          _BlendModeRow(state: state, onChanged: onChanged, language: language),
           _PanelSlider(
             label: 'Opacity',
             valueLabel: opacityLabel,
@@ -66,16 +73,6 @@ class BrushSettingsPanel extends StatelessWidget {
             onChanged: (value) => onChanged(state.copyWith(opacity: value)),
           ),
           _PanelSlider(
-            label: 'Hardness',
-            valueLabel: hardnessLabel,
-            value: BrushToolState.clampUnit(state.hardness),
-            min: 0,
-            max: 1,
-            displayFactor: 100,
-            keyValue: 'brush-tool-hardness-slider',
-            onChanged: (value) => onChanged(state.copyWith(hardness: value)),
-          ),
-          _PanelSlider(
             label: 'Flow',
             valueLabel: flowLabel,
             value: BrushToolState.clampUnit(state.flow),
@@ -85,57 +82,17 @@ class BrushSettingsPanel extends StatelessWidget {
             keyValue: 'brush-tool-flow-slider',
             onChanged: (value) => onChanged(state.copyWith(flow: value)),
           ),
+          _GroupHeader('Brush tip'),
           _PanelSlider(
-            label: 'Spacing',
-            valueLabel: spacingLabel,
-            value: BrushToolState.clampSpacing(state.spacing),
-            min: BrushToolState.minSpacing,
-            max: BrushToolState.maxSpacing,
-            scale: FieldSliderScale.exponential,
-            displayFactor: 100,
-            keyValue: 'brush-tool-spacing-slider',
-            onChanged: (value) => onChanged(state.copyWith(spacing: value)),
-          ),
-          // Pull-string stabilization (P7): a hand-feel setting, kept OUT
-          // of brush presets on purpose.
-          _PanelSlider(
-            label: 'Stabilizer',
-            valueLabel: '${state.stabilizerStrength.round()}',
-            value: BrushToolState.clampStabilizerStrength(
-              state.stabilizerStrength,
-            ),
+            label: 'Hardness',
+            valueLabel: hardnessLabel,
+            value: BrushToolState.clampUnit(state.hardness),
             min: 0,
-            max: 100,
-            keyValue: 'brush-tool-stabilizer-slider',
-            onChanged: (value) =>
-                onChanged(state.copyWith(stabilizerStrength: value)),
+            max: 1,
+            displayFactor: 100,
+            keyValue: 'brush-tool-hardness-slider',
+            onChanged: (value) => onChanged(state.copyWith(hardness: value)),
           ),
-          const SizedBox(height: 8),
-          Text('Tip Shape', style: Theme.of(context).textTheme.labelSmall),
-          const SizedBox(height: 6),
-          SegmentedButton<BrushTipShape>(
-            key: const ValueKey<String>('brush-tool-tip-shape-toggle'),
-            style: const ButtonStyle(
-              visualDensity: VisualDensity.compact,
-              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-            ),
-            segments: const [
-              ButtonSegment(
-                value: BrushTipShape.round,
-                icon: Icon(Icons.circle, size: 14),
-                label: Text('Round'),
-              ),
-              ButtonSegment(
-                value: BrushTipShape.square,
-                icon: Icon(Icons.square, size: 14),
-                label: Text('Square'),
-              ),
-            ],
-            selected: {state.tipShape},
-            onSelectionChanged: (selection) =>
-                onChanged(state.copyWith(tipShape: selection.single)),
-          ),
-          const SizedBox(height: 4),
           _PanelSlider(
             label: 'Roundness',
             valueLabel: roundnessLabel,
@@ -156,9 +113,35 @@ class BrushSettingsPanel extends StatelessWidget {
             onChanged: (value) =>
                 onChanged(state.copyWith(angleDegrees: value)),
           ),
-          const SizedBox(height: 8),
-          Text('Pen Pressure', style: Theme.of(context).textTheme.labelSmall),
-          const SizedBox(height: 2),
+          _PanelSlider(
+            label: 'Spacing',
+            valueLabel: spacingLabel,
+            value: BrushToolState.clampSpacing(state.spacing),
+            min: BrushToolState.minSpacing,
+            max: BrushToolState.maxSpacing,
+            scale: FieldSliderScale.exponential,
+            displayFactor: 100,
+            keyValue: 'brush-tool-spacing-slider',
+            onChanged: (value) => onChanged(state.copyWith(spacing: value)),
+          ),
+          _GroupHeader('Correction'),
+          // Pull-string stabilization (P7): a hand-feel setting, kept OUT
+          // of brush presets on purpose.
+          _PanelSlider(
+            label: 'Stabilizer',
+            valueLabel: '${state.stabilizerStrength.round()}',
+            value: BrushToolState.clampStabilizerStrength(
+              state.stabilizerStrength,
+            ),
+            min: 0,
+            max: 100,
+            keyValue: 'brush-tool-stabilizer-slider',
+            onChanged: (value) =>
+                onChanged(state.copyWith(stabilizerStrength: value)),
+          ),
+          // Pressure toggles survive until BB-3 lands the per-setting
+          // pressure CURVES (the popup editor replaces both switches).
+          _GroupHeader('Pen pressure'),
           _PanelSwitch(
             label: 'Size',
             value: state.pressureSize,
@@ -173,20 +156,119 @@ class BrushSettingsPanel extends StatelessWidget {
             onChanged: (value) =>
                 onChanged(state.copyWith(pressureOpacity: value)),
           ),
-          const SizedBox(height: 8),
-          Text('Color', style: Theme.of(context).textTheme.labelSmall),
-          const SizedBox(height: 6),
-          Wrap(
-            spacing: 6,
-            runSpacing: 6,
+        ],
+      ),
+    );
+  }
+}
+
+/// The CSP category rule: a small header over each settings group, a
+/// hairline separating it from the group above.
+class _GroupHeader extends StatelessWidget {
+  const _GroupHeader(this.label, {this.first = false});
+
+  final String label;
+  final bool first;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Padding(
+      padding: EdgeInsets.only(top: first ? 0 : 8, bottom: 4),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (!first)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 6),
+              child: Divider(
+                height: 1,
+                thickness: 1,
+                color: theme.colorScheme.outlineVariant,
+              ),
+            ),
+          Text(
+            label,
+            style: theme.textTheme.labelSmall?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// The BRUSH BLEND dropdown (BB-2): the ink group's first row, the
+/// PS/CSP dropdown vocabulary — the label IS the current mode. The
+/// ERASER tool locks it to 消去/Erase (the eraser IS the erase blend);
+/// the flyout stands down there.
+class _BlendModeRow extends StatelessWidget {
+  const _BlendModeRow({
+    required this.state,
+    required this.onChanged,
+    required this.language,
+  });
+
+  final BrushToolState state;
+  final ValueChanged<BrushToolState> onChanged;
+  final AppLanguage language;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final locked = state.tool == CanvasTool.eraser;
+    final mode = locked ? BrushBlendMode.erase : state.brushBlendMode;
+    if (locked) {
+      return Padding(
+        padding: const EdgeInsets.only(bottom: 6),
+        child: Container(
+          key: const ValueKey<String>('brush-tool-blend-locked'),
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+          decoration: BoxDecoration(
+            border: Border.all(color: theme.colorScheme.outlineVariant),
+            borderRadius: BorderRadius.circular(4),
+          ),
+          child: Row(
             children: [
-              for (final swatch in swatches)
-                BrushToolColorSwatch(
-                  label: swatch.label,
-                  color: swatch.color,
-                  selected: state.color == swatch.color,
-                  onSelected: (color) =>
-                      onChanged(state.copyWith(color: color)),
+              Expanded(
+                child: Text(
+                  mode.labelFor(language),
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant,
+                  ),
+                ),
+              ),
+              Icon(
+                Icons.lock_outline,
+                size: 14,
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 6),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text('Blend', style: theme.textTheme.labelSmall),
+          ),
+          PanelFlyoutButton(
+            key: const ValueKey<String>('brush-tool-blend-menu-button'),
+            label: mode.labelFor(language),
+            tooltip: 'Brush blend mode',
+            entriesBuilder: () => [
+              for (final candidate in BrushBlendMode.values)
+                PanelFlyoutItem(
+                  keyValue: 'brush-tool-blend-${candidate.name}',
+                  label: candidate.labelFor(language),
+                  checked: candidate == mode,
+                  onSelected: () =>
+                      onChanged(state.copyWith(brushBlendMode: candidate)),
                 ),
             ],
           ),
@@ -269,8 +351,3 @@ class _PanelSwitch extends StatelessWidget {
   }
 }
 
-class _BrushSwatch {
-  const _BrushSwatch(this.label, this.color);
-  final String label;
-  final int color;
-}

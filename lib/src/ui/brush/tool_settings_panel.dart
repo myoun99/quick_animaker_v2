@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../models/app_language.dart';
 import '../../services/canvas_flood_fill.dart';
 import '../../services/canvas_selection.dart';
 import '../widgets/drag_value_label.dart';
@@ -23,7 +24,12 @@ class ToolSettingsPanel extends StatelessWidget {
     this.selectionMaskOptions = SelectionMaskOptions.none,
     this.onSelectionMaskOptionsChanged,
     this.selectionCommands,
+    this.language = AppLanguage.en,
   });
+
+  /// The program language (BB-2): the brush blend labels localize
+  /// (ja = CSP terms); everything else keeps incremental coverage.
+  final AppLanguage language;
 
   final BrushToolState state;
   final ValueChanged<BrushToolState> onChanged;
@@ -44,7 +50,11 @@ class ToolSettingsPanel extends StatelessWidget {
     switch (state.tool) {
       case CanvasTool.brush:
       case CanvasTool.eraser:
-        return BrushSettingsPanel(state: state, onChanged: onChanged);
+        return BrushSettingsPanel(
+          state: state,
+          onChanged: onChanged,
+          language: language,
+        );
       case CanvasTool.fill:
         return _FillSettings(
           options: fillOptions,

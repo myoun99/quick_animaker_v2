@@ -6,6 +6,7 @@ import 'dart:ui' as ui;
 import 'package:flutter/foundation.dart';
 
 import '../../models/bitmap_tile.dart';
+import '../../models/brush_blend_mode.dart';
 import '../../models/brush_dab.dart';
 import '../../models/canvas_size.dart';
 import '../../models/dirty_region.dart';
@@ -52,6 +53,12 @@ class ActiveStrokeOverlayModel extends ChangeNotifier {
   /// kept through settling (the commit needs the same mode until the
   /// committed tiles decode).
   bool erase = false;
+
+  /// The stroke's BRUSH blend (BB-1, R26 #9): the painter previews the
+  /// overlay through the matching ui.BlendMode inside the isolation
+  /// layer, so what blends on screen is what the pen-up kernel lands
+  /// (GPU float vs integer commit: within ±1/255).
+  BrushBlendMode blendMode = BrushBlendMode.color;
 
   final Map<TileCoord, ui.Image> _tileImages = <TileCoord, ui.Image>{};
   final Set<TileCoord> _decoding = <TileCoord>{};

@@ -1,5 +1,6 @@
 import 'dart:typed_data';
 
+import '../models/brush_blend_mode.dart';
 import '../models/brush_dab_sequence.dart';
 import '../models/dirty_region.dart';
 import '../models/brush_bitmap_materialization_history_state.dart';
@@ -20,6 +21,7 @@ BrushEditSessionCommitResult commitBrushDabSequenceToBrushEditSession({
   required FrameId frameId,
   Uint8List? prerasterizedStrokePixels,
   DirtyRegion? prerasterizedStrokeBounds,
+  BrushBlendMode blendMode = BrushBlendMode.color,
 }) {
   final edit = labProbe(
     'commit.edit',
@@ -30,6 +32,7 @@ BrushEditSessionCommitResult commitBrushDabSequenceToBrushEditSession({
       frameId: frameId,
       prerasterizedStrokePixels: prerasterizedStrokePixels,
       prerasterizedStrokeBounds: prerasterizedStrokeBounds,
+      blendMode: blendMode,
     ),
   );
   final updatedCanvasState = labProbe(

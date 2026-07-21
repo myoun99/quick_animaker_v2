@@ -97,17 +97,20 @@ void main() {
     );
   });
 
-  testWidgets('BrushSettingsPanel updates size opacity color and spacing', (
+  testWidgets('BrushSettingsPanel updates size opacity and spacing (the '
+      'color swatches left with R26 #11 — the color wheel owns color)', (
     tester,
   ) async {
     var state = BrushToolState.defaults;
     await tester.pumpWidget(
       MaterialApp(
         home: Scaffold(
-          body: StatefulBuilder(
-            builder: (context, setState) => BrushSettingsPanel(
-              state: state,
-              onChanged: (next) => setState(() => state = next),
+          body: SingleChildScrollView(
+            child: StatefulBuilder(
+              builder: (context, setState) => BrushSettingsPanel(
+                state: state,
+                onChanged: (next) => setState(() => state = next),
+              ),
             ),
           ),
         ),
@@ -128,23 +131,17 @@ void main() {
     await tester.pumpAndSettle();
     expect(state.opacity, lessThan(BrushToolState.defaultOpacity));
 
-    await tester.drag(
-      find.byKey(const ValueKey<String>('brush-tool-spacing-slider')),
-      const Offset(80, 0),
+    final spacingSlider = find.byKey(
+      const ValueKey<String>('brush-tool-spacing-slider'),
     );
+    await tester.ensureVisible(spacingSlider);
+    await tester.drag(spacingSlider, const Offset(80, 0));
     await tester.pumpAndSettle();
     expect(state.spacing, greaterThan(BrushToolState.defaultSpacing));
-
-    final blueSwatch = find.byKey(
-      const ValueKey<String>('brush-tool-color-swatch-Blue'),
-    );
-    await tester.ensureVisible(blueSwatch);
-    await tester.tap(blueSwatch);
-    await tester.pumpAndSettle();
-    expect(state.color, 0xFF1E88E5);
   });
 
-  testWidgets('BrushSettingsPanel updates hardness flow and tip shape', (
+  testWidgets('BrushSettingsPanel updates hardness and flow (the tip '
+      'shape segment left with R26 #11 — presets own the tip)', (
     tester,
   ) async {
     var state = BrushToolState.defaults;
@@ -163,10 +160,11 @@ void main() {
       ),
     );
 
-    await tester.drag(
-      find.byKey(const ValueKey<String>('brush-tool-hardness-slider')),
-      const Offset(-80, 0),
+    final hardnessSlider = find.byKey(
+      const ValueKey<String>('brush-tool-hardness-slider'),
     );
+    await tester.ensureVisible(hardnessSlider);
+    await tester.drag(hardnessSlider, const Offset(-80, 0));
     await tester.pumpAndSettle();
     expect(state.hardness, lessThan(BrushToolState.defaultHardness));
 
@@ -177,18 +175,11 @@ void main() {
     await tester.pumpAndSettle();
     expect(state.flow, lessThan(BrushToolState.defaultFlow));
 
-    await tester.ensureVisible(
-      find.byKey(const ValueKey<String>('brush-tool-tip-shape-toggle')),
-    );
-    await tester.tap(find.text('Square'));
-    await tester.pumpAndSettle();
-    expect(state.tipShape, BrushTipShape.square);
-
     // The sampled input settings carry every tool option to the canvas.
     final inputSettings = state.toInputSettings();
     expect(inputSettings.hardness, state.hardness);
     expect(inputSettings.flow, state.flow);
-    expect(inputSettings.tipShape, BrushTipShape.square);
+    expect(inputSettings.tipShape, BrushTipShape.round);
   });
 
   testWidgets('BrushSettingsPanel updates tip roundness and angle', (

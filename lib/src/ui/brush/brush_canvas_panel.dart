@@ -1267,6 +1267,7 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel> {
           cacheInvalidationSink: widget.cacheInvalidationSink,
           prerasterizedStrokePixels: strokeData.strokePixels,
           prerasterizedStrokeBounds: strokeData.strokeBounds,
+          blendMode: strokeData.blendMode,
         );
         return;
       }

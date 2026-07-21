@@ -91,11 +91,15 @@ class BitmapSurfacePainter extends CustomPainter {
     // BELOW this picture, which showed live erase strokes as dark
     // panel-background lines until the commit landed (R14-⑤). The layer
     // makes the hole transparent so whatever is underneath shows through.
-    final eraseOverlayLayer =
+    // BB-1: a non-srcOver BRUSH BLEND needs the same isolation — the
+    // mode must blend against the CEL's pixels only, never the paper or
+    // panel chrome below.
+    final overlayBlendsInLayer =
         overlayModel != null &&
-        overlayModel!.erase &&
-        overlayModel!.hasStrokeContent;
-    if (eraseOverlayLayer) {
+        overlayModel!.hasStrokeContent &&
+        (overlayModel!.erase ||
+            overlayModel!.blendMode.previewBlendMode != BlendMode.srcOver);
+    if (overlayBlendsInLayer) {
       canvas.saveLayer(pasteboardRect, Paint());
     }
 
@@ -192,6 +196,13 @@ class BitmapSurfacePainter extends CustomPainter {
               ..filterQuality = FilterQuality.none
               ..isAntiAlias = false
               ..blendMode = BlendMode.dstOut)
+          : overlay.blendMode.previewBlendMode != BlendMode.srcOver
+          // BB-1: the brush blend previews live (tiles never overlap,
+          // so per-tile draws blend each pixel exactly once).
+          ? (Paint()
+              ..filterQuality = FilterQuality.none
+              ..isAntiAlias = false
+              ..blendMode = overlay.blendMode.previewBlendMode)
           : tileImagePaint;
       final overlayTileSize = overlay.tileSize.toDouble();
       for (final entry in overlay.tileImages.entries) {
@@ -209,7 +220,7 @@ class BitmapSurfacePainter extends CustomPainter {
       }
     }
 
-    if (eraseOverlayLayer) {
+    if (overlayBlendsInLayer) {
       canvas.restore();
     }
 

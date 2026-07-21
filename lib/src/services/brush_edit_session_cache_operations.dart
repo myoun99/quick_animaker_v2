@@ -1,5 +1,6 @@
 import 'dart:typed_data';
 
+import '../models/brush_blend_mode.dart';
 import '../models/brush_dab_sequence.dart';
 import '../models/dirty_region.dart';
 import '../models/brush_edit_session_cache_operation_result.dart';
@@ -20,6 +21,7 @@ commitBrushDabSequenceToBrushEditSessionWithCacheInvalidation({
   required CacheInvalidationSink cacheInvalidationSink,
   Uint8List? prerasterizedStrokePixels,
   DirtyRegion? prerasterizedStrokeBounds,
+  BrushBlendMode blendMode = BrushBlendMode.color,
 }) {
   final commitResult = commitBrushDabSequenceToBrushEditSessionState(
     sessionState: sessionState,
@@ -28,6 +30,7 @@ commitBrushDabSequenceToBrushEditSessionWithCacheInvalidation({
     frameId: frameId,
     prerasterizedStrokePixels: prerasterizedStrokePixels,
     prerasterizedStrokeBounds: prerasterizedStrokeBounds,
+    blendMode: blendMode,
   );
   final historyEntry = commitResult.historyEntry;
 

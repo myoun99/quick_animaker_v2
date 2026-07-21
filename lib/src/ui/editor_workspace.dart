@@ -649,6 +649,11 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
         .copyWith(
           tool: targetTool,
           stabilizerStrength: current.stabilizerStrength,
+          // R26 #10: SIZE and the brush BLEND are hand settings — a
+          // preset never flips them ("브러시 다른거 선택한다고
+          // 사이즈/블렌딩모드가 바뀌지 않음").
+          size: current.size,
+          brushBlendMode: current.brushBlendMode,
         );
     _activePresetByTool[targetTool] = preset.id;
     _presetLibrary.markActive(preset.id);
@@ -831,6 +836,11 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
                                         _selectionMaskOptions.value = options,
                                     selectionCommands:
                                         widget.canvasSelectionCommands,
+                                    language: widget
+                                        .session
+                                        .languageSettings
+                                        .value
+                                        .programLanguage,
                                   ),
                             ),
                       ),

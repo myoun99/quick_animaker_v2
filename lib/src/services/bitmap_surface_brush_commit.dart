@@ -4,6 +4,7 @@ import 'dart:typed_data';
 import '../core/floor_math.dart';
 import '../models/bitmap_surface.dart';
 import '../models/bitmap_tile.dart';
+import '../models/brush_blend_mode.dart';
 import '../models/brush_dab.dart';
 import '../models/brush_dab_sequence.dart';
 import '../models/brush_stamp_image.dart';
@@ -17,6 +18,7 @@ import '../models/tile_coord.dart';
 import '../native/qa_native_engine.dart';
 import '../ui/dev_profile.dart';
 import 'brush_dab_dirty_region.dart';
+import 'brush_stroke_blend.dart';
 import 'brush_tip_mask_sampling.dart';
 
 class BrushSurfaceMaterialization {
@@ -892,6 +894,7 @@ BrushSurfaceMaterialization compositeStrokePixelsOntoBitmapSurface({
   required Uint8List strokePixels,
   required DirtyRegion bounds,
   bool erase = false,
+  BrushBlendMode blendMode = BrushBlendMode.color,
 }) {
   final width = bounds.rightExclusive - bounds.left;
   final height = bounds.bottomExclusive - bounds.top;
@@ -901,29 +904,64 @@ BrushSurfaceMaterialization compositeStrokePixelsOntoBitmapSurface({
       dirtyTiles: DirtyTileSet.empty(),
     );
   }
+  BrushDab boundsStampDab({
+    required String id,
+    required Uint8List rgba,
+    required bool erase,
+    int sequence = 0,
+  }) => BrushDab(
+    center: CanvasPoint(
+      x: bounds.left + width / 2,
+      y: bounds.top + height / 2,
+    ),
+    color: 0xFF000000,
+    size: math.max(width, height).toDouble(),
+    opacity: 1,
+    flow: 1,
+    hardness: 1,
+    tipShape: BrushTipShape.square,
+    pressure: 1,
+    sequence: sequence,
+    erase: erase,
+    stamp: BrushStampImage(id: id, width: width, height: height, rgba: rgba),
+  );
+
+  // BB-1 (R26 #9): a non-trivial BRUSH BLEND applies once per stroke —
+  // the result region is computed through the blend kernel and lands
+  // through the SAME stamp kernels as everything else: an erase-rect
+  // pass clears the bounds, then a source-over pass writes the result
+  // verbatim (over emptiness srcOver IS replace, byte-exactly). Pixels
+  // the stroke never touched come back verbatim from the kernel's
+  // alpha-0 copy rule, so the round trip is invisible outside the ink.
+  if (blendMode != BrushBlendMode.color && blendMode != BrushBlendMode.erase) {
+    final result = blendStrokeRegionPixels(
+      dst: bitmapSurfaceRegionPixels(surface, bounds),
+      src: strokePixels,
+      mode: blendMode,
+      pixelCount: width * height,
+    );
+    final opaqueRect = Uint8List(width * height * 4)
+      ..fillRange(0, width * height * 4, 0xFF);
+    return materializeBrushDabSequenceOnBitmapSurface(
+      surface: surface,
+      sequence: BrushDabSequence([
+        boundsStampDab(id: 'stroke-blend-clear', rgba: opaqueRect, erase: true),
+        boundsStampDab(
+          id: 'stroke-blend-result',
+          rgba: result,
+          erase: false,
+          sequence: 1,
+        ),
+      ]),
+    );
+  }
   return materializeBrushDabSequenceOnBitmapSurface(
     surface: surface,
     sequence: BrushDabSequence([
-      BrushDab(
-        center: CanvasPoint(
-          x: bounds.left + width / 2,
-          y: bounds.top + height / 2,
-        ),
-        color: 0xFF000000,
-        size: math.max(width, height).toDouble(),
-        opacity: 1,
-        flow: 1,
-        hardness: 1,
-        tipShape: BrushTipShape.square,
-        pressure: 1,
-        sequence: 0,
-        erase: erase,
-        stamp: BrushStampImage(
-          id: 'stroke-composite',
-          width: width,
-          height: height,
-          rgba: strokePixels,
-        ),
+      boundsStampDab(
+        id: 'stroke-composite',
+        rgba: strokePixels,
+        erase: erase || blendMode == BrushBlendMode.erase,
       ),
     ]),
   );
