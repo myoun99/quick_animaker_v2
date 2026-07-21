@@ -39,8 +39,14 @@ import 'export_preset_rail.dart';
 import 'export_preview_engine.dart';
 import 'export_queue_column.dart';
 import 'export_settings_modules.dart';
+import 'export_timesheet_render.dart';
 import 'png_sequence_export_service.dart';
 import 'video_export_service.dart';
+import '../../models/cut_id.dart';
+import '../../models/timesheet_document.dart';
+import '../timesheet/timesheet_document_painter.dart'
+    show TimesheetDocumentLayout;
+import '../timesheet/timesheet_notation.dart';
 
 /// Picks the output directory (the Browse… button); `null` on cancel.
 typedef ExportDirectoryPicker = Future<String?> Function();
@@ -118,6 +124,11 @@ class ExportDialogState extends State<ExportDialog> {
   int _sequencePosition = 0;
   late int _imageFrame;
   int _celPosition = 0;
+  int _sheetPosition = 0;
+  // Sheet documents are chunky to derive; the modal dialog memoizes per
+  // cut IDENTITY (the film cannot change under an open dialog).
+  final Map<CutId, (Cut, TimesheetDocument, TimesheetDocumentLayout)>
+      _sheetDocs = {};
   static const int _previewMaxWidth = 316;
   static const int _previewMaxHeight = 300;
 
@@ -368,6 +379,71 @@ class ExportDialogState extends State<ExportDialog> {
     ];
   }
 
+  TimesheetNotation get _sheetNotation =>
+      TimesheetNotation.of(_session.languageSettings.value.notationLanguage);
+
+  /// The cut's start on the TRACK axis (gaps included) — the SE column
+  /// reads track-global spans, so the sheet needs the true origin.
+  int _trackStartOf(Cut target) {
+    var start = 0;
+    for (final cut in resolveExportCuts(
+      project: _session.repository.requireProject(),
+      activeCutId: _activeCut.id,
+      range: ExportRange.allCuts,
+    )) {
+      start += cut.leadingGapFrames;
+      if (cut.id == target.id) {
+        return start;
+      }
+      start += cut.duration;
+    }
+    return 0;
+  }
+
+  (Cut, TimesheetDocument, TimesheetDocumentLayout) _sheetDocFor(Cut cut) {
+    final cached = _sheetDocs[cut.id];
+    if (cached != null && identical(cached.$1, cut)) {
+      return cached;
+    }
+    final document = TimesheetDocument.fromCut(
+      cut: cut,
+      projectName: _session.repository.requireProject().name,
+      fps: _session.projectFps,
+      info: _session.timesheetInfo,
+      instructionDefById: _session.cameraInstructionSet.defById,
+      trackSeLayers: _session.activeTrack.seLayers,
+      cutStartFrame: _trackStartOf(cut),
+    );
+    final layout = TimesheetDocumentLayout(document: document);
+    final entry = (cut, document, layout);
+    _sheetDocs[cut.id] = entry;
+    return entry;
+  }
+
+  List<ExportTimesheetPageTask> _timesheetPagePlan() {
+    final tasks = <ExportTimesheetPageTask>[];
+    for (final cut in _timesheetCuts()) {
+      final number = _cutNumberOf(cut);
+      final (_, document, _) = _sheetDocFor(cut);
+      final pageCount = document.pages.length;
+      for (var page = 0; page < pageCount; page += 1) {
+        tasks.add(
+          ExportTimesheetPageTask(
+            cut: cut,
+            cutNumber: number,
+            cutStartFrame: _trackStartOf(cut),
+            pageIndex: page,
+            pageCount: pageCount,
+            fileName: pageCount == 1
+                ? 'CUT$number.png'
+                : 'CUT${number}_p${page + 1}.png',
+          ),
+        );
+      }
+    }
+    return tasks;
+  }
+
   Set<CanvasSize> _scopeCanvasSizes(ExportScopeKind scope) {
     return resolveExportCuts(
       project: _session.repository.requireProject(),
@@ -533,8 +609,34 @@ class ExportDialogState extends State<ExportDialog> {
             );
         }
       case ExportTab.timesheet:
-        // The sheet preview arrives with the Timesheet round.
-        break;
+        final plan = _timesheetPagePlan();
+        if (plan.isEmpty) {
+          _preview.clear();
+          return;
+        }
+        _sheetPosition = _sheetPosition.clamp(0, plan.length - 1);
+        final task = plan[_sheetPosition];
+        final (_, document, layout) = _sheetDocFor(task.cut);
+        final page = layout.pageRect(task.pageIndex);
+        final fitted = previewOutputSize(
+          sourceWidth: page.width.round(),
+          sourceHeight: page.height.round(),
+          maxWidth: _previewMaxWidth,
+          maxHeight: _previewMaxHeight,
+        );
+        _preview.request(
+          key: 'sheet:${task.cut.id.value}:${task.pageIndex}',
+          caption: 'p${task.pageIndex + 1}',
+          render: () => renderTimesheetPageImage(
+            document: document,
+            layout: layout,
+            pageIndex: task.pageIndex,
+            notation: _sheetNotation,
+            outputSize: fitted == null
+                ? null
+                : CanvasSize(width: fitted.width, height: fitted.height),
+          ),
+        );
     }
   }
 
@@ -603,7 +705,14 @@ class ExportDialogState extends State<ExportDialog> {
         return '${_celEntryCaption(entries[position])} · '
             '${position + 1} / ${entries.length}';
       case ExportTab.timesheet:
-        return null;
+        final plan = _timesheetPagePlan();
+        if (plan.isEmpty) {
+          return null;
+        }
+        final task = plan[_sheetPosition.clamp(0, plan.length - 1)];
+        return 'CUT${task.cutNumber} · p${task.pageIndex + 1}/'
+            '${task.pageCount} · ${plan.length} '
+            '${_plural(plan.length, 'page')}';
     }
   }
 
@@ -648,6 +757,11 @@ class ExportDialogState extends State<ExportDialog> {
             '${_specs.cels.format.stillFormat.label} '
             '(기준+어태치 composited per cel).';
       case ExportTab.timesheet:
+        if (_specs.timesheet.format == ExportTimesheetFormat.sheetImage) {
+          final pages = _timesheetPagePlan().length;
+          return '$pages sheet ${_plural(pages, 'page')} as B4 PNG — the '
+              "panel's own paper, offscreen.";
+        }
         final count = _timesheetCuts().length;
         return '$count XDTS ${_plural(count, 'sheet')} '
             '(cels + serifu + camerawork columns).';
@@ -677,6 +791,12 @@ class ExportDialogState extends State<ExportDialog> {
             : null;
         return first == null ? '→ (no cels)' : '→ $first …';
       case ExportTab.timesheet:
+        if (_specs.timesheet.format == ExportTimesheetFormat.sheetImage) {
+          final plan = _timesheetPagePlan();
+          return plan.isEmpty
+              ? '→ (no cuts)'
+              : '→ ${plan.first.fileName}${plan.length > 1 ? ' …' : ''}';
+        }
         final cuts = _timesheetCuts();
         return cuts.isEmpty
             ? '→ (no cuts)'
@@ -795,7 +915,9 @@ class ExportDialogState extends State<ExportDialog> {
       case ExportTab.cels:
         return _celGroupPlan().length > 0;
       case ExportTab.timesheet:
-        return _timesheetCuts().isNotEmpty;
+        return _specs.timesheet.format == ExportTimesheetFormat.sheetImage
+            ? _timesheetPagePlan().isNotEmpty
+            : _timesheetCuts().isNotEmpty;
     }
   }
 
@@ -856,8 +978,42 @@ class ExportDialogState extends State<ExportDialog> {
       case ExportTab.cels:
         await _runGuarded(_exportCels);
       case ExportTab.timesheet:
-        await _runGuarded(_exportXdts);
+        await _runGuarded(
+          _specs.timesheet.format == ExportTimesheetFormat.sheetImage
+              ? _exportSheetImages
+              : _exportXdts,
+        );
     }
+  }
+
+  Future<String> _exportSheetImages() async {
+    final plan = _timesheetPagePlan();
+    final scale = _specs.timesheet.sheetScale.toDouble();
+    final notation = _sheetNotation;
+    final summary = await _exportService.exportImages(
+      count: plan.length,
+      renderImage: (index) {
+        final task = plan[index];
+        final (_, document, layout) = _sheetDocFor(task.cut);
+        return renderTimesheetPageImage(
+          document: document,
+          layout: layout,
+          pageIndex: task.pageIndex,
+          notation: notation,
+          scale: scale,
+        );
+      },
+      fileNameFor: (index) => plan[index].fileName,
+      directoryPath: _location!,
+      isCancelled: () => _cancelRequested,
+      onProgress: _reportProgress,
+    );
+    if (summary.processed < plan.length) {
+      return 'Export cancelled after ${summary.written} '
+          '${_plural(summary.written, 'page')}.';
+    }
+    return 'Exported ${summary.written} sheet '
+        '${_plural(summary.written, 'page')}.';
   }
 
   Future<String> _exportVideo() async {
@@ -1373,6 +1529,10 @@ class ExportDialogState extends State<ExportDialog> {
                   : plan.instructions.first.fileName)
             : plan.cels.first.fileName;
       case ExportTab.timesheet:
+        if (_specs.timesheet.format == ExportTimesheetFormat.sheetImage) {
+          final plan = _timesheetPagePlan();
+          return plan.isEmpty ? '(no cuts)' : plan.first.fileName;
+        }
         return 'CUT1.xdts';
       case ExportTab.image:
         return '';
@@ -1463,8 +1623,26 @@ class ExportDialogState extends State<ExportDialog> {
           },
         );
       case ExportTab.timesheet:
-        // The sheet page scrub arrives with the Timesheet round.
-        return null;
+        final plan = _timesheetPagePlan();
+        return ExportNavBar(
+          axis: ExportNavAxis(
+            length: plan.length,
+            ticks: [
+              for (var i = 1; i < plan.length; i += 1)
+                if (plan[i].cut.id != plan[i - 1].cut.id) i,
+            ],
+            captionOf: (position) {
+              final task = plan[position.clamp(0, plan.length - 1)];
+              return 'CUT${task.cutNumber}·p${task.pageIndex + 1}';
+            },
+          ),
+          position: _sheetPosition,
+          enabled: !_isExporting,
+          onChanged: (position) {
+            setState(() => _sheetPosition = position);
+            _refreshPreview();
+          },
+        );
     }
   }
 
@@ -2201,7 +2379,9 @@ class ExportDialogState extends State<ExportDialog> {
     return [
       ExportAccordion(
         title: 'Format',
-        summary: 'XDTS',
+        summary: spec.format == ExportTimesheetFormat.sheetImage
+            ? 'Sheet PNG · ${spec.sheetScale}x'
+            : 'XDTS',
         expanded: _expandedFor('format', fallback: true),
         onToggle: () => _toggleExpanded('format', fallback: true),
         child: Column(
@@ -2209,15 +2389,64 @@ class ExportDialogState extends State<ExportDialog> {
           children: [
             Wrap(
               spacing: 5,
-              children: const [
-                ExportChip(label: 'XDTS', selected: true),
+              children: [
+                ExportChip(
+                  key: const ValueKey<String>('export-tsformat-sheet'),
+                  label: 'Sheet PNG',
+                  selected:
+                      spec.format == ExportTimesheetFormat.sheetImage,
+                  onTap: _isExporting
+                      ? null
+                      : () => _updateSpec(
+                          spec.copyWith(
+                            format: ExportTimesheetFormat.sheetImage,
+                          ),
+                        ),
+                ),
+                ExportChip(
+                  key: const ValueKey<String>('export-tsformat-xdts'),
+                  label: 'XDTS',
+                  selected: spec.format == ExportTimesheetFormat.xdts,
+                  onTap: _isExporting
+                      ? null
+                      : () => _updateSpec(
+                          spec.copyWith(format: ExportTimesheetFormat.xdts),
+                        ),
+                ),
               ],
             ),
+            if (spec.format == ExportTimesheetFormat.sheetImage) ...[
+              const SizedBox(height: 6),
+              ExportModuleRow(
+                label: 'Scale',
+                child: Wrap(
+                  spacing: 5,
+                  children: [
+                    for (final scale in const [1, 2, 3, 4])
+                      ExportChip(
+                        key: ValueKey<String>('export-tsscale-$scale'),
+                        label: '${scale}x',
+                        selected: spec.sheetScale == scale,
+                        onTap: _isExporting
+                            ? null
+                            : () => _updateSpec(
+                                spec.copyWith(sheetScale: scale),
+                              ),
+                      ),
+                  ],
+                ),
+              ),
+            ],
             const SizedBox(height: 5),
             exportModuleNote(
               context,
-              'One .xdts digital timesheet per cut (OpenToonz/CSP-'
-              'compatible sheet data, no rendering).',
+              spec.format == ExportTimesheetFormat.sheetImage
+                  ? "The panel's B4 paper rendered per page — what the "
+                        'Timesheet tab shows is what prints.'
+                  : 'One .xdts digital timesheet per cut (OpenToonz/CSP-'
+                        'compatible sheet data, no rendering). TDTS and the '
+                        'Auto Sheet JSON join once their sample files '
+                        'arrive.',
             ),
           ],
         ),
