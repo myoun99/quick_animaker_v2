@@ -206,3 +206,33 @@ class ProjectFrameRate {
 
 /// Integer division rounding up, for non-negative operands.
 int _ceilDiv(int a, int b) => (a + b - 1) ~/ b;
+
+/// The audio pull that keeps every sound's exact FRAME span across a
+/// [from]→[to] rate change, or null when the question does not arise
+/// (EXPORT-AUDIO ④, the RT conform semantics).
+///
+/// Meaningful only for a pulldown pair — same counting base, different
+/// fraction (23.976↔24, 29.97↔30): the real speed shifts by 0.1% and
+/// pulling the audio by the exact rational keeps frame alignment with an
+/// inaudible pitch change. Across DIFFERENT counting bases (24→30) a
+/// "pull" would be a 25% speed change nobody wants — sounds keep real
+/// time and their frame spans simply recompute, so no choice is offered.
+({int numerator, int denominator})? audioPullBetween(
+  ProjectFrameRate from,
+  ProjectFrameRate to,
+) {
+  if (from.countingBase != to.countingBase) {
+    return null;
+  }
+  // Frame durations are den/num seconds: the pull is their exact ratio.
+  final numerator = from.denominator * to.numerator;
+  final denominator = from.numerator * to.denominator;
+  if (numerator == denominator) {
+    return null;
+  }
+  final divisor = numerator.gcd(denominator);
+  return (
+    numerator: numerator ~/ divisor,
+    denominator: denominator ~/ divisor,
+  );
+}

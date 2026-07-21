@@ -106,6 +106,16 @@ class ProjectRepository {
     );
   }
 
+  /// EXPORT-AUDIO ④: the project's audio speed (the NTSC pull).
+  void updateProjectAudioSpeed(int numerator, int denominator) {
+    updateProject(
+      (project) => project.copyWith(
+        audioSpeedNumerator: numerator,
+        audioSpeedDenominator: denominator,
+      ),
+    );
+  }
+
   void updateTrailingFrames(int trailingFrames) {
     updateProject(
       (project) => project.copyWith(trailingFrames: trailingFrames),

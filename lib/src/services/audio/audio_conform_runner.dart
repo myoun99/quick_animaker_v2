@@ -27,6 +27,8 @@ class ConformRequest {
     required this.conformPath,
     this.projectSampleRate = 48000,
     this.bucketsPerSecond = 80,
+    this.speedNumerator = 1,
+    this.speedDenominator = 1,
     this.libraryPathOverride,
   });
 
@@ -38,6 +40,10 @@ class ConformRequest {
 
   final int projectSampleRate;
   final int bucketsPerSecond;
+
+  /// The project's audio speed (EXPORT-AUDIO ④, the NTSC pull).
+  final int speedNumerator;
+  final int speedDenominator;
 
   /// Test hook: the worker isolate starts with fresh statics, so a test
   /// pointing the loaders at a locally built binary has to send the path
@@ -154,6 +160,8 @@ ConformResult runConformHere(ConformRequest request) {
         },
     projectSampleRate: request.projectSampleRate,
     bucketsPerSecond: request.bucketsPerSecond,
+    speedNumerator: request.speedNumerator,
+    speedDenominator: request.speedDenominator,
   );
   return pipeline.ensureConform(
     sourcePath: request.sourcePath,

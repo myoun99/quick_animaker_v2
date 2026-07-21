@@ -40,6 +40,7 @@ class AudioConformStore extends ChangeNotifier {
     ResampleRunner? resampleRunner,
     int Function()? resolveProjectSampleRate,
     int projectSampleRate = 48000,
+    ({int numerator, int denominator}) Function()? resolveAudioSpeed,
     this.bucketsPerSecond = 80,
     DateTime Function()? now,
     this.maxAttempts = 3,
@@ -50,6 +51,8 @@ class AudioConformStore extends ChangeNotifier {
        _resampleRunner = resampleRunner ?? runResampleInIsolate,
        _resolveProjectSampleRate =
            resolveProjectSampleRate ?? (() => projectSampleRate),
+       _resolveAudioSpeed =
+           resolveAudioSpeed ?? (() => (numerator: 1, denominator: 1)),
        _now = now ?? DateTime.now,
        _log = log ?? debugPrint;
 
@@ -66,6 +69,9 @@ class AudioConformStore extends ChangeNotifier {
   final int Function() _resolveProjectSampleRate;
 
   int get projectSampleRate => _resolveProjectSampleRate();
+
+  /// The project's audio speed, read live (EXPORT-AUDIO ④'s NTSC pull).
+  final ({int numerator, int denominator}) Function() _resolveAudioSpeed;
 
   final int bucketsPerSecond;
   final DateTime Function() _now;
@@ -88,10 +94,14 @@ class AudioConformStore extends ChangeNotifier {
   ConformResult? resultFor(String sourcePath) {
     final cached = _entries[sourcePath];
     if (cached != null) {
-      if (cached.isUsable && cached.sampleRate != projectSampleRate) {
-        // The project rate moved under this entry (setting change, or an
-        // undo of one): stale by definition, re-conform. Self-healing
-        // here rather than hooked into the history stack.
+      final speed = _resolveAudioSpeed();
+      if (cached.isUsable &&
+          (cached.sampleRate != projectSampleRate ||
+              cached.speedNumerator != speed.numerator ||
+              cached.speedDenominator != speed.denominator)) {
+        // The project rate or speed moved under this entry (a setting
+        // change, or an undo of one): stale by definition, re-conform.
+        // Self-healing here rather than hooked into the history stack.
         _entries.remove(sourcePath);
         _resampledByRate.remove(sourcePath);
       } else {
@@ -241,12 +251,15 @@ class AudioConformStore extends ChangeNotifier {
   Future<void> _ensure(String sourcePath) async {
     ConformResult result;
     try {
+      final speed = _resolveAudioSpeed();
       result = await _runner(
         ConformRequest(
           sourcePath: sourcePath,
           conformPath: resolveConformPath(sourcePath),
           projectSampleRate: projectSampleRate,
           bucketsPerSecond: bucketsPerSecond,
+          speedNumerator: speed.numerator,
+          speedDenominator: speed.denominator,
           libraryPathOverride: libraryPathOverride,
         ),
       );

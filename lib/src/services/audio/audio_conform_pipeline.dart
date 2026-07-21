@@ -79,6 +79,8 @@ class ConformResult {
     this.channels = 0,
     this.sampleRate = 0,
     this.frames = 0,
+    this.speedNumerator = 1,
+    this.speedDenominator = 1,
     this.error,
   });
 
@@ -100,6 +102,10 @@ class ConformResult {
 
   /// Samples per channel.
   final int frames;
+
+  /// The audio speed this result was rendered at (EXPORT-AUDIO ④).
+  final int speedNumerator;
+  final int speedDenominator;
 
   final String? error;
 
@@ -151,12 +157,21 @@ class AudioConformPipeline {
     required this.resample,
     this.projectSampleRate = 48000,
     this.bucketsPerSecond = 40,
+    this.speedNumerator = 1,
+    this.speedDenominator = 1,
   });
 
   final AudioDecodeCallback decode;
   final AudioResampleCallback resample;
   final int projectSampleRate;
   final int bucketsPerSecond;
+
+  /// The project's audio speed (EXPORT-AUDIO ④): 1001/1000 is the NTSC
+  /// pull that keeps frame alignment across a 23.976↔24 change. Applied
+  /// by REINTERPRETING the source rate into the resample — the exact
+  /// rational, never a float factor.
+  final int speedNumerator;
+  final int speedDenominator;
 
   /// The fingerprint [sourcePath] currently has, or null when it is gone.
   static ConformSourceFingerprint? fingerprintOf(String sourcePath) {
@@ -228,8 +243,12 @@ class AudioConformPipeline {
         conformMatchesSource(existing, fingerprint) &&
         // A conform at another rate is stale even with a matching source:
         // the project's audio rate is a setting now (EXPORT-AUDIO ③), and
-        // playing 44.1k PCM on a 48k schedule would shift every clip.
-        existing.sampleRate == projectSampleRate) {
+        // playing 44.1k PCM on a 48k schedule would shift every clip. The
+        // same goes for the audio speed (④) — a pulled conform against an
+        // unpulled project is 0.1% of drift back in the door.
+        existing.sampleRate == projectSampleRate &&
+        existing.speedNumerator == speedNumerator &&
+        existing.speedDenominator == speedDenominator) {
       return ConformResult(
         outcome: ConformOutcome.reused,
         conformPath: conformPath,
@@ -243,6 +262,8 @@ class AudioConformPipeline {
         channels: existing.channels,
         sampleRate: existing.sampleRate,
         frames: existing.length,
+        speedNumerator: speedNumerator,
+        speedDenominator: speedDenominator,
       );
     }
 
@@ -264,16 +285,22 @@ class AudioConformPipeline {
       );
     }
 
-    // Equal rates skip the filter entirely and stay bit-exact — most SE
-    // libraries and dialogue are already at the project rate, so this is
-    // the common path.
-    final converted = decoded.sampleRate == projectSampleRate
+    // Equal rates at unity speed skip the filter entirely and stay
+    // bit-exact — most SE libraries and dialogue are already at the
+    // project rate, so this is the common path. A non-unity speed (the
+    // NTSC pull) REINTERPRETS the source rate: both sides of the resample
+    // scale by the exact rational, so 48k pulled by 1001/1000 is a
+    // 48048000→48000000 conversion — integer ratios end to end, and the
+    // output lands at the project rate holding 0.1% less time.
+    final unitySpeed = speedNumerator == speedDenominator;
+    final converted =
+        decoded.sampleRate == projectSampleRate && unitySpeed
         ? decoded.samples
         : resample(
             samples: decoded.samples,
             channels: decoded.channels,
-            inputRate: decoded.sampleRate,
-            outputRate: projectSampleRate,
+            inputRate: decoded.sampleRate * speedNumerator,
+            outputRate: projectSampleRate * speedDenominator,
           );
 
     if (conformPath != null) {
@@ -289,6 +316,8 @@ class AudioConformPipeline {
             channels: decoded.channels,
             sampleRate: projectSampleRate,
             fingerprint: fingerprint,
+            speedNumerator: speedNumerator,
+            speedDenominator: speedDenominator,
           ),
         );
       } on Object catch (error) {
@@ -314,6 +343,8 @@ class AudioConformPipeline {
       frames: decoded.channels <= 0
           ? 0
           : converted.length ~/ decoded.channels,
+      speedNumerator: speedNumerator,
+      speedDenominator: speedDenominator,
     );
   }
 

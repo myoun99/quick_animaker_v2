@@ -6,6 +6,7 @@ import '../../models/attached_placement.dart';
 import '../../models/layer_kind.dart';
 import '../../models/project_frame_rate.dart';
 import '../cut_command_group.dart';
+import '../dialogs/fps_audio_choice_dialog.dart';
 import '../editor_session_manager.dart';
 import '../widgets/panel_flyout.dart';
 import '../widgets/split_icon_button.dart';
@@ -349,7 +350,7 @@ class TimelineActionToolbar extends StatelessWidget {
               : 'timeline-fps-${rate.numerator}-${rate.denominator}',
           label: rate.label,
           checked: rate == current,
-          onSelected: () => session.setProjectFrameRate(rate),
+          onSelected: () => unawaited(_selectFrameRate(context, rate)),
         ),
       const PanelFlyoutDivider(),
       PanelFlyoutItem(
@@ -359,6 +360,36 @@ class TimelineActionToolbar extends StatelessWidget {
         onSelected: () => unawaited(showTimelineFpsDialog(context, session)),
       ),
     ];
+  }
+
+  /// EXPORT-AUDIO ④: a pulldown-pair change (23.976↔24 — 0.1% of real
+  /// speed) asks what happens to SOUND, because audio exists in real
+  /// seconds and cannot stay both frame-exact and time-exact. Any other
+  /// change, or a project with no sound, just changes the rate. (The
+  /// custom-rate dialog keeps the plain path — pulldown pairs live in
+  /// the presets.)
+  Future<void> _selectFrameRate(
+    BuildContext context,
+    ProjectFrameRate rate,
+  ) async {
+    final pull = audioPullBetween(session.projectFrameRate, rate);
+    if (pull == null || !session.projectHasAnyAudio) {
+      session.setProjectFrameRate(rate);
+      return;
+    }
+    final choice = await showFpsAudioChoiceDialog(
+      context,
+      from: session.projectFrameRate,
+      to: rate,
+    );
+    switch (choice) {
+      case null:
+        return; // cancelled — the rate stays too
+      case FpsAudioChoice.keep:
+        session.setProjectFrameRate(rate);
+      case FpsAudioChoice.pull:
+        session.setProjectFrameRateWithAudioPull(rate);
+    }
   }
 
   /// EXPORT-AUDIO ③: the audio-rate presets — 48k is the film standard,

@@ -833,6 +833,13 @@ class EditorSessionManager extends ChangeNotifier {
             resolveConformPath: _conformPathFor,
             resolveProjectSampleRate: () =>
                 _repository.requireProject().audioSampleRate,
+            resolveAudioSpeed: () {
+              final project = _repository.requireProject();
+              return (
+                numerator: project.audioSpeedNumerator,
+                denominator: project.audioSpeedDenominator,
+              );
+            },
             // Widget tests: run conforms inline — a worker isolate started
             // under fake async outlives the test (the prerender scheduler's
             // FLUTTER_TEST branch, same reason). Missing fixture paths
@@ -1143,6 +1150,50 @@ class EditorSessionManager extends ChangeNotifier {
       return;
     }
     setProjectFrameRate(ProjectFrameRate.integer(fps));
+  }
+
+  /// Whether any SE row anywhere carries a sound — what decides if a
+  /// pulldown-pair rate change even asks the audio question.
+  bool get projectHasAnyAudio {
+    for (final track in _repository.requireProject().tracks) {
+      for (final layer in track.seLayers) {
+        if (layer.audioClips.isNotEmpty) {
+          return true;
+        }
+      }
+    }
+    return false;
+  }
+
+  /// EXPORT-AUDIO ④, the "frame-exact" choice: sets the rate AND pulls
+  /// the audio by the exact pulldown rational (23.976→24 = 1001/1000) so
+  /// every sound keeps its frame span — one undo step for both, and the
+  /// conforms rebuild at the new speed in the background. Falls back to a
+  /// plain rate change when the pair carries no pull.
+  void setProjectFrameRateWithAudioPull(ProjectFrameRate frameRate) {
+    final pull = audioPullBetween(projectFrameRate, frameRate);
+    if (pull == null) {
+      setProjectFrameRate(frameRate);
+      return;
+    }
+    final project = _repository.requireProject();
+    // Pulls accumulate — and cancel: 23.976→24→23.976 lands back at 1/1.
+    var numerator = project.audioSpeedNumerator * pull.numerator;
+    var denominator = project.audioSpeedDenominator * pull.denominator;
+    final divisor = numerator.gcd(denominator);
+    numerator ~/= divisor;
+    denominator ~/= divisor;
+    _historyManager.execute(
+      UpdateProjectFrameRateCommand(
+        repository: _repository,
+        frameRate: frameRate,
+        audioSpeedNumerator: numerator,
+        audioSpeedDenominator: denominator,
+      ),
+    );
+    _warmAudioConforms();
+    _warmActiveCut();
+    notifyListeners();
   }
 
   /// The project's audio rate — what every conform lands at (EXPORT-AUDIO

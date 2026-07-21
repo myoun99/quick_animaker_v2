@@ -32,13 +32,18 @@ class Project {
     int trailingFrames = 0,
     LayerLinkRegistry? linkRegistry,
     int audioSampleRate = defaultProjectAudioSampleRate,
+    int audioSpeedNumerator = 1,
+    int audioSpeedDenominator = 1,
   }) : tracks = List.unmodifiable(tracks),
        cameraInstructions = cameraInstructions ?? CameraInstructionSet.standard,
        mediaAssets = immutableMediaAssetList(mediaAssets),
        trailingFrames = trailingFrames < 0 ? 0 : trailingFrames,
        linkRegistry = linkRegistry ?? LayerLinkRegistry.empty,
        audioSampleRate =
-           audioSampleRate < 1 ? defaultProjectAudioSampleRate : audioSampleRate;
+           audioSampleRate < 1 ? defaultProjectAudioSampleRate : audioSampleRate,
+       audioSpeedNumerator = audioSpeedNumerator < 1 ? 1 : audioSpeedNumerator,
+       audioSpeedDenominator =
+           audioSpeedDenominator < 1 ? 1 : audioSpeedDenominator;
 
   final ProjectId id;
   final String name;
@@ -88,6 +93,14 @@ class Project {
   /// property of the film.
   final int audioSampleRate;
 
+  /// The project's audio speed as an exact rational (EXPORT-AUDIO ④):
+  /// 1001/1000 after choosing the "0.1% pull" on a 23.976→24 change, so
+  /// every sound keeps its exact frame span. Unity everywhere else.
+  /// Applied at conform time; accumulates (and cancels) across repeated
+  /// rate changes.
+  final int audioSpeedNumerator;
+  final int audioSpeedDenominator;
+
   MediaAsset? mediaAssetByPath(String path) {
     for (final asset in mediaAssets) {
       if (asset.path == path) {
@@ -111,6 +124,8 @@ class Project {
     int? trailingFrames,
     LayerLinkRegistry? linkRegistry,
     int? audioSampleRate,
+    int? audioSpeedNumerator,
+    int? audioSpeedDenominator,
   }) {
     return Project(
       id: id ?? this.id,
@@ -126,6 +141,9 @@ class Project {
       trailingFrames: trailingFrames ?? this.trailingFrames,
       linkRegistry: linkRegistry ?? this.linkRegistry,
       audioSampleRate: audioSampleRate ?? this.audioSampleRate,
+      audioSpeedNumerator: audioSpeedNumerator ?? this.audioSpeedNumerator,
+      audioSpeedDenominator:
+          audioSpeedDenominator ?? this.audioSpeedDenominator,
     );
   }
 
@@ -151,6 +169,10 @@ class Project {
     // Omitted at the default: 48k projects keep their exact legacy JSON.
     if (audioSampleRate != defaultProjectAudioSampleRate)
       'audioSampleRate': audioSampleRate,
+    if (audioSpeedNumerator != audioSpeedDenominator) ...{
+      'audioSpeedNumerator': audioSpeedNumerator,
+      'audioSpeedDenominator': audioSpeedDenominator,
+    },
   };
 
   factory Project.fromJson(Map<String, dynamic> json) {
@@ -201,6 +223,8 @@ class Project {
             ),
       audioSampleRate:
           (json['audioSampleRate'] as int?) ?? defaultProjectAudioSampleRate,
+      audioSpeedNumerator: (json['audioSpeedNumerator'] as int?) ?? 1,
+      audioSpeedDenominator: (json['audioSpeedDenominator'] as int?) ?? 1,
     );
   }
 
@@ -220,7 +244,9 @@ class Project {
           listEquals(other.mediaAssets, mediaAssets) &&
           other.trailingFrames == trailingFrames &&
           other.linkRegistry == linkRegistry &&
-          other.audioSampleRate == audioSampleRate;
+          other.audioSampleRate == audioSampleRate &&
+          other.audioSpeedNumerator == audioSpeedNumerator &&
+          other.audioSpeedDenominator == audioSpeedDenominator;
 
   @override
   int get hashCode => Object.hash(
@@ -237,6 +263,8 @@ class Project {
     trailingFrames,
     linkRegistry,
     audioSampleRate,
+    audioSpeedNumerator,
+    audioSpeedDenominator,
   );
 
   @override
