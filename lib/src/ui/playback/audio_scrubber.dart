@@ -20,7 +20,6 @@ import '../../models/layer_id.dart';
 import '../../models/project.dart';
 import '../../models/project_frame_rate.dart';
 import '../../native/qa_audio_device.dart';
-import '../../services/audio/audio_mixer_reference.dart';
 import '../audio/audio_conform_store.dart';
 import 'audio_playback_schedule.dart';
 import 'canvas_playback_controller.dart';
@@ -57,6 +56,12 @@ class AudioScrubber {
   ProjectFrameRate _rate = const ProjectFrameRate.integer(24);
   int _deviceRate = 0;
 
+  /// Streaming state (AUDIO-PRO R6): the gesture's mix is kept so the
+  /// window can re-center when a long drag leaves it.
+  AudioMixSchedule? _mix;
+  bool _hasStreaming = false;
+  int _windowCenterSample = 0;
+
   /// Whether the current gesture is playing sound (test surface).
   bool get isArmed => _armed;
 
@@ -70,13 +75,23 @@ class AudioScrubber {
       return;
     }
     if (!_armed && !_stoodDown) {
-      _prepare();
+      _prepare(localFrame);
     }
     if (!_armed) {
       return;
     }
+    final startSample = _rate.frameToSample(localFrame, _deviceRate);
+    // A drag that left the streaming window re-centers it — a small
+    // synchronous read, same budget as the gesture's first upload.
+    final mix = _mix;
+    if (_hasStreaming &&
+        mix != null &&
+        (startSample - _windowCenterSample).abs() >
+            (_windowAheadSeconds * _deviceRate) ~/ 2) {
+      _uploadWindowedSchedule(mix, startSample);
+    }
     _device!.play(
-      startSample: _rate.frameToSample(localFrame, _deviceRate),
+      startSample: startSample,
       stopSample: _rate.frameToSample(localFrame + 1, _deviceRate),
     );
   }
@@ -90,11 +105,17 @@ class AudioScrubber {
     _stoodDown = false;
   }
 
+  /// The transport's window lead, reused so scrub and playback stream on
+  /// the same geometry (AUDIO-PRO R6).
+  static const int _windowAheadSeconds = 30;
+  static const int _windowBackSeconds = 2;
+
   /// One decision per gesture, mirroring the transport's activation: the
   /// schedule from the shared scheduler, PCM from the conform store, all
-  /// resident or nothing. A stand-down kicks the missing pieces so the
-  /// NEXT gesture (or the next play) has them.
-  void _prepare() {
+  /// resident — or streamable from its conform — or nothing. A stand-down
+  /// kicks the missing pieces so the NEXT gesture (or the next play) has
+  /// them.
+  void _prepare(int localFrame) {
     _stoodDown = true;
     _rate = resolveFrameRate();
     final schedule = buildAudioPlaybackSchedule(
@@ -134,22 +155,45 @@ class AudioScrubber {
       rate: _rate,
       sampleRate: _deviceRate,
     );
-    final sources = <AudioMixSource>[];
-    for (final path in mix.sourcePaths) {
-      final samples = conformStore.samplesAtRate(path, _deviceRate);
-      final entry = conformStore.resultFor(path);
-      if (samples == null || entry == null || !entry.isUsable) {
-        return; // kicked by the lookups above; this gesture stays visual
-      }
-      sources.add(AudioMixSource(samples: samples, channels: entry.channels));
-    }
     device.stop();
-    if (!device.setSchedule(clips: mix.clips, sources: sources)) {
-      return;
-    }
     _device = device;
+    _mix = mix;
+    if (!_uploadWindowedSchedule(
+      mix,
+      _rate.frameToSample(localFrame, _deviceRate),
+    )) {
+      _device = null;
+      return; // kicked by the lookups; this gesture stays visual
+    }
     _armed = true;
     _stoodDown = false;
+  }
+
+  /// Uploads [mix] with streaming windows around [centerSample] — the
+  /// shared [windowedMixUpload], so scrubbed and played streaming can
+  /// never disagree. False uploads nothing.
+  bool _uploadWindowedSchedule(AudioMixSchedule mix, int centerSample) {
+    final device = _device;
+    if (device == null) {
+      return false;
+    }
+    final upload = windowedMixUpload(
+      mix: mix,
+      conformStore: conformStore,
+      deviceRate: _deviceRate,
+      centerSample: centerSample,
+      backSeconds: _windowBackSeconds,
+      aheadSeconds: _windowAheadSeconds,
+    );
+    if (upload == null) {
+      return false;
+    }
+    if (!device.setSchedule(clips: upload.clips, sources: upload.sources)) {
+      return false;
+    }
+    _hasStreaming = upload.hasStreaming;
+    _windowCenterSample = centerSample;
+    return true;
   }
 
   void dispose() {

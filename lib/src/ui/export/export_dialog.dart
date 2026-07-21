@@ -476,6 +476,12 @@ class ExportDialogState extends State<ExportDialog> {
       return null;
     }
     final store = widget.session.audioConformStore;
+    // Land every conform BEFORE the render starts: the streaming check
+    // below is synchronous, and a not-yet-conformed long file must be
+    // KNOWN long by then, not discovered mid-render.
+    for (final clip in schedule) {
+      await store.ensureFor(clip.filePath);
+    }
     final path =
         '${Directory.systemTemp.path}${Platform.pathSeparator}'
         'qa_export_mix_${DateTime.now().microsecondsSinceEpoch}.wav';
@@ -492,6 +498,10 @@ class ExportDialogState extends State<ExportDialog> {
         }
         return AudioMixSource(samples: samples, channels: entry!.channels);
       },
+      // Long conforms render straight off their disk WAV (AUDIO-PRO R6) —
+      // the export reads them block by block, same as playback windows.
+      resolveStreamReader: (filePath) =>
+          store.isStreaming(filePath) ? store.streamReaderFor(filePath) : null,
       outputPath: path,
       log: debugPrint,
     );

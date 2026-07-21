@@ -20,6 +20,7 @@ import '../../models/project_frame_rate.dart';
 import '../../models/se_audio_spans.dart';
 import '../../models/track.dart';
 import '../../services/audio/audio_mixer_reference.dart';
+import '../audio/audio_conform_store.dart';
 import '../storyboard_timeline_layout.dart';
 
 /// A clip laid out on the playlist-global frame axis, end clamped at the
@@ -379,4 +380,116 @@ AudioMixSchedule audioMixScheduleFrom({
     );
   }
   return AudioMixSchedule(clips: clips, sourcePaths: sourcePaths);
+}
+
+/// Builds the device upload for [mix] — resident PCM for ordinary clips,
+/// a disk WINDOW around [centerSample] for streaming ones (AUDIO-PRO R6).
+/// One implementation for the transport AND the scrubber, so streamed
+/// playback and streamed scrubbing can never disagree.
+///
+/// Each streaming clip gets a PRIVATE source: two placements of one long
+/// file read different parts of it, and a shared window would have to
+/// span the gap between them. The window trails [backSeconds] (loop wraps
+/// and small seeks land just behind the playhead) and leads
+/// [aheadSeconds] (the advance must upload long before the mix reads past
+/// the edge), clamped into the clip's own span and, by the reader, into
+/// the file.
+///
+/// Null — so the caller uploads NOTHING and any old schedule keeps
+/// playing — when a resident source is missing (each lookup kicks its
+/// conform or rate conversion), a stream will not open, or streaming
+/// meets a device off the project rate (the conform on disk IS
+/// project-rate PCM; resampling windows on the fly would buy that rare
+/// case with a permanent cost).
+({List<AudioMixClip> clips, List<AudioMixSource> sources, bool hasStreaming})?
+windowedMixUpload({
+  required AudioMixSchedule mix,
+  required AudioConformStore conformStore,
+  required int deviceRate,
+  required int centerSample,
+  int backSeconds = 2,
+  int aheadSeconds = 30,
+}) {
+  final sources = <AudioMixSource>[];
+  final residentIndex = <int, int>{};
+  var complete = true;
+  var hasStreaming = false;
+  for (var index = 0; index < mix.sourcePaths.length; index += 1) {
+    final path = mix.sourcePaths[index];
+    if (conformStore.isStreaming(path)) {
+      hasStreaming = true;
+      continue; // windowed per clip below
+    }
+    // Every lookup runs even after a miss: each one KICKS its conform or
+    // rate conversion, and the next attempt wants them all landed.
+    final samples = conformStore.samplesAtRate(path, deviceRate);
+    final entry = conformStore.resultFor(path);
+    if (samples == null || entry == null || !entry.isUsable) {
+      complete = false;
+      continue;
+    }
+    residentIndex[index] = sources.length;
+    sources.add(AudioMixSource(samples: samples, channels: entry.channels));
+  }
+  if (!complete) {
+    return null;
+  }
+  if (hasStreaming && deviceRate != conformStore.projectSampleRate) {
+    return null;
+  }
+
+  AudioMixClip clipWithSource(AudioMixClip clip, int sourceIndex) =>
+      AudioMixClip(
+        sourceIndex: sourceIndex,
+        startSample: clip.startSample,
+        endSample: clip.endSample,
+        sourceOffset: clip.sourceOffset,
+        gain: clip.gain,
+        fadeInSamples: clip.fadeInSamples,
+        fadeOutSamples: clip.fadeOutSamples,
+        panLeft: clip.panLeft,
+        panRight: clip.panRight,
+        fadeCurve: clip.fadeCurve,
+        envelope: clip.envelope,
+      );
+
+  final clips = <AudioMixClip>[];
+  final backSamples = backSeconds * deviceRate;
+  final aheadSamples = aheadSeconds * deviceRate;
+  for (final clip in mix.clips) {
+    final path = mix.sourcePaths[clip.sourceIndex];
+    if (!conformStore.isStreaming(path)) {
+      final mapped = residentIndex[clip.sourceIndex];
+      if (mapped == null) {
+        return null;
+      }
+      clips.add(clipWithSource(clip, mapped));
+      continue;
+    }
+    final reader = conformStore.streamReaderFor(path);
+    if (reader == null) {
+      return null;
+    }
+    final clipLength = clip.endSample - clip.startSample;
+    final positionInClip = (centerSample - clip.startSample).clamp(
+      0,
+      clipLength,
+    );
+    final sourceAt = clip.sourceOffset + positionInClip;
+    final windowStart = math.max(clip.sourceOffset, sourceAt - backSamples);
+    final windowEnd = math.min(
+      clip.sourceOffset + clipLength,
+      sourceAt + aheadSamples,
+    );
+    final window = reader.readWindow(windowStart, windowEnd - windowStart);
+    clips.add(clipWithSource(clip, sources.length));
+    sources.add(
+      AudioMixSource(
+        samples: window.samples,
+        channels: reader.channels,
+        sourceStart: window.startSample,
+      ),
+    );
+  }
+  return (clips: clips, sources: sources, hasStreaming: hasStreaming);
 }
