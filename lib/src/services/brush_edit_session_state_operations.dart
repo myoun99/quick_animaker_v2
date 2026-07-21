@@ -1,5 +1,6 @@
 import 'dart:typed_data';
 
+import '../models/brush_blend_mode.dart';
 import '../models/brush_dab_sequence.dart';
 import '../models/dirty_region.dart';
 import '../models/brush_edit_session_commit_result.dart';
@@ -15,6 +16,7 @@ BrushEditSessionCommitResult commitBrushDabSequenceToBrushEditSessionState({
   required FrameId frameId,
   Uint8List? prerasterizedStrokePixels,
   DirtyRegion? prerasterizedStrokeBounds,
+  BrushBlendMode blendMode = BrushBlendMode.color,
 }) {
   return commitBrushDabSequenceToBrushEditSession(
     canvasState: sessionState.canvasState,
@@ -24,6 +26,7 @@ BrushEditSessionCommitResult commitBrushDabSequenceToBrushEditSessionState({
     frameId: frameId,
     prerasterizedStrokePixels: prerasterizedStrokePixels,
     prerasterizedStrokeBounds: prerasterizedStrokeBounds,
+    blendMode: blendMode,
   );
 }
 

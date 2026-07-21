@@ -1,6 +1,7 @@
 import 'dart:typed_data';
 
 import '../models/bitmap_surface.dart';
+import '../models/brush_blend_mode.dart';
 import '../models/dirty_region.dart';
 import '../models/brush_commit_result.dart';
 import '../models/brush_dab_sequence.dart';
@@ -8,6 +9,8 @@ import '../models/frame_id.dart';
 import '../models/layer_id.dart';
 import 'bitmap_surface_brush_commit.dart';
 import 'brush_commit_cache_invalidation.dart';
+import 'brush_dab_dirty_region.dart';
+import 'brush_stroke_blend.dart';
 
 BrushCommitResult brushCommitResultForBrushDabSequenceOnBitmapSurface({
   required BitmapSurface surface,
@@ -16,18 +19,42 @@ BrushCommitResult brushCommitResultForBrushDabSequenceOnBitmapSurface({
   required FrameId frameId,
   Uint8List? prerasterizedStrokePixels,
   DirtyRegion? prerasterizedStrokeBounds,
+  BrushBlendMode blendMode = BrushBlendMode.color,
 }) {
   // Pen-up fast path: when the interactive view already rasterized the
   // stroke incrementally while drawing (same per-dab math), commit is a
   // single composite pass instead of re-running the whole dab loop. A
   // stroke is homogeneous: every dab shares the tool's erase mode.
-  final materialization =
-      prerasterizedStrokePixels != null && prerasterizedStrokeBounds != null
+  var strokePixels = prerasterizedStrokePixels;
+  var strokeBounds = prerasterizedStrokeBounds;
+  if (blendMode.isSeparable || blendMode == BrushBlendMode.behind) {
+    // BB-1: a brush blend needs the WHOLE stroke as one buffer (the mode
+    // must never apply dab-by-dab). Without a live raster (programmatic
+    // strokes, a redo without pixels), materialize the dabs onto an
+    // EMPTY surface first — same kernels, same pixels.
+    if (strokePixels == null || strokeBounds == null) {
+      final bounds = dirtyRegionForBrushDabSequence(sequence);
+      if (bounds == null) {
+        return BrushCommitResult.noOp(surface: surface);
+      }
+      final scratch = materializeBrushDabSequenceOnBitmapSurface(
+        surface: BitmapSurface(
+          canvasSize: surface.canvasSize,
+          tileSize: surface.tileSize,
+        ),
+        sequence: sequence,
+      );
+      strokePixels = bitmapSurfaceRegionPixels(scratch.surface, bounds);
+      strokeBounds = bounds;
+    }
+  }
+  final materialization = strokePixels != null && strokeBounds != null
       ? compositeStrokePixelsOntoBitmapSurface(
           surface: surface,
-          strokePixels: prerasterizedStrokePixels,
-          bounds: prerasterizedStrokeBounds,
+          strokePixels: strokePixels,
+          bounds: strokeBounds,
           erase: sequence.dabs.isNotEmpty && sequence.dabs.first.erase,
+          blendMode: blendMode,
         )
       : materializeBrushDabSequenceOnBitmapSurface(
           surface: surface,

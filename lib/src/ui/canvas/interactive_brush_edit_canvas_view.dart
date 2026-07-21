@@ -13,6 +13,7 @@ import '../../services/input/pen_sidecars.dart';
 import '../brush/brush_tool_state.dart' show CanvasTool;
 import '../input/app_input_settings.dart';
 import '../../models/bitmap_tile.dart';
+import '../../models/brush_blend_mode.dart';
 import '../../models/brush_dab.dart';
 import '../../models/brush_edit_session_state.dart';
 import '../../models/canvas_point.dart';
@@ -533,6 +534,7 @@ class _InteractiveBrushEditCanvasViewState
     // The overlay must display in the stroke's blend mode (paint vs erase)
     // from the first dab through settling.
     _overlayModel.erase = strokeSettings.erase;
+    _overlayModel.blendMode = strokeSettings.blendMode;
     _currentPressure = _normalizedPressure(event);
     widget.onActiveStrokeChanged?.call(true);
     _nextSequence = 0;
@@ -765,7 +767,15 @@ class _InteractiveBrushEditCanvasViewState
       // deferred commit's pixel source can never be reset under it; a
       // new pointer-down (or a frame/layer switch, or dispose) flushes
       // synchronously first, so a stroke can never be lost.
-      _pendingPenUp = (dabs: List.of(_collectedDabs), rasterizer: rasterizer);
+      // BB-1: the stroke's blend rides the pen-up payload — captured
+      // from the stroke's settings SNAPSHOT, so a mid-flush tool change
+      // can never flip a committed stroke's mode.
+      _pendingPenUp = (
+        dabs: List.of(_collectedDabs),
+        rasterizer: rasterizer,
+        blendMode: (_activeStrokeInputSettings ?? widget.inputSettings)
+            .blendMode,
+      );
       _liveRasterizer = null;
       WidgetsBinding.instance.addPostFrameCallback((_) {
         _flushPendingStrokeCommit();
@@ -784,7 +794,12 @@ class _InteractiveBrushEditCanvasViewState
     }
   }
 
-  ({List<BrushDab> dabs, BrushLiveStrokeRasterizer? rasterizer})? _pendingPenUp;
+  ({
+    List<BrushDab> dabs,
+    BrushLiveStrokeRasterizer? rasterizer,
+    BrushBlendMode blendMode,
+  })?
+  _pendingPenUp;
 
   void _flushPendingStrokeCommit({
     void Function(BrushStrokeCommitData data)? commit,
@@ -805,6 +820,7 @@ class _InteractiveBrushEditCanvasViewState
         // allocation scales with the stroke, never the canvas.
         strokePixels: pending.rasterizer?.strokePixelsWithinBounds(),
         strokeBounds: pending.rasterizer?.strokeBounds,
+        blendMode: pending.blendMode,
       ),
     );
     pending.rasterizer?.clear();
@@ -1192,6 +1208,7 @@ class _InteractiveBrushEditCanvasViewState
     final stamp = dab.stamp;
     _resetOverlay();
     _overlayModel.erase = false;
+    _overlayModel.blendMode = BrushBlendMode.color; // fills never blend
     final surface = widget.sessionState.canvasState.currentSurface;
     if (stamp != null) {
       final stampLeft = (dab.center.x - stamp.width / 2).round();

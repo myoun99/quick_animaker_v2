@@ -1,5 +1,6 @@
 import 'dart:typed_data';
 
+import '../models/brush_blend_mode.dart';
 import '../models/brush_dab.dart';
 import '../models/dirty_region.dart';
 
@@ -13,14 +14,20 @@ import '../models/dirty_region.dart';
 /// pass instead of re-running the per-dab loop, which both removes the
 /// pen-up hiccup and guarantees the committed pixels are exactly the
 /// pixels that were on screen while drawing.
+///
+/// [blendMode] (BB-1, R26 #9) is the stroke's BRUSH blend — carried here
+/// so a history REDO reproduces the same pixels no matter what the tool
+/// state says by then.
 class BrushStrokeCommitData {
   BrushStrokeCommitData({
     required List<BrushDab> sourceDabs,
     this.strokePixels,
     this.strokeBounds,
+    this.blendMode = BrushBlendMode.color,
   }) : sourceDabs = List<BrushDab>.unmodifiable(sourceDabs);
 
   final List<BrushDab> sourceDabs;
   final Uint8List? strokePixels;
   final DirtyRegion? strokeBounds;
+  final BrushBlendMode blendMode;
 }

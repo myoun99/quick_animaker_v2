@@ -1,6 +1,7 @@
 import 'dart:typed_data';
 
 import '../models/bitmap_surface.dart';
+import '../models/brush_blend_mode.dart';
 import '../models/dirty_region.dart';
 import '../models/brush_dab_sequence.dart';
 import '../models/brush_surface_edit.dart';
@@ -15,6 +16,7 @@ BrushSurfaceEdit brushSurfaceEditForBrushDabSequenceOnBitmapSurface({
   required FrameId frameId,
   Uint8List? prerasterizedStrokePixels,
   DirtyRegion? prerasterizedStrokeBounds,
+  BrushBlendMode blendMode = BrushBlendMode.color,
 }) {
   final commitResult = brushCommitResultForBrushDabSequenceOnBitmapSurface(
     surface: surface,
@@ -23,6 +25,7 @@ BrushSurfaceEdit brushSurfaceEditForBrushDabSequenceOnBitmapSurface({
     frameId: frameId,
     prerasterizedStrokePixels: prerasterizedStrokePixels,
     prerasterizedStrokeBounds: prerasterizedStrokeBounds,
+    blendMode: blendMode,
   );
 
   return BrushSurfaceEdit(

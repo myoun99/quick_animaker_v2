@@ -1,3 +1,4 @@
+import '../../models/brush_blend_mode.dart';
 import '../../models/brush_tip_mask.dart';
 import '../../models/brush_tip_rotation_mode.dart';
 import '../../models/brush_tip_shape.dart';
@@ -30,6 +31,7 @@ class BrushEditCanvasInputSettings {
     this.textureScale = 1.0,
     this.textureDensity = 1.0,
     this.erase = false,
+    this.blendMode = BrushBlendMode.color,
     this.stabilizerStrength = 0.0,
   }) : assert(size > 0.0, 'BrushEditCanvasInputSettings.size must be > 0.'),
        assert(
@@ -145,6 +147,11 @@ class BrushEditCanvasInputSettings {
   /// of painting color.
   final bool erase;
 
+  /// The stroke's BRUSH blend (BB-1, R26 #9): how the finished stroke
+  /// composites onto the cel at pen-up. [BrushBlendMode.erase] rides the
+  /// [erase] flag instead (same kernels as the eraser tool).
+  final BrushBlendMode blendMode;
+
   /// Pull-string stabilization strength (P7): the rope length in SCREEN
   /// pixels (0 = off), frozen per stroke as canvas px = strength / zoom.
   /// A hand-feel setting, deliberately not part of brush presets.
@@ -177,6 +184,7 @@ class BrushEditCanvasInputSettings {
     double? textureScale,
     double? textureDensity,
     bool? erase,
+    BrushBlendMode? blendMode,
     double? stabilizerStrength,
   }) {
     return BrushEditCanvasInputSettings(
@@ -206,6 +214,7 @@ class BrushEditCanvasInputSettings {
       textureScale: textureScale ?? this.textureScale,
       textureDensity: textureDensity ?? this.textureDensity,
       erase: erase ?? this.erase,
+      blendMode: blendMode ?? this.blendMode,
       stabilizerStrength: stabilizerStrength ?? this.stabilizerStrength,
     );
   }
@@ -240,6 +249,7 @@ class BrushEditCanvasInputSettings {
           other.textureScale == textureScale &&
           other.textureDensity == textureDensity &&
           other.erase == erase &&
+          other.blendMode == blendMode &&
           other.stabilizerStrength == stabilizerStrength;
 
   @override
@@ -270,6 +280,7 @@ class BrushEditCanvasInputSettings {
     textureScale,
     textureDensity,
     erase,
+    blendMode,
     stabilizerStrength,
   ]);
 

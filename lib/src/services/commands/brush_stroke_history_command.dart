@@ -69,6 +69,7 @@ class BrushStrokeHistoryCommand implements Command, RetainedBytesCommand {
       cacheInvalidationSink: cacheInvalidationSink,
       prerasterizedStrokePixels: strokeData.strokePixels,
       prerasterizedStrokeBounds: strokeData.strokeBounds,
+      blendMode: strokeData.blendMode,
     );
     _hasCommitted = true;
     _strokeData = null;

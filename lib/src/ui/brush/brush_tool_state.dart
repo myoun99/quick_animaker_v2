@@ -1,3 +1,4 @@
+import '../../models/brush_blend_mode.dart';
 import '../../models/brush_settings.dart';
 import '../../models/brush_tip_mask.dart';
 import '../../models/brush_tip_rotation_mode.dart';
@@ -59,6 +60,7 @@ class BrushToolState {
     double textureDensity = 1.0,
     CanvasTool tool = CanvasTool.brush,
     double stabilizerStrength = 0.0,
+    BrushBlendMode brushBlendMode = BrushBlendMode.color,
   }) {
     return BrushToolState.clamped(
       size: size,
@@ -88,6 +90,7 @@ class BrushToolState {
       textureDensity: textureDensity,
       tool: tool,
       stabilizerStrength: stabilizerStrength,
+      brushBlendMode: brushBlendMode,
     );
   }
 
@@ -119,6 +122,7 @@ class BrushToolState {
     this.textureDensity = 1.0,
     this.tool = CanvasTool.brush,
     this.stabilizerStrength = 0.0,
+    this.brushBlendMode = BrushBlendMode.color,
   });
 
   factory BrushToolState.clamped({
@@ -149,6 +153,7 @@ class BrushToolState {
     double? textureDensity,
     CanvasTool? tool,
     double? stabilizerStrength,
+    BrushBlendMode? brushBlendMode,
   }) {
     return BrushToolState._raw(
       size: clampSize(size ?? defaultSize),
@@ -178,6 +183,7 @@ class BrushToolState {
       textureDensity: clampZeroToOne(textureDensity ?? 1.0),
       tool: tool ?? CanvasTool.brush,
       stabilizerStrength: clampStabilizerStrength(stabilizerStrength ?? 0.0),
+      brushBlendMode: brushBlendMode ?? BrushBlendMode.color,
     );
   }
 
@@ -278,6 +284,11 @@ class BrushToolState {
   /// application carries it over unchanged.
   final double stabilizerStrength;
 
+  /// The BRUSH's own composite mode (BB-1, R26 #9). Like the stabilizer
+  /// — and like [size] since R26 #10 — a HAND setting outside brush
+  /// presets: picking another brush never flips it.
+  final BrushBlendMode brushBlendMode;
+
   /// Builds tool state from a preset's model-layer [BrushSettings], clamping
   /// every value into the panel's ranges.
   factory BrushToolState.fromBrushSettings(BrushSettings settings) {
@@ -369,7 +380,14 @@ class BrushToolState {
       textureMask: textureMask,
       textureScale: textureScale,
       textureDensity: textureDensity,
-      erase: tool == CanvasTool.eraser,
+      // The eraser tool IS the erase blend (locked); a brush whose blend
+      // is erase rides the SAME dab flag and kernels.
+      erase:
+          tool == CanvasTool.eraser ||
+          brushBlendMode == BrushBlendMode.erase,
+      blendMode: tool == CanvasTool.eraser
+          ? BrushBlendMode.erase
+          : brushBlendMode,
       stabilizerStrength: stabilizerStrength,
     );
   }
@@ -402,6 +420,7 @@ class BrushToolState {
     double? textureDensity,
     CanvasTool? tool,
     double? stabilizerStrength,
+    BrushBlendMode? brushBlendMode,
   }) {
     return BrushToolState.clamped(
       size: size ?? this.size,
@@ -431,6 +450,7 @@ class BrushToolState {
       textureDensity: textureDensity ?? this.textureDensity,
       tool: tool ?? this.tool,
       stabilizerStrength: stabilizerStrength ?? this.stabilizerStrength,
+      brushBlendMode: brushBlendMode ?? this.brushBlendMode,
     );
   }
 
