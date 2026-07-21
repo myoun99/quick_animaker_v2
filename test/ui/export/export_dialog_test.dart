@@ -452,6 +452,24 @@ void main() {
   });
 
   group('timesheet tab', () {
+    testWidgets('the default Sheet PNG writes the panel paper per cut',
+        (tester) async {
+      final state = await pumpDialog(
+        tester,
+        exportSession(),
+        exportDirectoryPicker: () async => temp.path,
+      );
+      await switchTab(tester, 'timesheet');
+      await browseTo(tester);
+      await tester.runAsync(state.export);
+      await tester.pump();
+
+      expect(filesIn(temp), ['CUT1.png']);
+      final bytes = File('${temp.path}/CUT1.png').readAsBytesSync();
+      expect(bytes.sublist(0, 4), [0x89, 0x50, 0x4E, 0x47]);
+      expect(statusText(tester), 'Exported 1 sheet page.');
+    });
+
     testWidgets('writes one xdts per cut under the project scope',
         (tester) async {
       final state = await pumpDialog(
@@ -461,6 +479,11 @@ void main() {
       );
       await switchTab(tester, 'timesheet');
       await browseTo(tester);
+      // XDTS is a chip now (Sheet PNG became the default).
+      await tester.tap(
+        find.byKey(const ValueKey<String>('export-tsformat-xdts')),
+      );
+      await tester.pump();
       await tester.tap(
         find.byKey(const ValueKey<String>('export-scope-project')),
       );
@@ -542,17 +565,17 @@ void main() {
       expect(transport.data, contains('F2 · Cut'));
     });
 
-    testWidgets('the timesheet tab has no nav bar yet', (tester) async {
+    testWidgets('the timesheet tab scrubs cut/page (EX6)', (tester) async {
       await pumpDialog(tester, exportSession());
       await switchTab(tester, 'timesheet');
       expect(
         find.byKey(const ValueKey<String>('export-nav-scrub')),
-        findsNothing,
+        findsOneWidget,
       );
-      expect(
+      final transport = tester.widget<Text>(
         find.byKey(const ValueKey<String>('export-transport-line')),
-        findsNothing,
       );
+      expect(transport.data, contains('CUT1 · p1/1'));
     });
 
     testWidgets('a flushed preview shows the rendered picture',
