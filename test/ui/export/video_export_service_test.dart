@@ -54,100 +54,23 @@ void main() {
       expect(args.last, 'out.mp4');
     });
 
-    test('one clip: seek/trim at the input, delay in the graph, aac out', () {
+    test('with a finished mix WAV, ffmpeg only encodes: one audio input, '
+        'no filter graph, aac out (EXPORT-AUDIO — our mixer already did '
+        'the mixing)', () {
       final args = VideoExportService.buildFfmpegArguments(
         frameRate: const ProjectFrameRate.integer(24),
         outputFilePath: 'out.mp4',
-        audioClips: const [
-          ExportAudioClip(
-            filePath: 'voice.wav',
-            seekSeconds: 0.5,
-            delaySeconds: 1.25,
-            durationSeconds: 2,
-          ),
-        ],
+        audioMixPath: 'C:/tmp/mix.wav',
       );
 
-      expect(
-        args,
-        containsAllInOrder(['-ss', '0.500', '-t', '2.000', '-i', 'voice.wav']),
-      );
-      final filter = args[args.indexOf('-filter_complex') + 1];
-      // The pad filter moves into the graph (-vf cannot coexist with it).
-      expect(args, isNot(contains('-vf')));
-      expect(filter, contains('[0:v]pad='));
-      expect(filter, contains('[1:a]adelay=1250:all=1[a0]'));
-      expect(filter, isNot(contains('amix')));
-      expect(args, containsAllInOrder(['-map', '[vout]', '-map', '[a0]']));
-      expect(args, containsAllInOrder(['-c:a', 'aac', '-shortest']));
-    });
-
-    test('multiple clips mix without renormalizing volumes', () {
-      final args = VideoExportService.buildFfmpegArguments(
-        frameRate: const ProjectFrameRate.integer(24),
-        outputFilePath: 'out.mp4',
-        audioClips: const [
-          ExportAudioClip(filePath: 'a.wav', durationSeconds: 1),
-          ExportAudioClip(
-            filePath: 'b.wav',
-            delaySeconds: 0.25,
-            durationSeconds: 0.75,
-          ),
-        ],
-      );
-
-      // No seek for clips starting inside the range.
+      expect(args, containsAllInOrder(['-i', '-', '-i', 'C:/tmp/mix.wav']));
+      expect(args, isNot(contains('-filter_complex')));
       expect(args, isNot(contains('-ss')));
-      final filter = args[args.indexOf('-filter_complex') + 1];
-      expect(filter, contains('[1:a]adelay=0:all=1[a0]'));
-      expect(filter, contains('[2:a]adelay=250:all=1[a1]'));
-      expect(filter, contains('[a0][a1]amix=inputs=2:normalize=0[aout]'));
-      expect(args, containsAllInOrder(['-map', '[vout]', '-map', '[aout]']));
-    });
-
-    test('gain and fades chain volume/afade before adelay, in clip time', () {
-      final args = VideoExportService.buildFfmpegArguments(
-        frameRate: const ProjectFrameRate.integer(24),
-        outputFilePath: 'out.mp4',
-        audioClips: const [
-          ExportAudioClip(
-            filePath: 'voice.wav',
-            delaySeconds: 1,
-            durationSeconds: 3,
-            gain: 1.5,
-            fadeInSeconds: 0.5,
-            fadeOutSeconds: 1,
-          ),
-        ],
-      );
-
-      final filter = args[args.indexOf('-filter_complex') + 1];
-      expect(
-        filter,
-        contains(
-          '[1:a]volume=1.500,afade=t=in:st=0:d=0.500,'
-          'afade=t=out:st=2.000:d=1.000,adelay=1000:all=1[a0]',
-        ),
-      );
-    });
-
-    test('a default envelope emits the exact legacy adelay-only chain', () {
-      final args = VideoExportService.buildFfmpegArguments(
-        frameRate: const ProjectFrameRate.integer(24),
-        outputFilePath: 'out.mp4',
-        audioClips: const [
-          ExportAudioClip(
-            filePath: 'voice.wav',
-            delaySeconds: 0.25,
-            durationSeconds: 2,
-          ),
-        ],
-      );
-
-      final filter = args[args.indexOf('-filter_complex') + 1];
-      expect(filter, contains('[1:a]adelay=250:all=1[a0]'));
-      expect(filter, isNot(contains('volume=')));
-      expect(filter, isNot(contains('afade')));
+      expect(args, isNot(contains('adelay')));
+      expect(args, contains('-vf'));
+      expect(args, containsAllInOrder(['-map', '0:v', '-map', '1:a']));
+      expect(args, containsAllInOrder(['-c:a', 'aac', '-shortest']));
+      expect(args.last, 'out.mp4');
     });
   });
 

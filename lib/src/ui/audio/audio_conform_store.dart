@@ -213,6 +213,43 @@ class AudioConformStore extends ChangeNotifier {
   /// The last failure reason, or null while unknown/pending/usable.
   String? failureFor(String sourcePath) => _failures[sourcePath]?.reason;
 
+  /// Awaits [sourcePath]'s conform: the cached result, or the in-flight
+  /// one when it lands. Null once the attempt budget is spent — the export
+  /// path uses this to render what it can instead of hanging on a file
+  /// that will never decode.
+  Future<ConformResult?> ensureFor(String sourcePath) async {
+    while (true) {
+      final entry = resultFor(sourcePath);
+      if (entry != null) {
+        return entry;
+      }
+      final failure = _failures[sourcePath];
+      if (failure != null && failure.attempts >= maxAttempts) {
+        return null;
+      }
+      if (!_pending.contains(sourcePath) && failure != null) {
+        // Inside the retry delay: the budget remains but nothing is in
+        // flight and resultFor will not kick until the delay passes.
+        // Waiting out a wall-clock delay is playback's concern, not an
+        // export render's — give the answer we have.
+        return null;
+      }
+      final landed = Completer<void>();
+      void onChanged() {
+        if (!landed.isCompleted) {
+          landed.complete();
+        }
+      }
+
+      addListener(onChanged);
+      try {
+        await landed.future;
+      } finally {
+        removeListener(onChanged);
+      }
+    }
+  }
+
   Future<void> _ensure(String sourcePath) async {
     ConformResult result;
     try {

@@ -6,10 +6,9 @@ import '../../models/frame.dart';
 import '../../models/layer.dart';
 import '../../models/layer_kind.dart';
 import '../../models/project.dart';
-import '../../models/project_frame_rate.dart';
 import '../../models/se_audio_spans.dart';
 import '../../models/track.dart';
-import 'video_export_service.dart' show ExportAudioClip;
+import '../playback/audio_playback_schedule.dart' show ScheduledAudioClip;
 
 /// Which frames the export window covers: the active cut, every cut of the
 /// active cut's track in storyboard order, or a subrange of the active cut.
@@ -187,7 +186,9 @@ List<ExportFrameTask> buildExportFramePlan({
   return plan;
 }
 
-/// Lays every SE layer's audio clips onto the exported video's timeline.
+/// Lays every SE layer's audio clips onto the exported video's timeline,
+/// in FRAMES on the export plan's own axis (frame 0 = the first exported
+/// frame).
 ///
 /// [plan] lists the exported frames in output order (contiguous per cut),
 /// exactly what [VideoExportService] encodes — so a clip's offset is just
@@ -195,13 +196,17 @@ List<ExportFrameTask> buildExportFramePlan({
 /// range seek into the source instead of delaying; clips starting at or
 /// past their cut's exported end are silent and dropped. Durations cap at
 /// the cut's exported block, matching canvas playback (SE audio never
-/// bleeds into the next cut); shorter sources simply end early.
-List<ExportAudioClip> buildExportAudioPlan({
+/// bleeds into the next cut); shorter sources simply end early (the mixer
+/// plays silence past a source's last sample).
+///
+/// The result is the SAME schedule shape playback consumes — the export
+/// mix renders through the same mixer, which is the whole point: what the
+/// preview played is what the file holds.
+List<ScheduledAudioClip> buildExportAudioPlan({
   required List<ExportFrameTask> plan,
-  required ProjectFrameRate frameRate,
   Project? project,
 }) {
-  final clips = <ExportAudioClip>[];
+  final clips = <ScheduledAudioClip>[];
 
   void emit({
     required int spanExportStart,
@@ -224,18 +229,16 @@ List<ExportAudioClip> buildExportAudioPlan({
         );
     final fadeOutFrames = span.clip.fadeOutFrames.clamp(0, audibleFrames);
     clips.add(
-      ExportAudioClip(
+      ScheduledAudioClip(
         filePath: span.clip.filePath,
+        startFrame: audibleStart,
+        endFrameExclusive: audibleEnd,
         // The clip's offset trim seeks past the skipped file head on top
         // of any range clipping.
-        seekSeconds: frameRate.frameStartSeconds(
-          audibleStart - spanExportStart + span.clip.offsetFrames,
-        ),
-        delaySeconds: frameRate.frameStartSeconds(audibleStart),
-        durationSeconds: frameRate.frameStartSeconds(audibleFrames),
+        offsetFrames: audibleStart - spanExportStart + span.clip.offsetFrames,
         gain: span.clip.gain,
-        fadeInSeconds: frameRate.frameStartSeconds(fadeInFrames),
-        fadeOutSeconds: frameRate.frameStartSeconds(fadeOutFrames),
+        fadeInFrames: fadeInFrames,
+        fadeOutFrames: fadeOutFrames,
       ),
     );
   }
