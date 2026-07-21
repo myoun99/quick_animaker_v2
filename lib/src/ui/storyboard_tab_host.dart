@@ -410,7 +410,7 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
                 layout: _activeTrackLayout(),
               ),
               thumbnailFor: widget.thumbnailFor,
-              audioPeaksFor: _session.audioPeaksStore.peaksFor,
+              audioPeaksFor: _session.audioConformStore.peaksFor,
               // Rail parity with the timeline rows: twirl-down audio
               // lanes and the V track's cut-fade (Opacity) lane.
               expandedSeAudioRows: _expandedSeAudioRows,

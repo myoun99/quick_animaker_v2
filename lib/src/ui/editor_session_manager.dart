@@ -94,9 +94,12 @@ import '../services/onion_skin_plan.dart';
 import '../services/persistence/project_autosave_service.dart';
 import '../services/persistence/qap_file_service.dart';
 import '../services/commands/cut_reorder_planner.dart';
+import '../services/audio/audio_conform_pipeline.dart' show ProjectAssetLayout;
+import '../services/audio/audio_conform_runner.dart' show runConformHere;
 import '../services/commands/track_se_layer_commands.dart';
 import '../services/history_manager.dart';
 import '../services/project_repository.dart';
+import 'audio/audio_conform_store.dart';
 import 'audio/audio_peaks_store.dart';
 import 'brush/brush_canvas_panel.dart';
 import 'brush/brush_editor_selection.dart';
@@ -135,12 +138,14 @@ class EditorSessionManager extends ChangeNotifier {
   EditorSessionManager({
     required Project initialProject,
     AudioPeaksStore? audioPeaksStore,
+    AudioConformStore? audioConformStore,
     AppLanguageSettingsStore? languageSettingsStore,
     AppAccentSettingsStore? accentSettingsStore,
     AppInputSettingsStore? inputSettingsStore,
     AppSaveSettingsStore? saveSettingsStore,
   }) : _editingSession = EditingSessionState.forProject(initialProject),
        _injectedAudioPeaksStore = audioPeaksStore,
+       _injectedAudioConformStore = audioConformStore,
        _languageSettingsStore = languageSettingsStore,
        _accentSettingsStore = accentSettingsStore,
        _inputSettingsStore = inputSettingsStore,
@@ -376,12 +381,12 @@ class EditorSessionManager extends ChangeNotifier {
   );
 
   /// Frame-synced SE audio riding [playback]'s frame signals; clip lengths
-  /// come from the waveform peaks store.
+  /// come from the conform store (exact sample counts, with the ffmpeg
+  /// peaks approximation as its own fallback).
   late final AudioPlaybackSync audioPlaybackSync = AudioPlaybackSync(
     controller: playback,
     resolveFrameRate: () => projectFrameRate,
-    durationSecondsFor: (filePath) =>
-        audioPeaksStore.peaksFor(filePath)?.durationSeconds,
+    durationSecondsFor: audioConformStore.durationSecondsFor,
     playerFactory: AudioplayersClipPlayer.new,
     // Track-owned SE rows schedule from the tracks' global axes.
     resolveProject: () => _repository.currentProject,
@@ -709,6 +714,7 @@ class EditorSessionManager extends ChangeNotifier {
     prerenderScheduler.dispose();
     cutFrameCompositeCache.dispose();
     layerFrameImageCache.dispose();
+    audioConformStore.dispose();
     audioPeaksStore.dispose();
     languageSettings.dispose();
     editingFrameCursor.dispose();
@@ -731,12 +737,58 @@ class EditorSessionManager extends ChangeNotifier {
   /// rebuilds never spawn the real ffmpeg inside fake async.
   final AudioPeaksStore? _injectedAudioPeaksStore;
 
-  /// Waveform peaks per audio file (ffmpeg extraction, cached); its
-  /// notifications forward through the session so SE rows repaint when a
-  /// waveform lands.
+  /// ffmpeg-extracted peaks — the CONFORM store's fallback for formats the
+  /// native decoder does not read (m4a/aac/ogg until the OS decoders
+  /// land); its notifications forward through the session so SE rows
+  /// repaint when a waveform lands.
   late final AudioPeaksStore audioPeaksStore =
       (_injectedAudioPeaksStore ?? AudioPeaksStore())
         ..addListener(notifyListeners);
+
+  /// Test seam, like [_injectedAudioPeaksStore]: widget tests inject a
+  /// store with a fake runner so SE rows never decode real files.
+  final AudioConformStore? _injectedAudioConformStore;
+
+  /// Conformed audio per source path (audio program wiring): waveform
+  /// peaks, exact clip lengths and the device transport's PCM, decoded
+  /// ONCE per file off the UI isolate. Conforms live in
+  /// `<project>.assets/Conformed/`, derived by rule from the source path —
+  /// nothing recorded, nothing to fall out of sync.
+  late final AudioConformStore audioConformStore =
+      (_injectedAudioConformStore ??
+          AudioConformStore(
+            resolveConformPath: _conformPathFor,
+            undecodableFallback: audioPeaksStore,
+            // Widget tests: run conforms inline — a worker isolate started
+            // under fake async outlives the test (the prerender scheduler's
+            // FLUTTER_TEST branch, same reason). Missing fixture paths
+            // short-circuit before any decode, so this stays cheap.
+            runner: Platform.environment['FLUTTER_TEST'] == 'true'
+                ? (request) => Future.value(runConformHere(request))
+                : null,
+          ))
+        ..addListener(notifyListeners);
+
+  String? _conformPathFor(String sourcePath) {
+    final path = _projectFilePath;
+    return path == null
+        ? null
+        : ProjectAssetLayout(path).conformPathFor(sourcePath);
+  }
+
+  /// Every audio path the project references (SE clips + the media pool) —
+  /// what a project open warms so waveforms and playback PCM are ready
+  /// before the first play.
+  void _warmAudioConforms() {
+    final project = _repository.requireProject();
+    final paths = <String>{
+      for (final track in project.tracks)
+        for (final layer in track.seLayers)
+          for (final clip in layer.audioClips) clip.filePath,
+      for (final asset in project.mediaAssets) asset.path,
+    };
+    audioConformStore.warmPaths(paths);
+  }
 
   bool _activeCutHasLayer(LayerId? layerId) {
     if (layerId == null) {
@@ -2650,9 +2702,9 @@ class EditorSessionManager extends ChangeNotifier {
     if (layer == null || layer.kind != LayerKind.se) {
       return;
     }
-    // Re-importing a path restarts its waveform extraction from scratch
+    // Re-importing a path restarts its conform + waveform from scratch
     // (fresh attempt budget — the file may have changed on disk).
-    audioPeaksStore.invalidate(filePath);
+    audioConformStore.invalidate(filePath);
     final frameIndex = _timelineController.currentFrameIndex < 0
         ? 0
         : _timelineController.currentFrameIndex;
@@ -2971,7 +3023,7 @@ class EditorSessionManager extends ChangeNotifier {
   /// referencing clip, one undo step (Resolve-style relink for moved
   /// files). Waveforms re-extract from the new file.
   void relinkMediaAsset(String oldPath, String newPath) {
-    audioPeaksStore.invalidate(newPath);
+    audioConformStore.invalidate(newPath);
     _cutCommandCoordinator.relinkMediaAsset(oldPath: oldPath, newPath: newPath);
     notifyListeners();
   }
@@ -6957,6 +7009,7 @@ class EditorSessionManager extends ChangeNotifier {
     _editingSession.setActiveCutId(result.project.tracks.first.cuts.first.id);
     _rebuildActiveCutControllers();
     _projectFilePath = recoverAs ?? filePath;
+    _warmAudioConforms();
     // A recovered session stays dirty: its content differs from the real
     // file until the user saves.
     _hasUnsavedChanges = recoverAs != null;
