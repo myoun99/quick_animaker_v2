@@ -169,9 +169,10 @@ final class QaAudioDevice {
   /// the user's A/V offset removes.
   int get latencySamples => _latency();
 
-  /// Uploads the schedule and its PCM. Only legal while stopped — returns
-  /// false and changes nothing otherwise, rather than racing the realtime
-  /// thread.
+  /// Uploads the schedule and its PCM — legal at ANY time (AUDIO-PRO R3):
+  /// the C builds the replacement in a standby slot and flips atomically,
+  /// so a swap during playback is heard within one mixed block, with the
+  /// old arrays freed only after the callback provably abandoned them.
   ///
   /// The PCM is flattened into one block and COPIED on the C side: the
   /// callback must never chase a pointer into Dart-managed memory.

@@ -231,34 +231,65 @@ void main() {
       );
     }, skip: skip);
 
-    test('a schedule is REFUSED while playing, not raced', () async {
-      // The realtime thread is reading these arrays. Refusing is the whole
-      // reason the handoff needs no lock-free machinery.
+    test('a schedule SWAPS while playing (AUDIO-PRO R3): the transport '
+        'never stops, and the new mix is heard within a block', () async {
       final device = openNull();
       device.setSchedule(
-        clips: const [AudioMixClip(sourceIndex: 0, startSample: 0, endSample: 480000)],
+        clips: const [
+          AudioMixClip(sourceIndex: 0, startSample: 0, endSample: 4800000),
+        ],
         sources: [constantSource(0.25, 48000, 2)],
       );
-      device.play(startSample: 0);
-      expect(await waitFor(() => device.positionSamples > 0), isTrue);
+      device.play(startSample: 0, looping: true);
+      expect(await waitFor(() => device.peakFor(0) > 0.2), isTrue);
+      final before = device.positionSamples;
 
+      // The live edit: a louder schedule lands mid-play.
       expect(
         device.setSchedule(
-          clips: const [AudioMixClip(sourceIndex: 0, startSample: 0, endSample: 10)],
-          sources: [constantSource(0.5, 10, 2)],
-        ),
-        isFalse,
-        reason: 'changing the schedule under the callback would be a race',
-      );
-      device.stop();
-      expect(
-        device.setSchedule(
-          clips: const [AudioMixClip(sourceIndex: 0, startSample: 0, endSample: 10)],
-          sources: [constantSource(0.5, 10, 2)],
+          clips: const [
+            AudioMixClip(
+              sourceIndex: 0,
+              startSample: 0,
+              endSample: 4800000,
+            ),
+          ],
+          sources: [constantSource(0.6, 48000, 2)],
         ),
         isTrue,
-        reason: 'and it must be allowed again once stopped',
+        reason: 'live replacement is the point of the double buffer',
       );
+      expect(device.isPlaying, isTrue, reason: 'the swap must not stop audio');
+      expect(
+        await waitFor(() => device.peakFor(0) > 0.55),
+        isTrue,
+        reason: 'the NEW schedule must be what the callback mixes',
+      );
+      expect(
+        device.positionSamples,
+        greaterThanOrEqualTo(before),
+        reason: 'the clock never rewinds over a swap',
+      );
+
+      // Rapid successive swaps must stay safe (the handshake frees the
+      // old slot each time).
+      for (var round = 0; round < 10; round += 1) {
+        expect(
+          device.setSchedule(
+            clips: const [
+              AudioMixClip(
+                sourceIndex: 0,
+                startSample: 0,
+                endSample: 4800000,
+              ),
+            ],
+            sources: [constantSource(0.3 + round * 0.05, 48000, 2)],
+          ),
+          isTrue,
+        );
+      }
+      expect(device.isPlaying, isTrue);
+      device.stop();
     }, skip: skip);
 
     test('an empty schedule plays silence rather than failing', () async {

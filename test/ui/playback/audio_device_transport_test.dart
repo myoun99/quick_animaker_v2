@@ -355,6 +355,61 @@ void main() {
     store.dispose();
   }, skip: skip);
 
+  test('refreshSchedule swaps the mix MID-RUN (AUDIO-PRO R3): a layer '
+      'fader change is heard without stopping the transport', () async {
+    final device = openNullDevice();
+    var project = _project;
+    final liveController = CanvasPlaybackController(
+      resolveProject: () => project,
+      resolveActiveCutId: () => const CutId('cut-a'),
+      resolveActiveTrackId: () => const TrackId('track'),
+      resolveFrameRate: () => const ProjectFrameRate.integer(10),
+    );
+    final store = _residentStore();
+    store.resultFor('tone.wav');
+    await pumpEventQueue();
+    final transport = AudioDeviceTransport(
+      controller: liveController,
+      resolveFrameRate: () => const ProjectFrameRate.integer(10),
+      resolveProject: () => project,
+      conformStore: store,
+      resolveDevice: () => QaAudioDevice.instance,
+    )..attach();
+
+    liveController.loopMode = PlaybackLoopMode.loop;
+    liveController.play(scope: PlaybackScope.activeCut);
+    expect(transport.carryingPlayback, isTrue);
+    expect(await _waitFor(() => device.peakFor(0) > 0.03), isTrue,
+        reason: 'the 0.05 source should be metering');
+    final before = device.positionSamples;
+
+    // The live edit: the layer fader jumps to 10x (0.05 -> 0.5 on the bus).
+    final track = project.tracks.first;
+    project = project.copyWith(
+      tracks: [
+        Track(
+          id: track.id,
+          name: track.name,
+          cuts: track.cuts,
+          seLayers: [track.seLayers.first.copyWith(audioGain: 10)],
+        ),
+      ],
+    );
+    transport.refreshSchedule();
+
+    expect(device.isPlaying, isTrue, reason: 'the swap must not stop audio');
+    expect(
+      await _waitFor(() => device.peakFor(0) > 0.4),
+      isTrue,
+      reason: 'the fader change must be heard mid-run',
+    );
+    expect(device.positionSamples, greaterThanOrEqualTo(before));
+    liveController.stop();
+    transport.dispose();
+    liveController.dispose();
+    store.dispose();
+  }, skip: skip);
+
   test('the report reads off the device and converts both ways', () async {
     openNullDevice();
     final store = _residentStore();

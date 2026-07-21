@@ -11,12 +11,13 @@
 // and the PCM, starts and stops the transport, and polls the position.
 // Everything the callback touches is already resident C memory.
 //
-// The schedule is only replaced while the transport is STOPPED. That makes
-// the handoff trivially safe without lock-free machinery, and it matches
-// how playback already works — the schedule is built when playback starts.
-// Editing sound during playback would need a double-buffered swap; that is
-// a later problem, and pretending otherwise would put a data race on the
-// realtime thread.
+// The schedule lives in TWO slots (AUDIO-PRO R3): the callback reads the
+// active one, a replacement builds in the standby one, and an atomic flip
+// publishes it - so editing sound DURING playback is heard on the next
+// mixed block. The control thread then waits (bounded - it is not the
+// realtime side) for the callback to acknowledge the new slot before
+// freeing the old arrays; the callback itself never waits, never locks,
+// never frees.
 
 #include <stdint.h>
 #include <stdlib.h>
@@ -113,6 +114,19 @@ static void qa_transport_store_32(volatile ma_uint32* field, int32_t value) {
 
 #define QA_DEVICE_MAX_BLOCK 8192
 
+// One complete schedule: everything a mixed block reads (AUDIO-PRO R3
+// made it a SLOT so a standby copy can build while the active one plays).
+typedef struct {
+  qa_audio_clip* clips;
+  int32_t clip_count;
+  qa_audio_source* sources;
+  int32_t source_count;
+  float* source_pcm;  // one owned block holding every source's samples
+  int64_t source_pcm_floats;
+  qa_audio_envelope_key* envelope_keys;  // the clips' shared key array
+  int32_t envelope_key_count;
+} qa_audio_schedule;
+
 typedef struct {
   ma_device device;
   int32_t device_open;
@@ -127,14 +141,18 @@ typedef struct {
   volatile ma_uint64 stop_position;  // exclusive; <= start means "no end"
   volatile ma_uint32 looping;
 
-  qa_audio_clip* clips;
-  int32_t clip_count;
-  qa_audio_source* sources;
-  int32_t source_count;
-  float* source_pcm;  // one owned block holding every source's samples
-  int64_t source_pcm_floats;
-  qa_audio_envelope_key* envelope_keys;  // the clips' shared key array
-  int32_t envelope_key_count;
+  // The double-buffered schedule (AUDIO-PRO R3): the callback reads
+  // slots[active_slot] and acknowledges through callback_slot; a live
+  // replacement builds in the OTHER slot and flips. The old slot frees
+  // only after the acknowledgment (or with the transport stopped).
+  qa_audio_schedule slots[2];
+  volatile ma_uint32 active_slot;
+  volatile ma_uint32 callback_slot;
+  // 1 while the callback body runs. With callback_slot this is what lets
+  // the control thread PROVE the old slot is abandoned before freeing —
+  // including the pre-R3 window where a stop lands mid-block and the
+  // callback keeps reading the arrays until its block completes.
+  volatile ma_uint32 callback_in_flight;
 
   // The last mixed block's PRE-CLIP bus peak per output side (float bits,
   // stored atomically) - the level meter's feed (AUDIO-PRO R2). Pre-clip
@@ -166,6 +184,9 @@ static void qa_audio_data_callback(ma_device* device,
   if (!qa_transport_load_32(&g_audio.playing) || g_audio.scratch == NULL) {
     return;
   }
+  // Everything below reads schedule arrays: bracketed by in_flight so the
+  // control thread can wait out a block instead of freeing under it.
+  qa_transport_store_32(&g_audio.callback_in_flight, 1);
 
   ma_uint32 done = 0;
   while (done < frame_count) {
@@ -183,6 +204,7 @@ static void qa_audio_data_callback(ma_device* device,
         qa_transport_store_64(&g_audio.position, position);
       } else {
         qa_transport_store_32(&g_audio.playing, 0);
+        qa_transport_store_32(&g_audio.callback_in_flight, 0);
         return;
       }
     }
@@ -195,12 +217,20 @@ static void qa_audio_data_callback(ma_device* device,
       }
     }
     if (block == 0) {
+      qa_transport_store_32(&g_audio.callback_in_flight, 0);
       return;
     }
 
-    qa_audio_mix(g_audio.clips, g_audio.clip_count, g_audio.sources,
-                 g_audio.source_count, g_audio.envelope_keys,
-                 g_audio.envelope_key_count, position, (int32_t)block,
+    // Which schedule this block reads, acknowledged BEFORE mixing so the
+    // control thread can prove the old slot has been abandoned.
+    const ma_uint32 slot_index =
+        (ma_uint32)qa_transport_load_32(&g_audio.active_slot) & 1u;
+    qa_transport_store_32(&g_audio.callback_slot, (int32_t)slot_index);
+    const qa_audio_schedule* schedule = &g_audio.slots[slot_index];
+
+    qa_audio_mix(schedule->clips, schedule->clip_count, schedule->sources,
+                 schedule->source_count, schedule->envelope_keys,
+                 schedule->envelope_key_count, position, (int32_t)block,
                  channels, g_audio.scratch);
 
     const size_t written = (size_t)block * (size_t)channels;
@@ -244,21 +274,20 @@ static void qa_audio_data_callback(ma_device* device,
     qa_transport_store_64(&g_audio.position, position + (int64_t)block);
     done += block;
   }
+  qa_transport_store_32(&g_audio.callback_in_flight, 0);
+}
+
+static void qa_audio_free_slot(qa_audio_schedule* slot) {
+  free(slot->clips);
+  free(slot->sources);
+  free(slot->source_pcm);
+  free(slot->envelope_keys);
+  memset(slot, 0, sizeof(*slot));
 }
 
 static void qa_audio_free_schedule(void) {
-  free(g_audio.clips);
-  free(g_audio.sources);
-  free(g_audio.source_pcm);
-  free(g_audio.envelope_keys);
-  g_audio.clips = NULL;
-  g_audio.sources = NULL;
-  g_audio.source_pcm = NULL;
-  g_audio.envelope_keys = NULL;
-  g_audio.clip_count = 0;
-  g_audio.source_count = 0;
-  g_audio.source_pcm_floats = 0;
-  g_audio.envelope_key_count = 0;
+  qa_audio_free_slot(&g_audio.slots[0]);
+  qa_audio_free_slot(&g_audio.slots[1]);
 }
 
 // Opens the output device. [backend] 0 = let miniaudio choose, 1 = the
@@ -359,9 +388,12 @@ QA_EXPORT int64_t qa_audio_device_latency_samples(void) {
          (int64_t)g_audio.device.playback.internalPeriods;
 }
 
-// Replaces the schedule. Only legal while STOPPED (see the file header) —
-// returns 0 and changes nothing otherwise, rather than racing the
-// realtime thread.
+// Replaces the schedule — legal at ANY time (AUDIO-PRO R3). Stopped, it
+// writes the active slot directly; playing, it builds in the standby
+// slot, flips atomically (the callback adopts at its next block, so the
+// edit is heard within one mix block), then waits — bounded, on THIS
+// thread, never the realtime one — for the acknowledgment before freeing
+// the old arrays.
 //
 // The PCM is COPIED into one owned block: the callback must never chase a
 // pointer into Dart-managed memory that could move or be collected.
@@ -375,66 +407,93 @@ QA_EXPORT int32_t qa_audio_device_set_schedule(
     const int64_t* source_offsets,
     const qa_audio_envelope_key* envelope_keys,
     int32_t envelope_key_count) {
-  if (qa_transport_load_32(&g_audio.playing)) {
-    return 0;
-  }
-  qa_audio_free_schedule();
   if (clip_count < 0 || source_count < 0 || pcm_floats < 0 ||
       envelope_key_count < 0) {
     return 0;
   }
 
+  // ALWAYS build into the standby slot and flip — even stopped, a
+  // just-stopped callback can be mid-block in the active arrays for
+  // another ~10ms, and the in-flight handshake below is what makes the
+  // free provably safe in every case.
+  const ma_uint32 active =
+      (ma_uint32)qa_transport_load_32(&g_audio.active_slot) & 1u;
+  const ma_uint32 target = active ^ 1u;
+  qa_audio_schedule* slot = &g_audio.slots[target];
+  // A previous bounded wait may have bailed and left this standby slot
+  // allocated; freeing here is what makes that leak self-healing.
+  qa_audio_free_slot(slot);
+
   if (clip_count > 0) {
-    g_audio.clips =
+    slot->clips =
         (qa_audio_clip*)malloc((size_t)clip_count * sizeof(qa_audio_clip));
-    if (g_audio.clips == NULL) {
+    if (slot->clips == NULL) {
       return 0;
     }
-    memcpy(g_audio.clips, clips, (size_t)clip_count * sizeof(qa_audio_clip));
-    g_audio.clip_count = clip_count;
+    memcpy(slot->clips, clips, (size_t)clip_count * sizeof(qa_audio_clip));
+    slot->clip_count = clip_count;
   }
 
   if (envelope_key_count > 0) {
-    g_audio.envelope_keys = (qa_audio_envelope_key*)malloc(
+    slot->envelope_keys = (qa_audio_envelope_key*)malloc(
         (size_t)envelope_key_count * sizeof(qa_audio_envelope_key));
-    if (g_audio.envelope_keys == NULL) {
-      qa_audio_free_schedule();
+    if (slot->envelope_keys == NULL) {
+      qa_audio_free_slot(slot);
       return 0;
     }
-    memcpy(g_audio.envelope_keys, envelope_keys,
+    memcpy(slot->envelope_keys, envelope_keys,
            (size_t)envelope_key_count * sizeof(qa_audio_envelope_key));
-    g_audio.envelope_key_count = envelope_key_count;
+    slot->envelope_key_count = envelope_key_count;
   }
 
   if (pcm_floats > 0) {
-    g_audio.source_pcm = (float*)malloc((size_t)pcm_floats * sizeof(float));
-    if (g_audio.source_pcm == NULL) {
-      qa_audio_free_schedule();
+    slot->source_pcm = (float*)malloc((size_t)pcm_floats * sizeof(float));
+    if (slot->source_pcm == NULL) {
+      qa_audio_free_slot(slot);
       return 0;
     }
-    memcpy(g_audio.source_pcm, pcm, (size_t)pcm_floats * sizeof(float));
-    g_audio.source_pcm_floats = pcm_floats;
+    memcpy(slot->source_pcm, pcm, (size_t)pcm_floats * sizeof(float));
+    slot->source_pcm_floats = pcm_floats;
   }
 
   if (source_count > 0) {
-    g_audio.sources =
+    slot->sources =
         (qa_audio_source*)malloc((size_t)source_count * sizeof(qa_audio_source));
-    if (g_audio.sources == NULL) {
-      qa_audio_free_schedule();
+    if (slot->sources == NULL) {
+      qa_audio_free_slot(slot);
       return 0;
     }
-    memcpy(g_audio.sources, sources,
+    memcpy(slot->sources, sources,
            (size_t)source_count * sizeof(qa_audio_source));
     // Repoint every source at our copy: the caller's `samples` pointers
     // describe ITS memory, and the offsets say where each block landed in
     // the flattened PCM.
     for (int32_t index = 0; index < source_count; index += 1) {
       const int64_t offset = source_offsets == NULL ? 0 : source_offsets[index];
-      g_audio.sources[index].samples =
-          (offset >= 0 && offset < pcm_floats) ? g_audio.source_pcm + offset
+      slot->sources[index].samples =
+          (offset >= 0 && offset < pcm_floats) ? slot->source_pcm + offset
                                                : NULL;
     }
-    g_audio.source_count = source_count;
+    slot->source_count = source_count;
+  }
+
+  // Publish, then prove the handoff before freeing the old arrays: the
+  // old slot is abandoned once the callback either stamped the NEW slot
+  // (it re-reads active_slot per block) or is simply not running
+  // (in_flight 0 — covers stopped transports AND the just-stopped
+  // mid-block window). Bounded wait on THIS thread, never the realtime
+  // one; a stalled device thread leaves the old slot for the next swap's
+  // self-healing free rather than risking a use-after-free.
+  qa_transport_store_32(&g_audio.active_slot, (int32_t)target);
+  for (int spin = 0; spin < 500; spin += 1) {
+    const int in_flight = qa_transport_load_32(&g_audio.callback_in_flight);
+    const ma_uint32 stamped =
+        (ma_uint32)qa_transport_load_32(&g_audio.callback_slot) & 1u;
+    if (!in_flight || stamped == target) {
+      qa_audio_free_slot(&g_audio.slots[active]);
+      break;
+    }
+    ma_sleep(1);
   }
   return 1;
 }

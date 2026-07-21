@@ -15,19 +15,20 @@ import 'package:quick_animaker_v2/src/services/audio/audio_mixer_reference.dart'
 /// volume envelope — pinned on the Dart reference (the parity suite then
 /// carries the numbers to the C verbatim).
 void main() {
-  group('equalPowerPanGains', () {
-    test('center sits 3 dB down on both sides; hard pans isolate', () {
+  group('equalPowerPanGains (compensated: center is UNITY)', () {
+    test('center passes through at unity — the fallback path cannot pan, '
+        'so center-panned sound must not change level between paths', () {
       final center = equalPowerPanGains(0);
-      expect(center.left, closeTo(math.sqrt2 / 2, 1e-12));
-      expect(center.right, closeTo(math.sqrt2 / 2, 1e-12));
+      expect(center.left, closeTo(1.0, 1e-12));
+      expect(center.right, closeTo(1.0, 1e-12));
 
       final hardLeft = equalPowerPanGains(-1);
-      expect(hardLeft.left, closeTo(1, 1e-12));
+      expect(hardLeft.left, closeTo(math.sqrt2, 1e-12));
       expect(hardLeft.right, closeTo(0, 1e-12));
 
       final hardRight = equalPowerPanGains(1);
       expect(hardRight.left, closeTo(0, 1e-12));
-      expect(hardRight.right, closeTo(1, 1e-12));
+      expect(hardRight.right, closeTo(math.sqrt2, 1e-12));
     });
 
     test('the sum of squares stays constant across the whole sweep — that '
@@ -36,7 +37,7 @@ void main() {
         final gains = equalPowerPanGains(pan);
         expect(
           gains.left * gains.left + gains.right * gains.right,
-          closeTo(1.0, 1e-12),
+          closeTo(2.0, 1e-12),
           reason: 'pan $pan',
         );
       }

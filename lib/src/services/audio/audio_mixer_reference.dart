@@ -74,15 +74,25 @@ class AudioMixClip {
   final List<AudioEnvelopePoint> envelope;
 }
 
-/// The equal-power pan law: -1 (full left) .. +1 (full right) to the two
-/// side factors, with the sum of squares constant — center sits 3 dB
-/// under a hard side, and nothing gets louder than the source. Computed
-/// ONCE per clip here so both mixer implementations consume identical
-/// doubles.
+/// The COMPENSATED equal-power pan law: -1 (full left) .. +1 (full
+/// right) to the two side factors, scaled so CENTER IS UNITY — sum of
+/// squares constant at 2, hard pans reach √2 (+3 dB, the panned energy
+/// concentrated in one speaker; the output stage clamps and the meter
+/// shows it).
+///
+/// Center-unity is not a taste choice here: the platform-player fallback
+/// cannot pan, so an uncompensated law would put center-panned sound
+/// 3 dB quieter on the device path than on the fallback — the same file
+/// at two levels depending on the path, the exact defect this program
+/// exists to remove. Computed ONCE per clip here so both mixer
+/// implementations consume identical doubles.
 ({double left, double right}) equalPowerPanGains(double pan) {
   final clamped = pan < -1.0 ? -1.0 : (pan > 1.0 ? 1.0 : pan);
   final angle = (clamped + 1.0) * math.pi / 4.0;
-  return (left: math.cos(angle), right: math.sin(angle));
+  return (
+    left: math.cos(angle) * math.sqrt2,
+    right: math.sin(angle) * math.sqrt2,
+  );
 }
 
 /// The fade ramp's shape — mirrors the C `qa_audio_fade_ramp`. sqrt, not
