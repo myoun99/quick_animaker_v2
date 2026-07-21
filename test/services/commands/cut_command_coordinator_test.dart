@@ -484,6 +484,79 @@ void main() {
         expect(memberNow().frames.single.name, isNull);
       });
 
+      test('deleting a linked layer deletes EVERY member and dissolves '
+          'the group; one undo reinserts them all', () {
+        final fixture = _fixture(
+          _project(
+            tracks: [
+              _track(id: 'track-1', name: 'V', cuts: [linkFixtureCut()]),
+            ],
+          ),
+          activeCutId: const CutId('cut-1'),
+        );
+        fixture.coordinator.createLinkedCut(
+          sourceCutId: const CutId('cut-1'),
+          name: 'reuse',
+        );
+        final linkedCutId = fixture.project.tracks.single.cuts[1].id;
+        final memberId = fixture.project.linkRegistry
+            .groupOf(
+              cutId: const CutId('cut-1'),
+              layerId: const LayerId('unrelated'),
+            )!
+            .members
+            .last
+            .layerId;
+
+        fixture.coordinator.deleteLayer(
+          cutId: const CutId('cut-1'),
+          layerId: const LayerId('unrelated'),
+        );
+
+        expect(
+          _cutById(fixture.project, const CutId('cut-1')).layers.any(
+            (layer) => layer.id == const LayerId('unrelated'),
+          ),
+          isFalse,
+        );
+        expect(
+          _cutById(fixture.project, linkedCutId).layers.any(
+            (layer) => layer.id == memberId,
+          ),
+          isFalse,
+          reason: 'the deletion propagates to the linked cut',
+        );
+        expect(
+          fixture.project.linkRegistry.groupOf(
+            cutId: linkedCutId,
+            layerId: memberId,
+          ),
+          isNull,
+          reason: 'the emptied group dissolves',
+        );
+
+        fixture.historyManager.undo();
+        expect(
+          _cutById(fixture.project, const CutId('cut-1')).layers.any(
+            (layer) => layer.id == const LayerId('unrelated'),
+          ),
+          isTrue,
+        );
+        expect(
+          _cutById(fixture.project, linkedCutId).layers.any(
+            (layer) => layer.id == memberId,
+          ),
+          isTrue,
+        );
+        expect(
+          fixture.project.linkRegistry.useCountOf(
+            cutId: const CutId('cut-1'),
+            layerId: const LayerId('unrelated'),
+          ),
+          2,
+        );
+      });
+
       test('link-duplicating an already-linked layer EXTENDS its group '
           'instead of nesting a new one', () {
         final fixture = _fixture(
