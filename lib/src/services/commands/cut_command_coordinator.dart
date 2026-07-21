@@ -37,6 +37,7 @@ import 'delete_cut_command.dart';
 import 'delete_layer_command.dart';
 import 'duplicate_cut_command.dart';
 import 'link_duplicate_layer_command.dart';
+import 'unlink_layer_command.dart';
 import 'paste_layer_command.dart';
 import 'rename_cut_command.dart';
 import 'update_cut_durations_command.dart';
@@ -380,6 +381,44 @@ class CutCommandCoordinator {
         layerIdMap: plan.layerIdMap,
         folderIdMap: plan.folderIdMap,
         newGroupIdBySource: plan.newGroupIdBySource,
+      ),
+    );
+  }
+
+  /// 독립시키기 (L2): removes [layerId]'s whole attach group from its
+  /// link groups and forks the shared pixels into the group's own cels.
+  /// No-op when nothing in the group is linked. One undo step.
+  void unlinkLayer({required CutId cutId, required LayerId layerId}) {
+    final store = brushFrameStore;
+    if (store == null) {
+      throw StateError('unlinkLayer needs the brush frame store.');
+    }
+    final project = repository.requireProject();
+    final cut = requireCut(project, cutId);
+    final source = requireLayer(project, cutId: cutId, layerId: layerId);
+    final baseId = source.attachedToLayerId ?? source.id;
+    final endIndex = attachedGroupEndIndex(baseId, cut.layers);
+    final baseIndex = cut.layers.indexWhere((layer) => layer.id == baseId);
+    final anyLinked = cut.layers
+        .sublist(baseIndex, endIndex)
+        .any(
+          (member) =>
+              project.linkRegistry.groupOf(
+                cutId: cutId,
+                layerId: member.id,
+              ) !=
+              null,
+        );
+    if (!anyLinked) {
+      return;
+    }
+
+    historyManager.execute(
+      UnlinkLayerCommand(
+        repository: repository,
+        brushFrameStore: store,
+        cutId: cutId,
+        sourceLayerId: layerId,
       ),
     );
   }

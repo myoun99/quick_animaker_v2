@@ -2,6 +2,11 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:quick_animaker_v2/src/controllers/default_project_helpers.dart';
 import 'package:quick_animaker_v2/src/controllers/editing_session_state.dart';
 import 'package:quick_animaker_v2/src/models/audio_clip.dart';
+import 'package:quick_animaker_v2/src/models/bitmap_surface.dart';
+import 'package:quick_animaker_v2/src/models/bitmap_tile.dart';
+import 'package:quick_animaker_v2/src/models/brush_frame_key.dart';
+import 'package:quick_animaker_v2/src/models/tile_coord.dart';
+import 'package:quick_animaker_v2/src/services/brush_frame_store.dart';
 import 'package:quick_animaker_v2/src/models/camera_instruction.dart';
 import 'package:quick_animaker_v2/src/models/canvas_size.dart';
 import 'package:quick_animaker_v2/src/models/cut.dart';
@@ -243,6 +248,110 @@ void main() {
         fixture.historyManager.redo();
         expect(fixture.project.tracks.single.cuts, hasLength(2));
         expect(fixture.project.linkRegistry.groups, hasLength(3));
+      });
+
+      test('unlinkLayer FORKS the pixels and leaves the group; undo '
+          're-links back to the shared cel', () {
+        final fixture = _fixture(
+          _project(
+            tracks: [
+              _track(id: 'track-1', name: 'V', cuts: [linkFixtureCut()]),
+            ],
+          ),
+          activeCutId: const CutId('cut-1'),
+        );
+        final store = BrushFrameStore()
+          ..setLinkResolver(
+            (key) =>
+                fixture.repository.currentProject?.linkRegistry
+                    .canonicalCelKey(key) ??
+                key,
+          );
+        final coordinator = CutCommandCoordinator(
+          repository: fixture.repository,
+          editingSession: fixture.editingSession,
+          historyManager: fixture.historyManager,
+          brushFrameStore: store,
+        );
+
+        coordinator.linkDuplicateLayer(
+          cutId: const CutId('cut-1'),
+          layerId: const LayerId('base'),
+        );
+        final copyId = fixture.project.linkRegistry.groups
+            .firstWhere(
+              (group) => group.contains(
+                cutId: const CutId('cut-1'),
+                layerId: const LayerId('base'),
+              ),
+            )
+            .members
+            .last
+            .layerId;
+
+        BrushFrameKey celKey(LayerId layerId) => BrushFrameKey(
+          projectId: const ProjectId('project-1'),
+          trackId: const TrackId('track-1'),
+          cutId: const CutId('cut-1'),
+          layerId: layerId,
+          frameId: const FrameId('frame-a'),
+        );
+        final ink = BitmapSurface(
+          canvasSize: const CanvasSize(width: 1280, height: 720),
+        ).putTile(
+          BitmapTile.blank(coord: TileCoord(x: 0, y: 0), size: 256),
+        );
+        // Draw through the COPY: lands under the canonical (base) key.
+        store.storeBakedSurface(celKey(copyId), ink);
+        expect(
+          identical(
+            store.bakedSurfaceOrNull(celKey(const LayerId('base'))),
+            store.bakedSurfaceOrNull(celKey(copyId)),
+          ),
+          isTrue,
+        );
+
+        coordinator.unlinkLayer(
+          cutId: const CutId('cut-1'),
+          layerId: copyId,
+        );
+
+        // Group dissolved (singleton leftovers are meaningless).
+        expect(
+          fixture.project.linkRegistry.groupOf(
+            cutId: const CutId('cut-1'),
+            layerId: const LayerId('base'),
+          ),
+          isNull,
+        );
+        // The copy owns its cel now: editing the ORIGINAL no longer
+        // touches it.
+        final repainted = BitmapSurface(
+          canvasSize: const CanvasSize(width: 1280, height: 720),
+        ).putTile(
+          BitmapTile.blank(coord: TileCoord(x: 1, y: 0), size: 256),
+        );
+        store.storeBakedSurface(celKey(const LayerId('base')), repainted);
+        expect(
+          identical(store.bakedSurfaceOrNull(celKey(copyId)), ink),
+          isTrue,
+          reason: 'the fork keeps the shared picture as its own',
+        );
+
+        // Undo (of the unlink, after undoing the base repaint is out of
+        // scope here — the store edit above is not a history command):
+        fixture.historyManager.undo();
+        // BOTH pairs restore — the unlink unit is the whole attach group
+        // (base pair AND color pair).
+        expect(fixture.project.linkRegistry.groups, hasLength(2));
+        expect(
+          identical(
+            store.bakedSurfaceOrNull(celKey(copyId)),
+            store.bakedSurfaceOrNull(celKey(const LayerId('base'))),
+          ),
+          isTrue,
+          reason: 're-linked: the member reads the canonical cel again',
+        );
       });
 
       test('link-duplicating an already-linked layer EXTENDS its group '
