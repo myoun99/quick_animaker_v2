@@ -90,6 +90,7 @@ ConvertToLinkedCutPlan planConvertToLinkedCut({
     for (final layer in targetDrawing) layer.name: layer,
   };
   final matchedTargetIds = <LayerId>{};
+  final matchedOriginIds = <LayerId>{};
 
   final pairs = <({LayerId originLayerId, LayerId targetLayerId})>[];
   var replaced = 0;
@@ -100,6 +101,7 @@ ConvertToLinkedCutPlan planConvertToLinkedCut({
       continue;
     }
     matchedTargetIds.add(target.id);
+    matchedOriginIds.add(origin.id);
     // Already linked to each other (e.g. a 겸용 re-run): nothing to do.
     final alreadyLinked =
         project.linkRegistry
@@ -117,9 +119,12 @@ ConvertToLinkedCutPlan planConvertToLinkedCut({
 
   return ConvertToLinkedCutPlan(
     layerPairs: pairs,
+    // Name-matched but ALREADY-LINKED layers are neither pairs nor
+    // "only" — filtering on matched ids (not pairs) keeps a 겸용 re-run
+    // from inserting duplicate copies of already-linked layers.
     originOnlyLayerIds: [
       for (final origin in originDrawing)
-        if (!pairs.any((pair) => pair.originLayerId == origin.id)) origin.id,
+        if (!matchedOriginIds.contains(origin.id)) origin.id,
     ],
     targetOnlyLayerIds: [
       for (final target in targetDrawing)
@@ -128,6 +133,28 @@ ConvertToLinkedCutPlan planConvertToLinkedCut({
     replacedFrameCount: replaced,
     joiningFrameCount: joining,
   );
+}
+
+/// [ConvertToLinkedCutPlan] resolved to display strings — exactly what
+/// the 안내문 dialog shows (the session builds this from the plan).
+class ConvertToLinkedCutPreviewData {
+  const ConvertToLinkedCutPreviewData({
+    required this.targetCutName,
+    required this.linkingLayerNames,
+    required this.layerNamesAppearingInTarget,
+    required this.layerNamesAppearingInOrigin,
+    required this.replacedFrameCount,
+    required this.joiningFrameCount,
+    required this.linksAnything,
+  });
+
+  final String targetCutName;
+  final List<String> linkingLayerNames;
+  final List<String> layerNamesAppearingInTarget;
+  final List<String> layerNamesAppearingInOrigin;
+  final int replacedFrameCount;
+  final int joiningFrameCount;
+  final bool linksAnything;
 }
 
 /// The frame-level merge for one matched pair (원본 승리):

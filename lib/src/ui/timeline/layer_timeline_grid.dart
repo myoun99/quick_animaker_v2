@@ -84,6 +84,7 @@ class LayerTimelineGrid extends StatefulWidget {
     this.onLayerOpacityChangeEnd,
     required this.onToggleLayerTimesheet,
     this.layerFxEnabledOf,
+    this.layerIsLinkedOf,
     this.layerOnionSkinEnabledOf,
     this.onToggleLayerOnionSkin,
     this.displayedOnionSkinOn = false,
@@ -215,6 +216,10 @@ class LayerTimelineGrid extends StatefulWidget {
   /// The AE-style layer fx switch (session view state); null hides it.
   final bool Function(LayerId layerId)? layerFxEnabledOf;
 
+  /// Link badge state (L4): whether a layer's pictures are shared with a
+  /// link group. Null shows no badges.
+  final bool Function(LayerId layerId)? layerIsLinkedOf;
+
   /// Per-layer onion skin (UI-R17 #5): the row toggles + the legend cell's
   /// engaged state. Null hides the onion column entirely.
   final bool Function(LayerId layerId)? layerOnionSkinEnabledOf;
@@ -319,6 +324,7 @@ typedef _RailRowMemoInputs = ({
   bool attachGroupExpanded,
   bool fxEnabled,
   bool onionSkinEnabled,
+  bool isLinked,
   double layerRowHeight,
   double layerControlsWidth,
   double sectionLabelGutterWidth,
@@ -868,6 +874,7 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
       fxEnabled: widget.layerFxEnabledOf?.call(row.layer.id) ?? true,
       onionSkinEnabled:
           widget.layerOnionSkinEnabledOf?.call(row.layer.id) ?? false,
+      isLinked: widget.layerIsLinkedOf?.call(row.layer.id) ?? false,
       layerRowHeight: _metrics.layerRowHeight,
       layerControlsWidth: _metrics.layerControlsWidth,
       sectionLabelGutterWidth: _metrics.sectionLabelGutterWidth,
@@ -894,6 +901,7 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
         a.attachGroupExpanded == b.attachGroupExpanded &&
         a.fxEnabled == b.fxEnabled &&
         a.onionSkinEnabled == b.onionSkinEnabled &&
+        a.isLinked == b.isLinked &&
         a.layerRowHeight == b.layerRowHeight &&
         a.layerControlsWidth == b.layerControlsWidth &&
         a.sectionLabelGutterWidth == b.sectionLabelGutterWidth &&
@@ -1016,6 +1024,7 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
       ),
       onToggleAttachGroup: widget.onToggleAttachGroup,
       opacityDragPreview: widget.opacityDragPreview,
+      isLinked: widget.layerIsLinkedOf?.call(row.layer.id) ?? false,
     );
   }
 

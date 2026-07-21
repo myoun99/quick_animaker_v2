@@ -35,6 +35,7 @@ class TimelineLayerControlsRow extends StatelessWidget {
     this.onionSkinEnabled = false,
     this.onToggleLayerOnionSkin,
     this.opacityDragPreview,
+    this.isLinked = false,
   });
 
   final Layer layer;
@@ -90,6 +91,10 @@ class TimelineLayerControlsRow extends StatelessWidget {
   /// follows live instead of waiting for the release commit.
   final ValueListenable<({Set<LayerId> layerIds, double opacity})?>?
   opacityDragPreview;
+
+  /// Link badge (L4): this layer's pictures are shared with a link group
+  /// ("이름이 같으면 같은 그림") — a small chain icon after the name.
+  final bool isLinked;
 
   @override
   Widget build(BuildContext context) {
@@ -251,6 +256,21 @@ class TimelineLayerControlsRow extends StatelessWidget {
                             overflow: TextOverflow.ellipsis,
                           ),
                         ),
+                        if (isLinked)
+                          Padding(
+                            padding: const EdgeInsets.only(left: 4),
+                            child: Tooltip(
+                              message: 'Linked layer — pictures are shared',
+                              child: Icon(
+                                Icons.link,
+                                key: ValueKey<String>(
+                                  'timeline-layer-link-badge-${layer.id}',
+                                ),
+                                size: 14,
+                                color: colorScheme.primary,
+                              ),
+                            ),
+                          ),
                         // The attach-group twirl (UI-R20 #9), shown only
                         // when the group exists — same chevron pair as the
                         // lane twirl.

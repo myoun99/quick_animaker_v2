@@ -75,6 +75,103 @@ void main() {
     );
   });
 
+  testWidgets('Layer: Link Duplicate creates a linked copy (badge shows), '
+      'Unlink arms only then and forks it back out', (tester) async {
+    await pumpHome(tester);
+
+    await openMenu(tester, 'menu-layer');
+    expect(
+      tester
+          .widget<MenuItemButton>(
+            find.byKey(const ValueKey<String>('menu-layer-link-duplicate')),
+          )
+          .onPressed,
+      isNotNull,
+    );
+    expect(
+      tester
+          .widget<MenuItemButton>(
+            find.byKey(const ValueKey<String>('menu-layer-unlink')),
+          )
+          .onPressed,
+      isNull,
+      reason: 'nothing is linked yet',
+    );
+
+    await tester.tap(
+      find.byKey(const ValueKey<String>('menu-layer-link-duplicate')),
+    );
+    await tester.pumpAndSettle();
+
+    // Both members carry the link badge now.
+    expect(
+      find.byWidgetPredicate(
+        (widget) =>
+            widget is Icon &&
+            widget.key != null &&
+            '${widget.key}'.contains('timeline-layer-link-badge'),
+      ),
+      findsNWidgets(2),
+    );
+
+    await openMenu(tester, 'menu-layer');
+    await tester.tap(find.byKey(const ValueKey<String>('menu-layer-unlink')));
+    await tester.pumpAndSettle();
+    expect(
+      find.byWidgetPredicate(
+        (widget) =>
+            widget is Icon &&
+            widget.key != null &&
+            '${widget.key}'.contains('timeline-layer-link-badge'),
+      ),
+      findsNothing,
+      reason: 'unlinking dissolves the badge on every member',
+    );
+  });
+
+  testWidgets('Cut: Create Linked Cut adds a linked cut; Convert arms only '
+      'with another cut available', (tester) async {
+    final repository = await pumpHome(tester);
+    final track = repository.requireProject().tracks.first;
+    final cutsBefore = track.cuts.length;
+
+    await openMenu(tester, 'menu-cut');
+    expect(
+      tester
+          .widget<MenuItemButton>(
+            find.byKey(const ValueKey<String>('menu-cut-convert-linked')),
+          )
+          .onPressed,
+      isNull,
+      reason: 'a single-cut project has no conversion target',
+    );
+
+    await tester.tap(
+      find.byKey(const ValueKey<String>('menu-cut-create-linked')),
+    );
+    await tester.pumpAndSettle();
+    expect(
+      repository.requireProject().tracks.first.cuts.length,
+      cutsBefore + 1,
+    );
+    expect(
+      repository.requireProject().linkRegistry.isEmpty,
+      isFalse,
+      reason: 'the linked cut registered link groups',
+    );
+
+    await openMenu(tester, 'menu-cut');
+    expect(
+      tester
+          .widget<MenuItemButton>(
+            find.byKey(const ValueKey<String>('menu-cut-convert-linked')),
+          )
+          .onPressed,
+      isNotNull,
+      reason: 'a second cut exists now',
+    );
+  });
+
   testWidgets('Edit: undo enablement tracks history and the item undoes', (
     tester,
   ) async {
