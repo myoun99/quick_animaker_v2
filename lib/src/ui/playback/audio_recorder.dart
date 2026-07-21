@@ -158,3 +158,17 @@ class AudioRecorder {
     }
   }
 }
+
+/// Why a record press did (or did not) arm (REC1-B) — the button phrases
+/// each refusal differently, so a bool is not enough.
+enum VoiceRecordStartResult {
+  started,
+  alreadyRecording,
+
+  /// The active layer is not a track SE lane: recording has no armed
+  /// destination (the DAW armed-track contract).
+  needsSeLane,
+
+  /// The device would not open (no binary, no microphone, no OS grant).
+  deviceFailed,
+}

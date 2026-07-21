@@ -44,6 +44,7 @@ abstract final class EditorActionIds {
   static const drawingPrevious = 'drawing-previous';
   static const drawingNext = 'drawing-next';
   static const playbackToggle = 'playback-toggle';
+  static const voiceRecordToggle = 'voice-record-toggle';
   static const undo = 'edit-undo';
   static const redo = 'edit-redo';
   static const toolBrush = 'tool-brush';
@@ -123,6 +124,16 @@ final List<EditorActionDefinition> editorActionDefinitions = [
     // user picked), beside the 2-tap undo / 3-tap redo family.
     defaultTouchGesture: 'fourFingerTap',
     defaultActivators: [SingleActivator(LogicalKeyboardKey.space)],
+  ),
+  const EditorActionDefinition(
+    id: EditorActionIds.voiceRecordToggle,
+    label: 'Record Voice (start/stop)',
+    category: 'Playback',
+    // REC1-B: Ctrl+R, REAPER's record key — plain R stays the drawing-app
+    // canvas-rotate convention this app already follows.
+    defaultActivators: [
+      SingleActivator(LogicalKeyboardKey.keyR, control: true),
+    ],
   ),
   const EditorActionDefinition(
     id: EditorActionIds.undo,

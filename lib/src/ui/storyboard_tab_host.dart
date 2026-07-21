@@ -97,6 +97,20 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
     );
   }
 
+  /// "To start" (REC1-B): the first cut's first frame — where an
+  /// all-cuts roll begins.
+  void _seekPlayheadToTrackStart() {
+    final layout = _activeTrackLayout();
+    if (layout.isEmpty) {
+      return;
+    }
+    final firstCutId = layout.first.cutId;
+    if (_session.activeCutOrNull?.id != firstCutId) {
+      _session.selectCut(firstCutId);
+    }
+    _session.selectFrameIndex(0);
+  }
+
   @override
   void initState() {
     super.initState();
@@ -300,6 +314,7 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
                     // timeline's transport does.
                     playbackStartFrame: () =>
                         storyboardPlayheadFrame(_session) ?? 0,
+                    onSkipToStart: _seekPlayheadToTrackStart,
                   ),
                   const SizedBox(width: 8),
                   CutCommandGroup(session: _session),

@@ -3,19 +3,20 @@ import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:quick_animaker_v2/src/controllers/default_project_helpers.dart';
-import 'package:quick_animaker_v2/src/models/layer_kind.dart';
+import 'package:quick_animaker_v2/src/models/timeline_coverage.dart'
+    show drawingBlocks;
 import 'package:quick_animaker_v2/src/services/audio/audio_conform_pipeline.dart';
 import 'package:quick_animaker_v2/src/services/audio/conform_wav_codec.dart';
-import 'package:quick_animaker_v2/src/services/cut_frame_composite_plan.dart'
-    show resolveExposedFrameAt;
 import 'package:quick_animaker_v2/src/ui/audio/audio_conform_store.dart';
 import 'package:quick_animaker_v2/src/ui/editor_session_manager.dart';
 import 'package:quick_animaker_v2/src/ui/playback/audio_recorder.dart';
+import 'package:quick_animaker_v2/src/ui/playback/canvas_playback_controller.dart';
 
-/// The landing half of guide-voice recording (AUDIO-PRO R5): a finished
-/// take becomes a WAV in Media/, a pool entry, a carrier SE block at the
-/// anchor frame and a linked clip — driven here with made recordings, the
-/// microphone half being the real-DLL suite's job.
+/// The landing half of recording (AUDIO-PRO R5 → REC1-B rolling record):
+/// a finished take becomes a WAV named `<lane>_T<n>`, a pool entry and a
+/// tape-style landing on the ARMED track SE lane — pool + lane swap in
+/// ONE undo. Driven with made recordings; the microphone half is the
+/// real-DLL suite's job.
 void main() {
   late Directory directory;
 
@@ -56,64 +57,61 @@ void main() {
     );
   }
 
-  test('a take lands: WAV in Media/, pool entry, SE block, linked clip',
-      () async {
+  test('REC1-B: a take lands on the given lane — <lane>_T01 WAV, pool '
+      'entry, block at the anchor, ONE undo strips it all', () async {
     final manager = session();
     await manager.saveProjectToFile('${directory.path}/scene.qap');
-    final cutId = manager.requireActiveCut.id;
-    expect(manager.activeLayer?.kind, isNot(LayerKind.se),
-        reason: 'the default active row is not SE — the placement must '
-            'create its own carrier row');
+    final lane = manager.activeTrack.seLayers.first;
 
     final placed = manager.placeVoiceRecording(
       takeOfSeconds(1.0),
-      cutId: cutId,
-      frameIndex: 0,
+      laneId: lane.id,
+      anchorFrame: 0,
     );
     expect(placed, isTrue);
 
-    final carrier = manager.activeLayer!;
-    expect(carrier.kind, LayerKind.se);
-    expect(carrier.audioClips, hasLength(1));
-    final clip = carrier.audioClips.single;
-    expect(clip.filePath, contains('.assets/Media/recording-'));
-    expect(clip.filePath, endsWith('.wav'));
+    final landed = manager.activeTrack.seLayers.first;
+    final clip = landed.audioClips.single;
+    expect(clip.filePath, contains('.assets/Media/'));
+    expect(clip.filePath, endsWith('${lane.name}_T01.wav'));
     expect(File(clip.filePath).existsSync(), isTrue);
     expect(
       manager.mediaAssets.map((asset) => asset.path),
       contains(clip.filePath),
     );
-
-    // The WAV round-trips as a project-readable conform container with
-    // the take inside, exactly as long as the recording.
-    final decoded = decodeConformWav(
-      File(clip.filePath).readAsBytesSync(),
-    );
+    // 1 s @ 24 fps = a 24-frame block at the anchor carrying the clip.
+    final block = drawingBlocks(landed.timeline).single;
+    expect(block.startIndex, 0);
+    expect(block.length, 24);
+    expect(block.frameId, clip.frameId);
+    // The WAV round-trips exactly as long as the recording.
+    final decoded = decodeConformWav(File(clip.filePath).readAsBytesSync());
     expect(decoded.sampleRate, 48000);
-    expect(decoded.channels, 1);
     expect(decoded.length, 48000);
 
-    // The carrier block: at the anchor, covering the take (1 s @ 24 fps
-    // = 24 frames, clamped into the cut's room).
-    final frame = resolveExposedFrameAt(carrier, 0);
-    expect(frame, isNotNull);
-    expect(frame!.id, clip.frameId);
+    // ONE undo: pool and lane both back to the clean slate.
+    manager.undo();
+    final reverted = manager.activeTrack.seLayers.first;
+    expect(reverted.audioClips, isEmpty);
+    expect(drawingBlocks(reverted.timeline), isEmpty);
+    expect(manager.mediaAssets, isEmpty);
     manager.dispose();
   });
 
-  test('recording along to playback trims the output latency off the head',
+  test('REC1-B: recording along trims the monitoring latency off the head',
       () async {
     final manager = session();
     await manager.saveProjectToFile('${directory.path}/scene.qap');
+    final lane = manager.activeTrack.seLayers.first;
 
     final placed = manager.placeVoiceRecording(
       takeOfSeconds(1.0),
-      cutId: manager.requireActiveCut.id,
-      frameIndex: 0,
+      laneId: lane.id,
+      anchorFrame: 0,
       headTrimSamples: 12000, // 250 ms of monitoring delay
     );
     expect(placed, isTrue);
-    final clip = manager.activeLayer!.audioClips.single;
+    final clip = manager.activeTrack.seLayers.first.audioClips.single;
     final decoded = decodeConformWav(File(clip.filePath).readAsBytesSync());
     expect(decoded.length, 48000 - 12000,
         reason: 'the performer spoke against delayed monitoring; the take '
@@ -121,14 +119,15 @@ void main() {
     manager.dispose();
   });
 
-  test('a take shorter than the latency it rode on places nothing', () async {
+  test('REC1-B: a take shorter than the latency it rode on places nothing',
+      () async {
     final manager = session();
     await manager.saveProjectToFile('${directory.path}/scene.qap');
     expect(
       manager.placeVoiceRecording(
         takeOfSeconds(0.1),
-        cutId: manager.requireActiveCut.id,
-        frameIndex: 0,
+        laneId: manager.activeTrack.seLayers.first.id,
+        anchorFrame: 0,
         headTrimSamples: 48000,
       ),
       isFalse,
@@ -136,85 +135,180 @@ void main() {
     manager.dispose();
   });
 
-  test('an occupied anchor cell gets a NEW row — takes never overwrite',
-      () async {
+  test('REC1-B: a second take over the first TRIMS it, tape-style — same '
+      'lane, no new row, both files kept', () async {
     final manager = session();
     await manager.saveProjectToFile('${directory.path}/scene.qap');
-    final cutId = manager.requireActiveCut.id;
+    final laneId = manager.activeTrack.seLayers.first.id;
+    final rowsBefore = manager.activeTrack.seLayers.length;
 
     expect(
-      manager.placeVoiceRecording(takeOfSeconds(1.0), cutId: cutId,
-          frameIndex: 0),
+      manager.placeVoiceRecording(
+        takeOfSeconds(1.0), // 24 frames
+        laneId: laneId,
+        anchorFrame: 0,
+      ),
       isTrue,
     );
-    final firstCarrier = manager.activeLayer!;
     expect(
-      manager.placeVoiceRecording(takeOfSeconds(0.5), cutId: cutId,
-          frameIndex: 0),
+      manager.placeVoiceRecording(
+        takeOfSeconds(0.5), // 12 frames over the first take's tail
+        laneId: laneId,
+        anchorFrame: 12,
+      ),
       isTrue,
     );
-    final secondCarrier = manager.activeLayer!;
-    expect(secondCarrier.id, isNot(firstCarrier.id),
-        reason: 'the first take covers frame 0 on its row; the second '
-            'must land on a row of its own');
-    expect(secondCarrier.audioClips, hasLength(1));
+
+    expect(manager.activeTrack.seLayers.length, rowsBefore);
+    final lane = manager.activeTrack.seLayers.first;
+    final blocks = drawingBlocks(lane.timeline);
+    expect(blocks, hasLength(2));
+    expect(blocks[0].startIndex, 0);
+    expect(blocks[0].length, 12, reason: 'the first take lost its tail');
+    expect(blocks[1].startIndex, 12);
+    expect(blocks[1].length, 12);
+    // Take numbering advanced; the first WAV stays in the pool.
+    expect(
+      manager.mediaAssets.map((asset) => asset.path).join(' '),
+      allOf(contains('_T01.wav'), contains('_T02.wav')),
+    );
     manager.dispose();
   });
 
-  test('an unsaved project still records — the WAV degrades to temp, like '
-      'an import', () {
+  test('REC1-B: the punch window clamps the take — block AND file', () async {
+    final manager = session();
+    await manager.saveProjectToFile('${directory.path}/scene.qap');
+    final laneId = manager.activeTrack.seLayers.first.id;
+
+    expect(
+      manager.placeVoiceRecording(
+        takeOfSeconds(1.0), // would cover 24 frames
+        laneId: laneId,
+        anchorFrame: 0,
+        punchEndFrame: 6,
+      ),
+      isTrue,
+    );
+    final lane = manager.activeTrack.seLayers.first;
+    expect(drawingBlocks(lane.timeline).single.length, 6);
+    final clip = lane.audioClips.single;
+    final decoded = decodeConformWav(File(clip.filePath).readAsBytesSync());
+    // 6 frames @ 24 fps @ 48 kHz = 12000 samples: capture past the
+    // punch-out was context, not take.
+    expect(decoded.length, 12000);
+    manager.dispose();
+  });
+
+  test('REC1-B: an unsaved project still records — the WAV degrades to '
+      'temp, like an import', () {
     final manager = session();
     final placed = manager.placeVoiceRecording(
       takeOfSeconds(0.5),
-      cutId: manager.requireActiveCut.id,
-      frameIndex: 0,
+      laneId: manager.activeTrack.seLayers.first.id,
+      anchorFrame: 0,
     );
     expect(placed, isTrue);
-    final clip = manager.activeLayer!.audioClips.single;
+    final clip = manager.activeTrack.seLayers.first.audioClips.single;
     expect(File(clip.filePath).existsSync(), isTrue);
     expect(clip.filePath, isNot(contains('.assets/Media/')));
     manager.dispose();
   });
 
-  test('a vanished cut refuses the take rather than landing it anywhere',
-      () async {
+  test('REC1-B: a null lane refuses the take rather than landing it '
+      'anywhere', () async {
     final manager = session();
     await manager.saveProjectToFile('${directory.path}/scene.qap');
     expect(
       manager.placeVoiceRecording(
         takeOfSeconds(0.5),
-        cutId: null,
-        frameIndex: 0,
+        laneId: null,
+        anchorFrame: 0,
       ),
       isFalse,
     );
     manager.dispose();
   });
 
-  test('placement is undoable back to a clean slate', () async {
+  test('REC1-B: start refuses without an armed SE lane; an armed start '
+      'ROLLS the transport, mutes the lane, and stop lands the take', () {
     final manager = session();
-    await manager.saveProjectToFile('${directory.path}/scene.qap');
-    final cutId = manager.requireActiveCut.id;
-    final beforeCount = manager.activeTrack.seLayers.length;
-
+    // The default active row is a drawing layer: no armed destination.
     expect(
-      manager.placeVoiceRecording(takeOfSeconds(0.5), cutId: cutId,
-          frameIndex: 0),
-      isTrue,
+      manager.startVoiceRecording(),
+      VoiceRecordStartResult.needsSeLane,
     );
-    // Placement is a short command run (row, block, pool, link) — undoing
-    // through it must strip the take back out completely.
-    var guard = 0;
-    while (manager.canUndo && guard < 10) {
-      manager.historyManager.undo();
-      guard += 1;
-    }
-    final seRowsAfter = manager.activeTrack.seLayers;
-    expect(seRowsAfter.length, beforeCount);
+
+    final laneId = manager.activeTrack.seLayers.first.id;
+    manager.selectLayer(laneId);
+    manager.debugVoiceRecorderFactory = () => _FakeRecorder(
+      takeOfSeconds(0.5),
+    );
+    expect(manager.startVoiceRecording(), VoiceRecordStartResult.started);
+    // Record = play + capture: the transport rolls the whole track.
+    expect(manager.playback.isPlaying, isTrue);
+    expect(manager.playback.scope, PlaybackScope.allCuts);
+    // The armed lane yields to the microphone (DAW armed-track rule).
+    expect(manager.recordingMutedLayerIds, {laneId});
+
+    final message = manager.stopVoiceRecordingAndPlace();
+    expect(message, isNull);
+    expect(manager.playback.isActive, isFalse,
+        reason: 'the roll this take started stops with it');
+    expect(manager.recordingMutedLayerIds, isEmpty);
+    final lane = manager.activeTrack.seLayers.first;
+    expect(lane.audioClips, hasLength(1));
+    expect(drawingBlocks(lane.timeline).single.length, 12);
+    manager.dispose();
+  });
+
+  test('REC1-B: transport stop mid-take finishes the take through the '
+      'notice channel', () {
+    final manager = session();
+    final laneId = manager.activeTrack.seLayers.first.id;
+    manager.selectLayer(laneId);
+    manager.debugVoiceRecorderFactory = () => _FakeRecorder(
+      takeOfSeconds(0.5),
+    );
+    expect(manager.startVoiceRecording(), VoiceRecordStartResult.started);
+
+    manager.playback.stop();
+    expect(manager.isVoiceRecording.value, isFalse);
     expect(
-      seRowsAfter.every((layer) => layer.audioClips.isEmpty),
-      isTrue,
+      manager.activeTrack.seLayers.first.audioClips,
+      hasLength(1),
+      reason: 'the stop path places the take, not just abandons it',
     );
     manager.dispose();
   });
+}
+
+/// A microphone stand-in: start always succeeds at the take's rate and
+/// stop hands the prepared take back once.
+class _FakeRecorder extends AudioRecorder {
+  _FakeRecorder(this.recording);
+
+  final AudioRecording recording;
+  bool _started = false;
+
+  @override
+  bool get isRecording => _started;
+
+  @override
+  int start({
+    required int sampleRate,
+    bool useNullBackend = false,
+    int deviceIndex = -1,
+  }) {
+    _started = true;
+    return recording.sampleRate;
+  }
+
+  @override
+  AudioRecording? stop() {
+    if (!_started) {
+      return null;
+    }
+    _started = false;
+    return recording;
+  }
 }

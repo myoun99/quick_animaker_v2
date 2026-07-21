@@ -35,6 +35,7 @@ class AppStrings {
     required this.recordVoiceStopTooltip,
     required this.recordMicOpenFailed,
     required this.recordMicPermissionDenied,
+    required this.recordSelectSeLane,
     required this.recordNothingRecording,
     required this.recordTakeEmpty,
     required this.recordPlacementFailed,
@@ -113,6 +114,9 @@ class AppStrings {
   final String recordVoiceStopTooltip;
   final String recordMicOpenFailed;
   final String recordMicPermissionDenied;
+
+  /// REC1-B: the armed-track refusal — recording needs an SE lane active.
+  final String recordSelectSeLane;
   final String recordNothingRecording;
   final String recordTakeEmpty;
   final String recordPlacementFailed;
@@ -195,6 +199,8 @@ class AppStrings {
         'Could not open the microphone — check Preferences ▸ Audio '
         'and the OS microphone permission.',
     recordMicPermissionDenied: 'Microphone permission was not granted.',
+    recordSelectSeLane:
+        'Recording lands on the selected SE track — select one first.',
     recordNothingRecording: 'Nothing was recording.',
     recordTakeEmpty: 'The take was empty — nothing to place.',
     recordPlacementFailed: 'The recording could not be placed.',
@@ -275,6 +281,8 @@ class AppStrings {
         'マイクを開けませんでした — 環境設定▸オーディオとOSのマイク権限を'
         '確認してください。',
     recordMicPermissionDenied: 'マイクの権限が許可されませんでした。',
+    recordSelectSeLane: '録音は選択中のSEトラックに配置されます — '
+        '先にSEトラックを選択してください。',
     recordNothingRecording: '録音中ではありません。',
     recordTakeEmpty: 'テイクが空でした — 配置するものがありません。',
     recordPlacementFailed: '録音を配置できませんでした。',
@@ -353,6 +361,8 @@ class AppStrings {
         '마이크를 열 수 없습니다 — 환경설정▸오디오와 OS 마이크 권한을 '
         '확인하세요.',
     recordMicPermissionDenied: '마이크 권한이 허용되지 않았습니다.',
+    recordSelectSeLane:
+        '녹음은 선택된 SE 트랙에 배치됩니다 — 먼저 SE 트랙을 선택하세요.',
     recordNothingRecording: '녹음 중이 아닙니다.',
     recordTakeEmpty: '테이크가 비어 있어 배치할 것이 없습니다.',
     recordPlacementFailed: '녹음을 배치하지 못했습니다.',
@@ -435,6 +445,9 @@ class AppStrings {
         'Impossible d\'ouvrir le micro — vérifiez Préférences ▸ Audio '
         'et l\'autorisation micro du système.',
     recordMicPermissionDenied: 'L\'autorisation micro a été refusée.',
+    recordSelectSeLane:
+        'L\'enregistrement se place sur la piste SE sélectionnée — '
+        'sélectionnez-en une d\'abord.',
     recordNothingRecording: 'Aucun enregistrement en cours.',
     recordTakeEmpty: 'La prise était vide — rien à placer.',
     recordPlacementFailed: 'La prise n\'a pas pu être placée.',
@@ -517,6 +530,7 @@ class AppStrings {
     recordMicOpenFailed:
         '无法打开麦克风 — 请检查首选项▸音频以及系统麦克风权限。',
     recordMicPermissionDenied: '麦克风权限未被授予。',
+    recordSelectSeLane: '录音将放置到所选SE轨道 — 请先选择一个SE轨道。',
     recordNothingRecording: '当前没有在录音。',
     recordTakeEmpty: '录音为空 — 没有可放置的内容。',
     recordPlacementFailed: '录音未能放置。',

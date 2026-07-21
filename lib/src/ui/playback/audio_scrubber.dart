@@ -32,12 +32,17 @@ class AudioScrubber {
     required this.conformStore,
     QaAudioDevice? Function()? resolveDevice,
     this.resolveSoloedLayerIds,
+    this.resolveRecordingMutedLayerIds,
     this.resolveOutputDeviceName,
   }) : _resolveDevice = resolveDevice ?? (() => QaAudioDevice.instance);
 
   /// The session's solo set — a scrub monitors exactly what playback
   /// would.
   final Set<LayerId> Function()? resolveSoloedLayerIds;
+
+  /// The armed lane while a take rolls (REC1-B) — a scrub mid-take
+  /// monitors what playback does: everything but the armed lane.
+  final Set<LayerId> Function()? resolveRecordingMutedLayerIds;
 
   /// The chosen output device (AUDIO-PRO R4) — a scrub plays through the
   /// same speaker playback would. Only consulted when the device is not
@@ -124,6 +129,7 @@ class AudioScrubber {
       rate: _rate,
       durationSecondsFor: conformStore.durationSecondsFor,
       soloedLayerIds: resolveSoloedLayerIds?.call(),
+      mutedLayerIds: resolveRecordingMutedLayerIds?.call(),
     );
     if (schedule.isEmpty) {
       // A silent cut: do not even open a device for it.
