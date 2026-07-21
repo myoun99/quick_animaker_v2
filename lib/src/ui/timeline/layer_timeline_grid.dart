@@ -48,6 +48,7 @@ import 'stylus_glide_stop.dart';
 import 'timeline_zoom_anchor_policy.dart';
 import 'timeline_folder_controls_row.dart';
 import 'timeline_layer_controls_row.dart';
+import 'transform_lane_policy.dart' show folderTransformPropertyLanes;
 import 'timeline_row_filter.dart';
 import 'timeline_section_policy.dart';
 import 'timeline_section_runs.dart';
@@ -99,6 +100,8 @@ class LayerTimelineGrid extends StatefulWidget {
     this.onToggleFolderVisibility,
     this.onRenameFolder,
     this.onDissolveFolder,
+    this.expandedFolderLaneIds = const {},
+    this.onToggleFolderLanes,
     this.layerOnionSkinEnabledOf,
     this.onToggleLayerOnionSkin,
     this.displayedOnionSkinOn = false,
@@ -260,6 +263,10 @@ class LayerTimelineGrid extends StatefulWidget {
   final ValueChanged<FolderId>? onToggleFolderVisibility;
   final ValueChanged<FolderId>? onRenameFolder;
   final ValueChanged<FolderId>? onDissolveFolder;
+
+  /// Folder FX lane twirl state + toggle (L5c); null hides the twirl.
+  final Set<FolderId> expandedFolderLaneIds;
+  final ValueChanged<FolderId>? onToggleFolderLanes;
 
   /// Per-layer onion skin (UI-R17 #5): the row toggles + the legend cell's
   /// engaged state. Null hides the onion column entirely.
@@ -1033,6 +1040,8 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
         onToggleVisibility: widget.onToggleFolderVisibility,
         onRename: widget.onRenameFolder,
         onDissolve: widget.onDissolveFolder,
+        lanesExpanded: widget.expandedFolderLaneIds.contains(row.folder!.id),
+        onToggleLanes: widget.onToggleFolderLanes,
       );
     }
     if (row.isLane) {
@@ -1135,6 +1144,9 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
       expandedLayerIds: widget.expandedLaneLayerIds,
       lanesForLayer: _lanesFor,
       folders: widget.folders,
+      expandedFolderLaneIds: widget.expandedFolderLaneIds,
+      lanesForFolder: (folder) =>
+          folderTransformPropertyLanes(folder.id, folder.transformTrack),
       hiddenSections: widget.hiddenSections,
       rowFilter: widget.rowFilter,
       collapsedAttachBaseIds: widget.collapsedAttachBaseIds,

@@ -18,6 +18,8 @@ class TimelineFolderControlsRow extends StatelessWidget {
     this.onToggleVisibility,
     this.onRename,
     this.onDissolve,
+    this.lanesExpanded = false,
+    this.onToggleLanes,
   });
 
   final LayerFolder folder;
@@ -27,6 +29,10 @@ class TimelineFolderControlsRow extends StatelessWidget {
   final ValueChanged<FolderId>? onToggleVisibility;
   final ValueChanged<FolderId>? onRename;
   final ValueChanged<FolderId>? onDissolve;
+
+  /// The folder FX lane twirl (L5c) — null hides the button.
+  final bool lanesExpanded;
+  final ValueChanged<FolderId>? onToggleLanes;
 
   Future<void> _showContextMenu(
     BuildContext context,
@@ -122,6 +128,26 @@ class TimelineFolderControlsRow extends StatelessWidget {
                 style: TextStyle(color: colorScheme.onSurfaceVariant),
               ),
             ),
+            // The folder FX lane twirl (L5c): the fx glyph opens the
+            // folder's own Transform lanes ("폴더째 배치" — the A-cel
+            // instancing story's last step).
+            if (onToggleLanes != null)
+              InkWell(
+                key: ValueKey<String>('timeline-folder-lanes-${folder.id}'),
+                onTap: () => onToggleLanes!(folder.id),
+                customBorder: const CircleBorder(),
+                child: SizedBox(
+                  width: 22,
+                  height: 24,
+                  child: Icon(
+                    Icons.animation,
+                    size: 14,
+                    color: lanesExpanded
+                        ? colorScheme.primary
+                        : colorScheme.outline.withValues(alpha: 0.6),
+                  ),
+                ),
+              ),
             if (onToggleVisibility != null)
               SizedBox(
                 width: 26,

@@ -214,6 +214,8 @@ List<TimelineDisplayRow> buildTimelineDisplayRows({
   required Set<LayerId> expandedLayerIds,
   required List<PropertyLaneRow> Function(Layer layer) lanesForLayer,
   List<LayerFolder> folders = const [],
+  Set<FolderId> expandedFolderLaneIds = const {},
+  List<PropertyLaneRow> Function(LayerFolder folder)? lanesForFolder,
   Set<TimelineSection> hiddenSections = const {},
   TimelineRowFilter rowFilter = TimelineRowFilter.none,
   Set<LayerId> collapsedAttachBaseIds = const {},
@@ -265,6 +267,14 @@ List<TimelineDisplayRow> buildTimelineDisplayRows({
             ]),
           ),
         );
+        // Folder FX lanes (L5c) twirl under the header — independent of
+        // the member collapse (a collapsed folder still places as one).
+        if (lanesForFolder != null &&
+            expandedFolderLaneIds.contains(folder.id)) {
+          for (final lane in lanesForFolder(folder)) {
+            rows.add(TimelineDisplayRow.lane(layer, lane, layerIndex: index));
+          }
+        }
       }
     }
     if (folders.subtreeCollapsed(layer.folderId) &&

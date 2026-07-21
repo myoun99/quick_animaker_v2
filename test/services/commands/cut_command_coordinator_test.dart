@@ -9,7 +9,9 @@ import 'package:quick_animaker_v2/src/models/tile_coord.dart';
 import 'package:quick_animaker_v2/src/services/brush_frame_store.dart';
 import 'package:quick_animaker_v2/src/services/commands/update_layer_timeline_command.dart';
 import 'package:quick_animaker_v2/src/models/camera_instruction.dart';
+import 'package:quick_animaker_v2/src/models/canvas_point.dart';
 import 'package:quick_animaker_v2/src/models/canvas_size.dart';
+import 'package:quick_animaker_v2/src/models/transform_track.dart';
 import 'package:quick_animaker_v2/src/models/cut.dart';
 import 'package:quick_animaker_v2/src/models/cut_id.dart';
 import 'package:quick_animaker_v2/src/models/cut_metadata.dart';
@@ -908,6 +910,56 @@ void main() {
         expect(origin().folders.single.name, 'Cel A');
         expect(linked().folders.single.name, 'Cel A');
         expect(linkedBase().folderId, linked().folders.single.id);
+      });
+
+      test('updateFolderTransformTrack replaces the folder FX track in one '
+          'undo (per-use — the 겸용 counterpart keeps its own)', () {
+        final fixture = _fixture(
+          _project(
+            tracks: [
+              _track(id: 'track-1', name: 'V', cuts: [linkFixtureCut()]),
+            ],
+          ),
+          activeCutId: const CutId('cut-1'),
+        );
+        fixture.coordinator.createLinkedCut(
+          sourceCutId: const CutId('cut-1'),
+          name: 'linked',
+        );
+        final linkedCutId = fixture
+            .cutsFor(const TrackId('track-1'))
+            .firstWhere((cut) => cut.name == 'linked')
+            .id;
+        final folderId = fixture.coordinator.createFolderFromLayer(
+          cutId: const CutId('cut-1'),
+          layerId: const LayerId('base'),
+        )!;
+
+        final track = TransformTrack(
+          keyframes: {
+            0: TransformPose(center: CanvasPoint(x: 5, y: 5), zoom: 2),
+          },
+        );
+        fixture.coordinator.updateFolderTransformTrack(
+          cutId: const CutId('cut-1'),
+          folderId: folderId,
+          transformTrack: track,
+        );
+
+        LayerFolder folderOf(CutId cutId) =>
+            _cutById(fixture.project, cutId).folders.single;
+        expect(folderOf(const CutId('cut-1')).transformTrack, track);
+        expect(
+          folderOf(linkedCutId).transformTrack.isNotEmpty,
+          isFalse,
+          reason: 'FX lanes are per-use ("레인만 각자") — never mirrored',
+        );
+
+        fixture.historyManager.undo();
+        expect(
+          folderOf(const CutId('cut-1')).transformTrack.isNotEmpty,
+          isFalse,
+        );
       });
 
       test('deleting the CANONICAL cut promotes the survivor: registry '

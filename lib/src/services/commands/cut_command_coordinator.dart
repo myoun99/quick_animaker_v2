@@ -13,6 +13,7 @@ import '../../models/cut_id.dart';
 import '../../models/cut_metadata.dart';
 import '../../models/folder_id.dart';
 import '../../models/frame.dart';
+import '../../models/layer_folder.dart';
 import '../../models/frame_id.dart';
 import '../../models/layer.dart';
 import '../../models/layer_id.dart';
@@ -56,6 +57,7 @@ import 'update_cut_note_command.dart';
 import 'update_cut_transform_command.dart';
 import 'update_cut_fade_target_command.dart';
 import 'update_cut_thumbnail_frame_command.dart';
+import 'update_folder_transform_command.dart';
 import 'update_layer_audio_clips_command.dart';
 import 'update_layer_instructions_command.dart';
 import 'update_layer_kind_command.dart';
@@ -882,6 +884,32 @@ class CutCommandCoordinator {
         repository: repository,
         cutId: cutId,
         layerId: layerId,
+        transformTrack: transformTrack,
+        description: description,
+      ),
+    );
+  }
+
+  /// Replaces a FOLDER's FX transform track (L5c); one undo step, no-op
+  /// when unchanged. Folder FX lanes are per-use — never mirrored.
+  void updateFolderTransformTrack({
+    required CutId cutId,
+    required FolderId folderId,
+    required TransformTrack transformTrack,
+    String description = 'Edit folder transform',
+  }) {
+    final folder = requireCut(
+      repository.requireProject(),
+      cutId,
+    ).folders.byId(folderId);
+    if (folder == null || folder.transformTrack == transformTrack) {
+      return;
+    }
+    historyManager.execute(
+      UpdateFolderTransformCommand(
+        repository: repository,
+        cutId: cutId,
+        folderId: folderId,
         transformTrack: transformTrack,
         description: description,
       ),
