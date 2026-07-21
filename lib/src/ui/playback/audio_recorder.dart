@@ -47,6 +47,11 @@ class AudioRecorder {
 
   final QaAudioDevice? _device;
 
+  /// Live tap (REC1-C): every drained chunk (interleaved float32, the
+  /// device's own channel count) also lands here — the growing-waveform
+  /// preview folds peaks from it. The take itself is unaffected.
+  void Function(Float32List interleaved, int channels)? onChunk;
+
   Timer? _timer;
   Pointer<Float>? _scratch;
   int _scratchFloats = 0;
@@ -109,7 +114,9 @@ class AudioRecorder {
       if (got <= 0) {
         return;
       }
-      _chunks.add(Float32List.fromList(scratch.asTypedList(got)));
+      final chunk = Float32List.fromList(scratch.asTypedList(got));
+      _chunks.add(chunk);
+      onChunk?.call(chunk, _channels);
     }
   }
 

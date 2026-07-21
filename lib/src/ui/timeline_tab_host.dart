@@ -921,6 +921,11 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
       listenable: Listenable.merge([
         ?widget.cameraViewEnabled,
         ?widget.cameraDimOpacity,
+        // Live take preview (REC1-C): the armed SE lane swaps identity at
+        // most once per FRAME while recording — this panel-scoped rebuild
+        // is the notify-free channel (R12-B: ticks never notify the
+        // session).
+        _session.voiceRecordPreviewLane,
       ]),
       builder: (context, _) {
         // Zoom scoping (UI-R6 #4): the toolbar widget is built ONCE per
@@ -988,7 +993,10 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
           onActivateCell: _activateCellEditor,
           instructionDefById: (instructionId) =>
               _session.cameraInstructionSet.defById(instructionId),
-          audioPeaksFor: _session.audioConformStore.peaksFor,
+          // Display resolver: the live take's sentinel path maps to the
+          // growing envelope (REC1-C), everything else to the conform
+          // store's peaks.
+          audioPeaksFor: _session.audioPeaksForDisplay,
           onRemoveAudioClip: _session.removeAudioClipAt,
           // Media-browser drops: link the dragged sound to the block.
           onDropMediaAsset: (layerId, blockStartFrame, path) =>
