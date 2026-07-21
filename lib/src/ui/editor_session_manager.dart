@@ -70,6 +70,7 @@ import 'canvas/layer_pose_paint.dart';
 import 'dev_profile.dart';
 import 'playback/audio_device_transport.dart';
 import 'playback/audio_playback_sync.dart';
+import 'playback/audio_scrubber.dart';
 import 'playback/audio_sync_settings.dart';
 import 'playback/audioplayers_clip_player.dart';
 import 'playback/canvas_playback_controller.dart';
@@ -447,6 +448,21 @@ class EditorSessionManager extends ChangeNotifier {
         ),
   );
 
+  /// Scrubbing the playhead plays each crossed frame's slice of the mix
+  /// (2D): one `play(frame, frame+1)` per crossed frame on the same
+  /// transport playback uses. Stands down silently without a device or
+  /// resident PCM — the scrub stays visual-only, as before.
+  late final AudioScrubber audioScrubber = AudioScrubber(
+    controller: playback,
+    resolveFrameRate: () => projectFrameRate,
+    resolveProject: () => _repository.currentProject,
+    conformStore: audioConformStore,
+    // Widget tests must never open a real OS audio device.
+    resolveDevice: Platform.environment['FLUTTER_TEST'] == 'true'
+        ? () => null
+        : null,
+  );
+
   /// Frame-synced SE audio riding [playback]'s frame signals; clip lengths
   /// come from the conform store (exact sample counts, with the ffmpeg
   /// peaks approximation as its own fallback). Fallback path — stands down
@@ -779,6 +795,7 @@ class EditorSessionManager extends ChangeNotifier {
     playback.globalFrameIndexListenable.removeListener(_followPlaybackCut);
     _historyManager.removeListener(_markProjectDirty);
     audioPlaybackSync.dispose();
+    audioScrubber.dispose();
     audioDeviceTransport.dispose();
     playback.dispose();
     prerenderScheduler.dispose();
@@ -7292,6 +7309,8 @@ class EditorSessionManager extends ChangeNotifier {
     if (frameIndex != _timelineController.currentFrameIndex) {
       _timelineController.selectFrameIndex(frameIndex);
       editingFrameCursor.value = frameIndex;
+      // Each crossed frame plays its slice of the mix (2D audio scrub).
+      audioScrubber.onScrubFrame(frameIndex);
       if (!frameScrubActive.value) {
         frameScrubActive.value = true;
         // One warm per gesture: the preview reads the composite cache, so
@@ -7309,6 +7328,7 @@ class EditorSessionManager extends ChangeNotifier {
   /// A gap-parked release COMMITS the no-cut state (UI-R9 #3): the active
   /// cut deselects and the parking carries the exact position.
   void commitFrameScrub() {
+    audioScrubber.onScrubEnd();
     if (frameScrubActive.value) {
       frameScrubActive.value = false;
     }

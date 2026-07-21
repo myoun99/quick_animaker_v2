@@ -1,7 +1,7 @@
 # The native core's ONE build description, shared by every consumer:
-# the plugin's per-platform build files include this, and the app's
-# Windows runner still reaches it through native/CMakeLists.txt while
-# that migration finishes.
+# the plugin's per-platform build files include this (Windows included —
+# the 2A migration is complete), and CI builds it standalone for the
+# parity suites.
 #
 # Nothing platform-specific lives here except the compiler flags, because
 # qa_engine.c is one portable C99 source by design.
@@ -62,7 +62,14 @@ elseif(UNIX AND NOT ANDROID)
   find_package(Threads REQUIRED)
   target_link_libraries(qa_engine Threads::Threads ${CMAKE_DL_LIBS})
 elseif(ANDROID)
+  # The NDK media stack (AAC decode) resolves via dlopen/dlsym at runtime,
+  # so only OpenSLES (miniaudio) links here.
   target_link_libraries(qa_engine OpenSLES)
+elseif(WIN32)
+  # The OS decoder (AAC/m4a): Media Foundation source reader over an
+  # in-memory stream. shlwapi carries SHCreateMemStream, ole32 the COM
+  # runtime.
+  target_link_libraries(qa_engine mfplat mfreadwrite mfuuid shlwapi ole32)
 endif()
 
 if(MSVC)

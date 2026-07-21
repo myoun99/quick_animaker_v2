@@ -1,4 +1,4 @@
-import 'dart:math';
+﻿import 'dart:math';
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
@@ -28,7 +28,7 @@ import 'package:quick_animaker_v2/src/services/canvas_flood_fill.dart';
 import 'package:quick_animaker_v2/src/ui/canvas/bitmap_tile_image_cache.dart';
 
 /// R18 A-0: the native engine core must be BYTE-IDENTICAL to the Dart
-/// reference implementation — randomized stamps (paint and erase, edge
+/// reference implementation 窶・randomized stamps (paint and erase, edge
 /// alphas, fractional opacities) materialized through both paths and
 /// compared per pixel. Skips (loudly) when no locally built binary is
 /// found; CI/dev machines with the standalone cmake build run it.
@@ -51,7 +51,7 @@ void main() {
   });
 
   // Flattens over the PASTEBOARD rect (strokes clip there now, so tiles
-  // can sit at negative coords) — the byte compare covers off-canvas
+  // can sit at negative coords) 窶・the byte compare covers off-canvas
   // painting too.
   Uint8List snapshot(BitmapSurface surface, CanvasSize canvasSize) {
     final left = canvasSize.pasteboardLeft;
@@ -89,7 +89,7 @@ void main() {
   test('native stamp blend == Dart reference, byte for byte (randomized)', () {
     if (!available) {
       markTestSkipped(
-        'qa_engine.dll not built — run: cmake -S native -B '
+        'qa_engine.dll not built 窶・run: cmake -S packages/qa_native/src -B '
         'build/native_standalone && cmake --build build/native_standalone '
         '--config Release',
       );
@@ -204,7 +204,7 @@ void main() {
       '(randomized, all shape/mask modes)', () {
     if (!available) {
       markTestSkipped(
-        'qa_engine.dll not built — run: cmake -S native -B '
+        'qa_engine.dll not built 窶・run: cmake -S packages/qa_native/src -B '
         'build/native_standalone && cmake --build build/native_standalone '
         '--config Release',
       );
@@ -416,7 +416,7 @@ void main() {
       sequence: sequence,
     );
     // A second native run with the SAME stamp instance rides the stamp
-    // upload cache (A-1.5) — must stay byte-identical.
+    // upload cache (A-1.5) 窶・must stay byte-identical.
     final nativeRepeat = materializeBrushDabSequenceOnBitmapSurface(
       surface: BitmapSurface(canvasSize: canvasSize, tileSize: 32),
       sequence: sequence,
@@ -450,14 +450,14 @@ void main() {
       // Sizes spanning one to many 256px compose tiles.
       final width = 200 + random.nextInt(500);
       final height = 150 + random.nextInt(400);
-      // RGBX (R22-D): X stays 0 everywhere — the SIMD compare contract.
+      // RGBX (R22-D): X stays 0 everywhere 窶・the SIMD compare contract.
       final source = Uint8List(width * height * 4);
       for (var i = 0; i < source.length; i += 4) {
         source[i] = 200;
         source[i + 1] = 200;
         source[i + 2] = 200;
       }
-      // Blobby content: random rectangles of random colors — tolerance
+      // Blobby content: random rectangles of random colors 窶・tolerance
       // then forms real regions with edges crossing tile boundaries.
       for (var blob = 0; blob < 30; blob += 1) {
         final r = random.nextInt(256);
@@ -499,7 +499,7 @@ void main() {
       QaNativeEngine.debugForceDartFallback = false;
 
       // Native: a LAZY composer copies tile spans from the source into
-      // the native rgb view on demand — the real frontier-step path.
+      // the native rgb view on demand 窶・the real frontier-step path.
       final handles = engine.acquireFloodRaster(
         width: width,
         height: height,

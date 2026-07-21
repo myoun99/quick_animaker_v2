@@ -1,4 +1,4 @@
-import 'dart:math';
+﻿import 'dart:math';
 
 import 'package:flutter_test/flutter_test.dart';
 
@@ -12,7 +12,7 @@ import 'package:quick_animaker_v2/src/services/brush_live_stroke_rasterizer.dart
 import 'package:quick_animaker_v2/src/services/brush_tip_stamp_cache.dart';
 
 /// R21: the live stroke rasterizer's native path (the SAME C kernel the
-/// commit uses, srcOver-only) must be byte-identical to the Dart loop —
+/// commit uses, srcOver-only) must be byte-identical to the Dart loop 窶・
 /// randomized dabs, resolved through the tip-stamp cache exactly like
 /// the real input funnel. Skips loudly without the locally built DLL.
 void main() {
@@ -31,7 +31,7 @@ void main() {
       'resolved dabs)', () {
     if (!available) {
       markTestSkipped(
-        'qa_engine.dll not built — run: cmake -S native -B '
+        'qa_engine.dll not built 窶・run: cmake -S packages/qa_native/src -B '
         'build/native_standalone && cmake --build build/native_standalone '
         '--config Release',
       );
