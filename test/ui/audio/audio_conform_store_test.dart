@@ -1,9 +1,11 @@
+import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:quick_animaker_v2/src/services/audio/audio_conform_pipeline.dart';
 import 'package:quick_animaker_v2/src/services/audio/audio_conform_runner.dart';
 import 'package:quick_animaker_v2/src/services/audio/audio_peaks_extractor.dart';
+import 'package:quick_animaker_v2/src/services/audio/conform_wav_codec.dart';
 import 'package:quick_animaker_v2/src/ui/audio/audio_conform_store.dart';
 
 ConformResult _usableResult() => ConformResult(
@@ -201,5 +203,116 @@ void main() {
     await pumpEventQueue();
     expect(seen, ['a.wav', 'b.wav']);
     store.dispose();
+  });
+
+  group('streaming policy (AUDIO-PRO R6)', () {
+    late Directory directory;
+
+    setUp(() async {
+      directory = await Directory.systemTemp.createTemp('qa-store-stream');
+    });
+
+    tearDown(() => directory.delete(recursive: true));
+
+    /// A conform WAV on disk plus the runner result describing it, LONGER
+    /// than the streaming threshold (a tiny sample rate keeps the fixture
+    /// small — the threshold is in seconds, and the policy reads the
+    /// result's own rate).
+    (String, ConformResult) longConform() {
+      const sampleRate = 100;
+      const frames =
+          sampleRate * AudioConformStore.streamingThresholdSeconds + 50;
+      final samples = Float32List(frames);
+      for (var index = 0; index < frames; index += 1) {
+        samples[index] = (index % 100) / 100.0;
+      }
+      final conformPath = '${directory.path}/long.wav.wav';
+      File(conformPath).writeAsBytesSync(
+        encodeConformWav(
+          samples: samples,
+          channels: 1,
+          sampleRate: sampleRate,
+        ),
+      );
+      return (
+        conformPath,
+        ConformResult(
+          outcome: ConformOutcome.built,
+          conformPath: conformPath,
+          peaks: AudioPeaks(
+            bucketsPerSecond: 80,
+            peaks: Float32List.fromList([1.0]),
+          ),
+          samples: samples,
+          channels: 1,
+          sampleRate: sampleRate,
+          frames: frames,
+        ),
+      );
+    }
+
+    test('past the threshold the PCM is dropped: length and peaks answer, '
+        'samples stream from disk', () async {
+      final (conformPath, result) = longConform();
+      final store = AudioConformStore(
+        resolveConformPath: (_) => conformPath,
+        // The fixture's tiny rate IS the project rate — otherwise the
+        // entry reads as stale (a rate change) and gets re-kicked.
+        projectSampleRate: 100,
+        runner: (request) async => result,
+        log: (_) {},
+      );
+      store.resultFor('long.wav');
+      await pumpEventQueue();
+
+      expect(store.isStreaming('long.wav'), isTrue);
+      expect(store.samplesFor('long.wav'), isNull,
+          reason: 'the whole point: no resident PCM for a long file');
+      expect(store.peaksFor('long.wav')?.peaks, isNotEmpty,
+          reason: 'the waveform must not disappear with the samples');
+      expect(store.durationSecondsFor('long.wav'), result.frames / 100);
+
+      final reader = store.streamReaderFor('long.wav');
+      expect(reader, isNotNull);
+      expect(reader!.length, result.frames);
+      final window = reader.readWindow(500, 100);
+      for (var index = 0; index < 100; index += 1) {
+        expect(
+          window.samples[index],
+          closeTo(result.samples![500 + index], 1e-4),
+          reason: 'streamed sample ${500 + index} diverged from the decode',
+        );
+      }
+      expect(identical(store.streamReaderFor('long.wav'), reader), isTrue,
+          reason: 'one cached reader, not one open file per read');
+
+      store.invalidate('long.wav');
+      expect(store.isStreaming('long.wav'), isFalse);
+      store.dispose();
+    });
+
+    test('a SHORT conform stays resident and a memory-only long one does '
+        'too (nothing on disk to stream from)', () async {
+      final store = AudioConformStore(
+        resolveConformPath: (_) => null,
+        // No conformPath: unsaved project — even a huge decode stays
+        // resident because there is no disk copy of record.
+        runner: (request) async => ConformResult(
+          outcome: ConformOutcome.built,
+          samples: Float32List(
+            48000 * (AudioConformStore.streamingThresholdSeconds + 5),
+          ),
+          channels: 1,
+          sampleRate: 48000,
+          frames: 48000 * (AudioConformStore.streamingThresholdSeconds + 5),
+        ),
+        log: (_) {},
+      );
+      store.resultFor('huge-unsaved.wav');
+      await pumpEventQueue();
+      expect(store.isStreaming('huge-unsaved.wav'), isFalse);
+      expect(store.samplesFor('huge-unsaved.wav'), isNotNull);
+      store.dispose();
+    });
   });
 }

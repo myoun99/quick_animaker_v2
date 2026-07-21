@@ -23,7 +23,6 @@ import '../../models/layer_id.dart';
 import '../../models/project.dart';
 import '../../models/project_frame_rate.dart';
 import '../../native/qa_audio_device.dart';
-import '../../services/audio/audio_mixer_reference.dart';
 import '../../services/playback/playback_frame_mapping.dart';
 import '../audio/audio_conform_store.dart';
 import 'audio_playback_schedule.dart';
@@ -79,6 +78,20 @@ class AudioDeviceTransport {
   ProjectFrameRate _rate = const ProjectFrameRate.integer(24);
   int _deviceRate = 0;
   int _totalFrames = 0;
+
+  /// Streaming window geometry (AUDIO-PRO R6). A window trails a little
+  /// (loop wraps and small seeks land just behind the playhead) and leads
+  /// a lot (the next advance must upload long before the mix reads past
+  /// the edge). ~5.5 MB per streaming stereo clip resident at a time.
+  static const int _windowBackSeconds = 2;
+  static const int _windowAheadSeconds = 30;
+
+  /// The activation's mix schedule, kept so window advances can rebuild
+  /// sources without re-deriving the timeline.
+  AudioMixSchedule? _mix;
+  bool _hasStreaming = false;
+  int _windowCenterSample = 0;
+  bool _windowAdvanceInFlight = false;
 
   /// The frame the current arm started at: the clock clamp while the
   /// device's own latency drains (pressing play at frame 100 must not
@@ -144,16 +157,36 @@ class AudioDeviceTransport {
       rate: _rate,
       sampleRate: _deviceRate,
     );
-    final sources = <AudioMixSource>[];
-    for (final path in mix.sourcePaths) {
-      final samples = conformStore.samplesAtRate(path, _deviceRate);
-      final entry = conformStore.resultFor(path);
-      if (samples == null || entry == null || !entry.isUsable) {
-        return; // kicked by the lookups; the old schedule keeps playing
-      }
-      sources.add(AudioMixSource(samples: samples, channels: entry.channels));
+    _mix = mix;
+    _uploadWindowedSchedule(mix, device.positionSamples);
+  }
+
+  /// Uploads [mix] with streaming windows around [centerSample] (the
+  /// shared [windowedMixUpload] builds it — the scrubber streams on the
+  /// same geometry). False uploads nothing, so any old schedule keeps
+  /// playing.
+  bool _uploadWindowedSchedule(AudioMixSchedule mix, int centerSample) {
+    final device = _device;
+    if (device == null) {
+      return false;
     }
-    device.setSchedule(clips: mix.clips, sources: sources);
+    final upload = windowedMixUpload(
+      mix: mix,
+      conformStore: conformStore,
+      deviceRate: _deviceRate,
+      centerSample: centerSample,
+      backSeconds: _windowBackSeconds,
+      aheadSeconds: _windowAheadSeconds,
+    );
+    if (upload == null) {
+      return false;
+    }
+    if (!device.setSchedule(clips: upload.clips, sources: upload.sources)) {
+      return false;
+    }
+    _hasStreaming = upload.hasStreaming;
+    _windowCenterSample = centerSample;
+    return true;
   }
 
   /// The level meter's read (AUDIO-PRO R2): the last mixed block's
@@ -258,31 +291,24 @@ class AudioDeviceTransport {
     _device = device;
     _deviceRate = device.sampleRate;
 
-    // Every scheduled file must be resident at the DEVICE rate before the
-    // device can promise anything. A missing one stands this run down and
-    // is kicked (conform or rate conversion) for the next.
+    // Every scheduled file must be resident at the DEVICE rate — or
+    // streamable from its conform (AUDIO-PRO R6) — before the device can
+    // promise anything. A missing one stands this run down and is kicked
+    // (conform or rate conversion) for the next.
     final mix = audioMixScheduleFrom(
       schedule: schedule,
       rate: _rate,
       sampleRate: _deviceRate,
     );
-    final sources = <AudioMixSource>[];
-    var allResident = true;
-    for (final path in mix.sourcePaths) {
-      final samples = conformStore.samplesAtRate(path, _deviceRate);
-      final entry = conformStore.resultFor(path);
-      if (samples == null || entry == null || !entry.isUsable) {
-        allResident = false;
-        continue;
-      }
-      sources.add(AudioMixSource(samples: samples, channels: entry.channels));
-    }
-    if (!allResident) {
-      return;
-    }
-
     device.stop();
-    if (!device.setSchedule(clips: mix.clips, sources: sources)) {
+    _mix = mix;
+    if (!_uploadWindowedSchedule(
+      mix,
+      _rate.frameToSample(
+        controller.globalFrameIndexListenable.value ?? 0,
+        _deviceRate,
+      ),
+    )) {
       return;
     }
     _totalFrames = _playbackTotalFrames();
@@ -308,8 +334,16 @@ class AudioDeviceTransport {
     final loop = controller.loopMode == PlaybackLoopMode.loop;
     _armFrame = frame;
     _needsLoopRearm = loop && frame != 0;
+    final startSample = _rate.frameToSample(frame, _deviceRate);
+    // Streaming windows re-center on the arm point (a seek can land
+    // anywhere in a long clip) — one synchronous read at a press, the
+    // same budget as opening any file on click.
+    final mix = _mix;
+    if (_hasStreaming && mix != null) {
+      _uploadWindowedSchedule(mix, startSample);
+    }
     device.play(
-      startSample: _rate.frameToSample(frame, _deviceRate),
+      startSample: startSample,
       stopSample: _rate.frameToSample(_totalFrames, _deviceRate),
       looping: loop && frame == 0,
     );
@@ -353,6 +387,31 @@ class AudioDeviceTransport {
         return const AudioClockStatus(globalFrame: 0);
       }
       return AudioClockStatus(globalFrame: _totalFrames - 1, ended: true);
+    }
+    // Streaming windows advance from here (AUDIO-PRO R6): this poll runs
+    // every displayed frame, and the halfway trigger leaves ~15 s of
+    // margin before the mix could read past a window's edge. The read
+    // runs off this frame's stack; in-flight guard so polls cannot stack
+    // reads.
+    if (_hasStreaming && !_windowAdvanceInFlight) {
+      final position = device.positionSamples;
+      final recenter =
+          position > _windowCenterSample +
+              (_windowAheadSeconds * _deviceRate) ~/ 2 ||
+          position < _windowCenterSample - _windowBackSeconds * _deviceRate;
+      if (recenter) {
+        _windowAdvanceInFlight = true;
+        Future(() {
+          try {
+            final mix = _mix;
+            if (_carrying && mix != null && _device != null) {
+              _uploadWindowedSchedule(mix, _device!.positionSamples);
+            }
+          } finally {
+            _windowAdvanceInFlight = false;
+          }
+        });
+      }
     }
     final heard = math.max(
       0,

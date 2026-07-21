@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import '../../services/audio/audio_conform_pipeline.dart';
 import '../../services/audio/audio_conform_runner.dart';
 import '../../services/audio/audio_peaks_extractor.dart';
+import '../../services/audio/conform_wav_stream.dart';
 
 class _ConformFailure {
   const _ConformFailure({
@@ -87,6 +88,49 @@ class AudioConformStore extends ChangeNotifier {
   final Set<String> _pending = {};
   final Map<String, _ConformFailure> _failures = {};
   bool _disposed = false;
+
+  /// Length past which a conform's PCM stays ON DISK and playback streams
+  /// windows of it (AUDIO-PRO R6). Two stereo minutes resident is 23 MB;
+  /// a guide dialogue track is easily fifteen times that, which on a
+  /// tablet is the whole memory budget. Under the threshold nothing
+  /// changes — residency is a policy the mixer never sees.
+  static const int streamingThresholdSeconds = 120;
+
+  final Map<String, ConformWavStreamReader> _streamReaders = {};
+
+  /// Whether [sourcePath]'s conform is DISK-BACKED: usable (length, peaks
+  /// and the waveform all answer) but with no resident PCM — the
+  /// transport streams windows of it instead of uploading the whole file.
+  bool isStreaming(String sourcePath) {
+    final entry = _entries[sourcePath];
+    return entry != null &&
+        entry.isUsable &&
+        entry.samples == null &&
+        entry.conformPath != null;
+  }
+
+  /// The windowed reader over [sourcePath]'s conform WAV, cached across
+  /// reads; null when the entry is not streaming or the file will not
+  /// parse (the caller stands down exactly as for missing PCM).
+  ConformWavStreamReader? streamReaderFor(String sourcePath) {
+    final entry = _entries[sourcePath];
+    if (entry == null || !entry.isUsable || entry.conformPath == null) {
+      return null;
+    }
+    final cached = _streamReaders[sourcePath];
+    if (cached != null) {
+      return cached;
+    }
+    final reader = ConformWavStreamReader.open(entry.conformPath!);
+    if (reader != null) {
+      _streamReaders[sourcePath] = reader;
+    }
+    return reader;
+  }
+
+  void _closeStreamReader(String sourcePath) {
+    _streamReaders.remove(sourcePath)?.close();
+  }
 
   /// The conform for [sourcePath]: a usable result, a definitive
   /// `undecodable`, or null while pending/failed (kicking ONE async
@@ -278,7 +322,30 @@ class AudioConformStore extends ChangeNotifier {
       // a retry candidate — the same bytes will not decode differently
       // next time.
       _failures.remove(sourcePath);
-      _entries[sourcePath] = result;
+      // Past the streaming threshold the PCM is DROPPED here (AUDIO-PRO
+      // R6): the conform WAV on disk is the copy of record and playback
+      // reads windows of it. Memory-only conforms (unsaved project) have
+      // no disk copy to stream from and stay resident.
+      var kept = result;
+      if (result.isUsable &&
+          result.conformPath != null &&
+          result.sampleRate > 0 &&
+          result.frames > result.sampleRate * streamingThresholdSeconds) {
+        kept = ConformResult(
+          outcome: result.outcome,
+          conformPath: result.conformPath,
+          peaks: result.peaks,
+          samples: null,
+          channels: result.channels,
+          sampleRate: result.sampleRate,
+          frames: result.frames,
+          speedNumerator: result.speedNumerator,
+          speedDenominator: result.speedDenominator,
+          error: result.error,
+        );
+      }
+      _closeStreamReader(sourcePath);
+      _entries[sourcePath] = kept;
     } else {
       final attempts = (_failures[sourcePath]?.attempts ?? 0) + 1;
       _failures[sourcePath] = _ConformFailure(
@@ -300,6 +367,7 @@ class AudioConformStore extends ChangeNotifier {
     _entries.remove(sourcePath);
     _failures.remove(sourcePath);
     _resampledByRate.remove(sourcePath);
+    _closeStreamReader(sourcePath);
   }
 
   /// Kicks a conform for every path that has none yet — called on project
@@ -313,6 +381,10 @@ class AudioConformStore extends ChangeNotifier {
   @override
   void dispose() {
     _disposed = true;
+    for (final reader in _streamReaders.values) {
+      reader.close();
+    }
+    _streamReaders.clear();
     super.dispose();
   }
 }

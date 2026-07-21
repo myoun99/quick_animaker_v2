@@ -18,6 +18,7 @@ import 'dart:typed_data';
 
 import '../../models/project_frame_rate.dart';
 import '../../services/audio/audio_mixer_reference.dart';
+import '../../services/audio/conform_wav_stream.dart';
 import '../playback/audio_playback_schedule.dart'
     show ScheduledAudioClip, audioMixScheduleFrom;
 
@@ -26,6 +27,14 @@ import '../playback/audio_playback_schedule.dart'
 /// on (a missing sound must not kill a deadline render; the log says so).
 typedef ExportAudioSourceResolver =
     Future<AudioMixSource?> Function(String filePath);
+
+/// Resolves a DISK-BACKED source (AUDIO-PRO R6): a long conform whose PCM
+/// was never resident. The render then reads it block by block instead of
+/// asking [ExportAudioSourceResolver] to produce the whole file — which
+/// for a thirty-minute track would mean holding the memory streaming
+/// exists to avoid.
+typedef ExportAudioStreamResolver =
+    ConformWavStreamReader? Function(String filePath);
 
 /// Renders [schedule] to an int16 stereo WAV at [outputPath].
 ///
@@ -43,6 +52,7 @@ Future<bool> writeExportAudioMixWav({
   required int sampleRate,
   required ExportAudioSourceResolver resolveSource,
   required String outputPath,
+  ExportAudioStreamResolver? resolveStreamReader,
   int channels = 2,
   void Function(String message)? log,
 }) async {
@@ -56,8 +66,20 @@ Future<bool> writeExportAudioMixWav({
   );
   final sources = <AudioMixSource>[];
   final resolvedIndexByOriginal = <int, int>{};
+  final streamReaderByOriginal = <int, ConformWavStreamReader>{};
   for (var index = 0; index < mix.sourcePaths.length; index += 1) {
     final path = mix.sourcePaths[index];
+    // Disk-backed first (AUDIO-PRO R6): a streaming conform is read block
+    // by block below — asking the resolver for the whole file would hold
+    // exactly the memory streaming exists to avoid. Its conform is
+    // project-rate PCM, so a mix at any other rate falls through to the
+    // resolver (which resamples, at full residency — the honest cost of
+    // that rare setup).
+    final reader = resolveStreamReader?.call(path);
+    if (reader != null && reader.sampleRate == sampleRate) {
+      streamReaderByOriginal[index] = reader;
+      continue;
+    }
     final source = await resolveSource(path);
     if (source == null) {
       log?.call(
@@ -69,22 +91,50 @@ Future<bool> writeExportAudioMixWav({
     resolvedIndexByOriginal[index] = sources.length;
     sources.add(source);
   }
-  if (sources.isEmpty) {
+  if (sources.isEmpty && streamReaderByOriginal.isEmpty) {
     return false;
   }
-  final clips = [
-    for (final clip in mix.clips)
-      if (resolvedIndexByOriginal.containsKey(clip.sourceIndex))
-        AudioMixClip(
-          sourceIndex: resolvedIndexByOriginal[clip.sourceIndex]!,
-          startSample: clip.startSample,
-          endSample: clip.endSample,
-          sourceOffset: clip.sourceOffset,
-          gain: clip.gain,
-          fadeInSamples: clip.fadeInSamples,
-          fadeOutSamples: clip.fadeOutSamples,
-        ),
-  ];
+  // EVERY clip field carries over — the render must hear exactly what the
+  // preview heard. (Pan, the fade curve and the volume envelope arrived
+  // with AUDIO-PRO R1; dropping any of them here is how a preview starts
+  // lying about the export again.)
+  AudioMixClip clipWithSource(AudioMixClip clip, int sourceIndex) =>
+      AudioMixClip(
+        sourceIndex: sourceIndex,
+        startSample: clip.startSample,
+        endSample: clip.endSample,
+        sourceOffset: clip.sourceOffset,
+        gain: clip.gain,
+        fadeInSamples: clip.fadeInSamples,
+        fadeOutSamples: clip.fadeOutSamples,
+        panLeft: clip.panLeft,
+        panRight: clip.panRight,
+        fadeCurve: clip.fadeCurve,
+        envelope: clip.envelope,
+      );
+
+  final clips = <AudioMixClip>[];
+  // Streaming clips own a PRIVATE source slot each, refreshed per block.
+  final streamedClips = <({AudioMixClip clip, ConformWavStreamReader reader, int slot})>[];
+  for (final clip in mix.clips) {
+    final resident = resolvedIndexByOriginal[clip.sourceIndex];
+    if (resident != null) {
+      clips.add(clipWithSource(clip, resident));
+      continue;
+    }
+    final reader = streamReaderByOriginal[clip.sourceIndex];
+    if (reader == null) {
+      continue; // unresolvable: renders silent, already logged
+    }
+    final slot = sources.length;
+    sources.add(AudioMixSource(samples: Float32List(0), channels: reader.channels));
+    final rebuilt = clipWithSource(clip, slot);
+    clips.add(rebuilt);
+    streamedClips.add((clip: rebuilt, reader: reader, slot: slot));
+  }
+  if (clips.isEmpty) {
+    return false;
+  }
 
   final totalSamples = rate.frameToSample(totalFrames, sampleRate);
   final dataBytes = totalSamples * channels * 2;
@@ -96,13 +146,32 @@ Future<bool> writeExportAudioMixWav({
       channels: channels,
     ));
     // Block-mixed so a long timeline never holds its whole bus in memory;
-    // the buffers are reused across blocks.
+    // the buffers are reused across blocks, and streaming sources read
+    // exactly one block's worth of disk at a time.
     const blockSamples = 65536;
     final bus = Float64List(blockSamples * channels);
     final out = Int16List(blockSamples * channels);
     var position = 0;
     while (position < totalSamples) {
       final count = (totalSamples - position).clamp(0, blockSamples);
+      for (final streamed in streamedClips) {
+        final clip = streamed.clip;
+        if (position + count <= clip.startSample ||
+            position >= clip.endSample) {
+          continue; // this block never reads the clip; keep whatever is there
+        }
+        final clipLength = clip.endSample - clip.startSample;
+        final from = clip.sourceOffset +
+            (position - clip.startSample).clamp(0, clipLength);
+        final to = clip.sourceOffset +
+            (position + count - clip.startSample).clamp(0, clipLength);
+        final window = streamed.reader.readWindow(from, to - from);
+        sources[streamed.slot] = AudioMixSource(
+          samples: window.samples,
+          channels: streamed.reader.channels,
+          sourceStart: window.startSample,
+        );
+      }
       final busView = count == blockSamples
           ? bus
           : Float64List.sublistView(bus, 0, count * channels);
