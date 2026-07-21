@@ -1713,6 +1713,8 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                                                                 .onSetAudioClipEnvelope,
                                                         resolveStrings: widget
                                                             .resolveStrings,
+                                                        showSeconds: widget
+                                                            .showSeconds,
                                                         commaDrag:
                                                             widget.commaDrag,
                                                         rangeGesture:

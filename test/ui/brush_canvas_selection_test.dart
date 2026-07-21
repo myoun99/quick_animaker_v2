@@ -588,4 +588,35 @@ void main() {
     expect(inkAt(env.coordinator, 32, 30), isNonZero);
     expect(inkAt(env.coordinator, 28, 30), 0);
   });
+
+  testWidgets('R26 #15: NO frame under the playhead still selects — the '
+      'region is view state; only pixel ops need a cel', (tester) async {
+    final commands = CanvasSelectionCommands();
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: BrushCanvasPanel(
+            coordinator: null,
+            availableFrameKeys: const [],
+            cacheInvalidationSink: BrushEditCacheInvalidationSink(),
+            historyManager: HistoryManager(),
+            brushToolState: BrushToolState.defaults.copyWith(
+              tool: CanvasTool.selectRect,
+            ),
+            selectionCommands: commands,
+            // The production no-frame configuration: the blank-canvas
+            // placeholder carries the viewport.
+            contentOverride: (context, viewport) => const SizedBox.expand(),
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+    expect(find.byKey(layerKey), findsOneWidget,
+        reason: 'the layer used to refuse to mount without a coordinator');
+
+    await dragOnLayer(tester, const Offset(20, 20), const Offset(70, 70));
+    expect(commands.hasSelection, isTrue,
+        reason: '"어느 상황에서든 무조건" — the marquee works on empty ground');
+  });
 }

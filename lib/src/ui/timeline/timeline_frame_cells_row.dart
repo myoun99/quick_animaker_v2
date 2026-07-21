@@ -22,6 +22,7 @@ import 'timeline_frame_coordinate_policy.dart';
 import 'timeline_frame_range_gesture.dart';
 import 'timeline_frame_window.dart';
 import 'timeline_row_cells_painter.dart';
+import 'timeline_run_duration_labels.dart';
 import 'timeline_run_end_handles.dart';
 import 'timeline_grid_metrics.dart';
 import 'timeline_instruction_row_visual.dart';
@@ -51,6 +52,7 @@ class TimelineFrameCellsRow extends StatelessWidget {
     this.instructionDefById,
     this.audioPeaksFor,
     this.projectFrameRate = ProjectFrameRate.fps24,
+    this.showSeconds = false,
     this.onRemoveAudioClip,
     this.onDropMediaAsset,
     this.commaDrag,
@@ -98,6 +100,10 @@ class TimelineFrameCellsRow extends StatelessWidget {
   /// Waveform peaks resolver for SE rows' audio clips; null hides them.
   final AudioPeaks? Function(String filePath)? audioPeaksFor;
   final ProjectFrameRate projectFrameRate;
+
+  /// The shared frames/seconds display toggle — the block duration labels
+  /// (R26 #7) follow it.
+  final bool showSeconds;
 
   /// Removes an audio clip by index (the waveform's context menu).
   final void Function(LayerId layerId, int clipIndex)? onRemoveAudioClip;
@@ -304,6 +310,21 @@ class TimelineFrameCellsRow extends StatelessWidget {
             crossAxisExtent: metrics.layerRowHeight,
             axis: Axis.horizontal,
             defById: instructionDefById!,
+          ),
+        // R26 #7: each block's own length at its end cell, bottom-right
+        // (the storyboard cut block's TIME label, on frame blocks).
+        if (layerKindHoldsDrawings(layer.kind) &&
+            !layerKindUsesSeSheetCells(layer.kind))
+          ...timelineRowRunDurationLabels(
+            layer: layer,
+            frameStartIndex: frameStartIndex,
+            frameEndIndexExclusive: frameEndIndexExclusive,
+            leadingFrameSpacerWidth: leadingFrameSpacerWidth,
+            frameCellExtent: metrics.frameCellWidth,
+            crossAxisExtent: metrics.layerRowHeight,
+            showSeconds: showSeconds,
+            countingBase: projectFrameRate.countingBase,
+            axis: Axis.horizontal,
           ),
         // The range gesture layer replaces the block-body move handle
         // (UI-R8, TVP style): a pan on the cells SELECTS a frame range —

@@ -65,6 +65,7 @@ class TimelineFrameRowsScrollBody extends StatefulWidget {
     this.onSetAudioClipFadeCurve,
     this.onSetAudioClipEnvelope,
     this.resolveStrings,
+    this.showSeconds = false,
     this.commaDrag,
     this.rangeGesture,
     this.laneRange,
@@ -161,6 +162,10 @@ class TimelineFrameRowsScrollBody extends StatefulWidget {
   /// The PROGRAM-language table for the lane menu/dialogs; null keeps
   /// English (the incremental-coverage rule).
   final AppStrings Function()? resolveStrings;
+
+  /// The shared frames/seconds display toggle (block duration labels,
+  /// R26 #7).
+  final bool showSeconds;
 
   final TimelineCommaDragCallbacks? commaDrag;
 
@@ -304,6 +309,7 @@ class _TimelineFrameRowsScrollBodyState
       instructionDefById: widget.instructionDefById,
       audioPeaksFor: widget.audioPeaksFor,
       projectFrameRate: widget.projectFrameRate,
+      showSeconds: widget.showSeconds,
       onRemoveAudioClip: widget.onRemoveAudioClip,
       onDropMediaAsset: widget.onDropMediaAsset,
       commaDrag: widget.commaDrag,

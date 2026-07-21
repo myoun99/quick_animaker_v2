@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import '../../models/app_language.dart' show AppLanguage;
 import '../../models/audio_clip.dart' show AudioFadeCurve, AudioVolumeKey;
 import '../text/app_strings.dart';
+import 'timeline_run_duration_labels.dart';
 import '../../models/camera_instruction.dart';
 import '../../models/layer.dart';
 import '../../models/layer_id.dart';
@@ -726,6 +727,7 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
       instructionDefById: widget.instructionDefById,
       audioPeaksFor: widget.audioPeaksFor,
       projectFrameRate: widget.projectFrameRate,
+      showSeconds: widget.showSeconds,
       onRemoveAudioClip: widget.onRemoveAudioClip,
       onDropMediaAsset: widget.onDropMediaAsset,
       layer: layer,
@@ -1781,6 +1783,7 @@ class _XSheetFrameCellsColumn extends StatelessWidget {
     this.instructionDefById,
     this.audioPeaksFor,
     this.projectFrameRate = ProjectFrameRate.fps24,
+    this.showSeconds = false,
     this.onRemoveAudioClip,
     this.onDropMediaAsset,
     this.commaDrag,
@@ -1814,6 +1817,11 @@ class _XSheetFrameCellsColumn extends StatelessWidget {
   instructionDefById;
   final AudioPeaks? Function(String filePath)? audioPeaksFor;
   final ProjectFrameRate projectFrameRate;
+
+  /// The shared frames/seconds display toggle (block duration labels,
+  /// R26 #7).
+  final bool showSeconds;
+
   final void Function(LayerId layerId, int clipIndex)? onRemoveAudioClip;
 
   /// Links a media-browser asset to an SE block (drag-drop); null hides
@@ -2022,6 +2030,21 @@ class _XSheetFrameCellsColumn extends StatelessWidget {
               crossAxisExtent: metrics.layerRowHeight,
               callbacks: rangeGesture,
               axis: Axis.vertical,
+            ),
+          // R26 #7: block duration labels, transposed.
+          if (layerKindHoldsDrawings(layer.kind) &&
+              !layerKindUsesSeSheetCells(layer.kind))
+            ...timelineRowRunDurationLabels(
+              layer: layer,
+              frameStartIndex: frameStartIndex,
+              frameEndIndexExclusive: frameEndIndexExclusive,
+              leadingFrameSpacerWidth: leadingFrameSpacerHeight,
+              frameCellExtent: metrics.frameCellWidth,
+              crossAxisExtent: metrics.layerRowHeight,
+              showSeconds: showSeconds,
+              countingBase: projectFrameRate.countingBase,
+              axis: Axis.vertical,
+              keyPrefix: 'xsheet',
             ),
           // The TVP run-edge handles (UI-R8), transposed. Mounted from the
           // COMMITTED layer so an add-start preview never remounts the

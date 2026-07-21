@@ -534,9 +534,13 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel> {
                   final underlayBuilder = widget.viewportUnderlayBuilder;
                   final contentStrokeActive = widget.contentStrokeActive;
 
-                  final selectionLayerActive =
-                      canvasToolSelects(widget.brushToolState.tool) &&
-                      widget.coordinator != null;
+                  // R26 #15: selection works with NO frame under the
+                  // playhead too — the region is view state, and every
+                  // pixel op (lift/fill/draw-inside) already guards the
+                  // missing coordinator itself.
+                  final selectionLayerActive = canvasToolSelects(
+                    widget.brushToolState.tool,
+                  );
 
                   Widget gestureLayer(bool contentStrokeIsActive) {
                     return CanvasViewportGestureLayer(
@@ -791,8 +795,14 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel> {
                                                   ),
                                         viewport: _viewport,
                                         canvasSize: widget.canvasSize,
+                                        // No frame = a stable sentinel:
+                                        // the selection survives until a
+                                        // real frame context arrives.
                                         frameToken:
-                                            widget.coordinator!.activeFrameKey,
+                                            widget
+                                                .coordinator
+                                                ?.activeFrameKey ??
+                                            'selection-no-frame',
                                         selectionCommands:
                                             widget.selectionCommands,
                                         onDragActiveChanged: (active) {
