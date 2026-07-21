@@ -22,6 +22,7 @@ import '../dialogs/rename_cut_dialog.dart';
 import '../dialogs/rename_layer_dialog.dart';
 import '../editor_session_manager.dart';
 import '../export/ae_keyframe_data.dart';
+import '../../services/persistence/app_export_settings_store.dart';
 import '../export/export_dialog.dart';
 import '../export/export_plan.dart' show sanitizeExportFileComponent;
 import '../panels/workspace_panels_menu.dart';
@@ -224,7 +225,10 @@ class EditorMenuBar extends StatelessWidget {
               unawaited(
                 showDialog<void>(
                   context: context,
-                  builder: (context) => ExportDialog(session: session),
+                  builder: (context) => ExportDialog(
+                    session: session,
+                    settingsStore: AppExportSettingsStore(),
+                  ),
                 ),
               );
             },

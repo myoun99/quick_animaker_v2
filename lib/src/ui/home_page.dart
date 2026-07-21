@@ -25,6 +25,7 @@ import 'brush/canvas_selection_commands.dart';
 import 'brush/canvas_view_commands.dart';
 import 'editor_session_manager.dart';
 import 'editor_workspace.dart';
+import '../services/persistence/app_export_settings_store.dart';
 import 'export/export_dialog.dart';
 import 'menu/editor_menu_bar.dart';
 import 'panels/workspace_panels_menu.dart';
@@ -487,8 +488,11 @@ class _HomePageState extends State<HomePage> {
                                       unawaited(
                                         showDialog<void>(
                                           context: context,
-                                          builder: (context) =>
-                                              ExportDialog(session: _session),
+                                          builder: (context) => ExportDialog(
+                                            session: _session,
+                                            settingsStore:
+                                                AppExportSettingsStore(),
+                                          ),
                                         ),
                                       );
                                     },
