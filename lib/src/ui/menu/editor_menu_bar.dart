@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io' show Platform;
 
 import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
@@ -11,6 +12,7 @@ import '../../services/persistence/app_save_settings.dart';
 import '../../services/persistence/project_autosave_service.dart';
 import '../dialogs/canvas_size_dialog.dart';
 import '../dialogs/delete_layer_dialog.dart';
+import '../dialogs/file_browser_dialog.dart';
 import '../dialogs/preferences_dialog.dart';
 import '../debug/input_inspector.dart';
 import '../dialogs/project_background_dialog.dart';
@@ -99,7 +101,14 @@ class EditorMenuBar extends StatelessWidget {
   }
 
   Future<void> _openProject(BuildContext context) async {
-    final path = await (qapOpenFilePicker ?? _defaultOpenPicker)();
+    final path = qapOpenFilePicker != null
+        ? await qapOpenFilePicker!()
+        // SAVE-1c: mobile routes to the in-app browser (the OS pickers
+        // hand out content URIs the real-path save stack cannot edit in
+        // place); desktop keeps the OS dialog.
+        : useInAppBrowserForPickers
+        ? await showQapFileBrowser(context, mode: FileBrowserMode.open)
+        : await _defaultOpenPicker();
     if (path == null || !context.mounted) {
       return;
     }
@@ -687,6 +696,14 @@ class EditorMenuBar extends StatelessWidget {
 /// unsaved-autosave prompt land in the same picker + writer. SAVE-1: a
 /// never-saved project's picker starts in the app's project home (앱
 /// 문서 폴더); a saved one starts beside its current file.
+/// SAVE-1c: whether the save/open pickers use the in-app browser — the
+/// mobile real-path model's surface. Desktop keeps the OS dialogs.
+@visibleForTesting
+bool? debugUseInAppBrowserOverride;
+
+bool get useInAppBrowserForPickers =>
+    debugUseInAppBrowserOverride ?? (Platform.isAndroid || Platform.isIOS);
+
 Future<void> promptSaveProjectAs(
   BuildContext context,
   EditorSessionManager session, {
@@ -698,9 +715,19 @@ Future<void> promptSaveProjectAs(
   final initialDirectory = currentPath != null && currentPath.contains('/')
       ? currentPath.substring(0, currentPath.lastIndexOf('/'))
       : await ensuredAppDocumentsDirectory();
-  var path =
-      await (savePicker ??
-          (name) => _defaultQapSavePicker(name, initialDirectory))(suggested);
+  if (!context.mounted) {
+    return;
+  }
+  var path = savePicker != null
+      ? await savePicker(suggested)
+      : useInAppBrowserForPickers
+      ? await showQapFileBrowser(
+          context,
+          mode: FileBrowserMode.saveAs,
+          suggestedName: suggested,
+          initialDirectory: initialDirectory,
+        )
+      : await _defaultQapSavePicker(suggested, initialDirectory);
   if (path == null || !context.mounted) {
     return;
   }

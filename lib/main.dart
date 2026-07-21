@@ -1,6 +1,9 @@
+import 'dart:async' show unawaited;
+
 import 'package:flutter/material.dart';
 
 import 'src/services/input/pen_sidecars.dart';
+import 'src/services/persistence/app_documents.dart' show AppStorage;
 import 'src/ui/home_page.dart';
 import 'src/ui/input/app_input_settings.dart' show AppInput;
 import 'src/ui/theme/app_theme.dart';
@@ -10,6 +13,9 @@ void main() {
   // the macOS/Linux channel streams start on their platform. Absent
   // drivers/handlers stay permanently idle.
   PenSidecars.bind();
+  // SAVE-1c: resolve the mobile app-documents home once (desktop no-op).
+  WidgetsFlutterBinding.ensureInitialized();
+  unawaited(AppStorage.ensureInitialized());
   runApp(const QuickAnimakerApp());
 }
 

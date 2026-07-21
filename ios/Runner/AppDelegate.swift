@@ -41,6 +41,30 @@ import UIKit
     let registrar = engineBridge.pluginRegistry.registrar(forPlugin: "QaPen")
     penChannel = FlutterMethodChannel(
       name: "qa_pen/ios", binaryMessenger: registrar!.messenger())
+    // SAVE-1d: the storage channel (compile-unverified on this machine,
+    // like the pen sidecars): the app documents home for the save/open
+    // surfaces. Folder security-scope bookmarks join with the real iPad
+    // validation pass.
+    let storageRegistrar = engineBridge.pluginRegistry.registrar(forPlugin: "QaStorage")
+    let storageChannel = FlutterMethodChannel(
+      name: "qa_storage", binaryMessenger: storageRegistrar!.messenger())
+    storageChannel.setMethodCallHandler { call, result in
+      switch call.method {
+      case "appDocumentsPath":
+        let documents = FileManager.default.urls(
+          for: .documentDirectory, in: .userDomainMask
+        ).first!
+        result(documents.appendingPathComponent("QuickAnimaker").path)
+      case "isAllFilesAccessGranted":
+        // iOS sandboxing: the app folder is always writable; foreign
+        // folders arrive per-document via pickers.
+        result(true)
+      case "requestAllFilesAccess":
+        result(nil)
+      default:
+        result(FlutterMethodNotImplemented)
+      }
+    }
   }
 
   private func installPencilInteractionIfPossible() {

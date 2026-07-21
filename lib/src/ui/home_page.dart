@@ -607,12 +607,8 @@ class _HomePageState extends State<HomePage> {
   /// file — offer the Save As picker right here; declining stops the
   /// asking for the rest of the session (the user chose to live risky).
   Future<void> _promptUnsavedAutosave() async {
-    // Desktop only for now: the Save As picker (file_selector
-    // getSaveLocation) has no mobile implementation — the mobile save
-    // story (app-library folder vs SAF/Files) is its own design.
-    if (!(Platform.isWindows || Platform.isMacOS || Platform.isLinux)) {
-      return;
-    }
+    // SAVE-1c: every platform prompts — the Save As flow routes to the
+    // OS dialog on desktop and the in-app browser on mobile.
     if (_unsavedAutosavePromptShown || !mounted) {
       return;
     }
