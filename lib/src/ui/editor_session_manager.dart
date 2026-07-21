@@ -444,6 +444,7 @@ class EditorSessionManager extends ChangeNotifier {
           frameRateNumerator: projectFrameRate.numerator,
           frameRateDenominator: projectFrameRate.denominator,
         ),
+    resolveSoloedLayerIds: () => soloedSeLayerIds.value,
   );
 
   /// Scrubbing the playhead plays each crossed frame's slice of the mix
@@ -459,6 +460,7 @@ class EditorSessionManager extends ChangeNotifier {
     resolveDevice: Platform.environment['FLUTTER_TEST'] == 'true'
         ? () => null
         : null,
+    resolveSoloedLayerIds: () => soloedSeLayerIds.value,
   );
 
   /// Frame-synced SE audio riding [playback]'s frame signals; clip lengths
@@ -473,6 +475,7 @@ class EditorSessionManager extends ChangeNotifier {
     // Track-owned SE rows schedule from the tracks' global axes.
     resolveProject: () => _repository.currentProject,
     deviceCarriesPlayback: () => audioDeviceTransport.carryingPlayback,
+    resolveSoloedLayerIds: () => soloedSeLayerIds.value,
   );
 
   void _onPlaybackStopped(PlaybackPosition lastPosition) {
@@ -802,6 +805,7 @@ class EditorSessionManager extends ChangeNotifier {
     audioConformStore.dispose();
     languageSettings.dispose();
     audioSyncSettings.dispose();
+    soloedSeLayerIds.dispose();
     editingFrameCursor.dispose();
     frameScrubActive.dispose();
     frameSeekCommitted.dispose();
@@ -2374,6 +2378,29 @@ class EditorSessionManager extends ChangeNotifier {
     notifyListeners();
   }
 
+  // --- SE mix controls (AUDIO-PRO R1) ---------------------------------------
+
+  /// The solo set — pure MONITORING state (never persisted, never
+  /// exported): non-empty narrows playback/scrub to these SE rows.
+  final ValueNotifier<Set<LayerId>> soloedSeLayerIds =
+      ValueNotifier<Set<LayerId>>(const {});
+
+  /// Toggles an SE row's solo (pro semantics: multiple solos stack).
+  void toggleLayerSolo(LayerId layerId) {
+    final next = Set<LayerId>.of(soloedSeLayerIds.value);
+    if (!next.remove(layerId)) {
+      next.add(layerId);
+    }
+    soloedSeLayerIds.value = next;
+    notifyListeners();
+  }
+
+  /// The SE row's track fader + pan (mix state like mute, repo-direct).
+  void setLayerAudio({required LayerId layerId, double? gain, double? pan}) {
+    _layerController.setLayerAudio(layerId: layerId, gain: gain, pan: pan);
+    notifyListeners();
+  }
+
   void setLayerOpacity({required LayerId layerId, required double opacity}) {
     _layerController.setLayerOpacity(layerId: layerId, opacity: opacity);
     notifyListeners();
@@ -3186,6 +3213,58 @@ class EditorSessionManager extends ChangeNotifier {
       layerId: layerId,
       audioClips: next,
       description: 'Sound gain',
+    );
+    notifyListeners();
+  }
+
+  /// Sets the [clipIndex]th clip's fade curve (AUDIO-PRO R1); one undo
+  /// step, no-op when unchanged.
+  void setAudioClipFadeCurve(
+    LayerId layerId,
+    int clipIndex,
+    AudioFadeCurve curve,
+  ) {
+    final layer = _layerById(layerId);
+    if (layer == null ||
+        layer.kind != LayerKind.se ||
+        clipIndex < 0 ||
+        clipIndex >= layer.audioClips.length ||
+        layer.audioClips[clipIndex].fadeCurve == curve) {
+      return;
+    }
+    final next = [...layer.audioClips];
+    next[clipIndex] = next[clipIndex].copyWith(fadeCurve: curve);
+    _cutCommandCoordinator.updateLayerAudioClips(
+      cutId: requireActiveCut.id,
+      layerId: layerId,
+      audioClips: next,
+      description: 'Sound fade curve',
+    );
+    notifyListeners();
+  }
+
+  /// Sets the [clipIndex]th clip's volume envelope (AUDIO-PRO R1); one
+  /// undo step. [keys] arrive sorted from the editor; an empty list
+  /// clears the envelope.
+  void setAudioClipEnvelope(
+    LayerId layerId,
+    int clipIndex,
+    List<AudioVolumeKey> keys,
+  ) {
+    final layer = _layerById(layerId);
+    if (layer == null ||
+        layer.kind != LayerKind.se ||
+        clipIndex < 0 ||
+        clipIndex >= layer.audioClips.length) {
+      return;
+    }
+    final next = [...layer.audioClips];
+    next[clipIndex] = next[clipIndex].copyWith(volumeKeys: keys);
+    _cutCommandCoordinator.updateLayerAudioClips(
+      cutId: requireActiveCut.id,
+      layerId: layerId,
+      audioClips: next,
+      description: 'Sound envelope',
     );
     notifyListeners();
   }

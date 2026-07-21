@@ -101,6 +101,20 @@ void main() {
         for (var index = 0; index < clipCount; index += 1) {
           final start = random.nextInt(48) - 8;
           final length = 1 + random.nextInt(32);
+          // AUDIO-PRO R1 surfaces, randomized alongside the originals:
+          // precomputed pan factors, the sqrt fade curve, and a small
+          // sorted envelope (keys allowed BEFORE the clip too — the
+          // trimmed-lead shape).
+          final pan = equalPowerPanGains(random.nextDouble() * 2.0 - 1.0);
+          final envelopeCount = random.nextBool() ? random.nextInt(4) : 0;
+          var envelopeSample = -4 + random.nextInt(8);
+          final envelope = <AudioEnvelopePoint>[
+            for (var key = 0; key < envelopeCount; key += 1)
+              AudioEnvelopePoint(
+                sample: envelopeSample += random.nextInt(16),
+                gain: random.nextDouble() * 2.0,
+              ),
+          ];
           clips.add(
             AudioMixClip(
               sourceIndex: random.nextInt(sourceCount + 1) - 1,
@@ -112,6 +126,10 @@ void main() {
               gain: random.nextDouble() * 2.0,
               fadeInSamples: random.nextBool() ? random.nextInt(12) : 0,
               fadeOutSamples: random.nextBool() ? random.nextInt(12) : 0,
+              panLeft: random.nextBool() ? pan.left : 1.0,
+              panRight: random.nextBool() ? pan.right : 1.0,
+              fadeCurve: random.nextInt(2),
+              envelope: envelope,
             ),
           );
         }

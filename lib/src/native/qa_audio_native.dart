@@ -29,12 +29,14 @@ final class QaAudioNative {
   );
 
   /// Must match `qa_engine_abi_version()` in the C.
-  static const int _abiVersion = 17;
+  static const int _abiVersion = 18;
 
   final void Function(
     Pointer<QaAudioClipStruct>,
     int,
     Pointer<QaAudioSourceStruct>,
+    int,
+    Pointer<QaAudioEnvelopeKeyStruct>,
     int,
     int,
     int,
@@ -118,12 +120,22 @@ final class QaAudioNative {
       if (sourceSize != sizeOf<QaAudioSourceStruct>()) {
         return null;
       }
+      final envelopeKeySize = library
+          .lookupFunction<Int32 Function(), int Function()>(
+            'qa_audio_envelope_key_sizeof',
+          )
+          .call();
+      if (envelopeKeySize != sizeOf<QaAudioEnvelopeKeyStruct>()) {
+        return null;
+      }
       return QaAudioNative._(
         library.lookupFunction<
           Void Function(
             Pointer<QaAudioClipStruct>,
             Int32,
             Pointer<QaAudioSourceStruct>,
+            Int32,
+            Pointer<QaAudioEnvelopeKeyStruct>,
             Int32,
             Int64,
             Int32,
@@ -134,6 +146,8 @@ final class QaAudioNative {
             Pointer<QaAudioClipStruct>,
             int,
             Pointer<QaAudioSourceStruct>,
+            int,
+            Pointer<QaAudioEnvelopeKeyStruct>,
             int,
             int,
             int,
@@ -241,20 +255,40 @@ final class QaAudioNative {
     final sourceArray = calloc<QaAudioSourceStruct>(
       sources.isEmpty ? 1 : sources.length,
     );
+    // Every clip's envelope points flatten into ONE shared array; the
+    // clips reference their slice by offset/count (mirrors the C layout).
+    var envelopeTotal = 0;
+    for (final clip in clips) {
+      envelopeTotal += clip.envelope.length;
+    }
+    final envelopeArray = calloc<QaAudioEnvelopeKeyStruct>(
+      envelopeTotal <= 0 ? 1 : envelopeTotal,
+    );
     final sampleBuffers = <Pointer<Float>>[];
     final bus = calloc<Double>(total);
     try {
+      var envelopeCursor = 0;
       for (var index = 0; index < clips.length; index += 1) {
         final clip = clips[index];
         final target = clipArray[index];
         target.gain = clip.gain;
+        target.panLeft = clip.panLeft;
+        target.panRight = clip.panRight;
         target.startSample = clip.startSample;
         target.endSample = clip.endSample;
         target.sourceOffset = clip.sourceOffset;
         target.fadeInSamples = clip.fadeInSamples;
         target.fadeOutSamples = clip.fadeOutSamples;
         target.sourceIndex = clip.sourceIndex;
-        target.reserved = 0;
+        target.fadeCurve = clip.fadeCurve;
+        target.envelopeOffset = envelopeCursor;
+        target.envelopeCount = clip.envelope.length;
+        for (final point in clip.envelope) {
+          final key = envelopeArray[envelopeCursor];
+          key.sample = point.sample;
+          key.gain = point.gain;
+          envelopeCursor += 1;
+        }
       }
       for (var index = 0; index < sources.length; index += 1) {
         final source = sources[index];
@@ -278,6 +312,8 @@ final class QaAudioNative {
         clips.length,
         sourceArray,
         sources.length,
+        envelopeArray,
+        envelopeTotal,
         startSample,
         sampleCount,
         outChannels,
@@ -292,6 +328,7 @@ final class QaAudioNative {
         calloc.free(buffer);
       }
       calloc.free(bus);
+      calloc.free(envelopeArray);
       calloc.free(sourceArray);
       calloc.free(clipArray);
     }
@@ -401,12 +438,17 @@ extension QaAudioNativeResampling on QaAudioNative {
   }
 }
 
-/// Mirrors the C `qa_audio_clip`: double, then int64s, then an even number
-/// of int32s — natural alignment with no implicit padding on any supported
-/// ABI. The loader cross-checks `sizeof` before enabling the native path.
+/// Mirrors the C `qa_audio_clip`: doubles, then int64s, then an even
+/// number of int32s — natural alignment with no implicit padding on any
+/// supported ABI. The loader cross-checks `sizeof` before enabling the
+/// native path.
 final class QaAudioClipStruct extends Struct {
   @Double()
   external double gain;
+  @Double()
+  external double panLeft;
+  @Double()
+  external double panRight;
   @Int64()
   external int startSample;
   @Int64()
@@ -420,7 +462,19 @@ final class QaAudioClipStruct extends Struct {
   @Int32()
   external int sourceIndex;
   @Int32()
-  external int reserved;
+  external int fadeCurve;
+  @Int32()
+  external int envelopeOffset;
+  @Int32()
+  external int envelopeCount;
+}
+
+/// Mirrors the C `qa_audio_envelope_key`.
+final class QaAudioEnvelopeKeyStruct extends Struct {
+  @Int64()
+  external int sample;
+  @Double()
+  external double gain;
 }
 
 /// Mirrors the C `qa_audio_source`.

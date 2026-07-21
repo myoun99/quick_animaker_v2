@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
+import '../../models/audio_clip.dart' show AudioFadeCurve, AudioVolumeKey;
 import '../../models/camera_instruction.dart';
 import '../../models/layer.dart';
 import '../../models/layer_id.dart';
@@ -59,6 +60,8 @@ class TimelineFrameRowsScrollBody extends StatefulWidget {
     this.audioOffsetDrag,
     this.onSetAudioClipFades,
     this.onSetAudioClipGain,
+    this.onSetAudioClipFadeCurve,
+    this.onSetAudioClipEnvelope,
     this.commaDrag,
     this.rangeGesture,
     this.laneRange,
@@ -139,6 +142,18 @@ class TimelineFrameRowsScrollBody extends StatefulWidget {
   /// Commits the audio-lane gain dialog; null hides the menu entry.
   final void Function(LayerId layerId, int clipIndex, double gain)?
   onSetAudioClipGain;
+
+  /// Commits the audio-lane fade-curve toggle (AUDIO-PRO R1).
+  final void Function(LayerId layerId, int clipIndex, AudioFadeCurve curve)?
+  onSetAudioClipFadeCurve;
+
+  /// Commits the audio-lane volume-envelope dialog (AUDIO-PRO R1).
+  final void Function(
+    LayerId layerId,
+    int clipIndex,
+    List<AudioVolumeKey> keys,
+  )?
+  onSetAudioClipEnvelope;
 
   final TimelineCommaDragCallbacks? commaDrag;
 
@@ -316,6 +331,20 @@ class _TimelineFrameRowsScrollBodyState
                 ? null
                 : (clipIndex, gain) =>
                       widget.onSetAudioClipGain!(layer.id, clipIndex, gain),
+            onSetClipFadeCurve: widget.onSetAudioClipFadeCurve == null
+                ? null
+                : (clipIndex, curve) => widget.onSetAudioClipFadeCurve!(
+                    layer.id,
+                    clipIndex,
+                    curve,
+                  ),
+            onSetClipEnvelope: widget.onSetAudioClipEnvelope == null
+                ? null
+                : (clipIndex, keys) => widget.onSetAudioClipEnvelope!(
+                    layer.id,
+                    clipIndex,
+                    keys,
+                  ),
           )
         : TimelineLaneFrameRow(
             layer: layer,

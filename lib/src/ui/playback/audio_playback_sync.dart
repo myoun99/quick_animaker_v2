@@ -1,6 +1,8 @@
 import 'dart:async';
 import 'dart:math' as math;
 
+import '../../models/audio_clip.dart' show AudioFadeCurve, AudioVolumeKey;
+import '../../models/layer_id.dart';
 import '../../models/project.dart';
 import '../../models/project_frame_rate.dart';
 import 'audio_playback_schedule.dart';
@@ -69,7 +71,12 @@ class AudioPlaybackSync {
     required this.playerFactory,
     this.resolveProject,
     this.deviceCarriesPlayback,
+    this.resolveSoloedLayerIds,
   });
+
+  /// The session's solo set (monitoring state); null/empty = everything
+  /// unmuted plays.
+  final Set<LayerId> Function()? resolveSoloedLayerIds;
 
   /// Consulted ONCE at activation: true means the native device transport
   /// carries this run's audio, so no platform players are built — playing
@@ -138,6 +145,7 @@ class AudioPlaybackSync {
               project: resolveProject?.call(),
               rate: resolveFrameRate(),
               durationSecondsFor: durationSecondsFor,
+              soloedLayerIds: resolveSoloedLayerIds?.call(),
             );
       _players = [for (final _ in _schedule) playerFactory()];
       for (var index = 0; index < _schedule.length; index += 1) {
@@ -207,21 +215,57 @@ class AudioPlaybackSync {
     _updateVolumes(frame);
   }
 
-  /// The gain × fade envelope at [frame]: fade-in ramps from the clip's
-  /// start, fade-out ramps into its scheduled end (block/cut/file clamp),
-  /// overlapping fades multiply. Clamped into 0..1 — platform players
-  /// don't amplify past 1 (export applies the exact gain instead).
+  /// The gain × envelope × fade value at [frame]: fade-in ramps from the
+  /// clip's start, fade-out ramps into its scheduled end (block/cut/file
+  /// clamp), the volume envelope interpolates between its keys, and
+  /// overlapping shapes multiply. Clamped into 0..1 — platform players
+  /// don't amplify past 1 (the device mixer applies everything exactly).
   double _volumeAt(ScheduledAudioClip clip, int frame) {
     var volume = clip.gain;
     final position = frame - clip.startFrame;
+    if (clip.volumeKeys.isNotEmpty) {
+      volume *= _envelopeGainAt(clip.volumeKeys, position);
+    }
     if (clip.fadeInFrames > 0 && position < clip.fadeInFrames) {
-      volume *= math.max(0, position / clip.fadeInFrames);
+      volume *= _rampShape(
+        math.max(0, position / clip.fadeInFrames),
+        clip.fadeCurve,
+      );
     }
     final remaining = clip.endFrameExclusive - frame;
     if (clip.fadeOutFrames > 0 && remaining < clip.fadeOutFrames) {
-      volume *= math.max(0, remaining / clip.fadeOutFrames);
+      volume *= _rampShape(
+        math.max(0, remaining / clip.fadeOutFrames),
+        clip.fadeCurve,
+      );
     }
     return volume.clamp(0.0, 1.0);
+  }
+
+  static double _rampShape(double ramp, AudioFadeCurve curve) =>
+      curve == AudioFadeCurve.equalPower ? math.sqrt(ramp) : ramp;
+
+  /// Frame-domain twin of the mixer's envelope: linear between keys, held
+  /// past the ends.
+  static double _envelopeGainAt(List<AudioVolumeKey> keys, int position) {
+    if (position <= keys.first.frame) {
+      return keys.first.gain;
+    }
+    if (position >= keys.last.frame) {
+      return keys.last.gain;
+    }
+    for (var index = 0; index < keys.length - 1; index += 1) {
+      final a = keys[index];
+      final b = keys[index + 1];
+      if (position < b.frame) {
+        final span = (b.frame - a.frame).toDouble();
+        if (span <= 0) {
+          return b.gain;
+        }
+        return a.gain + (b.gain - a.gain) * ((position - a.frame) / span);
+      }
+    }
+    return keys.last.gain;
   }
 
   /// Sends the ramp to every playing clip whose volume moved this tick.

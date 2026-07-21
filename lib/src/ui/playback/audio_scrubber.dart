@@ -16,6 +16,7 @@
 /// exactly as it was before this class existed.
 library;
 
+import '../../models/layer_id.dart';
 import '../../models/project.dart';
 import '../../models/project_frame_rate.dart';
 import '../../native/qa_audio_device.dart';
@@ -31,7 +32,12 @@ class AudioScrubber {
     required this.resolveProject,
     required this.conformStore,
     QaAudioDevice? Function()? resolveDevice,
+    this.resolveSoloedLayerIds,
   }) : _resolveDevice = resolveDevice ?? (() => QaAudioDevice.instance);
+
+  /// The session's solo set — a scrub monitors exactly what playback
+  /// would.
+  final Set<LayerId> Function()? resolveSoloedLayerIds;
 
   final CanvasPlaybackController controller;
   final ProjectFrameRate Function() resolveFrameRate;
@@ -90,6 +96,7 @@ class AudioScrubber {
       project: resolveProject(),
       rate: _rate,
       durationSecondsFor: conformStore.durationSecondsFor,
+      soloedLayerIds: resolveSoloedLayerIds?.call(),
     );
     if (schedule.isEmpty) {
       // A silent cut: do not even open a device for it.

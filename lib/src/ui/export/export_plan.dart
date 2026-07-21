@@ -1,5 +1,6 @@
 import 'dart:math' as math;
 
+import '../../models/audio_clip.dart' show AudioVolumeKey;
 import '../../models/cut.dart';
 import '../../models/cut_id.dart';
 import '../../models/frame.dart';
@@ -213,6 +214,8 @@ List<ScheduledAudioClip> buildExportAudioPlan({
     required int audibleStart,
     required int audibleEnd,
     required SeAudioSpan span,
+    double layerGain = 1.0,
+    double layerPan = 0.0,
   }) {
     if (audibleEnd <= audibleStart) {
       return;
@@ -228,6 +231,7 @@ List<ScheduledAudioClip> buildExportAudioPlan({
           audibleFrames,
         );
     final fadeOutFrames = span.clip.fadeOutFrames.clamp(0, audibleFrames);
+    final trimmedLead = audibleStart - spanExportStart;
     clips.add(
       ScheduledAudioClip(
         filePath: span.clip.filePath,
@@ -235,10 +239,21 @@ List<ScheduledAudioClip> buildExportAudioPlan({
         endFrameExclusive: audibleEnd,
         // The clip's offset trim seeks past the skipped file head on top
         // of any range clipping.
-        offsetFrames: audibleStart - spanExportStart + span.clip.offsetFrames,
-        gain: span.clip.gain,
+        offsetFrames: trimmedLead + span.clip.offsetFrames,
+        gain: layerGain * span.clip.gain,
         fadeInFrames: fadeInFrames,
         fadeOutFrames: fadeOutFrames,
+        pan: layerPan,
+        fadeCurve: span.clip.fadeCurve,
+        // Envelope keys anchor to the span start; a trimmed lead shifts
+        // them (possibly negative — before the exported window), same as
+        // playback.
+        volumeKeys: trimmedLead == 0
+            ? span.clip.volumeKeys
+            : [
+                for (final key in span.clip.volumeKeys)
+                  AudioVolumeKey(frame: key.frame - trimmedLead, gain: key.gain),
+              ],
       ),
     );
   }
@@ -353,6 +368,8 @@ List<ScheduledAudioClip> buildExportAudioPlan({
             audibleStart: math.max(blockStart, exportPos),
             audibleEnd: math.min(runEnd, exportPos + span.lengthFrames),
             span: span,
+            layerGain: layer.audioGain,
+            layerPan: layer.audioPan,
           );
         }
       }

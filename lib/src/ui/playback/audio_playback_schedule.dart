@@ -12,7 +12,9 @@ library;
 
 import 'dart:math' as math;
 
+import '../../models/audio_clip.dart' show AudioFadeCurve, AudioVolumeKey;
 import '../../models/cut_id.dart';
+import '../../models/layer_id.dart';
 import '../../models/project.dart';
 import '../../models/project_frame_rate.dart';
 import '../../models/se_audio_spans.dart';
@@ -31,6 +33,9 @@ class ScheduledAudioClip {
     this.gain = 1.0,
     this.fadeInFrames = 0,
     this.fadeOutFrames = 0,
+    this.pan = 0.0,
+    this.fadeCurve = AudioFadeCurve.linear,
+    this.volumeKeys = const [],
   });
 
   final String filePath;
@@ -41,10 +46,24 @@ class ScheduledAudioClip {
   final int offsetFrames;
 
   /// The clip's volume envelope (see [AudioClip]); fades anchor to this
-  /// schedule entry's own start/end.
+  /// schedule entry's own start/end. [gain] already carries the LAYER
+  /// fader multiplied in (AUDIO-PRO R1) — consumers never re-consult the
+  /// layer.
   final double gain;
   final int fadeInFrames;
   final int fadeOutFrames;
+
+  /// The layer's pan, -1..1 equal-power (AUDIO-PRO R1); applied by the
+  /// device mixer path only.
+  final double pan;
+
+  /// The shape both fades take.
+  final AudioFadeCurve fadeCurve;
+
+  /// The clip's volume envelope keys, frames RELATIVE TO THIS ENTRY's
+  /// start (a trimmed entry shifts them, possibly negative — the ramp's
+  /// early part simply sits before the audible window).
+  final List<AudioVolumeKey> volumeKeys;
 
   @override
   bool operator ==(Object other) =>
@@ -55,7 +74,22 @@ class ScheduledAudioClip {
       other.offsetFrames == offsetFrames &&
       other.gain == gain &&
       other.fadeInFrames == fadeInFrames &&
-      other.fadeOutFrames == fadeOutFrames;
+      other.fadeOutFrames == fadeOutFrames &&
+      other.pan == pan &&
+      other.fadeCurve == fadeCurve &&
+      _keysEqual(other.volumeKeys, volumeKeys);
+
+  static bool _keysEqual(List<AudioVolumeKey> a, List<AudioVolumeKey> b) {
+    if (a.length != b.length) {
+      return false;
+    }
+    for (var index = 0; index < a.length; index += 1) {
+      if (a[index] != b[index]) {
+        return false;
+      }
+    }
+    return true;
+  }
 
   @override
   int get hashCode => Object.hash(
@@ -66,6 +100,9 @@ class ScheduledAudioClip {
     gain,
     fadeInFrames,
     fadeOutFrames,
+    pan,
+    fadeCurve,
+    Object.hashAll(volumeKeys),
   );
 
   @override
@@ -73,7 +110,8 @@ class ScheduledAudioClip {
       'ScheduledAudioClip(filePath: $filePath, startFrame: $startFrame, '
       'endFrameExclusive: $endFrameExclusive, offsetFrames: $offsetFrames, '
       'gain: $gain, fadeInFrames: $fadeInFrames, '
-      'fadeOutFrames: $fadeOutFrames)';
+      'fadeOutFrames: $fadeOutFrames, pan: $pan, '
+      'fadeCurve: ${fadeCurve.name}, volumeKeys: $volumeKeys)';
 }
 
 /// Clamps [endFrameExclusive] to the file's own audible length.
@@ -113,7 +151,12 @@ List<ScheduledAudioClip> buildAudioPlaybackSchedule({
   required Project? project,
   required ProjectFrameRate rate,
   required double? Function(String filePath) durationSecondsFor,
+  Set<LayerId>? soloedLayerIds,
 }) {
+  // Solo is a MONITORING state (AUDIO-PRO R1): a non-empty set narrows
+  // the audible layers to it. Export never passes one — soloing while
+  // rendering would bake a monitoring choice into the file.
+  final soloed = soloedLayerIds ?? const <LayerId>{};
   final schedule = <ScheduledAudioClip>[];
 
   // SE rows are TRACK-owned and live on each track's GLOBAL frame axis;
@@ -202,7 +245,7 @@ List<ScheduledAudioClip> buildAudioPlaybackSchedule({
       final runEnd = contiguousPlaylistEndFrom(i);
 
       for (final layer in track.seLayers) {
-        if (layer.muted) {
+        if (layer.muted || (soloed.isNotEmpty && !soloed.contains(layer.id))) {
           continue;
         }
         for (final span in seAudioSpans(layer)) {
@@ -247,9 +290,24 @@ List<ScheduledAudioClip> buildAudioPlaybackSchedule({
               startFrame: startFrame,
               endFrameExclusive: endFrameExclusive,
               offsetFrames: offsetFrames,
-              gain: span.clip.gain,
+              // The layer fader multiplies in HERE (one gain per entry) so
+              // no consumer ever re-consults the layer.
+              gain: layer.audioGain * span.clip.gain,
               fadeInFrames: span.clip.fadeInFrames,
               fadeOutFrames: span.clip.fadeOutFrames,
+              pan: layer.audioPan,
+              fadeCurve: span.clip.fadeCurve,
+              // Envelope keys anchor to the SPAN start; a clipped lead
+              // shifts them (possibly negative — before the window).
+              volumeKeys: clippedLead == 0
+                  ? span.clip.volumeKeys
+                  : [
+                      for (final key in span.clip.volumeKeys)
+                        AudioVolumeKey(
+                          frame: key.frame - clippedLead,
+                          gain: key.gain,
+                        ),
+                    ],
             ),
           );
         }
@@ -282,6 +340,13 @@ AudioMixSchedule audioMixScheduleFrom({
   required ProjectFrameRate rate,
   required int sampleRate,
 }) {
+  // Envelope keys may sit BEFORE the entry (a trimmed lead shifted them
+  // negative); frameToSample clamps at zero, so negatives convert through
+  // their magnitude.
+  int signedFrameToSample(int frame) => frame >= 0
+      ? rate.frameToSample(frame, sampleRate)
+      : -rate.frameToSample(-frame, sampleRate);
+
   final sourceIndexByPath = <String, int>{};
   final sourcePaths = <String>[];
   final clips = <AudioMixClip>[];
@@ -290,6 +355,7 @@ AudioMixSchedule audioMixScheduleFrom({
       sourcePaths.add(clip.filePath);
       return sourcePaths.length - 1;
     });
+    final pan = equalPowerPanGains(clip.pan);
     clips.add(
       AudioMixClip(
         sourceIndex: sourceIndex,
@@ -299,6 +365,16 @@ AudioMixSchedule audioMixScheduleFrom({
         gain: clip.gain,
         fadeInSamples: rate.frameToSample(clip.fadeInFrames, sampleRate),
         fadeOutSamples: rate.frameToSample(clip.fadeOutFrames, sampleRate),
+        panLeft: pan.left,
+        panRight: pan.right,
+        fadeCurve: clip.fadeCurve.index,
+        envelope: [
+          for (final key in clip.volumeKeys)
+            AudioEnvelopePoint(
+              sample: signedFrameToSample(key.frame),
+              gain: key.gain,
+            ),
+        ],
       ),
     );
   }

@@ -34,6 +34,8 @@ class Layer {
     List<AudioClip> audioClips = const [],
     this.isVisible = true,
     this.muted = false,
+    this.audioGain = 1.0,
+    this.audioPan = 0.0,
     this.opacity = 1.0,
     this.kind = LayerKind.animation,
     this.onTimesheet = true,
@@ -71,6 +73,17 @@ class Layer {
   /// the audio counterpart of [isVisible]): playback and export skip the
   /// clips of muted layers, the waveforms keep displaying.
   final bool muted;
+
+  /// The SE row's track fader (AUDIO-PRO R1): multiplies every clip on
+  /// this layer. 1.0 = unity; applied exactly by the mixer (headroom, no
+  /// platform clamp), like clip gain.
+  final double audioGain;
+
+  /// The SE row's pan, -1 (left) .. +1 (right), equal-power law. 0 =
+  /// center. Applied on the device mixer path; the platform-player
+  /// fallback cannot pan (honest limitation, like exact gain before it).
+  final double audioPan;
+
   final double opacity;
   final LayerKind kind;
 
@@ -141,6 +154,8 @@ class Layer {
     List<AudioClip>? audioClips,
     bool? isVisible,
     bool? muted,
+    double? audioGain,
+    double? audioPan,
     double? opacity,
     LayerKind? kind,
     bool? onTimesheet,
@@ -164,6 +179,8 @@ class Layer {
       audioClips: audioClips ?? this.audioClips,
       isVisible: isVisible ?? this.isVisible,
       muted: muted ?? this.muted,
+      audioGain: audioGain ?? this.audioGain,
+      audioPan: audioPan ?? this.audioPan,
       opacity: opacity ?? this.opacity,
       kind: kind ?? this.kind,
       onTimesheet: onTimesheet ?? this.onTimesheet,
@@ -198,6 +215,8 @@ class Layer {
       'audioClips': audioClips.map((clip) => clip.toJson()).toList(),
     'isVisible': isVisible,
     if (muted) 'muted': true,
+    if (audioGain != 1.0) 'audioGain': audioGain,
+    if (audioPan != 0.0) 'audioPan': audioPan,
     'opacity': opacity,
     'kind': kind.toJson(),
     'onTimesheet': onTimesheet,
@@ -269,6 +288,8 @@ class Layer {
             ],
       isVisible: json['isVisible'] as bool,
       muted: json['muted'] as bool? ?? false,
+      audioGain: (json['audioGain'] as num?)?.toDouble() ?? 1.0,
+      audioPan: (json['audioPan'] as num?)?.toDouble() ?? 0.0,
       opacity: (json['opacity'] as num).toDouble(),
       kind: json.containsKey('kind')
           ? LayerKind.fromJson(json['kind'])
@@ -325,6 +346,8 @@ class Layer {
           listEquals(other.audioClips, audioClips) &&
           other.isVisible == isVisible &&
           other.muted == muted &&
+          other.audioGain == audioGain &&
+          other.audioPan == audioPan &&
           other.opacity == opacity &&
           other.kind == kind &&
           other.onTimesheet == onTimesheet &&
@@ -352,6 +375,7 @@ class Layer {
     Object.hashAll(audioClips),
     isVisible,
     muted,
+    Object.hash(audioGain, audioPan),
     opacity,
     kind,
     onTimesheet,

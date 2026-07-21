@@ -13,7 +13,19 @@
 /// bridge between the two.
 library;
 
+import 'dart:math' as math;
 import 'dart:typed_data';
+
+/// One volume-envelope point (AUDIO-PRO R1) — mirrors the C
+/// `qa_audio_envelope_key`: at [sample] (clip-local, from the clip's
+/// start) the envelope passes [gain]. Linear between points, held past
+/// the ends.
+class AudioEnvelopePoint {
+  const AudioEnvelopePoint({required this.sample, required this.gain});
+
+  final int sample;
+  final double gain;
+}
 
 /// One scheduled clip on the timeline — mirrors the C `qa_audio_clip`.
 class AudioMixClip {
@@ -25,6 +37,10 @@ class AudioMixClip {
     this.gain = 1.0,
     this.fadeInSamples = 0,
     this.fadeOutSamples = 0,
+    this.panLeft = 1.0,
+    this.panRight = 1.0,
+    this.fadeCurve = 0,
+    this.envelope = const [],
   });
 
   final int sourceIndex;
@@ -42,6 +58,66 @@ class AudioMixClip {
   final double gain;
   final int fadeInSamples;
   final int fadeOutSamples;
+
+  /// Per-output-side pan factors, PRECOMPUTED here in Dart (see
+  /// [equalPowerPanGains]) so the C never calls trig — a libm sin/cos can
+  /// differ from Dart's by an ulp and break byte parity. Applied on a
+  /// stereo bus only; unity leaves the mix untouched.
+  final double panLeft;
+  final double panRight;
+
+  /// 0 = linear ramps (the historical shape), 1 = equal-power (sqrt).
+  final int fadeCurve;
+
+  /// The volume envelope, sorted by sample; empty = unity. The FFI layer
+  /// flattens every clip's points into one shared array for the C.
+  final List<AudioEnvelopePoint> envelope;
+}
+
+/// The equal-power pan law: -1 (full left) .. +1 (full right) to the two
+/// side factors, with the sum of squares constant — center sits 3 dB
+/// under a hard side, and nothing gets louder than the source. Computed
+/// ONCE per clip here so both mixer implementations consume identical
+/// doubles.
+({double left, double right}) equalPowerPanGains(double pan) {
+  final clamped = pan < -1.0 ? -1.0 : (pan > 1.0 ? 1.0 : pan);
+  final angle = (clamped + 1.0) * math.pi / 4.0;
+  return (left: math.cos(angle), right: math.sin(angle));
+}
+
+/// The fade ramp's shape — mirrors the C `qa_audio_fade_ramp`. sqrt, not
+/// sin, for the equal-power curve: IEEE 754 requires sqrt correctly
+/// rounded, so C and Dart produce the same bits.
+double audioFadeRamp(double ramp, int curve) {
+  final clamped = ramp < 0.0 ? 0.0 : ramp;
+  return curve == 1 ? math.sqrt(clamped) : clamped;
+}
+
+/// The envelope's value at [position] (clip-local samples) — mirrors the C
+/// `qa_audio_envelope_at` expression for expression.
+double audioEnvelopeAt(List<AudioEnvelopePoint> points, int position) {
+  if (points.isEmpty) {
+    return 1.0;
+  }
+  if (position <= points.first.sample) {
+    return points.first.gain;
+  }
+  if (position >= points.last.sample) {
+    return points.last.gain;
+  }
+  for (var index = 0; index < points.length - 1; index += 1) {
+    final a = points[index];
+    final b = points[index + 1];
+    if (position < b.sample) {
+      final span = (b.sample - a.sample).toDouble();
+      if (span <= 0.0) {
+        return b.gain;
+      }
+      final t = (position - a.sample) / span;
+      return a.gain + (b.gain - a.gain) * t;
+    }
+  }
+  return points.last.gain;
 }
 
 /// A block of decoded samples, interleaved by channel — mirrors the C
@@ -76,14 +152,15 @@ class AudioMixSource {
 double audioClipVolumeAt(AudioMixClip clip, int positionSample) {
   var volume = clip.gain;
   final position = positionSample - clip.startSample;
+  if (clip.envelope.isNotEmpty) {
+    volume *= audioEnvelopeAt(clip.envelope, position);
+  }
   if (clip.fadeInSamples > 0 && position < clip.fadeInSamples) {
-    final ramp = position / clip.fadeInSamples;
-    volume *= ramp < 0.0 ? 0.0 : ramp;
+    volume *= audioFadeRamp(position / clip.fadeInSamples, clip.fadeCurve);
   }
   final remaining = clip.endSample - positionSample;
   if (clip.fadeOutSamples > 0 && remaining < clip.fadeOutSamples) {
-    final ramp = remaining / clip.fadeOutSamples;
-    volume *= ramp < 0.0 ? 0.0 : ramp;
+    volume *= audioFadeRamp(remaining / clip.fadeOutSamples, clip.fadeCurve);
   }
   return volume;
 }
@@ -148,8 +225,13 @@ Float64List mixAudioReference({
       final destination = (position - startSample) * outChannels;
       for (var channel = 0; channel < outChannels; channel += 1) {
         final sourceChannel = audioSourceChannelFor(source.channels, channel);
+        // Pan factors apply on a STEREO bus only; multiplication order
+        // mirrors the C exactly (sample × volume × factor).
+        final factor = outChannels == 2
+            ? (channel == 0 ? clip.panLeft : clip.panRight)
+            : 1.0;
         out[destination + channel] +=
-            source.samples[frame + sourceChannel] * volume;
+            source.samples[frame + sourceChannel] * volume * factor;
       }
     }
   }

@@ -2855,19 +2855,39 @@ QA_EXPORT int32_t qa_grid_raster_tile(
 // frame is a picture. ProjectFrameRate.frameToSample is what converts.
 // ---------------------------------------------------------------------
 
-// One scheduled clip on the timeline. Layout: double, then int64s, then an
-// even number of int32s - natural alignment, no implicit padding on any
+// One scheduled clip on the timeline. Layout: doubles, then int64s, then
+// an even number of int32s - natural alignment, no implicit padding on any
 // supported ABI (the loader cross-checks qa_audio_clip_sizeof).
+//
+// AUDIO-PRO R1 additions: pan arrives as PRECOMPUTED per-channel factors
+// (the equal-power cos/sin runs once in Dart - a libm trig call here could
+// differ from Dart's by an ulp and break byte parity; sqrt in the fade
+// curve is safe because IEEE 754 requires it correctly rounded), the fade
+// curve selects the ramp shape, and the volume envelope references a
+// shared key array by offset/count (variable-length data cannot live in a
+// fixed struct).
 typedef struct {
   double gain;
+  double pan_left;           // factor for output channel 0 (stereo out)
+  double pan_right;          // factor for output channel 1 (stereo out)
   int64_t start_sample;      // timeline position, inclusive
   int64_t end_sample;        // timeline position, exclusive
   int64_t source_offset;     // sample index into the source at start_sample
   int64_t fade_in_samples;   // 0 = none
   int64_t fade_out_samples;  // 0 = none
   int32_t source_index;
-  int32_t reserved;
+  int32_t fade_curve;        // 0 = linear, 1 = equal-power (sqrt ramp)
+  int32_t envelope_offset;   // into the shared envelope key array
+  int32_t envelope_count;    // 0 = unity envelope
 } qa_audio_clip;
+
+// One volume-envelope point: at [sample] (clip-local, from the clip's
+// start) the envelope passes [gain]. Between points the value
+// interpolates linearly; before the first and after the last it holds.
+typedef struct {
+  int64_t sample;
+  double gain;
+} qa_audio_envelope_key;
 
 // A block of decoded samples, interleaved by channel.
 //
@@ -2891,6 +2911,10 @@ QA_EXPORT int32_t qa_audio_source_sizeof(void) {
   return (int32_t)sizeof(qa_audio_source);
 }
 
+QA_EXPORT int32_t qa_audio_envelope_key_sizeof(void) {
+  return (int32_t)sizeof(qa_audio_envelope_key);
+}
+
 // The clip's volume envelope at one timeline position - the same shape the
 // Dart path has always used (linear ramps anchored to the clip's own start
 // and end).
@@ -2901,18 +2925,66 @@ QA_EXPORT int32_t qa_audio_source_sizeof(void) {
 // in the file. A mix bus has no such ceiling: gain applies exactly here and
 // clipping belongs to the output stage, which is where
 // qa_audio_bus_to_int16 does it.
+// The fade ramp's shape (AUDIO-PRO R1): linear, or the equal-power sqrt
+// curve (sum of SQUARES constant across a crossfade, so overlapped fades
+// hold loudness instead of dipping). sqrt, not sin, on purpose: IEEE 754
+// requires sqrt correctly rounded, so C and Dart produce the same bits.
+static double qa_audio_fade_ramp(double ramp, int32_t curve) {
+  const double clamped = ramp < 0.0 ? 0.0 : ramp;
+  return curve == 1 ? sqrt(clamped) : clamped;
+}
+
+// The clip's volume envelope at [position] (clip-local samples): keyed
+// gains, linear between keys, held past the ends. Empty = unity. Linear
+// scan - envelopes carry a handful of keys, and the arithmetic mirrors
+// the Dart reference expression for expression.
+static double qa_audio_envelope_at(const qa_audio_envelope_key* keys,
+                                   int32_t count,
+                                   int64_t position) {
+  if (keys == NULL || count <= 0) {
+    return 1.0;
+  }
+  if (position <= keys[0].sample) {
+    return keys[0].gain;
+  }
+  if (position >= keys[count - 1].sample) {
+    return keys[count - 1].gain;
+  }
+  for (int32_t index = 0; index < count - 1; index += 1) {
+    const qa_audio_envelope_key* a = &keys[index];
+    const qa_audio_envelope_key* b = &keys[index + 1];
+    if (position < b->sample) {
+      const double span = (double)(b->sample - a->sample);
+      if (span <= 0.0) {
+        return b->gain;
+      }
+      const double t = (double)(position - a->sample) / span;
+      return a->gain + (b->gain - a->gain) * t;
+    }
+  }
+  return keys[count - 1].gain;
+}
+
 static double qa_audio_clip_volume(const qa_audio_clip* clip,
+                                   const qa_audio_envelope_key* envelope_keys,
+                                   int32_t envelope_key_count,
                                    int64_t position_sample) {
   double volume = clip->gain;
   const int64_t position = position_sample - clip->start_sample;
+  if (clip->envelope_count > 0 && envelope_keys != NULL &&
+      clip->envelope_offset >= 0 &&
+      clip->envelope_offset + clip->envelope_count <= envelope_key_count) {
+    volume *= qa_audio_envelope_at(&envelope_keys[clip->envelope_offset],
+                                   clip->envelope_count, position);
+  }
   if (clip->fade_in_samples > 0 && position < clip->fade_in_samples) {
     const double ramp = (double)position / (double)clip->fade_in_samples;
-    volume *= ramp < 0.0 ? 0.0 : ramp;
+    volume *= qa_audio_fade_ramp(ramp, clip->fade_curve);
   }
   const int64_t remaining = clip->end_sample - position_sample;
   if (clip->fade_out_samples > 0 && remaining < clip->fade_out_samples) {
     const double ramp = (double)remaining / (double)clip->fade_out_samples;
-    volume *= ramp < 0.0 ? 0.0 : ramp;
+    volume *= qa_audio_fade_ramp(ramp, clip->fade_curve);
   }
   return volume;
 }
@@ -2943,6 +3015,8 @@ QA_EXPORT void qa_audio_mix(
     int32_t clip_count,
     const qa_audio_source* sources,
     int32_t source_count,
+    const qa_audio_envelope_key* envelope_keys,
+    int32_t envelope_key_count,
     int64_t start_sample,
     int32_t sample_count,
     int32_t out_channels,
@@ -2978,14 +3052,23 @@ QA_EXPORT void qa_audio_mix(
       if (offset < 0 || offset >= source->length) {
         continue;  // Outside the available window: silence, never a wait.
       }
-      const double volume = qa_audio_clip_volume(clip, position);
+      const double volume = qa_audio_clip_volume(clip, envelope_keys,
+                                                 envelope_key_count, position);
       const float* frame = &source->samples[offset * source->channels];
       double* destination =
           &out[(size_t)(position - start_sample) * (size_t)out_channels];
       for (int32_t channel = 0; channel < out_channels; channel += 1) {
         const int32_t source_channel =
             qa_audio_source_channel(source->channels, channel);
-        destination[channel] += (double)frame[source_channel] * volume;
+        // Pan factors apply on a STEREO bus only (the factors are per
+        // output side); any other geometry passes through untouched.
+        // Multiplication order mirrors the Dart reference exactly.
+        const double factor =
+            out_channels == 2
+                ? (channel == 0 ? clip->pan_left : clip->pan_right)
+                : 1.0;
+        destination[channel] +=
+            (double)frame[source_channel] * volume * factor;
       }
     }
   }
@@ -3238,5 +3321,7 @@ QA_EXPORT int64_t qa_audio_resample_frames(int64_t input_frames,
 // v14: qa_fill_compose_batch - pooled fill compose (R25-3).
 // v15: qa_grid_raster_tile - timeline grid tile rasterizer (UI-R18 O7 T1).
 // v16: qa_audio_mix + output stage - the audio mixer core (2B).
+// v18: AUDIO-PRO R1 - pan factors, fade curves and volume envelopes in
+//      the clip struct + the shared envelope key array in qa_audio_mix.
 // v17: qa_audio_resample - the polyphase resampler (2B).
-QA_EXPORT int32_t qa_engine_abi_version(void) { return 17; }
+QA_EXPORT int32_t qa_engine_abi_version(void) { return 18; }
