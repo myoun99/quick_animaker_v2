@@ -3815,20 +3815,32 @@ class EditorSessionManager extends ChangeNotifier {
   /// Whether any clip anywhere still references [path] (remove-guard and
   /// the browser's usage badge).
   bool isMediaAssetReferenced(String path) {
+    // Only clips that resolve to a live frame count (REC1-A): a dangling
+    // link is inaudible everywhere, so it must not hold the pool hostage.
+    bool layerReferences(Layer layer) {
+      Set<FrameId>? liveIds;
+      for (final clip in layer.audioClips) {
+        if (clip.filePath != path) {
+          continue;
+        }
+        liveIds ??= {for (final frame in layer.frames) frame.id};
+        if (liveIds.contains(clip.frameId)) {
+          return true;
+        }
+      }
+      return false;
+    }
+
     for (final track in _repository.requireProject().tracks) {
       for (final layer in track.seLayers) {
-        for (final clip in layer.audioClips) {
-          if (clip.filePath == path) {
-            return true;
-          }
+        if (layerReferences(layer)) {
+          return true;
         }
       }
       for (final cut in track.cuts) {
         for (final layer in cut.layers) {
-          for (final clip in layer.audioClips) {
-            if (clip.filePath == path) {
-              return true;
-            }
+          if (layerReferences(layer)) {
+            return true;
           }
         }
       }
