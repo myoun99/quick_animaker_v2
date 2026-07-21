@@ -19,6 +19,16 @@ import 'package:quick_animaker_v2/src/ui/home_page.dart';
 import '../flyout_test_helpers.dart';
 import 'timeline_cell_probe.dart';
 
+/// The toolbar scrolls horizontally when squeezed (narrow surfaces), so
+/// bring Add into its viewport before tapping.
+Future<void> _tapToolbarAdd(WidgetTester tester) async {
+  final addButton = find.byKey(const ValueKey<String>('new-frame-button'));
+  await tester.ensureVisible(addButton);
+  await tester.pumpAndSettle();
+  await tester.tap(addButton);
+  await tester.pumpAndSettle();
+}
+
 /// Entrance unification: EVERY layer kind opens its instance editor on
 /// double-tap, and the toolbar Add / Edit Instance buttons dispatch by
 /// kind. Fixture: a drawing layer with a named 4-frame entry, an empty SE
@@ -176,8 +186,7 @@ void main() {
 
     await tester.tap(find.byKey(const ValueKey<String>('timeline-cell-cam-4')));
     await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const ValueKey<String>('new-frame-button')));
-    await tester.pumpAndSettle();
+    await _tapToolbarAdd(tester);
 
     final track = _cut(repository).camera.track;
     expect(track.position.keyAt(4), isNotNull);
@@ -194,8 +203,7 @@ void main() {
       find.byKey(const ValueKey<String>('timeline-cell-voice-3')),
     );
     await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const ValueKey<String>('new-frame-button')));
-    await tester.pumpAndSettle();
+    await _tapToolbarAdd(tester);
     expect(find.text('New SE'), findsNothing, reason: 'creation is silent');
 
     final seLayer = _cut(
