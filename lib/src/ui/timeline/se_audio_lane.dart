@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import 'package:flutter/gestures.dart' show DragStartBehavior;
 import 'package:flutter/material.dart';
 
+import '../../models/app_language.dart' show AppLanguage;
 import '../../models/audio_clip.dart' show AudioFadeCurve, AudioVolumeKey;
 import '../../models/layer.dart';
 import '../../models/layer_id.dart';
@@ -11,6 +12,7 @@ import '../../models/project_frame_rate.dart';
 import '../../models/se_audio_spans.dart';
 import '../../services/audio/audio_peaks_extractor.dart';
 import '../audio/waveform_painter.dart';
+import '../text/app_strings.dart';
 import '../theme/app_theme.dart';
 import '../widgets/field_slider.dart';
 import 'property_lane_model.dart';
@@ -154,6 +156,7 @@ class SeAudioLaneFrameRow extends StatelessWidget {
     this.onSetClipGain,
     this.onSetClipFadeCurve,
     this.onSetClipEnvelope,
+    this.resolveStrings,
     this.axis = Axis.horizontal,
     this.keyPrefix = 'timeline',
   });
@@ -193,6 +196,10 @@ class SeAudioLaneFrameRow extends StatelessWidget {
   /// AUDIO-PRO R1); null hides the entry.
   final void Function(int clipIndex, List<AudioVolumeKey> keys)?
   onSetClipEnvelope;
+
+  /// The PROGRAM-language table for the span menu and its dialogs; null
+  /// keeps English (the incremental-coverage rule).
+  final AppStrings Function()? resolveStrings;
 
   final Axis axis;
   final String keyPrefix;
@@ -253,6 +260,7 @@ class SeAudioLaneFrameRow extends StatelessWidget {
         onSetEnvelope: onSetClipEnvelope == null
             ? null
             : (keys) => onSetClipEnvelope!(span.clipIndex, keys),
+        resolveStrings: resolveStrings,
       );
       spans.add(
         horizontal
@@ -338,6 +346,7 @@ class _SeAudioLaneSpan extends StatefulWidget {
     this.onSetGain,
     this.onSetFadeCurve,
     this.onSetEnvelope,
+    this.resolveStrings,
   });
 
   final SeAudioSpan span;
@@ -351,6 +360,7 @@ class _SeAudioLaneSpan extends StatefulWidget {
   final ValueChanged<double>? onSetGain;
   final ValueChanged<AudioFadeCurve>? onSetFadeCurve;
   final ValueChanged<List<AudioVolumeKey>>? onSetEnvelope;
+  final AppStrings Function()? resolveStrings;
 
   @override
   State<_SeAudioLaneSpan> createState() => _SeAudioLaneSpanState();
@@ -499,6 +509,8 @@ class _SeAudioLaneSpanState extends State<_SeAudioLaneSpan> {
   Future<void> _showSpanMenu(Offset globalPosition) async {
     final overlay = Overlay.of(context).context.findRenderObject();
     final clip = widget.span.clip;
+    final strings =
+        widget.resolveStrings?.call() ?? AppStrings.of(AppLanguage.en);
     final selected = await showMenu<String>(
       context: context,
       position: RelativeRect.fromRect(
@@ -508,16 +520,16 @@ class _SeAudioLaneSpanState extends State<_SeAudioLaneSpan> {
       popUpAnimationStyle: instantMenuAnimation,
       items: [
         if (widget.onSetGain != null)
-          const PopupMenuItem<String>(
-            key: ValueKey<String>('audio-lane-menu-gain'),
+          PopupMenuItem<String>(
+            key: const ValueKey<String>('audio-lane-menu-gain'),
             value: 'gain',
-            child: Text('Gain…'),
+            child: Text(strings.audioClipGainMenu),
           ),
         if (widget.onSetEnvelope != null)
-          const PopupMenuItem<String>(
-            key: ValueKey<String>('audio-lane-menu-envelope'),
+          PopupMenuItem<String>(
+            key: const ValueKey<String>('audio-lane-menu-envelope'),
             value: 'envelope',
-            child: Text('Volume envelope…'),
+            child: Text(strings.audioEnvelopeMenu),
           ),
         if (widget.onSetFadeCurve != null)
           PopupMenuItem<String>(
@@ -525,8 +537,8 @@ class _SeAudioLaneSpanState extends State<_SeAudioLaneSpan> {
             value: 'fade-curve',
             child: Text(
               clip.fadeCurve == AudioFadeCurve.equalPower
-                  ? 'Fades: equal-power (switch to linear)'
-                  : 'Fades: linear (switch to equal-power)',
+                  ? strings.audioFadesEqualPowerMenu
+                  : strings.audioFadesLinearMenu,
             ),
           ),
       ],
@@ -538,7 +550,8 @@ class _SeAudioLaneSpanState extends State<_SeAudioLaneSpan> {
       case 'gain':
         final gain = await showDialog<double>(
           context: context,
-          builder: (context) => _AudioGainDialog(initialGain: clip.gain),
+          builder: (context) =>
+              _AudioGainDialog(initialGain: clip.gain, strings: strings),
         );
         if (gain != null) {
           widget.onSetGain?.call(gain);
@@ -549,6 +562,7 @@ class _SeAudioLaneSpanState extends State<_SeAudioLaneSpan> {
           builder: (context) => _AudioEnvelopeDialog(
             initialKeys: clip.volumeKeys,
             spanLengthFrames: widget.span.lengthFrames,
+            strings: strings,
           ),
         );
         if (keys != null) {
@@ -723,10 +737,12 @@ class _AudioEnvelopeDialog extends StatefulWidget {
   const _AudioEnvelopeDialog({
     required this.initialKeys,
     required this.spanLengthFrames,
+    required this.strings,
   });
 
   final List<AudioVolumeKey> initialKeys;
   final int spanLengthFrames;
+  final AppStrings strings;
 
   @override
   State<_AudioEnvelopeDialog> createState() => _AudioEnvelopeDialogState();
@@ -780,19 +796,19 @@ class _AudioEnvelopeDialogState extends State<_AudioEnvelopeDialog> {
 
   @override
   Widget build(BuildContext context) {
+    final strings = widget.strings;
     return AlertDialog(
       key: const ValueKey<String>('audio-envelope-dialog'),
-      title: const Text('Volume Envelope'),
+      title: Text(strings.audioEnvelopeTitle),
       content: SizedBox(
         width: 300,
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text(
-              'Keyed gains at clip frames (linear between keys, held past '
-              'the ends). Empty = flat.',
-              style: TextStyle(fontSize: 12),
+            Text(
+              strings.audioEnvelopeHelp,
+              style: const TextStyle(fontSize: 12),
             ),
             const SizedBox(height: 8),
             ConstrainedBox(
@@ -810,9 +826,9 @@ class _AudioEnvelopeDialogState extends State<_AudioEnvelopeDialog> {
                               key: ValueKey<String>('audio-envelope-frame-$index'),
                               controller: _rows[index].frame,
                               keyboardType: TextInputType.number,
-                              decoration: const InputDecoration(
+                              decoration: InputDecoration(
                                 isDense: true,
-                                labelText: 'frame',
+                                labelText: strings.audioEnvelopeFrameLabel,
                               ),
                             ),
                           ),
@@ -822,9 +838,10 @@ class _AudioEnvelopeDialogState extends State<_AudioEnvelopeDialog> {
                               key: ValueKey<String>('audio-envelope-gain-$index'),
                               controller: _rows[index].gain,
                               keyboardType: TextInputType.number,
-                              decoration: const InputDecoration(
+                              decoration: InputDecoration(
                                 isDense: true,
-                                labelText: 'gain %',
+                                labelText:
+                                    strings.audioEnvelopeGainPercentLabel,
                               ),
                             ),
                           ),
@@ -847,7 +864,7 @@ class _AudioEnvelopeDialogState extends State<_AudioEnvelopeDialog> {
               key: const ValueKey<String>('audio-envelope-add'),
               onPressed: _addRow,
               icon: const Icon(Icons.add, size: 16),
-              label: const Text('Add key'),
+              label: Text(strings.audioEnvelopeAddKey),
             ),
           ],
         ),
@@ -855,12 +872,12 @@ class _AudioEnvelopeDialogState extends State<_AudioEnvelopeDialog> {
       actions: [
         TextButton(
           onPressed: () => Navigator.of(context).pop(),
-          child: const Text('Cancel'),
+          child: Text(strings.commonCancel),
         ),
         TextButton(
           key: const ValueKey<String>('audio-envelope-apply'),
           onPressed: () => Navigator.of(context).pop(_collect()),
-          child: const Text('Apply'),
+          child: Text(strings.commonApply),
         ),
       ],
     );
@@ -869,9 +886,10 @@ class _AudioEnvelopeDialogState extends State<_AudioEnvelopeDialog> {
 
 /// The gain dialog: a 0–200% slider (100% = the file's own level).
 class _AudioGainDialog extends StatefulWidget {
-  const _AudioGainDialog({required this.initialGain});
+  const _AudioGainDialog({required this.initialGain, required this.strings});
 
   final double initialGain;
+  final AppStrings strings;
 
   @override
   State<_AudioGainDialog> createState() => _AudioGainDialogState();
@@ -882,8 +900,9 @@ class _AudioGainDialogState extends State<_AudioGainDialog> {
 
   @override
   Widget build(BuildContext context) {
+    final strings = widget.strings;
     return AlertDialog(
-      title: const Text('Clip Gain'),
+      title: Text(strings.audioClipGainTitle),
       content: SizedBox(
         width: 240,
         child: FieldSlider(
@@ -891,7 +910,7 @@ class _AudioGainDialogState extends State<_AudioGainDialog> {
           min: 0,
           max: 2,
           value: _gain,
-          label: 'Gain',
+          label: strings.audioGainLabel,
           valueText: '${(_gain * 100).round()}%',
           displayFactor: 100,
           onChanged: (value) => setState(() => _gain = value),
@@ -900,12 +919,12 @@ class _AudioGainDialogState extends State<_AudioGainDialog> {
       actions: [
         TextButton(
           onPressed: () => Navigator.of(context).pop(),
-          child: const Text('Cancel'),
+          child: Text(strings.commonCancel),
         ),
         TextButton(
           key: const ValueKey<String>('audio-gain-apply'),
           onPressed: () => Navigator.of(context).pop(_gain),
-          child: const Text('Apply'),
+          child: Text(strings.commonApply),
         ),
       ],
     );

@@ -7,6 +7,7 @@ import '../../models/layer.dart';
 import '../../models/layer_id.dart';
 import '../../models/layer_kind.dart';
 import '../../services/audio/audio_peaks_extractor.dart';
+import '../text/app_strings.dart';
 import 'property_lane_model.dart';
 import 'se_audio_lane.dart';
 import 'timeline_frame_range_gesture.dart';
@@ -63,6 +64,7 @@ class TimelineFrameRowsScrollBody extends StatefulWidget {
     this.onSetAudioClipGain,
     this.onSetAudioClipFadeCurve,
     this.onSetAudioClipEnvelope,
+    this.resolveStrings,
     this.commaDrag,
     this.rangeGesture,
     this.laneRange,
@@ -155,6 +157,10 @@ class TimelineFrameRowsScrollBody extends StatefulWidget {
     List<AudioVolumeKey> keys,
   )?
   onSetAudioClipEnvelope;
+
+  /// The PROGRAM-language table for the lane menu/dialogs; null keeps
+  /// English (the incremental-coverage rule).
+  final AppStrings Function()? resolveStrings;
 
   final TimelineCommaDragCallbacks? commaDrag;
 
@@ -354,6 +360,7 @@ class _TimelineFrameRowsScrollBodyState
                     clipIndex,
                     keys,
                   ),
+            resolveStrings: widget.resolveStrings,
           )
         : TimelineLaneFrameRow(
             layer: layer,

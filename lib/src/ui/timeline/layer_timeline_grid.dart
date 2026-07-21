@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 
 import '../../models/audio_clip.dart' show AudioFadeCurve, AudioVolumeKey;
 import '../../models/camera_instruction.dart';
+import '../text/app_strings.dart';
 import '../../models/folder_id.dart';
 import '../../models/layer.dart';
 import '../../models/layer_folder.dart';
@@ -85,6 +86,7 @@ class LayerTimelineGrid extends StatefulWidget {
     this.onSetAudioClipGain,
     this.onSetAudioClipFadeCurve,
     this.onSetAudioClipEnvelope,
+    this.resolveStrings,
     this.isLayerSoloed,
     this.onToggleLayerSolo,
     this.onEditLayerAudio,
@@ -233,6 +235,10 @@ class LayerTimelineGrid extends StatefulWidget {
     List<AudioVolumeKey> keys,
   )?
   onSetAudioClipEnvelope;
+
+  /// The PROGRAM-language table for the audio menus and dialogs; null
+  /// keeps English (the incremental-coverage rule).
+  final AppStrings Function()? resolveStrings;
 
   /// The SE mix menu (AUDIO-PRO R1): solo state/toggle + the fader/pan
   /// dialog entrance, on the speaker button's context menu.
@@ -1081,6 +1087,7 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
       isLayerSoloed: widget.isLayerSoloed?.call(row.layer.id) ?? false,
       onToggleLayerSolo: widget.onToggleLayerSolo,
       onEditLayerAudio: widget.onEditLayerAudio,
+      resolveStrings: widget.resolveStrings,
       hasLanes: _lanesFor(row.layer).isNotEmpty,
       lanesExpanded: widget.expandedLaneLayerIds.contains(row.layer.id),
       onToggleLanes: widget.onToggleLayerLanes,
@@ -1704,6 +1711,8 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                                                         onSetAudioClipEnvelope:
                                                             widget
                                                                 .onSetAudioClipEnvelope,
+                                                        resolveStrings: widget
+                                                            .resolveStrings,
                                                         commaDrag:
                                                             widget.commaDrag,
                                                         rangeGesture:

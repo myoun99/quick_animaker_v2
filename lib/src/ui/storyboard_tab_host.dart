@@ -295,6 +295,7 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
                     isVoiceRecording: _session.isVoiceRecording,
                     onToggleVoiceRecording: () =>
                         toggleVoiceRecordingWithFeedback(context, _session),
+                    resolveStrings: () => _session.uiStrings,
                     // Play from the storyboard playhead, like the
                     // timeline's transport does.
                     playbackStartFrame: () =>

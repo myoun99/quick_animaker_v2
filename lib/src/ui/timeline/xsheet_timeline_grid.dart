@@ -3,7 +3,9 @@ import 'dart:math' as math;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
+import '../../models/app_language.dart' show AppLanguage;
 import '../../models/audio_clip.dart' show AudioFadeCurve, AudioVolumeKey;
+import '../text/app_strings.dart';
 import '../../models/camera_instruction.dart';
 import '../../models/layer.dart';
 import '../../models/layer_id.dart';
@@ -93,6 +95,7 @@ class XSheetTimelineGrid extends StatefulWidget {
     this.onSetAudioClipGain,
     this.onSetAudioClipFadeCurve,
     this.onSetAudioClipEnvelope,
+    this.resolveStrings,
     this.isLayerSoloed,
     this.onToggleLayerSolo,
     this.onEditLayerAudio,
@@ -214,6 +217,10 @@ class XSheetTimelineGrid extends StatefulWidget {
     List<AudioVolumeKey> keys,
   )?
   onSetAudioClipEnvelope;
+
+  /// The PROGRAM-language table for the audio menus and dialogs; null
+  /// keeps English (the incremental-coverage rule).
+  final AppStrings Function()? resolveStrings;
 
   /// The SE mix menu (AUDIO-PRO R1): solo state/toggle + the fader/pan
   /// dialog entrance, on the speaker button's context menu.
@@ -689,6 +696,7 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
                       clipIndex,
                       keys,
                     ),
+              resolveStrings: widget.resolveStrings,
             )
           : TimelineLaneFrameRow(
               axis: Axis.vertical,
@@ -1194,6 +1202,8 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
                                                           .onToggleLayerSolo,
                                                       onEditLayerAudio: widget
                                                           .onEditLayerAudio,
+                                                      resolveStrings: widget
+                                                          .resolveStrings,
                                                       hasLanes: _lanesFor(
                                                         entries[index].layer,
                                                       ).isNotEmpty,
@@ -2191,6 +2201,7 @@ class _LayerHeader extends StatelessWidget {
     this.isLayerSoloed = false,
     this.onToggleLayerSolo,
     this.onEditLayerAudio,
+    this.resolveStrings,
   });
 
   final TimelineGridMetrics metrics;
@@ -2223,6 +2234,9 @@ class _LayerHeader extends StatelessWidget {
   final ValueChanged<LayerId>? onToggleLayerSolo;
   final ValueChanged<LayerId>? onEditLayerAudio;
 
+  /// The PROGRAM-language table for the mix menu; null keeps English.
+  final AppStrings Function()? resolveStrings;
+
   /// AE-style property-lane twirl-down: layers with lanes lead their name
   /// row with a chevron (lane COLUMNS open beside the layer's). Headers
   /// without lanes skip the slot — names center per column here, so no
@@ -2237,6 +2251,7 @@ class _LayerHeader extends StatelessWidget {
 
   Future<void> _showMixMenu(BuildContext context, Offset globalPosition) async {
     final overlay = Overlay.of(context).context.findRenderObject();
+    final strings = resolveStrings?.call() ?? AppStrings.of(AppLanguage.en);
     final selected = await showMenu<String>(
       context: context,
       position: RelativeRect.fromRect(
@@ -2248,13 +2263,13 @@ class _LayerHeader extends StatelessWidget {
           PopupMenuItem<String>(
             key: ValueKey<String>('xsheet-layer-solo-${layer.id}'),
             value: 'solo',
-            child: Text(isLayerSoloed ? 'Unsolo' : 'Solo'),
+            child: Text(isLayerSoloed ? strings.audioUnsolo : strings.audioSolo),
           ),
         if (onEditLayerAudio != null)
           PopupMenuItem<String>(
             key: ValueKey<String>('xsheet-layer-audio-${layer.id}'),
             value: 'audio',
-            child: const Text('Layer audio…'),
+            child: Text(strings.audioLayerAudioMenu),
           ),
       ],
     );

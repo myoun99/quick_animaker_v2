@@ -381,6 +381,7 @@ class TimelineActionToolbar extends StatelessWidget {
       context,
       from: session.projectFrameRate,
       to: rate,
+      strings: session.uiStrings,
     );
     switch (choice) {
       case null:
