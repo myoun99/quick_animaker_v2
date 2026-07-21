@@ -686,6 +686,82 @@ void main() {
         );
       });
 
+      test('deleting the CANONICAL cut promotes the survivor: registry '
+          'sweeps, cels re-key onto it, and undo restores everything', () {
+        final fixture = _fixture(
+          _project(
+            tracks: [
+              _track(id: 'track-1', name: 'V', cuts: [linkFixtureCut()]),
+            ],
+          ),
+          activeCutId: const CutId('cut-1'),
+        );
+        final store = BrushFrameStore()
+          ..setLinkResolver(
+            (key) =>
+                fixture.repository.currentProject?.linkRegistry
+                    .canonicalCelKey(key) ??
+                key,
+          );
+        final coordinator = CutCommandCoordinator(
+          repository: fixture.repository,
+          editingSession: fixture.editingSession,
+          historyManager: fixture.historyManager,
+          brushFrameStore: store,
+        );
+        coordinator.createLinkedCut(
+          sourceCutId: const CutId('cut-1'),
+          name: 'reuse',
+        );
+        final linkedCut = fixture.project.tracks.single.cuts[1];
+        final survivorId = fixture.project.linkRegistry
+            .groupOf(cutId: const CutId('cut-1'), layerId: const LayerId('base'))!
+            .members
+            .last
+            .layerId;
+
+        // Ink lives under the CANONICAL (cut-1/base) key.
+        final ink = BitmapSurface(
+          canvasSize: const CanvasSize(width: 1280, height: 720),
+        ).putTile(
+          BitmapTile.blank(coord: TileCoord(x: 0, y: 0), size: 256),
+        );
+        BrushFrameKey survivorKey() => BrushFrameKey(
+          projectId: const ProjectId('project-1'),
+          trackId: const TrackId('track-1'),
+          cutId: linkedCut.id,
+          layerId: survivorId,
+          frameId: const FrameId('frame-a'),
+        );
+        store.storeBakedSurface(survivorKey(), ink); // → canonical (cut-1)
+
+        coordinator.deleteCut(cutId: const CutId('cut-1'));
+
+        // The group dissolved (lone survivor) and the survivor now READS
+        // ITS OWN key — the cels re-keyed onto it.
+        expect(fixture.project.linkRegistry.isEmpty, isTrue);
+        expect(
+          identical(store.bakedSurfaceOrNull(survivorKey()), ink),
+          isTrue,
+          reason: 'pixels keep routing after the canonical cut died',
+        );
+
+        fixture.historyManager.undo();
+        expect(fixture.project.tracks.single.cuts, hasLength(2));
+        expect(
+          fixture.project.linkRegistry.useCountOf(
+            cutId: const CutId('cut-1'),
+            layerId: const LayerId('base'),
+          ),
+          2,
+        );
+        expect(
+          identical(store.bakedSurfaceOrNull(survivorKey()), ink),
+          isTrue,
+          reason: 're-linked: the survivor resolves back to the canonical',
+        );
+      });
+
       test('link-duplicating an already-linked layer EXTENDS its group '
           'instead of nesting a new one', () {
         final fixture = _fixture(
