@@ -471,6 +471,7 @@ QA_EXPORT void qa_video_export_abort(void) { qa_video_apple_abort(); }
 
 #include <dlfcn.h>
 #include <fcntl.h>
+#include <stdbool.h>  // AMediaCodec_releaseOutputBuffer's signature
 #include <unistd.h>
 
 typedef struct AMediaCodec AMediaCodec;

@@ -68,10 +68,13 @@ endif()
 # ALSA package. It does need the OS threading/dl primitives, and on Apple
 # the CoreAudio frameworks at LINK time.
 if(APPLE)
-  # AVFoundation/CoreMedia/CoreVideo carry the video writer (R7).
+  # AVFoundation/CoreMedia/CoreVideo carry the video writer (R7);
+  # Foundation is the Objective-C runtime half of it (NSString and
+  # friends) — CoreFoundation alone does NOT provide those classes.
   target_link_libraries(qa_engine
     "-framework CoreFoundation" "-framework CoreAudio" "-framework AudioToolbox"
-    "-framework AVFoundation" "-framework CoreMedia" "-framework CoreVideo")
+    "-framework AVFoundation" "-framework CoreMedia" "-framework CoreVideo"
+    "-framework Foundation")
 elseif(UNIX AND NOT ANDROID)
   find_package(Threads REQUIRED)
   target_link_libraries(qa_engine Threads::Threads ${CMAKE_DL_LIBS})
