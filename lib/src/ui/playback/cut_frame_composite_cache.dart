@@ -216,7 +216,10 @@ class CutFrameCompositeCache {
       }
       final layerPaint = ui.Paint()
         ..filterQuality = ui.FilterQuality.low
-        ..color = ui.Color.fromRGBO(0, 0, 0, layer.opacity);
+        ..color = ui.Color.fromRGBO(0, 0, 0, layer.opacity)
+        // R26 #30: the layer blend applies at composite time, exactly
+        // like every other route.
+        ..blendMode = layer.blendMode.paintBlendMode;
       final scale = raster.width / cut.canvasSize.width;
       final worldRect = layerImage.worldRect;
       if (worldRect.left == 0 &&

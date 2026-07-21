@@ -5,6 +5,7 @@ import '../models/canvas_size.dart';
 import '../models/cut.dart';
 import '../models/frame.dart';
 import '../models/layer.dart';
+import '../models/layer_blend_mode.dart';
 import '../models/layer_folder.dart';
 import '../models/layer_id.dart';
 import '../models/layer_kind.dart';
@@ -17,11 +18,15 @@ class CutFrameCompositeLayer {
   const CutFrameCompositeLayer({
     required this.surface,
     required this.opacity,
+    this.blendMode = LayerBlendMode.normal,
     this.pose,
     this.anchorPoint,
   });
 
   final BitmapSurface surface;
+
+  /// The layer's composite blend against everything below (R26 #30).
+  final LayerBlendMode blendMode;
 
   /// The layer's EFFECTIVE opacity: static layer opacity × animated
   /// Opacity sample × every enclosing folder's effective opacity (L3 —
@@ -106,6 +111,7 @@ class CutFrameCompositeEntry {
     required this.layer,
     required this.frame,
     required this.opacity,
+    this.blendMode = LayerBlendMode.normal,
     this.pose,
     this.anchorPoint,
   });
@@ -113,6 +119,9 @@ class CutFrameCompositeEntry {
   final Layer layer;
   final Frame frame;
   final double opacity;
+
+  /// The layer's composite blend against everything below (R26 #30).
+  final LayerBlendMode blendMode;
 
   /// The layer's transform at this frame — WITH every enclosing folder's
   /// FX composed outside it (L3); null = identity.
@@ -305,6 +314,9 @@ List<CutFrameCompositeEntry> resolveCutFrameCompositeEntries({
         layer: layer,
         frame: frame,
         opacity: opacity,
+        // The blend is the ROW's own (attach rows keep theirs — their
+        // pixels are independent even when timing rides the base).
+        blendMode: layer.blendMode,
         pose: combined?.pose,
         anchorPoint: combined?.anchorPoint,
       ),
@@ -336,6 +348,7 @@ List<CutFrameCompositeLayer> planCutFrameComposite({
       CutFrameCompositeLayer(
         surface: surface,
         opacity: entry.opacity,
+        blendMode: entry.blendMode,
         pose: entry.pose,
         anchorPoint: entry.anchorPoint,
       ),

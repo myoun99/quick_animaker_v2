@@ -179,6 +179,49 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
   /// model — the next move re-lifts the landed raster, byte-identical).
   bool _shapeNeedsLift = false;
 
+  /// R26 #13: true while [_shape] is the IMPLICIT whole-canvas target the
+  /// MOVE tool synthesized because no selection existed ("선택하지 않은
+  /// 상황이어도 그림 전체를 이동"). The session's end — confirm or revert
+  /// — returns to NO selection, and the implicit shape never records a
+  /// selection history entry (the user never selected anything).
+  bool _shapeIsImplicitWholePicture = false;
+
+  /// The full canvas rect as a selection polygon — lifting it lifts the
+  /// whole picture (the tool guard upstream already refuses the MOVE
+  /// tool when the cel has no picture at all).
+  CanvasSelectionShape _wholeCanvasShape() {
+    final width = widget.canvasSize.width.toDouble();
+    final height = widget.canvasSize.height.toDouble();
+    return CanvasSelectionShape([
+      CanvasPoint(x: 0, y: 0),
+      CanvasPoint(x: width, y: 0),
+      CanvasPoint(x: width, y: height),
+      CanvasPoint(x: 0, y: height),
+    ]);
+  }
+
+  /// Installs [shape] as the live implicit whole-picture selection.
+  /// Callers wrap in setState.
+  CanvasSelectionShape _adoptImplicitWholePictureShape(
+    CanvasSelectionShape shape,
+  ) {
+    _shape = shape;
+    _shapeNeedsLift = true;
+    _shapeIsImplicitWholePicture = true;
+    return shape;
+  }
+
+  /// An implicit shape whose lift found nothing rolls back to
+  /// no-selection (no stray ants around an empty canvas).
+  void _clearFailedImplicitShape() {
+    if (!_shapeIsImplicitWholePicture) {
+      return;
+    }
+    _shape = null;
+    _shapeNeedsLift = false;
+    _shapeIsImplicitWholePicture = false;
+  }
+
   /// The lift command owning this selection's pixels (R15-④), the stamp
   /// dab currently FLOATING (removed from the command so the base never
   /// shows it — no double image), and the command's dabs as they stood
@@ -213,10 +256,18 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     final startShape = _moveSessionStartShape;
     if (mounted) {
       setState(() {
-        if (startShape != null) {
-          _shape = startShape;
+        // R26 #13: an implicit whole-picture session reverts to NO
+        // selection — the user never selected anything.
+        if (_shapeIsImplicitWholePicture) {
+          _shape = null;
+          _shapeIsImplicitWholePicture = false;
+          _shapeNeedsLift = false;
+        } else {
+          if (startShape != null) {
+            _shape = startShape;
+          }
+          _shapeNeedsLift = true;
         }
-        _shapeNeedsLift = true;
         _pendingLiftStamp = null;
         _liftToken = null;
         _moveSessionDirty = false;
@@ -265,6 +316,13 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
         _moveSessionDirty = false;
         _moveSessionStartShape = null;
         _shapeNeedsLift = true;
+        // R26 #13: a confirmed implicit whole-picture session lands and
+        // simply ends — back to no selection.
+        if (_shapeIsImplicitWholePicture) {
+          _shape = null;
+          _shapeIsImplicitWholePicture = false;
+          _shapeNeedsLift = false;
+        }
         if (_transform == null) {
           _floatSurface = null;
         }
@@ -275,6 +333,11 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
       _moveSessionDirty = false;
       _moveSessionStartShape = null;
       _shapeNeedsLift = true;
+      if (_shapeIsImplicitWholePicture) {
+        _shape = null;
+        _shapeIsImplicitWholePicture = false;
+        _shapeNeedsLift = false;
+      }
     }
     widget.onMoveSessionPendingChanged?.call(false);
     _syncAnts();
@@ -498,6 +561,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
       _landPendingLiftStamp();
       _cancelDrag(notify: wasDragging && !deferDragNotify);
       _shape = null;
+      _shapeIsImplicitWholePicture = false; // R26 #13
       _clearLiftState();
       _clearTransform();
     });
@@ -711,20 +775,32 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
   /// pixel model: the session lifts the shape's raster and the box
   /// manipulates the FLOAT; Enter resamples the stamp and confirms).
   void _beginTransform() {
-    final shape = _shape;
-    if (shape == null || _transform != null) {
+    var shape = _shape;
+    // R26 #13: the MOVE tool with no selection opens the box on the
+    // WHOLE picture (the Ctrl+T-family entrances included).
+    if (shape == null &&
+        widget.tool == CanvasSelectionTool.move &&
+        widget.onLiftRequested != null) {
+      setState(() {
+        shape = _adoptImplicitWholePictureShape(_wholeCanvasShape());
+      });
+    }
+    final targetShape = shape;
+    if (targetShape == null || _transform != null) {
       return;
     }
     if (widget.onLiftRequested == null) {
       return;
     }
     final hadPendingLift = _pendingLiftStamp != null;
-    if (!_ensureLifted(shape)) {
+    if (!_ensureLifted(targetShape)) {
+      setState(_clearFailedImplicitShape);
+      _syncAnts();
       return;
     }
-    var minX = shape.points.first.x, maxX = shape.points.first.x;
-    var minY = shape.points.first.y, maxY = shape.points.first.y;
-    for (final point in shape.points.skip(1)) {
+    var minX = targetShape.points.first.x, maxX = targetShape.points.first.x;
+    var minY = targetShape.points.first.y, maxY = targetShape.points.first.y;
+    for (final point in targetShape.points.skip(1)) {
       minX = math.min(minX, point.x);
       maxX = math.max(maxX, point.x);
       minY = math.min(minY, point.y);
@@ -848,9 +924,12 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
       return;
     }
     final before = _shape;
+    // R26 #13: the implicit whole-picture shape was never a user
+    // selection — dropping it records no history.
+    final wasImplicit = _shapeIsImplicitWholePicture;
     _resetAll();
     // Deselecting a real region is undoable, symmetric with selecting.
-    if (before != null) {
+    if (before != null && !wasImplicit) {
       final commit = widget.onShapeCommitted;
       if (commit != null) {
         commit(before, null);
@@ -944,19 +1023,26 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     if (transform == null &&
         widget.alwaysShowTransformBox &&
         widget.tool == CanvasSelectionTool.move &&
-        _shape != null &&
         widget.onLiftRequested != null) {
-      final implicitShape = _shape!;
+      // R26 #13: with NO selection the always-on box frames the WHOLE
+      // picture — grabbing one of its handles opens the session on the
+      // implicit whole-canvas shape.
+      final implicitShape = _shape ?? _wholeCanvasShape();
       final box = _shapeBounds(implicitShape);
       _baseBoxWidth = box.width;
       _baseBoxHeight = box.height;
       final implicit = SelectionAffine(pivot: box.center);
       final handle = _hitTestTransformHandle(event.localPosition, implicit);
       if (handle != null && handle != _TransformHandle.inside) {
+        if (_shape == null) {
+          setState(() => _adoptImplicitWholePictureShape(implicitShape));
+        }
         final hadPendingLift = _pendingLiftStamp != null;
         if (!_ensureLifted(implicitShape)) {
           _baseBoxWidth = 0;
           _baseBoxHeight = 0;
+          setState(_clearFailedImplicitShape);
+          _syncAnts();
           return;
         }
         setState(() {
@@ -1059,15 +1145,32 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     }
     final shape = _shape;
     if (widget.tool == CanvasSelectionTool.move) {
-      // The MOVE tool only drags the selected content; outside the
-      // region (or without one) it does nothing (R11-⑧).
-      if (shape == null || !shape.containsPoint(canvasPoint)) {
+      // The MOVE tool drags the selected content; outside a REAL region
+      // it does nothing (R11-⑧). R26 #13 revises the no-selection half:
+      // with no region at all, a press inside the canvas targets the
+      // WHOLE picture through the implicit whole-canvas shape.
+      var targetShape = shape;
+      if (targetShape == null) {
+        final implicit = _wholeCanvasShape();
+        if (widget.onLiftRequested == null ||
+            !implicit.containsPoint(canvasPoint)) {
+          return;
+        }
+        setState(() {
+          targetShape = _adoptImplicitWholePictureShape(implicit);
+        });
+      } else if (!targetShape.containsPoint(canvasPoint)) {
         return;
       }
+      final liftShape = targetShape;
       // R14-④/R19 pixel model: the shape's PIXELS are the content — the
       // first gesture on a selection (or on a confirmed landing) lifts
       // them fresh from the current raster.
-      if (widget.onLiftRequested == null || !_ensureLifted(shape)) {
+      if (liftShape == null ||
+          widget.onLiftRequested == null ||
+          !_ensureLifted(liftShape)) {
+        setState(_clearFailedImplicitShape);
+        _syncAnts();
         return;
       }
       _activePointer = event.pointer;
@@ -1649,9 +1752,10 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     if (chromeAffine == null &&
         widget.alwaysShowTransformBox &&
         widget.tool == CanvasSelectionTool.move &&
-        shape != null &&
         _dragMode == _DragMode.none) {
-      final bounds = _shapeBounds(shape);
+      // R26 #13: no selection = the box frames the WHOLE picture (the
+      // canvas rect) — grabbing a handle opens the implicit session.
+      final bounds = _shapeBounds(shape ?? _wholeCanvasShape());
       chromeAffine = SelectionAffine(pivot: bounds.center);
       chromeWidth = bounds.width;
       chromeHeight = bounds.height;

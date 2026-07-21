@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../services/canvas_flood_fill.dart';
 import '../../services/canvas_selection.dart';
+import '../widgets/drag_value_label.dart';
 import '../widgets/field_slider.dart';
 import 'brush_settings_panel.dart';
 import 'brush_tool_state.dart';
@@ -154,10 +155,13 @@ class _MoveSettings extends StatefulWidget {
 }
 
 class _MoveSettingsState extends State<_MoveSettings> {
-  final _x = TextEditingController();
-  final _y = TextEditingController();
-  final _angle = TextEditingController();
-  final _scale = TextEditingController();
+  // The live channel values, synced from the session at rest and owned
+  // locally during a label drag (R26 #14: the deferred session ping must
+  // not eat drag steps).
+  double _tx = 0;
+  double _ty = 0;
+  double _angleDeg = 0;
+  double _scalePct = 100;
 
   @override
   void initState() {
@@ -179,10 +183,6 @@ class _MoveSettingsState extends State<_MoveSettings> {
   @override
   void dispose() {
     widget.selectionCommands?.removeListener(_syncFromSession);
-    _x.dispose();
-    _y.dispose();
-    _angle.dispose();
-    _scale.dispose();
     super.dispose();
   }
 
@@ -199,23 +199,59 @@ class _MoveSettingsState extends State<_MoveSettings> {
     }
     final values = widget.selectionCommands?.transformValues;
     setState(() {
-      _x.text = _trim(values?.tx ?? 0);
-      _y.text = _trim(values?.ty ?? 0);
-      _angle.text = _trim(values?.rotationDegrees ?? 0);
-      _scale.text = _trim((values?.scale ?? 1) * 100);
+      _tx = values?.tx ?? 0;
+      _ty = values?.ty ?? 0;
+      _angleDeg = values?.rotationDegrees ?? 0;
+      _scalePct = (values?.scale ?? 1) * 100;
     });
   }
 
+  /// Writes the four channels through the selection channel — with no
+  /// session open this OPENS one (Ctrl+T semantics; R26 #13: with no
+  /// selection the box opens on the whole picture).
   void _apply() {
-    final commands = widget.selectionCommands;
-    if (commands == null || !commands.hasSelection) {
-      return;
-    }
-    commands.setTransformValues(
-      tx: double.tryParse(_x.text) ?? 0,
-      ty: double.tryParse(_y.text) ?? 0,
-      rotationDegrees: double.tryParse(_angle.text) ?? 0,
-      scale: (double.tryParse(_scale.text) ?? 100) / 100,
+    widget.selectionCommands?.setTransformValues(
+      tx: _tx,
+      ty: _ty,
+      rotationDegrees: _angleDeg,
+      scale: _scalePct.clamp(1.0, 3200.0) / 100,
+    );
+  }
+
+  /// One transform channel as the shared DRAG VALUE READOUT (R26 #14 —
+  /// the canvas bar's zoom/angle vocabulary: drag = a unit per pixel,
+  /// double-tap = type).
+  Widget _channel({
+    required String keyValue,
+    required String label,
+    required String text,
+    required void Function(double units) onDrag,
+    required void Function(double parsed) onSubmit,
+  }) {
+    final theme = Theme.of(context);
+    return Row(
+      children: [
+        SizedBox(
+          width: 56,
+          child: Text(label, style: theme.textTheme.bodySmall),
+        ),
+        DragValueLabel(
+          keyValue: keyValue,
+          text: text,
+          tooltip: 'Drag / double-tap',
+          width: 72,
+          textStyle: const TextStyle(fontSize: 12),
+          onDragDelta: onDrag,
+          onEditSubmit: (raw) {
+            final parsed = double.tryParse(
+              raw.replaceAll('%', '').replaceAll('°', '').trim(),
+            );
+            if (parsed != null) {
+              onSubmit(parsed);
+            }
+          },
+        ),
+      ],
     );
   }
 
@@ -233,107 +269,80 @@ class _MoveSettingsState extends State<_MoveSettings> {
           hasSelection
               ? 'Values apply to the selection\'s transform box '
                     '(Enter confirms, Esc reverts).'
-              : 'Select a region first — the box appears on it.',
+              : 'No selection: the box opens on the WHOLE picture '
+                    '(Enter confirms, Esc reverts).',
           style: theme.textTheme.bodySmall?.copyWith(
             color: theme.colorScheme.onSurfaceVariant,
           ),
         ),
         const SizedBox(height: 8),
-        Row(
-          children: [
-            Expanded(
-              child: _NumberField(
-                keyValue: 'move-x-field',
-                label: 'X',
-                controller: _x,
-                enabled: hasSelection,
-                onSubmitted: _apply,
-              ),
-            ),
-            const SizedBox(width: 8),
-            Expanded(
-              child: _NumberField(
-                keyValue: 'move-y-field',
-                label: 'Y',
-                controller: _y,
-                enabled: hasSelection,
-                onSubmitted: _apply,
-              ),
-            ),
-          ],
+        _channel(
+          keyValue: 'move-x-field',
+          label: 'X',
+          text: _trim(_tx),
+          onDrag: (units) {
+            setState(() => _tx += units);
+            _apply();
+          },
+          onSubmit: (value) {
+            setState(() => _tx = value);
+            _apply();
+          },
         ),
-        const SizedBox(height: 8),
-        Row(
-          children: [
-            Expanded(
-              child: _NumberField(
-                keyValue: 'move-angle-field',
-                label: 'Angle°',
-                controller: _angle,
-                enabled: hasSelection,
-                onSubmitted: _apply,
-              ),
-            ),
-            const SizedBox(width: 8),
-            Expanded(
-              child: _NumberField(
-                keyValue: 'move-scale-field',
-                label: 'Scale %',
-                controller: _scale,
-                enabled: hasSelection,
-                onSubmitted: _apply,
-              ),
-            ),
-          ],
+        const SizedBox(height: 4),
+        _channel(
+          keyValue: 'move-y-field',
+          label: 'Y',
+          text: _trim(_ty),
+          onDrag: (units) {
+            setState(() => _ty += units);
+            _apply();
+          },
+          onSubmit: (value) {
+            setState(() => _ty = value);
+            _apply();
+          },
+        ),
+        const SizedBox(height: 4),
+        _channel(
+          keyValue: 'move-angle-field',
+          label: 'Angle',
+          text: '${_trim(_angleDeg)}°',
+          onDrag: (units) {
+            setState(() => _angleDeg += units);
+            _apply();
+          },
+          onSubmit: (value) {
+            setState(() => _angleDeg = value);
+            _apply();
+          },
+        ),
+        const SizedBox(height: 4),
+        _channel(
+          keyValue: 'move-scale-field',
+          label: 'Scale',
+          text: '${_trim(_scalePct)}%',
+          onDrag: (units) {
+            setState(() => _scalePct = (_scalePct + units).clamp(1.0, 3200.0));
+            _apply();
+          },
+          onSubmit: (value) {
+            setState(() => _scalePct = value.clamp(1.0, 3200.0));
+            _apply();
+          },
         ),
         const SizedBox(height: 12),
-        // R20-D3 mesh warp: opens the control grid on the selection
-        // (Enter commits the triangulated warp; Esc reverts). Perspective
-        // rides the Ctrl+corner gesture on the box itself (R20-D2).
+        // R20-D3 mesh warp: opens the control grid on the selection —
+        // or, with none, on the whole picture (R26 #13). Enter commits
+        // the triangulated warp; Esc reverts. Perspective rides the
+        // Ctrl+corner gesture on the box itself (R20-D2).
         OutlinedButton.icon(
           key: const ValueKey<String>('move-mesh-warp-button'),
-          onPressed: hasSelection
-              ? () => widget.selectionCommands?.beginMeshTransform()
-              : null,
+          onPressed: () => widget.selectionCommands?.beginMeshTransform(),
           icon: const Icon(Icons.grid_4x4, size: 16),
           label: const Text('Mesh Warp'),
         ),
       ],
-    );
-  }
-}
-
-class _NumberField extends StatelessWidget {
-  const _NumberField({
-    required this.keyValue,
-    required this.label,
-    required this.controller,
-    required this.enabled,
-    required this.onSubmitted,
-  });
-
-  final String keyValue;
-  final String label;
-  final TextEditingController controller;
-  final bool enabled;
-  final VoidCallback onSubmitted;
-
-  @override
-  Widget build(BuildContext context) {
-    return TextField(
-      key: ValueKey<String>(keyValue),
-      controller: controller,
-      enabled: enabled,
-      keyboardType: const TextInputType.numberWithOptions(
-        decimal: true,
-        signed: true,
-      ),
-      decoration: InputDecoration(
-        labelText: label,
-        isDense: true,
-        border: const OutlineInputBorder(),
-      ),
-      onSubmitted: (_) => onSubmitted(),
     );
   }
 }

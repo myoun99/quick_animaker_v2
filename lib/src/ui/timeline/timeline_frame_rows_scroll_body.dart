@@ -50,6 +50,8 @@ class TimelineFrameRowsScrollBody extends StatefulWidget {
     required this.metrics,
     required this.exposureStateForLayer,
     this.frameNameForLayer,
+    this.celHasContentForLayer,
+    this.celContentTokenForLayer,
     required this.onSelectLayer,
     required this.onSelectFrame,
     this.onActivateCell,
@@ -114,6 +116,15 @@ class TimelineFrameRowsScrollBody extends StatefulWidget {
   final TimelineCellExposureState Function(Layer layer, int frameIndex)
   exposureStateForLayer;
   final String? Function(Layer layer, int frameIndex)? frameNameForLayer;
+
+  /// R26 #44: the unworked-block tint's fact source (null = no tint).
+  final bool Function(Layer layer, int frameIndex)? celHasContentForLayer;
+
+  /// R26 #44: the per-layer empty-cel token joining the row memo key —
+  /// cel pixels live outside the immutable Layer, so without this an
+  /// emptiness flip (first stroke, undo to blank) would leave the row's
+  /// cached widget showing the stale tint.
+  final String? Function(Layer layer)? celContentTokenForLayer;
   final ValueChanged<LayerId> onSelectLayer;
   final ValueChanged<int> onSelectFrame;
   final void Function(LayerId layerId, int frameIndex)? onActivateCell;
@@ -215,6 +226,9 @@ typedef _RowMemoInputs = ({
   TimelineCellExposureState Function(Layer layer, int frameIndex)
   exposureStateForLayer,
   String? Function(Layer layer, int frameIndex)? frameNameForLayer,
+  // R26 #44: the layer's empty-cel token — cel pixels live outside the
+  // Layer value, so emptiness flips must invalidate the memo here.
+  String? celContentToken,
   bool hasCommaDrag,
   bool hasRangeGesture,
   bool hasActivateCell,
@@ -273,6 +287,7 @@ class _TimelineFrameRowsScrollBodyState
         a.projectFrameRate == b.projectFrameRate &&
         a.exposureStateForLayer == b.exposureStateForLayer &&
         a.frameNameForLayer == b.frameNameForLayer &&
+        a.celContentToken == b.celContentToken &&
         a.hasCommaDrag == b.hasCommaDrag &&
         a.hasRangeGesture == b.hasRangeGesture &&
         a.hasActivateCell == b.hasActivateCell &&
@@ -303,6 +318,7 @@ class _TimelineFrameRowsScrollBodyState
       metrics: widget.metrics,
       exposureStateForLayer: widget.exposureStateForLayer,
       frameNameForLayer: widget.frameNameForLayer,
+      celHasContentForLayer: widget.celHasContentForLayer,
       onSelectLayer: widget.onSelectLayer,
       onSelectFrame: widget.onSelectFrame,
       onActivateCell: widget.onActivateCell,
@@ -431,6 +447,7 @@ class _TimelineFrameRowsScrollBodyState
       projectFrameRate: widget.projectFrameRate,
       exposureStateForLayer: widget.exposureStateForLayer,
       frameNameForLayer: widget.frameNameForLayer,
+      celContentToken: widget.celContentTokenForLayer?.call(row.layer),
       hasCommaDrag: widget.commaDrag != null,
       hasRangeGesture: widget.rangeGesture != null,
       hasActivateCell: widget.onActivateCell != null,

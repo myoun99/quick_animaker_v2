@@ -4,6 +4,7 @@ import 'package:flutter/widgets.dart';
 
 import '../../models/brush_frame_key.dart';
 import '../../models/canvas_point.dart';
+import '../../models/layer_blend_mode.dart';
 import '../../models/canvas_size.dart';
 import '../../models/canvas_viewport.dart';
 import '../../models/playback_quality.dart';
@@ -20,6 +21,7 @@ class CanvasLayerImageRequest {
   const CanvasLayerImageRequest({
     required this.frameKey,
     required this.opacity,
+    this.blendMode = LayerBlendMode.normal,
     this.pose,
     this.anchorPoint,
     this.tint,
@@ -29,6 +31,10 @@ class CanvasLayerImageRequest {
 
   /// EFFECTIVE opacity (static × animated Opacity sample).
   final double opacity;
+
+  /// The layer's composite blend (R26 #30) — the editing stack paints it
+  /// exactly like the composite routes.
+  final LayerBlendMode blendMode;
 
   /// The layer's transform at the shown frame; null = identity. The stack
   /// paints it exactly like the composite routes — the ACTIVE layer shows
@@ -231,6 +237,7 @@ class _CanvasLayerStackViewState extends State<CanvasLayerStackView> {
                   image: _images[layer.frameKey]!.clone,
                   worldRect: _images[layer.frameKey]!.worldRect,
                   opacity: layer.opacity,
+                  blendMode: layer.blendMode,
                   pose: layer.pose,
                   anchorPoint: layer.anchorPoint,
                   tint: layer.tint,
@@ -261,6 +268,7 @@ class _LayerStackPainter extends CustomPainter {
       ui.Image image,
       Rect worldRect,
       double opacity,
+      LayerBlendMode blendMode,
       TransformPose? pose,
       CanvasPoint? anchorPoint,
       int? tint,
@@ -302,7 +310,10 @@ class _LayerStackPainter extends CustomPainter {
       }
       final paint = Paint()
         ..filterQuality = FilterQuality.low
-        ..color = Color.fromRGBO(0, 0, 0, layer.opacity.clamp(0.0, 1.0));
+        ..color = Color.fromRGBO(0, 0, 0, layer.opacity.clamp(0.0, 1.0))
+        // R26 #30: the layer blend applies at composite time — the stack
+        // shows the same picture playback composes.
+        ..blendMode = layer.blendMode.paintBlendMode;
       // Onion-skin Colors mode: the ghost CONVERTS fully to the tint —
       // every drawn pixel takes the tint's RGB, only alpha survives
       // (TVPaint's look, R11-①; modulate kept light artwork un-tinted).
@@ -344,6 +355,7 @@ class _LayerStackPainter extends CustomPainter {
       if (!identical(oldDelegate.images[index].image, images[index].image) ||
           oldDelegate.images[index].worldRect != images[index].worldRect ||
           oldDelegate.images[index].opacity != images[index].opacity ||
+          oldDelegate.images[index].blendMode != images[index].blendMode ||
           oldDelegate.images[index].pose != images[index].pose ||
           oldDelegate.images[index].anchorPoint != images[index].anchorPoint ||
           oldDelegate.images[index].tint != images[index].tint) {

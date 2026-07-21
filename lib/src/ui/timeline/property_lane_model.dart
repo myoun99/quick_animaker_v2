@@ -223,6 +223,19 @@ List<TimelineDisplayRow> buildTimelineDisplayRows({
   bool Function(LayerId layerId)? fxEnabledOf,
 }) {
   final rows = <TimelineDisplayRow>[];
+  // R26 #36: the attach group is unsplittable — a base's transform lanes
+  // WAIT here until the group's trailing attach rows have been laid, so
+  // the order reads base → attach rows → lanes in every orientation
+  // (attach rows preceding the base in display order are unaffected: the
+  // group already ends at the base there).
+  final pendingLanes = <TimelineDisplayRow>[];
+  LayerId? pendingLaneBaseId;
+  void flushPendingLanes() {
+    rows.addAll(pendingLanes);
+    pendingLanes.clear();
+    pendingLaneBaseId = null;
+  }
+
   // Folder HEADER rows (L5) go above their first displayed member —
   // outermost first for nesting. Collapsed folders keep their header (its
   // band shows the aggregate block) and swallow member rows (the active
@@ -230,6 +243,13 @@ List<TimelineDisplayRow> buildTimelineDisplayRows({
   final emittedFolderIds = <FolderId>{};
   for (var index = 0; index < layers.length; index += 1) {
     final layer = layers[index];
+    // The attach run ends at the first layer that is NOT an attach of the
+    // pending base (row-emission skips below never end it: a folded
+    // attach row still belongs to the group).
+    if (pendingLaneBaseId != null &&
+        layer.attachedToLayerId != pendingLaneBaseId) {
+      flushPendingLanes();
+    }
     if (hiddenSections.contains(timelineSectionForLayerKind(layer.kind))) {
       continue;
     }
@@ -291,9 +311,24 @@ List<TimelineDisplayRow> buildTimelineDisplayRows({
     if (!expandedLayerIds.contains(layer.id)) {
       continue;
     }
+    // R26 #36: with trailing attach rows ahead, the lanes go PENDING and
+    // land after the group; otherwise they follow the layer row exactly
+    // as before. An attach layer's own lanes always emit in place (it
+    // has no attach children of its own).
+    final defer =
+        layer.attachedToLayerId == null &&
+        index + 1 < layers.length &&
+        layers[index + 1].attachedToLayerId == layer.id;
     for (final lane in lanesForLayer(layer)) {
-      rows.add(TimelineDisplayRow.lane(layer, lane, layerIndex: index));
+      final laneRow = TimelineDisplayRow.lane(layer, lane, layerIndex: index);
+      if (defer) {
+        pendingLanes.add(laneRow);
+        pendingLaneBaseId = layer.id;
+      } else {
+        rows.add(laneRow);
+      }
     }
   }
+  flushPendingLanes();
   return List.unmodifiable(rows);
 }

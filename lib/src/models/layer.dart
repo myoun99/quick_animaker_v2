@@ -9,6 +9,7 @@ import 'folder_id.dart';
 import 'camera_instruction.dart';
 import 'frame.dart';
 import 'frame_id.dart';
+import 'layer_blend_mode.dart';
 import 'layer_id.dart';
 import 'layer_kind.dart';
 import 'layer_mark.dart';
@@ -37,6 +38,7 @@ class Layer {
     this.audioGain = 1.0,
     this.audioPan = 0.0,
     this.opacity = 1.0,
+    this.blendMode = LayerBlendMode.normal,
     this.kind = LayerKind.animation,
     this.onTimesheet = true,
     this.mark = LayerMark.none,
@@ -85,6 +87,10 @@ class Layer {
   final double audioPan;
 
   final double opacity;
+
+  /// The composite blend against everything below (R26 #30); [normal]
+  /// keeps plain srcOver. Applied at composite time, never baked.
+  final LayerBlendMode blendMode;
   final LayerKind kind;
 
   /// Whether this layer's exposures are recorded on the timesheet output
@@ -157,6 +163,7 @@ class Layer {
     double? audioGain,
     double? audioPan,
     double? opacity,
+    LayerBlendMode? blendMode,
     LayerKind? kind,
     bool? onTimesheet,
     LayerMark? mark,
@@ -182,6 +189,7 @@ class Layer {
       audioGain: audioGain ?? this.audioGain,
       audioPan: audioPan ?? this.audioPan,
       opacity: opacity ?? this.opacity,
+      blendMode: blendMode ?? this.blendMode,
       kind: kind ?? this.kind,
       onTimesheet: onTimesheet ?? this.onTimesheet,
       mark: mark ?? this.mark,
@@ -218,6 +226,8 @@ class Layer {
     if (audioGain != 1.0) 'audioGain': audioGain,
     if (audioPan != 0.0) 'audioPan': audioPan,
     'opacity': opacity,
+    // Default normal omitted — pre-blend files read back unchanged.
+    if (blendMode != LayerBlendMode.normal) 'blendMode': blendMode.toJson(),
     'kind': kind.toJson(),
     'onTimesheet': onTimesheet,
     'mark': mark.toJson(),
@@ -291,6 +301,7 @@ class Layer {
       audioGain: (json['audioGain'] as num?)?.toDouble() ?? 1.0,
       audioPan: (json['audioPan'] as num?)?.toDouble() ?? 0.0,
       opacity: (json['opacity'] as num).toDouble(),
+      blendMode: LayerBlendMode.fromJson(json['blendMode']),
       kind: json.containsKey('kind')
           ? LayerKind.fromJson(json['kind'])
           : LayerKind.animation,
@@ -349,6 +360,7 @@ class Layer {
           other.audioGain == audioGain &&
           other.audioPan == audioPan &&
           other.opacity == opacity &&
+          other.blendMode == blendMode &&
           other.kind == kind &&
           other.onTimesheet == onTimesheet &&
           other.mark == mark &&
@@ -376,7 +388,8 @@ class Layer {
     isVisible,
     muted,
     Object.hash(audioGain, audioPan),
-    opacity,
+    // Folded with opacity: Object.hash caps at 20 positional args.
+    Object.hash(opacity, blendMode),
     kind,
     onTimesheet,
     mark,

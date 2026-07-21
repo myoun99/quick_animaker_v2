@@ -945,6 +945,11 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
           playbackFrameCount: _session.activeCutPlaybackFrameCount,
           exposureStateForLayer: _session.exposureStateForLayer,
           frameNameForLayer: _session.frameNameForLayer,
+          // R26 #44: ACTION-section blocks whose cel is still blank gray
+          // their paper; the token keys the row memo (cel pixels live
+          // outside the Layer value).
+          celHasContentForLayer: _session.celHasContentForLayer,
+          celContentTokenForLayer: _session.celContentTokenForLayer,
           onSelectLayer: _session.selectLayer,
           // Ruler scrubs during playback SEEK the playback clock instead of
           // moving the (hidden) editing playhead.
@@ -1045,6 +1050,8 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
             }
           }),
           onToggleLayerFx: _session.toggleLayerFx,
+          // R26 #30: the type button's blend flyout.
+          onSetLayerBlendMode: _session.setLayerBlendMode,
           // Per-layer onion skin (UI-R17 #5, TVPaint style).
           layerOnionSkinEnabledOf: _session.isLayerOnionSkinEnabled,
           onToggleLayerOnionSkin: _session.toggleLayerOnionSkin,

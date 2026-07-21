@@ -75,6 +75,7 @@ class TimelineRowCellsPainter extends CustomPainter {
     required this.crossAxisExtent,
     required this.exposureStateForLayer,
     this.frameNameForLayer,
+    this.celHasContentForLayer,
     required this.colorScheme,
     required this.baseTextStyle,
     this.axis = Axis.horizontal,
@@ -99,6 +100,11 @@ class TimelineRowCellsPainter extends CustomPainter {
   final TimelineCellExposureState Function(Layer layer, int frameIndex)
   exposureStateForLayer;
   final String? Function(Layer layer, int frameIndex)? frameNameForLayer;
+
+  /// R26 #44: whether the covering block's cel holds any picture — false
+  /// grays the block paper slightly (ACTION-section rows; the resolver
+  /// answers true everywhere else). Null keeps every block plain paper.
+  final bool Function(Layer layer, int frameIndex)? celHasContentForLayer;
   final ColorScheme colorScheme;
 
   /// The ambient text style the widget cells inherited (DefaultTextStyle);
@@ -297,6 +303,16 @@ class TimelineRowCellsPainter extends CustomPainter {
     final washDim = model.ghost
         ? frameIndex >= playbackFrameCount
         : model.dimmed;
+    // R26 #44: a block whose cel has no picture yet grays its paper
+    // slightly — the whole covered run, ACTION-section rows only (the
+    // resolver stands down elsewhere). Ghosts stay plain (they carry no
+    // block chrome at all).
+    final baseBackground =
+        !model.ghost &&
+            model.exposureState.isCovered &&
+            !(celHasContentForLayer?.call(layer, frameIndex) ?? true)
+        ? timelineEmptyCelBlockColor
+        : styleColors.background;
     // Blocks keep their chrome (start edge strong, held seams faint per
     // UI-R18 #8); the PLAIN grid draws NOTHING here — the grid-wide
     // overlay owns every per-cell line now (UI-R18 #2: the grid is
@@ -311,9 +327,9 @@ class TimelineRowCellsPainter extends CustomPainter {
       background: washDim
           ? Color.alphaBlend(
               colorScheme.surfaceContainerHighest.withValues(alpha: 0.54),
-              styleColors.background,
+              baseBackground,
             )
-          : styleColors.background,
+          : baseBackground,
       border: model.segment.isBlock ? blockBorder : Colors.transparent,
       radius: _cellRadius(model.segment),
     );
@@ -602,6 +618,7 @@ class TimelineRowCellsPainter extends CustomPainter {
       !identical(oldDelegate.colorScheme, colorScheme) ||
       !identical(oldDelegate.exposureStateForLayer, exposureStateForLayer) ||
       !identical(oldDelegate.frameNameForLayer, frameNameForLayer) ||
+      !identical(oldDelegate.celHasContentForLayer, celHasContentForLayer) ||
       !identical(oldDelegate.tileStore, tileStore) ||
       oldDelegate.devicePixelRatio != devicePixelRatio;
 
@@ -667,6 +684,7 @@ Widget timelineRowCellsPaintArea({
   required TimelineCellExposureState Function(Layer layer, int frameIndex)
   exposureStateForLayer,
   String? Function(Layer layer, int frameIndex)? frameNameForLayer,
+  bool Function(Layer layer, int frameIndex)? celHasContentForLayer,
   required ValueChanged<LayerId> onSelectLayer,
   required ValueChanged<int> onSelectFrame,
   void Function(LayerId layerId, int frameIndex)? onActivateCell,
@@ -684,6 +702,7 @@ Widget timelineRowCellsPaintArea({
     crossAxisExtent: crossAxisExtent,
     exposureStateForLayer: exposureStateForLayer,
     frameNameForLayer: frameNameForLayer,
+    celHasContentForLayer: celHasContentForLayer,
     colorScheme: Theme.of(context).colorScheme,
     baseTextStyle: DefaultTextStyle.of(context).style,
     axis: axis,

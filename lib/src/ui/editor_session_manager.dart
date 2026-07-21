@@ -38,6 +38,7 @@ import '../models/folder_id.dart';
 import '../models/frame.dart';
 import '../models/frame_id.dart';
 import '../models/layer.dart';
+import '../models/layer_blend_mode.dart';
 import '../models/layer_id.dart';
 import '../models/key_range_move.dart';
 import '../models/layer_kind.dart';
@@ -1366,6 +1367,7 @@ class EditorSessionManager extends ChangeNotifier {
         CanvasLayerImageRequest(
           frameKey: brushFrameKeyForCut(cut, entry.layer.id, entry.frame.id),
           opacity: entry.opacity,
+          blendMode: entry.blendMode,
           pose: entry.pose,
           anchorPoint: entry.anchorPoint,
         ),
@@ -2714,6 +2716,13 @@ class EditorSessionManager extends ChangeNotifier {
 
   void setLayerOpacity({required LayerId layerId, required double opacity}) {
     _layerController.setLayerOpacity(layerId: layerId, opacity: opacity);
+    notifyListeners();
+  }
+
+  /// R26 #30: the layer's composite blend — display state alongside the
+  /// eye/static opacity (repo-direct, link-group mirrored).
+  void setLayerBlendMode(LayerId layerId, LayerBlendMode blendMode) {
+    _layerController.setLayerBlendMode(layerId: layerId, blendMode: blendMode);
     notifyListeners();
   }
 
@@ -8109,6 +8118,53 @@ class EditorSessionManager extends ChangeNotifier {
     return held
         ? TimelineCellExposureState.held
         : TimelineCellExposureState.uncovered;
+  }
+
+  /// R26 #44: whether the drawing block covering [frameIndex] holds ANY
+  /// picture in its cel — the ACTION-section rows' unworked-block tint
+  /// reads this. Non-drawing sections (SE / camera / instruction) and
+  /// uncovered cells always answer true (no tint).
+  bool celHasContentForLayer(Layer layer, int frameIndex) {
+    if (timelineSectionForLayerKind(layer.kind) != TimelineSection.drawing) {
+      return true;
+    }
+    final cut = activeCutOrNull;
+    if (cut == null) {
+      return true;
+    }
+    final frame = _timelineController.resolveFrameForLayer(
+      layer: layer,
+      frameIndex: frameIndex,
+    );
+    if (frame == null) {
+      return true;
+    }
+    return brushFrameStore.celHasRenderableContent(
+      brushFrameKeyForCut(cut, layer.id, frame.id),
+    );
+  }
+
+  /// R26 #44 memo token: the layer's EMPTY cels in canonical string form.
+  /// Cel pixels live in the brush store, outside the immutable Layer, so
+  /// the row memos need this extra fact in their key — an emptiness flip
+  /// (first stroke, undo to blank) rebuilds exactly the rows it changes.
+  /// Null for non-drawing sections (the fact never renders there).
+  String? celContentTokenForLayer(Layer layer) {
+    if (timelineSectionForLayerKind(layer.kind) != TimelineSection.drawing) {
+      return null;
+    }
+    final cut = activeCutOrNull;
+    if (cut == null) {
+      return null;
+    }
+    final emptyFrameIds = <String>[
+      for (final frame in layer.frames)
+        if (!brushFrameStore.celHasRenderableContent(
+          brushFrameKeyForCut(cut, layer.id, frame.id),
+        ))
+          frame.id.value,
+    ];
+    return emptyFrameIds.join(',');
   }
 
   int? get selectedEffectiveDuration {

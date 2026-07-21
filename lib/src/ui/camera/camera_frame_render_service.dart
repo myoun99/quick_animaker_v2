@@ -200,7 +200,9 @@ class CameraFrameRenderService {
         Offset.zero,
         Paint()
           ..filterQuality = filterQuality
-          ..color = Color.fromRGBO(0, 0, 0, layers[index].opacity),
+          ..color = Color.fromRGBO(0, 0, 0, layers[index].opacity)
+          // R26 #30: the layer blend applies at composite time.
+          ..blendMode = layers[index].blendMode.paintBlendMode,
       );
       if (layerPose != null) {
         canvas.restore();

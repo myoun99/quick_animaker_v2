@@ -46,6 +46,7 @@ class TimelineFrameCellsRow extends StatelessWidget {
     required this.metrics,
     required this.exposureStateForLayer,
     this.frameNameForLayer,
+    this.celHasContentForLayer,
     required this.onSelectLayer,
     required this.onSelectFrame,
     this.onActivateCell,
@@ -85,6 +86,10 @@ class TimelineFrameCellsRow extends StatelessWidget {
   final TimelineCellExposureState Function(Layer layer, int frameIndex)
   exposureStateForLayer;
   final String? Function(Layer layer, int frameIndex)? frameNameForLayer;
+
+  /// R26 #44: the unworked-block tint's fact source (see
+  /// [TimelineRowCellsPainter.celHasContentForLayer]); null = no tint.
+  final bool Function(Layer layer, int frameIndex)? celHasContentForLayer;
   final ValueChanged<LayerId> onSelectLayer;
   final ValueChanged<int> onSelectFrame;
 
@@ -186,6 +191,7 @@ class TimelineFrameCellsRow extends StatelessWidget {
             viewportMainExtent: viewportMainExtent,
             exposureStateForLayer: exposureStateForLayer,
             frameNameForLayer: frameNameForLayer,
+            celHasContentForLayer: celHasContentForLayer,
             onSelectLayer: onSelectLayer,
             onSelectFrame: onSelectFrame,
             onActivateCell: onActivateCell,

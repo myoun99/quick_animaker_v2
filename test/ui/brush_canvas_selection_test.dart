@@ -176,6 +176,57 @@ void main() {
     expect(inkAt(env.coordinator, 40, 35), isNonZero);
   });
 
+  testWidgets('R26 #13: the MOVE tool with NO selection drags the WHOLE '
+      'picture — implicit whole-canvas session, ONE confirmed entry, and '
+      'the end returns to no selection', (tester) async {
+    final env = await pumpSelectionPanel(tester, tool: CanvasTool.move);
+    expect(env.commands.hasSelection, isFalse);
+
+    final entriesBefore = env.history.undoCount;
+    await dragOnLayer(tester, const Offset(45, 45), const Offset(55, 50));
+    expect(env.commands.movePending, isTrue);
+    expect(
+      inkAt(env.coordinator, 30, 30),
+      0,
+      reason: 'the whole picture lifted — the origin is blank while pending',
+    );
+
+    env.commands.confirmPendingMove();
+    await tester.pump();
+    expect(env.history.undoCount, entriesBefore + 1);
+    expect(inkAt(env.coordinator, 40, 35), isNonZero, reason: '+10,+5 landed');
+    expect(
+      env.commands.hasSelection,
+      isFalse,
+      reason: 'the implicit shape ends with the session — no stray ants',
+    );
+
+    env.history.undo();
+    await tester.pump();
+    expect(
+      inkAt(env.coordinator, 30, 30),
+      isNonZero,
+      reason: 'one undo restores the pre-lift picture',
+    );
+  });
+
+  testWidgets('R26 #13: REVERTING the implicit whole-picture session '
+      'restores the picture, leaves NO selection and records NOTHING', (
+    tester,
+  ) async {
+    final env = await pumpSelectionPanel(tester, tool: CanvasTool.move);
+    final entriesBefore = env.history.undoCount;
+
+    await dragOnLayer(tester, const Offset(45, 45), const Offset(55, 50));
+    expect(env.commands.movePending, isTrue);
+
+    env.commands.revertPendingMove();
+    await tester.pump();
+    expect(inkAt(env.coordinator, 30, 30), isNonZero);
+    expect(env.commands.hasSelection, isFalse);
+    expect(env.history.undoCount, entriesBefore);
+  });
+
   testWidgets('Ctrl+corner opens the PERSPECTIVE quad (R20-D2): the '
       'numeric channels blank out and Enter commits ONE resampled entry', (
     tester,
