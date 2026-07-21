@@ -213,9 +213,9 @@ class BitmapSurfacePainter extends CustomPainter {
       canvas.restore();
     }
 
-    // No dim ring here: the pasteboard dim is ONE overlay above the whole
-    // layer stack (PasteboardDimOverlay) — below/above layers show
-    // off-canvas content too, and per-painter rings would stack alpha.
+    // No pasteboard dim (user decision, Flash-style): off-canvas artwork
+    // shows at full brightness — the paper edge against the backdrop is
+    // the stage boundary.
 
     canvas.restore();
   }
