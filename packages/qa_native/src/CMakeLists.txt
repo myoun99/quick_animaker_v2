@@ -5,18 +5,30 @@
 #
 # Nothing platform-specific lives here except the compiler flags, because
 # qa_engine.c is one portable C99 source by design.
-cmake_minimum_required(VERSION 3.14)
+# 3.16 for OBJC language support — the Apple video writer (AUDIO-PRO R7)
+# is Objective-C because AVAssetWriter is.
+cmake_minimum_required(VERSION 3.16)
 project(qa_engine LANGUAGES C)
+
+if(APPLE)
+  enable_language(OBJC)
+endif()
 
 # qa_audio_decode.c is a second translation unit rather than more of
 # qa_engine.c: it pulls in ~27k lines of vendored dr_libs, and compiling
 # that alongside the hot loops would slow every build and mix third-party
-# warnings into ours.
+# warnings into ours. qa_video_encode.c is per-OS encoder glue (AUDIO-PRO
+# R7) — Media Foundation / AVAssetWriter / NDK MediaCodec.
 add_library(qa_engine SHARED
   "${CMAKE_CURRENT_LIST_DIR}/qa_engine.c"
   "${CMAKE_CURRENT_LIST_DIR}/qa_audio_decode.c"
   "${CMAKE_CURRENT_LIST_DIR}/qa_audio_device.c"
+  "${CMAKE_CURRENT_LIST_DIR}/qa_video_encode.c"
 )
+if(APPLE)
+  target_sources(qa_engine PRIVATE
+    "${CMAKE_CURRENT_LIST_DIR}/qa_video_apple.m")
+endif()
 
 set_target_properties(qa_engine PROPERTIES
   C_STANDARD 99
@@ -56,8 +68,10 @@ endif()
 # ALSA package. It does need the OS threading/dl primitives, and on Apple
 # the CoreAudio frameworks at LINK time.
 if(APPLE)
+  # AVFoundation/CoreMedia/CoreVideo carry the video writer (R7).
   target_link_libraries(qa_engine
-    "-framework CoreFoundation" "-framework CoreAudio" "-framework AudioToolbox")
+    "-framework CoreFoundation" "-framework CoreAudio" "-framework AudioToolbox"
+    "-framework AVFoundation" "-framework CoreMedia" "-framework CoreVideo")
 elseif(UNIX AND NOT ANDROID)
   find_package(Threads REQUIRED)
   target_link_libraries(qa_engine Threads::Threads ${CMAKE_DL_LIBS})

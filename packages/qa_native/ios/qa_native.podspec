@@ -14,8 +14,10 @@ Pod::Spec.new do |s|
   # its symbols with DynamicLibrary.process().
   s.source_files     = 'Classes/**/*'
   # miniaudio needs the CoreAudio stack at LINK time (it dlopens nothing
-  # on Apple).
-  s.frameworks       = 'CoreFoundation', 'CoreAudio', 'AudioToolbox', 'AVFoundation'
+  # on Apple); AVFoundation/CoreMedia/CoreVideo carry the video writer
+  # (AUDIO-PRO R7).
+  s.frameworks       = 'CoreFoundation', 'CoreAudio', 'AudioToolbox',
+                       'AVFoundation', 'CoreMedia', 'CoreVideo'
   s.dependency 'Flutter'
   s.platform = :ios, '13.0'
   # -ffp-contract=off must be repeated here, NOT only in
