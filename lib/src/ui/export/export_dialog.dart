@@ -469,6 +469,12 @@ class ExportDialogState extends State<ExportDialog> {
   @visibleForTesting
   Future<void> debugFlushPreview() => _preview.debugFlushPending();
 
+  /// Test seam: sets the destination without the platform picker.
+  @visibleForTesting
+  void debugSetLocationForTests(String location) {
+    setState(() => _location = location);
+  }
+
   /// The 1-based position of [cut] within its track (sheet/XDTS number).
   int _cutNumberOf(Cut cut) {
     for (final track in _session.repository.requireProject().tracks) {
@@ -933,6 +939,13 @@ class ExportDialogState extends State<ExportDialog> {
         _statusMessage = 'Exporting… $completed/$total';
       });
     }
+    final jobId = _activeJobId;
+    if (jobId != null) {
+      _queue.update(
+        jobId,
+        (job) => job.copyWith(completed: completed, total: total),
+      );
+    }
   }
 
   Future<void> _runGuarded(Future<String> Function() run) async {
@@ -960,29 +973,189 @@ class ExportDialogState extends State<ExportDialog> {
     }
   }
 
+  /// The CURRENT tab's export, as one message-returning run — the Export
+  /// button wraps it in the guard, the queue runner drives it per job.
+  Future<String> _runCurrentTabExport() {
+    switch (_tab) {
+      case ExportTab.sequence:
+        return _specs.sequence.format.isVideo
+            ? _exportVideo()
+            : _exportPngSequence();
+      case ExportTab.image:
+        return _exportCurrentFrame();
+      case ExportTab.cels:
+        return _exportCels();
+      case ExportTab.timesheet:
+        return _specs.timesheet.format == ExportTimesheetFormat.sheetImage
+            ? _exportSheetImages()
+            : _exportXdts();
+    }
+  }
+
   /// Public for tests; the Export button is the production entry point.
   Future<void> export() async {
     if (!_canExport) {
       return;
     }
-    switch (_tab) {
-      case ExportTab.sequence:
-        final spec = _specs.sequence;
-        if (spec.format.isVideo) {
-          await _runGuarded(_exportVideo);
-        } else {
-          await _runGuarded(_exportPngSequence);
+    await _runGuarded(_runCurrentTabExport);
+  }
+
+  // --- the render queue (EX7) -----------------------------------------------
+
+  TextEditingController? _fileControllerFor(ExportTab tab) => switch (tab) {
+    ExportTab.sequence => _sequenceFileController,
+    ExportTab.image => _imageFileController,
+    _ => null,
+  };
+
+  String? _singleFileNameForCurrentTab() {
+    if (_tab == ExportTab.image) {
+      return _singleFileName(
+        _imageFileController,
+        _specs.image.format.stillFormat.fileExtension,
+      );
+    }
+    if (_tab == ExportTab.sequence && _specs.sequence.format.isVideo) {
+      return _singleFileName(
+        _sequenceFileController,
+        _specs.sequence.format.container.fileExtension,
+      );
+    }
+    return null;
+  }
+
+  /// Add to Queue: the current tab's spec + destination, frozen as a job.
+  /// The picture renders at RUN time — the spec is the restorable part.
+  void addToQueue() {
+    if (!_canExport) {
+      return;
+    }
+    _queue.enqueue(
+      spec: _specs.specFor(_tab),
+      outputDirectory: _location!,
+      fileName: _singleFileNameForCurrentTab(),
+    );
+    setState(() {});
+  }
+
+  /// A queued job clicked: its setup returns to the window for editing
+  /// and the job leaves the queue (수정 후 재등록 — the v10 flow).
+  void _restoreJob(ExportJob job) {
+    if (job.status != ExportJobStatus.queued || _isExporting) {
+      return;
+    }
+    setState(() {
+      _tab = job.tab;
+      _specs = _specs.withSpec(job.spec);
+      _location = job.outputDirectory;
+      final controller = _fileControllerFor(job.tab);
+      final fileName = job.fileName;
+      if (controller != null && fileName != null) {
+        controller.text = fileName;
+      }
+      _syncControllersFromSpecs();
+    });
+    _queue.remove(job.id);
+    _persist();
+    _preview.clear();
+    _refreshPreview();
+  }
+
+  void _removeJob(ExportJob job) {
+    _queue.remove(job.id);
+    setState(() {});
+  }
+
+  int? _activeJobId;
+
+  /// Runs every queued job in order, loading each job's setup into the
+  /// live state (the window honestly shows what renders). A failure marks
+  /// the job and the runner CONTINUES (부분 실패); Cancel stops the
+  /// current job and leaves the rest queued. The user's own setup returns
+  /// when the queue rests.
+  Future<void> runQueue() async {
+    if (_isExporting || _queue.nextQueued == null) {
+      return;
+    }
+    final snapshotTab = _tab;
+    final snapshotSpecs = _specs;
+    final snapshotLocation = _location;
+    setState(() {
+      _isExporting = true;
+      _cancelRequested = false;
+      _statusMessage = 'Rendering the queue…';
+    });
+    var succeeded = 0;
+    var failed = 0;
+    try {
+      while (!_cancelRequested) {
+        final job = _queue.nextQueued;
+        if (job == null) {
+          break;
         }
-      case ExportTab.image:
-        await _runGuarded(_exportCurrentFrame);
-      case ExportTab.cels:
-        await _runGuarded(_exportCels);
-      case ExportTab.timesheet:
-        await _runGuarded(
-          _specs.timesheet.format == ExportTimesheetFormat.sheetImage
-              ? _exportSheetImages
-              : _exportXdts,
+        _activeJobId = job.id;
+        _queue.update(
+          job.id,
+          (current) => current.copyWith(status: ExportJobStatus.running),
         );
+        setState(() {
+          _tab = job.tab;
+          _specs = _specs.withSpec(job.spec);
+          _location = job.outputDirectory;
+          final controller = _fileControllerFor(job.tab);
+          final fileName = job.fileName;
+          if (controller != null && fileName != null) {
+            controller.text = fileName;
+          }
+          _syncControllersFromSpecs();
+        });
+        _refreshPreview();
+        try {
+          final message = await _runCurrentTabExport();
+          final cancelled = _cancelRequested;
+          _queue.update(
+            job.id,
+            (current) => current.copyWith(
+              status: cancelled
+                  ? ExportJobStatus.cancelled
+                  : ExportJobStatus.succeeded,
+              message: message,
+            ),
+          );
+          if (!cancelled) {
+            succeeded += 1;
+          }
+        } catch (error) {
+          failed += 1;
+          _queue.update(
+            job.id,
+            (current) => current.copyWith(
+              status: ExportJobStatus.failed,
+              message: '$error',
+            ),
+          );
+        }
+        _activeJobId = null;
+      }
+    } finally {
+      _activeJobId = null;
+      if (mounted) {
+        setState(() {
+          _isExporting = false;
+          _progress = null;
+          _tab = snapshotTab;
+          _specs = snapshotSpecs;
+          _location = snapshotLocation;
+          _syncControllersFromSpecs();
+          _statusMessage =
+              'Queue: $succeeded ${_plural(succeeded, 'job')} done'
+              '${failed > 0 ? ', $failed failed' : ''}'
+              '${_queue.nextQueued != null ? ', rest kept' : ''}.';
+        });
+        _persist();
+        _preview.clear();
+        _refreshPreview();
+      }
     }
   }
 
@@ -2500,7 +2673,15 @@ class ExportDialogState extends State<ExportDialog> {
           ),
         ),
         Expanded(
-          child: ExportQueueColumn(queue: _queue, enabled: !_isExporting),
+          child: ExportQueueColumn(
+            queue: _queue,
+            enabled: !_isExporting,
+            onRemove: _removeJob,
+            onRestore: _restoreJob,
+            onRenderAll: _isExporting || _queue.nextQueued == null
+                ? null
+                : () => unawaited(runQueue()),
+          ),
         ),
       ],
     );
@@ -2530,16 +2711,13 @@ class ExportDialogState extends State<ExportDialog> {
             ),
             const SizedBox(width: 6),
           ],
-          Tooltip(
-            message: 'The queue runner arrives in a later round.',
-            child: OutlinedButton(
-              key: const ValueKey<String>('export-queue-add-button'),
-              onPressed: null,
-              style: OutlinedButton.styleFrom(
-                visualDensity: VisualDensity.compact,
-              ),
-              child: const Text('Add to Queue'),
+          OutlinedButton(
+            key: const ValueKey<String>('export-queue-add-button'),
+            onPressed: _canExport ? addToQueue : null,
+            style: OutlinedButton.styleFrom(
+              visualDensity: VisualDensity.compact,
             ),
+            child: const Text('Add to Queue'),
           ),
           const SizedBox(width: 6),
           FilledButton(
