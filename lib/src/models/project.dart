@@ -1,6 +1,7 @@
 import '../core/collection_equality.dart';
 import 'camera_instruction.dart';
 import 'canvas_size.dart';
+import 'export_overrides.dart';
 import 'layer.dart';
 import 'layer_link_registry.dart';
 import 'media_asset.dart';
@@ -34,7 +35,9 @@ class Project {
     int audioSampleRate = defaultProjectAudioSampleRate,
     int audioSpeedNumerator = 1,
     int audioSpeedDenominator = 1,
+    ExportProjectOverrides? exportOverrides,
   }) : tracks = List.unmodifiable(tracks),
+       exportOverrides = exportOverrides ?? ExportProjectOverrides.empty,
        cameraInstructions = cameraInstructions ?? CameraInstructionSet.standard,
        mediaAssets = immutableMediaAssetList(mediaAssets),
        trailingFrames = trailingFrames < 0 ? 0 : trailingFrames,
@@ -101,6 +104,11 @@ class Project {
   final int audioSpeedNumerator;
   final int audioSpeedDenominator;
 
+  /// PROJECT-side export state (출력 UI): the cut checks the Cels/Timesheet
+  /// project scope excludes and each cut's Cels manual delta. Travels with
+  /// the film; written through the repository with no history entry.
+  final ExportProjectOverrides exportOverrides;
+
   MediaAsset? mediaAssetByPath(String path) {
     for (final asset in mediaAssets) {
       if (asset.path == path) {
@@ -126,6 +134,7 @@ class Project {
     int? audioSampleRate,
     int? audioSpeedNumerator,
     int? audioSpeedDenominator,
+    ExportProjectOverrides? exportOverrides,
   }) {
     return Project(
       id: id ?? this.id,
@@ -144,6 +153,7 @@ class Project {
       audioSpeedNumerator: audioSpeedNumerator ?? this.audioSpeedNumerator,
       audioSpeedDenominator:
           audioSpeedDenominator ?? this.audioSpeedDenominator,
+      exportOverrides: exportOverrides ?? this.exportOverrides,
     );
   }
 
@@ -173,6 +183,9 @@ class Project {
       'audioSpeedNumerator': audioSpeedNumerator,
       'audioSpeedDenominator': audioSpeedDenominator,
     },
+    // Omitted when empty: projects that never touched the export scope
+    // keep their exact legacy JSON.
+    if (exportOverrides.isNotEmpty) 'exportOverrides': exportOverrides.toJson(),
   };
 
   factory Project.fromJson(Map<String, dynamic> json) {
@@ -225,6 +238,11 @@ class Project {
           (json['audioSampleRate'] as int?) ?? defaultProjectAudioSampleRate,
       audioSpeedNumerator: (json['audioSpeedNumerator'] as int?) ?? 1,
       audioSpeedDenominator: (json['audioSpeedDenominator'] as int?) ?? 1,
+      exportOverrides: json['exportOverrides'] == null
+          ? null
+          : ExportProjectOverrides.fromJson(
+              json['exportOverrides'] as Map<String, dynamic>,
+            ),
     );
   }
 
@@ -246,7 +264,8 @@ class Project {
           other.linkRegistry == linkRegistry &&
           other.audioSampleRate == audioSampleRate &&
           other.audioSpeedNumerator == audioSpeedNumerator &&
-          other.audioSpeedDenominator == audioSpeedDenominator;
+          other.audioSpeedDenominator == audioSpeedDenominator &&
+          other.exportOverrides == exportOverrides;
 
   @override
   int get hashCode => Object.hash(
@@ -265,6 +284,7 @@ class Project {
     audioSampleRate,
     audioSpeedNumerator,
     audioSpeedDenominator,
+    exportOverrides,
   );
 
   @override

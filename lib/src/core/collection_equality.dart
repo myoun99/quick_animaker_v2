@@ -18,6 +18,17 @@ bool listEquals<T>(List<T> a, List<T> b) {
   return true;
 }
 
+/// Returns `true` when [a] and [b] hold the same elements, using each
+/// element's own `==` through the sets' `contains`.
+bool setEquals<T>(Set<T> a, Set<T> b) {
+  if (identical(a, b)) return true;
+  if (a.length != b.length) return false;
+  for (final element in a) {
+    if (!b.contains(element)) return false;
+  }
+  return true;
+}
+
 /// Returns `true` when [a] and [b] have the same keys mapped to equal values,
 /// using each value's own `==`.
 bool mapEquals<K, V>(Map<K, V> a, Map<K, V> b) {

@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import '../../models/audio_clip.dart' show AudioVolumeKey;
 import '../../models/cut.dart';
 import '../../models/cut_id.dart';
+import '../../models/export_cel_naming.dart';
 import '../../models/frame.dart';
 import '../../models/layer.dart';
 import '../../models/layer_kind.dart';
@@ -11,13 +12,14 @@ import '../../models/se_audio_spans.dart';
 import '../../models/track.dart';
 import '../playback/audio_playback_schedule.dart' show ScheduledAudioClip;
 
+// The size/naming values moved to the model layer (EX1 — the export spec
+// serializes them); re-exported here so plan consumers keep one import.
+export '../../models/export_cel_naming.dart';
+export '../../models/export_size_mode.dart';
+
 /// Which frames the export window covers: the active cut, every cut of the
 /// active cut's track in storyboard order, or a subrange of the active cut.
 enum ExportRange { activeCut, allCuts, frameRange }
-
-/// Output picture size: the project camera frame (rendered through each
-/// cut's camera) or the cut's raw canvas (no camera, 1:1 pixels).
-enum ExportSizeMode { camera, canvas }
 
 /// Export container: a PNG file per frame, one H.264 MP4 encoded through
 /// an external ffmpeg (see VideoExportService), or XDTS digital timesheets
@@ -54,40 +56,6 @@ class ExportCelTask {
 
   /// Relative to the export directory; may contain `/` subfolders.
   final String fileName;
-}
-
-/// How cel files are named and foldered (CSP-style cel export options).
-///
-/// The name is `[project_][cut_][layer]frame[suffix].png`: project/cut
-/// prefixes join with '_', the layer name sits directly against the frame
-/// name (layer 'A' + frame '1' = 'A1'). The frame name is [Frame.name],
-/// falling back to the cel's 1-based position when unnamed.
-class ExportCelNaming {
-  const ExportCelNaming({
-    this.includeProjectName = false,
-    this.includeCutName = false,
-    this.includeLayerName = true,
-    this.frameDigits = 0,
-    this.suffix = '',
-    this.cutFolder = false,
-    this.layerFolder = false,
-  });
-
-  final bool includeProjectName;
-  final bool includeCutName;
-  final bool includeLayerName;
-
-  /// 0 = off; otherwise the first digit run in the frame name is left-padded
-  /// with zeros to this width ('1' → '0001' at 4). Names without any digits
-  /// are left alone.
-  final int frameDigits;
-
-  /// Appended right before '.png' (TVPaint's 後ろ文字付け).
-  final String suffix;
-
-  /// Per-cut / per-layer subfolders under the export directory.
-  final bool cutFolder;
-  final bool layerFolder;
 }
 
 /// Pads the first digit run in [name] to [digits] ('1' → '0001', 'a12b' →
