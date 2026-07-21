@@ -20,6 +20,51 @@ class AudioSettingsSection extends StatefulWidget {
 }
 
 class _AudioSettingsSectionState extends State<AudioSettingsSection> {
+  /// One device picker row: "System default" plus the live enumeration.
+  /// A SAVED name that is no longer attached still shows (marked
+  /// missing) so the choice is visible rather than silently reverted —
+  /// the open-time fallback handles the audio side.
+  Widget _deviceRow({
+    required String label,
+    required String keyValue,
+    required bool capture,
+    required String? selected,
+    required ValueChanged<String?> onChanged,
+  }) {
+    final devices = widget.session.audioDevicesOf(capture: capture);
+    final names = {for (final device in devices) device.name};
+    return Row(
+      children: [
+        Expanded(child: Text(label, style: const TextStyle(fontSize: 12))),
+        DropdownButton<String?>(
+          key: ValueKey<String>(keyValue),
+          value: selected,
+          isDense: true,
+          style: const TextStyle(fontSize: 12),
+          items: [
+            const DropdownMenuItem<String?>(
+              child: Text('System default'),
+            ),
+            for (final device in devices)
+              DropdownMenuItem<String?>(
+                value: device.name,
+                child: Text(
+                  device.isDefault ? '${device.name} (default)' : device.name,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+            if (selected != null && !names.contains(selected))
+              DropdownMenuItem<String?>(
+                value: selected,
+                child: Text('$selected (missing)'),
+              ),
+          ],
+          onChanged: onChanged,
+        ),
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return ValueListenableBuilder<AudioSyncSettings>(
@@ -97,6 +142,38 @@ class _AudioSettingsSectionState extends State<AudioSettingsSection> {
                   },
                 ),
               ],
+            ),
+            const Divider(height: 24),
+            const Text(
+              'Devices',
+              style: TextStyle(fontWeight: FontWeight.w600),
+            ),
+            const SizedBox(height: 4),
+            const Text(
+              'Which speaker playback uses and which microphone recording '
+              'will use. Changes apply from the next playback run; a device '
+              'that is no longer attached falls back to the system default.',
+              style: TextStyle(fontSize: 12),
+            ),
+            const SizedBox(height: 8),
+            _deviceRow(
+              label: 'Output',
+              keyValue: 'settings-audio-output-device',
+              capture: false,
+              selected: settings.outputDeviceName,
+              onChanged: (name) => widget.session.setAudioSyncSettings(
+                settings.copyWith(outputDeviceName: name),
+              ),
+            ),
+            const SizedBox(height: 4),
+            _deviceRow(
+              label: 'Input',
+              keyValue: 'settings-audio-input-device',
+              capture: true,
+              selected: settings.inputDeviceName,
+              onChanged: (name) => widget.session.setAudioSyncSettings(
+                settings.copyWith(inputDeviceName: name),
+              ),
             ),
             const Divider(height: 24),
             Row(

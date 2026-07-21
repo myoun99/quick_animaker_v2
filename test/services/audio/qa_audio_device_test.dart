@@ -71,6 +71,68 @@ void main() {
     return AudioMixSource(samples: data, channels: channels);
   }
 
+  group('device enumeration and selection (AUDIO-PRO R4)', () {
+    test('the null backend enumerates, describes, and opens by index', () {
+      final device = QaAudioDevice.instance!;
+      final playback = device.devicesOf(capture: false, useNullBackend: true);
+      expect(playback, isNotEmpty,
+          reason: 'the null backend exposes its one fake device');
+      expect(playback.first.name, isNotEmpty);
+
+      final capture = device.devicesOf(capture: true, useNullBackend: true);
+      expect(capture, isNotEmpty,
+          reason: 'capture enumeration is R5 recording groundwork');
+
+      // Open BY INDEX 0 — the same device the enumeration described.
+      final rate = device.open(
+        sampleRate: 48000,
+        channels: 2,
+        useNullBackend: true,
+        deviceIndex: 0,
+      );
+      expect(rate, greaterThan(0));
+      device.close();
+    }, skip: skip);
+
+    test('a bogus index FAILS instead of opening something else', () {
+      final device = QaAudioDevice.instance!;
+      expect(
+        device.open(
+          sampleRate: 48000,
+          channels: 2,
+          useNullBackend: true,
+          deviceIndex: 999,
+        ),
+        0,
+        reason: 'the fallback to default must be the CALLER\'s informed '
+            'choice, never a silent substitution',
+      );
+      // And the deliberate fallback works.
+      expect(
+        device.open(sampleRate: 48000, channels: 2, useNullBackend: true),
+        greaterThan(0),
+      );
+      device.close();
+    }, skip: skip);
+
+    test('name-to-index mapping finds the enumerated device; the helper '
+        'maps null and missing names to the default', () {
+      final device = QaAudioDevice.instance!;
+      // Positive case against the NULL backend's own list (the production
+      // helper enumerates the default backend, which differs on purpose).
+      final playback = device.devicesOf(capture: false, useNullBackend: true);
+      final index = playback.indexWhere(
+        (entry) => entry.name == playback.first.name,
+      );
+      expect(index, 0);
+      // The helper's fallback paths hold on any machine, sound card or
+      // not: null and unattached names mean the system default.
+      expect(audioOutputDeviceIndexByName(device, null), -1);
+      expect(audioOutputDeviceIndexByName(device, 'no-such-speaker'), -1,
+          reason: 'unplugged hardware falls back to the system default');
+    }, skip: skip);
+  });
+
   group('the device opens and reports itself', () {
     test('a null device opens, states its geometry, and closes', () {
       final device = openNull();

@@ -3,6 +3,32 @@ import 'package:quick_animaker_v2/src/models/project_frame_rate.dart';
 import 'package:quick_animaker_v2/src/ui/playback/audio_sync_settings.dart';
 
 void main() {
+  test('device choices round-trip by NAME, defaulting to the system '
+      'device (AUDIO-PRO R4)', () {
+    const settings = AudioSyncSettings(
+      outputDeviceName: 'Speakers (USB DAC)',
+      inputDeviceName: 'Rode NT-USB',
+    );
+    final reopened = AudioSyncSettings.fromJson(settings.toJson());
+    expect(reopened.outputDeviceName, 'Speakers (USB DAC)');
+    expect(reopened.inputDeviceName, 'Rode NT-USB');
+
+    // Defaults stay out of the JSON, and copyWith can CLEAR back to the
+    // system default (null is a real value here, not an omission).
+    expect(
+      AudioSyncSettings.defaults.toJson().containsKey('outputDevice'),
+      isFalse,
+    );
+    final cleared = settings.copyWith(
+      outputDeviceName: null,
+      inputDeviceName: null,
+    );
+    expect(cleared.outputDeviceName, isNull);
+    expect(cleared.inputDeviceName, isNull);
+    // And an untouched copyWith keeps them.
+    expect(settings.copyWith(offset: 5).outputDeviceName, 'Speakers (USB DAC)');
+  });
+
   group('the offset converts to samples exactly', () {
     test('milliseconds', () {
       const settings = AudioSyncSettings(offset: 100);

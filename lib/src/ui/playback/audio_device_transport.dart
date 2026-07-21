@@ -39,11 +39,21 @@ class AudioDeviceTransport {
     QaAudioDevice? Function()? resolveDevice,
     int Function(int sampleRate)? resolveUserOffsetSamples,
     this.resolveSoloedLayerIds,
+    this.resolveOutputDeviceName,
   }) : _resolveDevice = resolveDevice ?? (() => QaAudioDevice.instance),
        _resolveUserOffsetSamples = resolveUserOffsetSamples ?? ((_) => 0);
 
   /// The session's solo set (monitoring state, AUDIO-PRO R1).
   final Set<LayerId> Function()? resolveSoloedLayerIds;
+
+  /// The chosen output device by name (AUDIO-PRO R4); null = system
+  /// default. Read at each activation — a changed setting reopens the
+  /// device on the NEXT run (mid-run output hopping is not a thing any
+  /// pro tool does either).
+  final String? Function()? resolveOutputDeviceName;
+
+  /// What the open device was opened as, to detect a setting change.
+  String? _openedDeviceName;
 
   final CanvasPlaybackController controller;
   final ProjectFrameRate Function() resolveFrameRate;
@@ -222,12 +232,28 @@ class AudioDeviceTransport {
     );
 
     // The device opens lazily and stays open across runs (opening tears
-    // down and rebuilds an OS audio graph — not a per-play cost).
+    // down and rebuilds an OS audio graph — not a per-play cost). A
+    // changed output-device setting reopens here, at the run boundary.
+    final desiredName = resolveOutputDeviceName?.call();
+    if (device.isOpen && _openedDeviceName != desiredName) {
+      device.stop();
+      device.close();
+    }
     if (!device.isOpen) {
-      final opened = device.open(sampleRate: conformStore.projectSampleRate);
+      final index = audioOutputDeviceIndexByName(device, desiredName);
+      var opened = device.open(
+        sampleRate: conformStore.projectSampleRate,
+        deviceIndex: index,
+      );
+      if (opened <= 0 && index >= 0) {
+        // The named device failed to open (unplugged mid-enumeration):
+        // fall back to the system default deliberately, never to silence.
+        opened = device.open(sampleRate: conformStore.projectSampleRate);
+      }
       if (opened <= 0) {
         return;
       }
+      _openedDeviceName = desiredName;
     }
     _device = device;
     _deviceRate = device.sampleRate;
