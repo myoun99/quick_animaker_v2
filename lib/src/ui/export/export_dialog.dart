@@ -922,38 +922,67 @@ class ExportDialogState extends State<ExportDialog> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final presetsWidth = _presetsOpen ? 152.0 : 22.0;
-    final queueWidth = _queueOpen ? 200.0 : 22.0;
-    final width = presetsWidth + 330 + 272 + queueWidth + 4;
-
     return Dialog(
-      child: SizedBox(
-        width: width,
-        height: 560,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            _titleBar(theme),
-            _tabBar(theme),
-            _nameBar(theme),
-            Expanded(
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  SizedBox(width: presetsWidth, child: _presetsZone()),
-                  VerticalDivider(width: 1, color: theme.dividerColor),
-                  Expanded(child: _previewZone(theme)),
-                  VerticalDivider(width: 1, color: theme.dividerColor),
-                  SizedBox(width: 272, child: _settingsZone()),
-                  VerticalDivider(width: 1, color: theme.dividerColor),
-                  SizedBox(width: queueWidth, child: _queueZone()),
-                ],
-              ),
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          // The drawers yield before the preview does (v10: 전개 ~1020 /
+          // 최소 ~700): a tight surface collapses the queue, then the
+          // presets, to presentational strips — the stored preference
+          // stays untouched.
+          var presetsOpen = _presetsOpen;
+          var queueOpen = _queueOpen;
+          double widthFor() =>
+              (presetsOpen ? 152.0 : 22.0) +
+              330 +
+              272 +
+              (queueOpen ? 200.0 : 22.0) +
+              4;
+          if (widthFor() > constraints.maxWidth && queueOpen) {
+            queueOpen = false;
+          }
+          if (widthFor() > constraints.maxWidth && presetsOpen) {
+            presetsOpen = false;
+          }
+          final presetsWidth = presetsOpen ? 152.0 : 22.0;
+          final queueWidth = queueOpen ? 200.0 : 22.0;
+          final width = math.min(widthFor(), constraints.maxWidth);
+          final height = math.min(560.0, constraints.maxHeight);
+
+          return SizedBox(
+            width: width,
+            height: height,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                _titleBar(theme),
+                _tabBar(theme),
+                _nameBar(theme),
+                Expanded(
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      SizedBox(
+                        width: presetsWidth,
+                        child: _presetsZone(open: presetsOpen),
+                      ),
+                      VerticalDivider(width: 1, color: theme.dividerColor),
+                      Expanded(child: _previewZone(theme)),
+                      VerticalDivider(width: 1, color: theme.dividerColor),
+                      SizedBox(width: 272, child: _settingsZone()),
+                      VerticalDivider(width: 1, color: theme.dividerColor),
+                      SizedBox(
+                        width: queueWidth,
+                        child: _queueZone(open: queueOpen),
+                      ),
+                    ],
+                  ),
+                ),
+                Divider(height: 1, color: theme.dividerColor),
+                _footer(theme),
+              ],
             ),
-            Divider(height: 1, color: theme.dividerColor),
-            _footer(theme),
-          ],
-        ),
+          );
+        },
       ),
     );
   }
@@ -1127,8 +1156,8 @@ class ExportDialogState extends State<ExportDialog> {
     }
   }
 
-  Widget _presetsZone() {
-    if (!_presetsOpen) {
+  Widget _presetsZone({required bool open}) {
+    if (!open) {
       return ExportDrawerStrip(
         key: const ValueKey<String>('export-presets-strip'),
         caption: 'Presets',
@@ -1614,8 +1643,8 @@ class ExportDialogState extends State<ExportDialog> {
     ];
   }
 
-  Widget _queueZone() {
-    if (!_queueOpen) {
+  Widget _queueZone({required bool open}) {
+    if (!open) {
       return ExportDrawerStrip(
         key: const ValueKey<String>('export-queue-strip'),
         caption: 'Queue',

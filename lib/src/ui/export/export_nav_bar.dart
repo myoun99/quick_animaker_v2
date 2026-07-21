@@ -286,8 +286,15 @@ class _ExportScrubPainter extends CustomPainter {
         text: TextSpan(text: axis.caption(axis.clamp(position)), style: style),
         textDirection: TextDirection.ltr,
       )..layout();
-      final left = (playheadX + 4).clamp(0.0, size.width - painter.width);
-      painter.paint(canvas, Offset(left, 0));
+      // A caption wider than the bar (squeezed layouts) just skips —
+      // clamp with an inverted range throws.
+      final maxLeft = size.width - painter.width;
+      if (maxLeft >= 0) {
+        painter.paint(
+          canvas,
+          Offset((playheadX + 4).clamp(0.0, maxLeft), 0),
+        );
+      }
     }
   }
 
