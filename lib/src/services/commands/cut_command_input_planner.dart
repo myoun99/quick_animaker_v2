@@ -8,6 +8,7 @@ import '../../models/layer_id.dart';
 import '../../models/layer_kind.dart';
 import '../../models/project.dart';
 import '../clipboard/layer_copy_payload.dart';
+import 'convert_to_linked_cut_plan.dart';
 
 class CreateCutCommandInputPlan {
   const CreateCutCommandInputPlan({required this.cutId, required this.layerId});
@@ -278,6 +279,70 @@ CreateLinkedCutCommandInputPlan planCreateLinkedCutCommandInput({
     newCutId: newCutId,
     layerIdMap: layerIdMap,
     folderIdMap: folderIdMap,
+    newGroupIdBySource: newGroupIdBySource,
+  );
+}
+
+class ConvertToLinkedCutCommandInputPlan {
+  const ConvertToLinkedCutCommandInputPlan({
+    required this.unionLayerIdMap,
+    required this.newGroupIdBySource,
+  });
+
+  /// (owning cut, source layer) → new copy id in the OTHER cut.
+  final Map<(CutId, LayerId), LayerId> unionLayerIdMap;
+
+  /// Planned registry group id per newly-linked source layer.
+  final Map<LayerId, String> newGroupIdBySource;
+}
+
+/// Plans a 겸용 변경 (L2b): copy ids for the one-side-only layers that
+/// UNION into the other cut, and registry group ids for every pair/union
+/// that is not linked yet.
+ConvertToLinkedCutCommandInputPlan planConvertToLinkedCutCommandInput({
+  required Project project,
+  required Cut originCut,
+  required Cut targetCut,
+}) {
+  final plan = planConvertToLinkedCut(
+    project: project,
+    originCut: originCut,
+    targetCut: targetCut,
+  );
+  final ids = _ProjectIdSnapshot.fromProject(project);
+  final usedGroupIds = <String>{
+    for (final group in project.linkRegistry.groups) group.id,
+  };
+
+  final unionLayerIdMap = <(CutId, LayerId), LayerId>{};
+  final newGroupIdBySource = <LayerId, String>{};
+
+  String nextGroupId() {
+    final id = _firstAvailableId(prefix: 'link', usedIds: usedGroupIds);
+    usedGroupIds.add(id);
+    return id;
+  }
+
+  LayerId nextLayerId() {
+    final id = LayerId(_firstAvailableId(prefix: 'layer', usedIds: ids.layerIds));
+    ids.layerIds.add(id.value);
+    return id;
+  }
+
+  for (final pair in plan.layerPairs) {
+    newGroupIdBySource[pair.originLayerId] = nextGroupId();
+  }
+  for (final originLayerId in plan.originOnlyLayerIds) {
+    unionLayerIdMap[(originCut.id, originLayerId)] = nextLayerId();
+    newGroupIdBySource[originLayerId] = nextGroupId();
+  }
+  for (final targetLayerId in plan.targetOnlyLayerIds) {
+    unionLayerIdMap[(targetCut.id, targetLayerId)] = nextLayerId();
+    newGroupIdBySource[targetLayerId] = nextGroupId();
+  }
+
+  return ConvertToLinkedCutCommandInputPlan(
+    unionLayerIdMap: unionLayerIdMap,
     newGroupIdBySource: newGroupIdBySource,
   );
 }

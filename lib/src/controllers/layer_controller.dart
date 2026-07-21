@@ -6,9 +6,11 @@ import '../models/frame_id.dart';
 import '../models/layer.dart';
 import '../models/layer_id.dart';
 import '../models/layer_kind.dart';
+import '../models/project.dart';
 import 'default_layer_helpers.dart';
 import '../services/commands/add_layer_command.dart';
 import '../services/history_manager.dart';
+import '../services/project_lookup.dart';
 import '../services/project_repository.dart';
 
 class LayerController {
@@ -153,10 +155,20 @@ class LayerController {
   }
 
   void toggleLayerVisibility(LayerId layerId) {
-    _repository.updateLayer(
-      layerId: layerId,
-      update: (layer) => layer.copyWith(isVisible: !layer.isVisible),
-    );
+    // The eye MIRRORS across the layer's link group ("레인만 각자,
+    // 나머지는 하나"): every member SETS the toggled value — per-member
+    // toggling could freeze a divergent state forever.
+    final project = _repository.requireProject();
+    final target = requireLayerAnywhere(project, layerId);
+    final nextVisible = !target.isVisible;
+    for (final member in _mirrorTargetsOf(project, layerId)) {
+      _repository.updateLayer(
+        layerId: member,
+        update: (layer) => layer.isVisible == nextVisible
+            ? layer
+            : layer.copyWith(isVisible: nextVisible),
+      );
+    }
   }
 
   /// The audio counterpart of [toggleLayerVisibility]: silences the SE
@@ -169,11 +181,34 @@ class LayerController {
   }
 
   void setLayerOpacity({required LayerId layerId, required double opacity}) {
-    _repository.updateLayer(
+    // Static opacity mirrors like the eye; per-use fades belong to the
+    // local FX opacity lane instead.
+    final clamped = opacity.clamp(0.0, 1.0).toDouble();
+    final project = _repository.requireProject();
+    for (final member in _mirrorTargetsOf(project, layerId)) {
+      _repository.updateLayer(
+        layerId: member,
+        update: (layer) =>
+            layer.opacity == clamped ? layer : layer.copyWith(opacity: clamped),
+      );
+    }
+  }
+
+  /// The link-group member ids a mirrored display edit applies to —
+  /// [layerId] alone when unlinked (track SE rows always are).
+  List<LayerId> _mirrorTargetsOf(Project project, LayerId layerId) {
+    final cutId = cutIdOfLayer(project, layerId);
+    if (cutId == null) {
+      return [layerId];
+    }
+    final group = project.linkRegistry.groupOf(
+      cutId: cutId,
       layerId: layerId,
-      update: (layer) =>
-          layer.copyWith(opacity: opacity.clamp(0.0, 1.0).toDouble()),
     );
+    if (group == null) {
+      return [layerId];
+    }
+    return [for (final member in group.members) member.layerId];
   }
 
   Cut? _findCutOrNull() {
