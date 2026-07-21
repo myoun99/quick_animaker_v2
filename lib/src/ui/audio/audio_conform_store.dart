@@ -29,14 +29,14 @@ class _ConformFailure {
 /// retry budget — transient ones (a file still syncing down from a cloud
 /// folder) self-heal, and a hard one cannot spin the paint loop.
 ///
-/// Formats the native decoder does not read (m4a/aac/ogg until the OS
-/// decoders land) are a DEFINITIVE answer, not a failure: the entry stays,
-/// and [peaksFor]/[durationSecondsFor] fall back to the ffmpeg extractor
-/// for the waveform — per the decided format table (dr_libs is the single
-/// realtime path; AAC rides the platform's decoder, which on desktop today
-/// still means ffmpeg). Playback of those files stays on the platform
-/// players; the routing is per FORMAT, so the same file never alternates
-/// between paths.
+/// Formats the native decoder does not read are a DEFINITIVE answer, not
+/// a failure: the entry stays, and [peaksFor]/[durationSecondsFor] fall
+/// back to the ffmpeg extractor for the waveform. With the OS decoders in
+/// (Media Foundation / AudioToolbox / MediaCodec behind the same native
+/// entry point), that fallback now covers only ogg — and any format on a
+/// build without its OS stack. Playback of those files stays on the
+/// platform players; the routing is per FORMAT, so the same file never
+/// alternates between paths.
 class AudioConformStore extends ChangeNotifier {
   AudioConformStore({
     required this.resolveConformPath,
