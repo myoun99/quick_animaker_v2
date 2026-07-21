@@ -290,6 +290,8 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
                     scope: PlaybackScope.allCuts,
                     quality: _session.playbackQuality,
                     onQualityChanged: _session.setPlaybackQuality,
+                    resolveMeterPeaks: () =>
+                        _session.audioDeviceTransport.meterPeaks,
                     // Play from the storyboard playhead, like the
                     // timeline's transport does.
                     playbackStartFrame: () =>

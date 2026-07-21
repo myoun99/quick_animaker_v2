@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../models/playback_quality.dart';
 import '../theme/app_theme.dart' show instantMenuAnimation;
+import 'audio_level_meter.dart';
 import 'canvas_playback_controller.dart';
 
 /// Play/stop, loop mode and quality transport row.
@@ -17,12 +18,17 @@ class PlaybackTransportControls extends StatelessWidget {
     required this.quality,
     required this.onQualityChanged,
     this.playbackStartFrame,
+    this.resolveMeterPeaks,
   });
 
   final CanvasPlaybackController controller;
   final PlaybackScope scope;
   final PlaybackQuality quality;
   final ValueChanged<PlaybackQuality> onQualityChanged;
+
+  /// The device transport's pre-clip bus peaks (AUDIO-PRO R2); non-null
+  /// mounts the level meter at the row's end.
+  final ({double left, double right}) Function()? resolveMeterPeaks;
 
   /// Where playback begins in this scope (e.g. the timeline playhead);
   /// defaults to frame 0.
@@ -118,6 +124,17 @@ class PlaybackTransportControls extends StatelessWidget {
                 ),
               ),
             ),
+            // The level meter (AUDIO-PRO R2), only while THIS scope's
+            // playback is live — a silent strip otherwise would just be
+            // chrome.
+            if (resolveMeterPeaks != null && controlsThisScope)
+              Padding(
+                padding: const EdgeInsets.only(left: 6),
+                child: AudioLevelMeter(
+                  controller: controller,
+                  resolvePeaks: resolveMeterPeaks!,
+                ),
+              ),
             if (controlsThisScope && controller.droppedFrames > 0)
               Padding(
                 padding: const EdgeInsets.only(left: 6),

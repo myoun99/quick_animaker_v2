@@ -137,6 +137,10 @@ final class QaAudioDevice {
       .lookupFunction<Void Function(Int64), void Function(int)>(
         'qa_audio_device_seek',
       );
+  late final _peak = _library
+      .lookupFunction<Double Function(Int32), double Function(int)>(
+        'qa_audio_device_peak',
+      );
 
   /// Opens the output device, returning its ACTUAL sample rate (0 = the
   /// device could not be opened).
@@ -281,6 +285,12 @@ final class QaAudioDevice {
   /// builds a mix rather than starting clips, a seek is just a change of
   /// where the next block is read from.
   void seek(int sample) => _seek(sample);
+
+  /// The last mixed block's PRE-CLIP bus peak (0 = left, 1 = right; mono
+  /// mirrors left) — the level meter's feed (AUDIO-PRO R2). A value past
+  /// 1.0 means the output stage is clipping, which is exactly what the
+  /// meter exists to make visible.
+  double peakFor(int channel) => _peak(channel);
 }
 
 /// Reads the played position as a frame index, pulled forward by the
