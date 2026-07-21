@@ -928,7 +928,7 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
             builder: (context, _) => MediaBrowserPanel(
               assets: widget.session.mediaAssets,
               isAssetReferenced: widget.session.isMediaAssetReferenced,
-              onImportPaths: widget.session.addMediaAssets,
+              onImportPaths: widget.session.importMediaFiles,
               onRenameAsset: widget.session.renameMediaAsset,
               onRelinkAsset: widget.session.relinkMediaAsset,
               onRemoveAsset: widget.session.removeMediaAsset,

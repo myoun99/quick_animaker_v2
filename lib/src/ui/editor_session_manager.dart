@@ -2702,9 +2702,10 @@ class EditorSessionManager extends ChangeNotifier {
     if (layer == null || layer.kind != LayerKind.se) {
       return;
     }
-    // Re-importing a path restarts its conform + waveform from scratch
-    // (fresh attempt budget — the file may have changed on disk).
-    audioConformStore.invalidate(filePath);
+    // Copy-on-import into the project's Media/ folder (falls back to the
+    // original path while unsaved), then conform from scratch — the file
+    // may have changed on disk since a previous import.
+    final effectivePath = importAudioFile(filePath);
     final frameIndex = _timelineController.currentFrameIndex < 0
         ? 0
         : _timelineController.currentFrameIndex;
@@ -2722,17 +2723,108 @@ class EditorSessionManager extends ChangeNotifier {
     final carrier = activeLayer ?? layer;
     // The pool learns every imported file (its own undo step, like the
     // SE-instance creation above) so the browser can offer it for reuse.
-    addMediaAssets([filePath]);
+    addMediaAssets([effectivePath]);
     _cutCommandCoordinator.updateLayerAudioClips(
       cutId: requireActiveCut.id,
       layerId: carrier.id,
       audioClips: [
         ...carrier.audioClips,
-        AudioClip(filePath: filePath, frameId: frame.id),
+        AudioClip(filePath: effectivePath, frameId: frame.id),
       ],
       description: 'Import audio',
     );
     notifyListeners();
+  }
+
+  // --- Audio import: originals into the project's Media/ folder ------------
+
+  /// Brings [sourcePath] into the project: copies it into
+  /// `<project>.assets/Media/` (the Pro Tools/Logic copy-on-import
+  /// default — the project folder owns its sounds, so a Drive folder
+  /// opened on another machine has them) and kicks its conform. Returns
+  /// the path the project should reference from here on.
+  ///
+  /// Falls back to referencing [sourcePath] directly when there is nowhere
+  /// to copy yet (never-saved project) or the copy fails — an import must
+  /// degrade to Premiere-style referencing, never refuse.
+  String importAudioFile(String sourcePath) {
+    final effectivePath = _copyIntoProjectMedia(sourcePath);
+    // Fresh conform + waveform budget: on a re-import the file may have
+    // changed on disk. (A byte-identical reused copy re-fingerprints
+    // against the existing conform and lands as `reused` without a
+    // decode.)
+    audioConformStore.invalidate(effectivePath);
+    audioConformStore.warmPaths([effectivePath]);
+    return effectivePath;
+  }
+
+  /// The media browser's import: same copy-in as a timeline import, pool
+  /// only (no clip link).
+  void importMediaFiles(List<String> paths) {
+    addMediaAssets([for (final path in paths) importAudioFile(path)]);
+  }
+
+  String _copyIntoProjectMedia(String sourcePath) {
+    final projectPath = _projectFilePath;
+    if (projectPath == null) {
+      return sourcePath;
+    }
+    final mediaDirectory = ProjectAssetLayout(projectPath).mediaDirectory;
+    final normalized = sourcePath.replaceAll('\\', '/');
+    if (normalized.startsWith('$mediaDirectory/')) {
+      // Already ours — a pool path re-imported from the browser.
+      return sourcePath;
+    }
+    final name = normalized.substring(normalized.lastIndexOf('/') + 1);
+    final dot = name.lastIndexOf('.');
+    final stem = dot <= 0 ? name : name.substring(0, dot);
+    final extension = dot <= 0 ? '' : name.substring(dot);
+    try {
+      final source = File(sourcePath);
+      if (!source.existsSync()) {
+        return sourcePath;
+      }
+      Directory(mediaDirectory).createSync(recursive: true);
+      // Same name taken: REUSE it when the bytes match (re-importing the
+      // same sound must not stack x-1, x-2 copies), otherwise walk to a
+      // unique name (two different sounds sharing a name must never
+      // overwrite each other — Pro Tools' import rule).
+      for (var index = 0; index < 10000; index += 1) {
+        final candidate = File(
+          index == 0
+              ? '$mediaDirectory/$name'
+              : '$mediaDirectory/$stem-$index$extension',
+        );
+        if (!candidate.existsSync()) {
+          source.copySync(candidate.path);
+          return candidate.path;
+        }
+        if (_sameFileBytes(source, candidate)) {
+          return candidate.path;
+        }
+      }
+      return sourcePath;
+    } on Object {
+      // Cloud folder mid-sync, permissions, full disk: the reference
+      // still plays and the pool can be relinked later.
+      return sourcePath;
+    }
+  }
+
+  static bool _sameFileBytes(File a, File b) {
+    if (a.lengthSync() != b.lengthSync()) {
+      return false;
+    }
+    // Full compare, but only ever reached on a NAME collision — rare, and
+    // a wrong "same" here would silently play one sound for another.
+    final bytesA = a.readAsBytesSync();
+    final bytesB = b.readAsBytesSync();
+    for (var index = 0; index < bytesA.length; index += 1) {
+      if (bytesA[index] != bytesB[index]) {
+        return false;
+      }
+    }
+    return true;
   }
 
   /// Removes the [clipIndex]th clip of [layerId]; one undo step.
