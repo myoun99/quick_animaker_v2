@@ -200,7 +200,9 @@ class CutFrameCompositeCache {
         continue;
       }
       // Layer transforms apply at composite time; the pose is canvas-space,
-      // adapted to this quality tier's raster scale.
+      // adapted to this quality tier's raster scale. Folder FX (L3) is
+      // already COMPOSED into this pose by the shared visit — one pose,
+      // every route identical.
       final layerPose = layer.pose;
       if (layerPose != null) {
         canvas.save();

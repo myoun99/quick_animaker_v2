@@ -5,10 +5,12 @@ import '../models/canvas_size.dart';
 import '../models/cut.dart';
 import '../models/frame.dart';
 import '../models/layer.dart';
+import '../models/layer_folder.dart';
 import '../models/layer_id.dart';
 import '../models/layer_kind.dart';
 import '../models/timeline_coverage.dart';
 import '../models/transform_track.dart';
+import '../ui/canvas/layer_pose_paint.dart';
 
 /// One paintable layer of a composited cut frame, bottom → top order.
 class CutFrameCompositeLayer {
@@ -21,13 +23,16 @@ class CutFrameCompositeLayer {
 
   final BitmapSurface surface;
 
-  /// The layer's EFFECTIVE opacity: the static layer opacity multiplied by
-  /// the transform track's animated Opacity sample (compose routes paint
-  /// with exactly this value).
+  /// The layer's EFFECTIVE opacity: static layer opacity × animated
+  /// Opacity sample × every enclosing folder's effective opacity (L3 —
+  /// folded per member; overlapping members inside one translucent
+  /// folder double-blend, the exact buffered group is a later slice).
   final double opacity;
 
-  /// The layer's transform at this frame; null = identity (no transform
-  /// work — the overwhelmingly common case skips the canvas save/restore).
+  /// The layer's transform at this frame — WITH every enclosing folder's
+  /// FX composed outside it (L3, 폴더째 이동); null = identity (no
+  /// transform work — the overwhelmingly common case skips the canvas
+  /// save/restore).
   final TransformPose? pose;
 
   /// The pose's anchor point; null = canvas center (see
@@ -108,8 +113,84 @@ class CutFrameCompositeEntry {
   final Layer layer;
   final Frame frame;
   final double opacity;
+
+  /// The layer's transform at this frame — WITH every enclosing folder's
+  /// FX composed outside it (L3); null = identity.
   final TransformPose? pose;
   final CanvasPoint? anchorPoint;
+}
+
+/// A folder chain's composite-relevant state at [frameIndex]: whether the
+/// subtree shows at all, the folded opacity factor (each folder's static
+/// opacity × its animated Opacity sample), and the folder poses to apply
+/// outermost-first. Folder FX lanes are per-use ("레인만 각자") — this
+/// resolves THIS cut's folder table.
+({bool visible, double opacityFactor, List<LayerPoseSample> poses})
+resolveFolderChainAt({
+  required Cut cut,
+  required Layer layer,
+  required int frameIndex,
+}) {
+  final chain = cut.folders.ancestryOf(layer.folderId);
+  if (chain.isEmpty) {
+    return (visible: true, opacityFactor: 1.0, poses: const []);
+  }
+  var opacityFactor = 1.0;
+  final poses = <LayerPoseSample>[];
+  // ancestryOf is nearest-first; walk reversed so poses apply outermost
+  // first (the outer folder moves the inner one too).
+  for (final folder in chain.reversed) {
+    if (!folder.isVisible) {
+      return (visible: false, opacityFactor: 0.0, poses: const []);
+    }
+    opacityFactor *=
+        (folder.opacity *
+                resolveOpacityTrackAt(folder.transformTrack.opacity, frameIndex))
+            .clamp(0.0, 1.0);
+    final track = folder.transformTrack;
+    final hasGeometry =
+        !track.anchorPoint.isEmpty ||
+        !track.position.isEmpty ||
+        !track.scale.isEmpty ||
+        !track.rotation.isEmpty;
+    if (hasGeometry) {
+      poses.add((
+        pose: track.resolveAt(
+          frameIndex: frameIndex,
+          orElse: () => layerIdentityPose(cut.canvasSize),
+        ),
+        anchorPoint: resolveAnchorTrackAt(track.anchorPoint, frameIndex),
+      ));
+    }
+  }
+  return (
+    visible: true,
+    opacityFactor: opacityFactor,
+    poses: List.unmodifiable(poses),
+  );
+}
+
+/// [layerSample] with the folder chain's poses composed OUTSIDE it via
+/// [composeLayerPoseSamples] — ONE pose per entry, so every consumer
+/// (composite cache, camera renders, editing stack, signatures) applies
+/// folder FX with zero changes. Null when neither the folders nor the
+/// layer carry geometry.
+LayerPoseSample? composeFolderAndLayerPose({
+  required List<LayerPoseSample> folderPoses,
+  required LayerPoseSample? layerSample,
+  required CanvasSize canvasSize,
+}) {
+  if (folderPoses.isEmpty) {
+    return layerSample;
+  }
+  var combined =
+      layerSample ??
+      (pose: layerIdentityPose(canvasSize), anchorPoint: null as CanvasPoint?);
+  // Fold innermost-outward: outer ∘ (… ∘ (inner ∘ layer)).
+  for (final folderPose in folderPoses.reversed) {
+    combined = composeLayerPoseSamples(folderPose, combined, canvasSize);
+  }
+  return combined;
 }
 
 /// The visible contributors at [frameIndex], bottom → top.
@@ -156,17 +237,29 @@ List<CutFrameCompositeEntry> resolveCutFrameCompositeEntries({
     if (!layer.isVisible || layer.opacity <= 0) {
       continue;
     }
+    // Folder gates (L3): a hidden ancestor hides the subtree; folder
+    // opacity folds into the member's, folder poses ride the entry.
+    final folderChain = resolveFolderChainAt(
+      cut: cut,
+      layer: layer,
+      frameIndex: frameIndex,
+    );
+    if (!folderChain.visible) {
+      continue;
+    }
     final fxCarrier = base ?? layer;
     final fxEnabled = !fxBypassedLayerIds.contains(fxCarrier.id);
-    final opacity = fxEnabled
-        ? (layer.opacity *
-                  resolveOpacityTrackAt(
-                    fxCarrier.transformTrack.opacity,
-                    frameIndex,
-                  ))
-              .clamp(0.0, 1.0)
-              .toDouble()
-        : layer.opacity.clamp(0.0, 1.0).toDouble();
+    final opacity =
+        ((fxEnabled
+                    ? layer.opacity *
+                          resolveOpacityTrackAt(
+                            fxCarrier.transformTrack.opacity,
+                            frameIndex,
+                          )
+                    : layer.opacity) *
+                folderChain.opacityFactor)
+            .clamp(0.0, 1.0)
+            .toDouble();
     if (opacity <= 0) {
       continue;
     }
@@ -185,24 +278,35 @@ List<CutFrameCompositeEntry> resolveCutFrameCompositeEntries({
       continue;
     }
 
+    final layerPose = fxEnabled
+        ? resolveLayerPoseAt(
+            layer: fxCarrier,
+            canvasSize: cut.canvasSize,
+            frameIndex: frameIndex,
+          )
+        : null;
+    final combined = composeFolderAndLayerPose(
+      folderPoses: folderChain.poses,
+      layerSample: layerPose == null
+          ? null
+          : (
+              pose: layerPose,
+              anchorPoint: fxEnabled
+                  ? resolveLayerAnchorPointAt(
+                      layer: fxCarrier,
+                      frameIndex: frameIndex,
+                    )
+                  : null,
+            ),
+      canvasSize: cut.canvasSize,
+    );
     entries.add(
       CutFrameCompositeEntry(
         layer: layer,
         frame: frame,
         opacity: opacity,
-        pose: fxEnabled
-            ? resolveLayerPoseAt(
-                layer: fxCarrier,
-                canvasSize: cut.canvasSize,
-                frameIndex: frameIndex,
-              )
-            : null,
-        anchorPoint: fxEnabled
-            ? resolveLayerAnchorPointAt(
-                layer: fxCarrier,
-                frameIndex: frameIndex,
-              )
-            : null,
+        pose: combined?.pose,
+        anchorPoint: combined?.anchorPoint,
       ),
     );
   }

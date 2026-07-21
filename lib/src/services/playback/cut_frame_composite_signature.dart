@@ -28,8 +28,9 @@ class CompositeLayerSignature {
   final LayerId layerId;
   final FrameId frameId;
 
-  /// The layer's EFFECTIVE opacity (static × animated Opacity sample) — an
-  /// opacity-lane edit must change the composite's identity.
+  /// The layer's EFFECTIVE opacity (static × animated Opacity sample ×
+  /// enclosing folders' opacity, L3) — an opacity-lane edit must change
+  /// the composite's identity.
   final double opacity;
 
   final int sourceRevision;
@@ -41,6 +42,8 @@ class CompositeLayerSignature {
   final TransformPose? pose;
 
   /// The pose's anchor point (null = canvas center) — same rule as [pose].
+  /// Folder FX (L3) arrives already COMPOSED into [pose] by the shared
+  /// visit, so a folder FX edit changes the identity through it.
   final CanvasPoint? anchorPoint;
 
   @override
