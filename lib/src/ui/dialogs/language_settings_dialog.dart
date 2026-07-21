@@ -30,36 +30,55 @@ class _LanguageSettingsDialog extends StatelessWidget {
         final strings = AppStrings.of(settings.programLanguage);
         return AlertDialog(
           title: Text(strings.languageSettingsTitle),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              _LanguageRow(
-                key: const ValueKey<String>('settings-program-language'),
-                label: strings.programLanguageLabel,
-                help: strings.programLanguageHelp,
-                value: settings.programLanguage,
-                onChanged: (language) => session.setLanguageSettings(
-                  settings.copyWith(programLanguage: language),
-                ),
-              ),
-              const SizedBox(height: 16),
-              _LanguageRow(
-                key: const ValueKey<String>('settings-notation-language'),
-                label: strings.notationLanguageLabel,
-                help: strings.notationLanguageHelp,
-                value: settings.notationLanguage,
-                onChanged: (language) => session.setLanguageSettings(
-                  settings.copyWith(notationLanguage: language),
-                ),
-              ),
-            ],
-          ),
+          content: LanguageSettingsSection(session: session),
           actions: [
             TextButton(
               key: const ValueKey<String>('settings-language-close'),
               onPressed: () => Navigator.of(context).pop(),
               child: const Text('OK'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+}
+
+/// The language-settings CONTENT, dialog-free (SAVE-1: the Preferences
+/// dialog embeds it as a section; the standalone dialog wraps it).
+class LanguageSettingsSection extends StatelessWidget {
+  const LanguageSettingsSection({super.key, required this.session});
+
+  final EditorSessionManager session;
+
+  @override
+  Widget build(BuildContext context) {
+    return ValueListenableBuilder<AppLanguageSettings>(
+      valueListenable: session.languageSettings,
+      builder: (context, settings, _) {
+        final strings = AppStrings.of(settings.programLanguage);
+        return Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _LanguageRow(
+              key: const ValueKey<String>('settings-program-language'),
+              label: strings.programLanguageLabel,
+              help: strings.programLanguageHelp,
+              value: settings.programLanguage,
+              onChanged: (language) => session.setLanguageSettings(
+                settings.copyWith(programLanguage: language),
+              ),
+            ),
+            const SizedBox(height: 16),
+            _LanguageRow(
+              key: const ValueKey<String>('settings-notation-language'),
+              label: strings.notationLanguageLabel,
+              help: strings.notationLanguageHelp,
+              value: settings.notationLanguage,
+              onChanged: (language) => session.setLanguageSettings(
+                settings.copyWith(notationLanguage: language),
+              ),
             ),
           ],
         );

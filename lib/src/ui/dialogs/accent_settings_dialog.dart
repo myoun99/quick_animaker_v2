@@ -38,59 +38,71 @@ class _AccentSettingsDialog extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Accent Colors'),
+      content: AccentSettingsSection(session: session),
+      actions: [
+        TextButton(
+          key: const ValueKey<String>('settings-accent-close'),
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Close'),
+        ),
+      ],
+    );
+  }
+}
+
+/// The accent-settings CONTENT, dialog-free (SAVE-1: the Preferences
+/// dialog embeds it as a section; the standalone dialog wraps it).
+class AccentSettingsSection extends StatelessWidget {
+  const AccentSettingsSection({super.key, required this.session});
+
+  final EditorSessionManager session;
+
+  @override
+  Widget build(BuildContext context) {
     return ValueListenableBuilder<AppAccentSettings>(
       valueListenable: AppColors.accentSettings,
       builder: (context, settings, _) {
-        return AlertDialog(
-          title: const Text('Accent Colors'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              _AccentRow(
-                keyPrefix: 'settings-accent1',
-                label: 'Accent 1',
-                help: 'Selection, playhead, active toggles.',
-                value: settings.accent,
-                onChanged: (color) =>
-                    session.setAccentSettings(settings.copyWith(accent: color)),
+        return Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _AccentRow(
+              keyPrefix: 'settings-accent1',
+              label: 'Accent 1',
+              help: 'Selection, playhead, active toggles.',
+              value: settings.accent,
+              onChanged: (color) =>
+                  session.setAccentSettings(settings.copyWith(accent: color)),
+            ),
+            const SizedBox(height: 16),
+            CheckboxListTile(
+              key: const ValueKey<String>('settings-accent2-auto'),
+              contentPadding: EdgeInsets.zero,
+              dense: true,
+              controlAffinity: ListTileControlAffinity.leading,
+              title: const Text('Accent 2 follows the complement'),
+              subtitle: const Text(
+                'Repeat patterns and selected key diamonds use accent 2.',
               ),
-              const SizedBox(height: 16),
-              CheckboxListTile(
-                key: const ValueKey<String>('settings-accent2-auto'),
-                contentPadding: EdgeInsets.zero,
-                dense: true,
-                controlAffinity: ListTileControlAffinity.leading,
-                title: const Text('Accent 2 follows the complement'),
-                subtitle: const Text(
-                  'Repeat patterns and selected key diamonds use accent 2.',
-                ),
-                value: settings.accent2FollowsComplement,
-                onChanged: (auto) => session.setAccentSettings(
-                  auto ?? true
-                      ? settings.copyWith(clearAccent2: true)
-                      : settings.copyWith(accent2: settings.accent2),
-                ),
+              value: settings.accent2FollowsComplement,
+              onChanged: (auto) => session.setAccentSettings(
+                auto ?? true
+                    ? settings.copyWith(clearAccent2: true)
+                    : settings.copyWith(accent2: settings.accent2),
               ),
-              _AccentRow(
-                keyPrefix: 'settings-accent2',
-                label: 'Accent 2',
-                help: settings.accent2FollowsComplement
-                    ? 'Automatic: the complement of accent 1.'
-                    : 'Custom accent 2.',
-                value: settings.accent2,
-                enabled: !settings.accent2FollowsComplement,
-                onChanged: (color) => session.setAccentSettings(
-                  settings.copyWith(accent2: color),
-                ),
-              ),
-            ],
-          ),
-          actions: [
-            TextButton(
-              key: const ValueKey<String>('settings-accent-close'),
-              onPressed: () => Navigator.of(context).pop(),
-              child: const Text('Close'),
+            ),
+            _AccentRow(
+              keyPrefix: 'settings-accent2',
+              label: 'Accent 2',
+              help: settings.accent2FollowsComplement
+                  ? 'Automatic: the complement of accent 1.'
+                  : 'Custom accent 2.',
+              value: settings.accent2,
+              enabled: !settings.accent2FollowsComplement,
+              onChanged: (color) =>
+                  session.setAccentSettings(settings.copyWith(accent2: color)),
             ),
           ],
         );

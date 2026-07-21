@@ -1,4 +1,15 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- SAVE-1c: the real-path model — projects live in the PUBLIC
+         Documents folder and in sync-app mirror folders, both plain
+         file paths. All-Files access is the desktop-like storage grant;
+         the legacy pair covers pre-R devices. -->
+    <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE" />
+    <uses-permission
+        android:name="android.permission.WRITE_EXTERNAL_STORAGE"
+        android:maxSdkVersion="29" />
+    <uses-permission
+        android:name="android.permission.READ_EXTERNAL_STORAGE"
+        android:maxSdkVersion="32" />
     <application
         android:label="quick_animaker_v2"
         android:name="${applicationName}"

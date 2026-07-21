@@ -20,7 +20,7 @@ class ProjectAutosaveService {
     required this.autosavePath,
     this.needsProjectFile,
     this.onUnsavedProject,
-    this.interval = const Duration(minutes: 2),
+    this.interval = const Duration(minutes: 5),
   });
 
   /// Whether unsaved changes exist (the session's dirty flag).
@@ -78,17 +78,6 @@ class ProjectAutosaveService {
   }
 
   /// The app-data folder holding autosaves of never-saved projects.
-  static String defaultUnsavedAutosaveDirectory() {
-    final environment = Platform.environment;
-    final base =
-        environment['APPDATA'] ??
-        environment['HOME'] ??
-        environment['USERPROFILE'] ??
-        Directory.systemTemp.path;
-    final normalizedBase = base.replaceAll('\\', '/');
-    return '$normalizedBase/quick_animaker_v2/autosave';
-  }
-
   /// Deletes [sidecarPath] if present (after a successful manual save).
   static Future<void> deleteSidecar(String sidecarPath) async {
     try {
