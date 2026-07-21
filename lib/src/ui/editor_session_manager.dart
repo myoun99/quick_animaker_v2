@@ -109,6 +109,7 @@ import '../services/audio/audio_conform_pipeline.dart' show ProjectAssetLayout;
 import '../services/audio/conform_wav_codec.dart' show encodeConformWav;
 import '../services/commands/update_media_assets_command.dart';
 import '../models/se_take_placement.dart';
+import '../services/audio/audio_peaks_extractor.dart' show AudioPeaks;
 import 'playback/audio_recorder.dart';
 import '../services/audio/audio_conform_runner.dart' show runConformHere;
 import '../services/commands/track_se_layer_commands.dart';
@@ -739,11 +740,19 @@ class EditorSessionManager extends ChangeNotifier {
   }
 
   /// The track's SE rows as cut-local display clones for the active cut.
+  ///
+  /// While a take rolls, the armed lane shows its PREVIEW state (REC1-C):
+  /// the in-flight take landed by the same planner the stop will use —
+  /// commits and undo keep reading the repository lane untouched.
   List<Layer> get trackSeDisplayLayers {
     final window = trackSeWindow;
+    final preview = voiceRecordPreviewLane.value;
     return [
       for (final layer in activeTrack.seLayers)
-        _trackSeDisplayCloneFor(window, layer),
+        _trackSeDisplayCloneFor(
+          window,
+          preview != null && preview.id == layer.id ? preview : layer,
+        ),
     ];
   }
 
@@ -848,6 +857,7 @@ class EditorSessionManager extends ChangeNotifier {
     _voiceRecorder?.dispose();
     isVoiceRecording.dispose();
     voiceRecordingNotice.dispose();
+    voiceRecordPreviewLane.dispose();
     audioPlaybackSync.dispose();
     audioScrubber.dispose();
     audioDeviceTransport.dispose();
@@ -3308,6 +3318,128 @@ class EditorSessionManager extends ChangeNotifier {
     return lane == null ? const <LayerId>{} : <LayerId>{lane};
   }
 
+  // --- Live take preview (REC1-C) ------------------------------------------
+
+  /// The sentinel clip path a rolling take's preview carries — never a
+  /// real file; [audioPeaksForDisplay] resolves it to the live envelope.
+  static const String voiceRecordPreviewPath = 'qa://recording-take';
+
+  /// The armed lane WITH the in-flight take landed on it, recomputed
+  /// through the same tape-style planner the stop uses — the timeline
+  /// shows the real final state, not an overlay (user decision). Null
+  /// outside recording. Changes at most once per FRAME (the boundary
+  /// gate), and NEVER through a session notify: the timeline host
+  /// subscribes directly (the R12-B playback-performance contract).
+  final ValueNotifier<Layer?> voiceRecordPreviewLane =
+      ValueNotifier<Layer?>(null);
+
+  /// The growing |peak| envelope of the take being recorded, folded from
+  /// the recorder's chunk tap in the waveform store's own format.
+  AudioPeaks? _voiceRecordLivePeaks;
+  final List<double> _voiceRecordPeakBuckets = [];
+  double _voiceRecordBucketMax = 0;
+  int _voiceRecordBucketFill = 0;
+  int _voiceRecordSamplesPerBucket = 0;
+  int _voiceRecordLastPreviewLength = 0;
+
+  /// What the waveform strips should paint for [path]: the live envelope
+  /// for the preview sentinel, the conform store's peaks otherwise.
+  AudioPeaks? audioPeaksForDisplay(String path) => path == voiceRecordPreviewPath
+      ? _voiceRecordLivePeaks
+      : audioConformStore.peaksFor(path);
+
+  /// Folds one captured chunk into the live envelope (the recorder's tap;
+  /// split out so tests can feed made chunks).
+  @visibleForTesting
+  void debugIngestVoiceRecordChunk(Float32List interleaved, int channels) {
+    final perBucket = _voiceRecordSamplesPerBucket;
+    if (channels <= 0 || perBucket <= 0) {
+      return;
+    }
+    final frames = interleaved.length ~/ channels;
+    for (var frame = 0; frame < frames; frame += 1) {
+      final base = frame * channels;
+      for (var channel = 0; channel < channels; channel += 1) {
+        final value = interleaved[base + channel];
+        final magnitude = value < 0 ? -value : value;
+        if (magnitude > _voiceRecordBucketMax) {
+          _voiceRecordBucketMax = magnitude;
+        }
+      }
+      _voiceRecordBucketFill += 1;
+      if (_voiceRecordBucketFill == perBucket) {
+        _voiceRecordPeakBuckets.add(
+          _voiceRecordBucketMax > 1.0 ? 1.0 : _voiceRecordBucketMax,
+        );
+        _voiceRecordBucketMax = 0;
+        _voiceRecordBucketFill = 0;
+      }
+    }
+  }
+
+  /// Recomputes the preview when the roll crosses into a new frame —
+  /// listener on the playback frame channel while recording. The planner
+  /// runs on the lane's COMMIT form with the elapsed length; preview
+  /// instance ids are minted fresh per pass (display-only material).
+  void _syncVoiceRecordPreview() {
+    if (!isVoiceRecording.value) {
+      return;
+    }
+    final laneId = _voiceRecordLaneId;
+    final lane = laneId == null ? null : trackSeGlobalLayerById(laneId);
+    final global = _playbackTrackGlobalFrame();
+    if (lane == null || global == null) {
+      return;
+    }
+    // The playhead's frame is the one being spoken into: it counts.
+    var end = global + 1;
+    final punchEnd = _voiceRecordPunchEndFrame;
+    if (punchEnd != null && end > punchEnd) {
+      end = punchEnd;
+    }
+    final length = end - _voiceRecordAnchorFrame;
+    if (length < 1) {
+      if (voiceRecordPreviewLane.value != null) {
+        voiceRecordPreviewLane.value = null;
+      }
+      return;
+    }
+    if (length == _voiceRecordLastPreviewLength &&
+        voiceRecordPreviewLane.value != null) {
+      return; // Same frame: the boundary gate holds the rebuild back.
+    }
+    _voiceRecordLastPreviewLength = length;
+    _voiceRecordLivePeaks = AudioPeaks(
+      bucketsPerSecond: 40,
+      peaks: Float32List.fromList(_voiceRecordPeakBuckets),
+    );
+    var minted = 0;
+    final plan = planSeTakePlacement(
+      layer: lane,
+      startFrame: _voiceRecordAnchorFrame,
+      lengthFrames: length,
+      filePath: voiceRecordPreviewPath,
+      takeFrameId: const FrameId('rec-preview-take'),
+      newFrameId: () => FrameId('rec-preview-${minted++}'),
+    );
+    voiceRecordPreviewLane.value = plan?.layer;
+  }
+
+  void _clearVoiceRecordPreview() {
+    playback.globalFrameIndexListenable.removeListener(
+      _syncVoiceRecordPreview,
+    );
+    _voiceRecordLivePeaks = null;
+    _voiceRecordPeakBuckets.clear();
+    _voiceRecordBucketMax = 0;
+    _voiceRecordBucketFill = 0;
+    _voiceRecordSamplesPerBucket = 0;
+    _voiceRecordLastPreviewLength = 0;
+    if (voiceRecordPreviewLane.value != null) {
+      voiceRecordPreviewLane.value = null;
+    }
+  }
+
   /// Test hook: stand in for the microphone.
   @visibleForTesting
   AudioRecorder Function()? debugVoiceRecorderFactory;
@@ -3399,6 +3531,12 @@ class EditorSessionManager extends ChangeNotifier {
         audioDeviceTransport.report.reportedLatencySamples +
         projectFrameRate.frameToSample(anchor - rollStart, rate);
     isVoiceRecording.value = true;
+    // Live preview (REC1-C): the recorder's chunk tap feeds the growing
+    // waveform; the playback frame channel drives the block preview at
+    // frame boundaries — no session notify per tick (R12-B).
+    _voiceRecordSamplesPerBucket = rate ~/ 40;
+    recorder.onChunk = debugIngestVoiceRecordChunk;
+    playback.globalFrameIndexListenable.addListener(_syncVoiceRecordPreview);
     if (playback.isActive && playback.isPlaying) {
       _voiceRecordStartedRoll = false;
     } else {
@@ -3412,6 +3550,7 @@ class EditorSessionManager extends ChangeNotifier {
         );
       }
     }
+    _syncVoiceRecordPreview();
     notifyListeners(); // The armed lane mutes: schedules rebuild on this.
     return VoiceRecordStartResult.started;
   }
@@ -3432,6 +3571,10 @@ class EditorSessionManager extends ChangeNotifier {
     final startedRoll = _voiceRecordStartedRoll;
     _voiceRecordStartedRoll = false;
     isVoiceRecording.value = false;
+    // The preview retires FIRST (listener off, sentinel peaks gone) —
+    // every return path below shows committed rows again; a successful
+    // placement swaps the real take in within the same stop.
+    _clearVoiceRecordPreview();
     final recording = recorder?.stop();
     if (startedRoll && playback.isActive) {
       // Re-enters _onPlaybackStopped; the recorder is already detached.
