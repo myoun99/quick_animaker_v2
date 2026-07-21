@@ -71,20 +71,49 @@ extern void qa_audio_mix(const qa_audio_clip* clips,
                          int32_t out_channels,
                          double* out);
 
+// The mixer's exported layout probes (same shared library) — the local
+// struct copies above must stay byte-identical to qa_engine.c's, and this
+// is checked at open() rather than trusted (Fable audit 2026-07-21).
+extern int32_t qa_audio_clip_sizeof(void);
+extern int32_t qa_audio_source_sizeof(void);
+
+// Transport fields shared between the realtime callback and the control
+// thread go through miniaudio's atomics (Fable audit 2026-07-21): aligned
+// 64-bit loads happen to be atomic on our 64-bit targets, but the C
+// memory model calls the unfenced mix a data race, and the seq-cst pair
+// also orders play()'s position/stop writes BEFORE playing becomes
+// visible to the callback on weakly-ordered ARM.
+static int64_t qa_transport_load_64(volatile ma_uint64* field) {
+  return (int64_t)ma_atomic_load_64(field);
+}
+
+static void qa_transport_store_64(volatile ma_uint64* field, int64_t value) {
+  ma_atomic_store_64(field, (ma_uint64)value);
+}
+
+static int32_t qa_transport_load_32(volatile ma_uint32* field) {
+  return (int32_t)ma_atomic_load_32(field);
+}
+
+static void qa_transport_store_32(volatile ma_uint32* field, int32_t value) {
+  ma_atomic_store_32(field, (ma_uint32)value);
+}
+
 #define QA_DEVICE_MAX_BLOCK 8192
 
 typedef struct {
   ma_device device;
   int32_t device_open;
-  int32_t playing;
+  volatile ma_uint32 playing;
 
   // The transport. `position` counts samples HANDED TO THE DEVICE, which
   // is what makes it the clock: it advances only when audio actually
-  // leaves, so it cannot run ahead of what is heard.
-  int64_t position;
-  int64_t start_position;
-  int64_t stop_position;  // exclusive; <= start means "no end"
-  int32_t looping;
+  // leaves, so it cannot run ahead of what is heard. Shared with the
+  // realtime callback — every access goes through qa_transport_*.
+  volatile ma_uint64 position;
+  volatile ma_uint64 start_position;
+  volatile ma_uint64 stop_position;  // exclusive; <= start means "no end"
+  volatile ma_uint32 looping;
 
   qa_audio_clip* clips;
   int32_t clip_count;
@@ -113,7 +142,7 @@ static void qa_audio_data_callback(ma_device* device,
   const size_t total = (size_t)frame_count * (size_t)channels;
   memset(out, 0, total * sizeof(float));
 
-  if (!g_audio.playing || g_audio.scratch == NULL) {
+  if (!qa_transport_load_32(&g_audio.playing) || g_audio.scratch == NULL) {
     return;
   }
 
@@ -124,21 +153,22 @@ static void qa_audio_data_callback(ma_device* device,
       block = QA_DEVICE_MAX_BLOCK;
     }
 
-    int64_t position = g_audio.position;
-    if (g_audio.stop_position > g_audio.start_position &&
-        position >= g_audio.stop_position) {
-      if (g_audio.looping) {
-        position = g_audio.start_position;
-        g_audio.position = position;
+    const int64_t start_position = qa_transport_load_64(&g_audio.start_position);
+    const int64_t stop_position = qa_transport_load_64(&g_audio.stop_position);
+    int64_t position = qa_transport_load_64(&g_audio.position);
+    if (stop_position > start_position && position >= stop_position) {
+      if (qa_transport_load_32(&g_audio.looping)) {
+        position = start_position;
+        qa_transport_store_64(&g_audio.position, position);
       } else {
-        g_audio.playing = 0;
+        qa_transport_store_32(&g_audio.playing, 0);
         return;
       }
     }
     // Never mix past the stop point in one block; the wrap has to land on
     // the sample, not the buffer boundary.
-    if (g_audio.stop_position > g_audio.start_position) {
-      const int64_t remaining = g_audio.stop_position - position;
+    if (stop_position > start_position) {
+      const int64_t remaining = stop_position - position;
       if ((int64_t)block > remaining) {
         block = (ma_uint32)remaining;
       }
@@ -165,7 +195,7 @@ static void qa_audio_data_callback(ma_device* device,
       target[index] = (float)value;
     }
 
-    g_audio.position = position + (int64_t)block;
+    qa_transport_store_64(&g_audio.position, position + (int64_t)block);
     done += block;
   }
 }
@@ -197,6 +227,13 @@ QA_EXPORT int32_t qa_audio_device_open(int32_t sample_rate,
     return g_audio.sample_rate;
   }
   if (sample_rate <= 0 || channels <= 0 || channels > 8) {
+    return 0;
+  }
+  // The struct copies at the top of this file must stay byte-identical
+  // to qa_engine.c's originals — checked, not trusted (both TUs link
+  // into the one shared library, so the probes are callable here).
+  if (qa_audio_clip_sizeof() != (int32_t)sizeof(qa_audio_clip) ||
+      qa_audio_source_sizeof() != (int32_t)sizeof(qa_audio_source)) {
     return 0;
   }
 
@@ -231,8 +268,8 @@ QA_EXPORT int32_t qa_audio_device_open(int32_t sample_rate,
     return 0;
   }
   g_audio.device_open = 1;
-  g_audio.playing = 0;
-  g_audio.position = 0;
+  qa_transport_store_32(&g_audio.playing, 0);
+  qa_transport_store_64(&g_audio.position, 0);
 
   if (ma_device_start(&g_audio.device) != MA_SUCCESS) {
     free(g_audio.scratch);
@@ -248,7 +285,7 @@ QA_EXPORT void qa_audio_device_close(void) {
   if (!g_audio.device_open) {
     return;
   }
-  g_audio.playing = 0;
+  qa_transport_store_32(&g_audio.playing, 0);
   ma_device_uninit(&g_audio.device);
   free(g_audio.scratch);
   g_audio.scratch = NULL;
@@ -285,7 +322,7 @@ QA_EXPORT int32_t qa_audio_device_set_schedule(
     const float* pcm,
     int64_t pcm_floats,
     const int64_t* source_offsets) {
-  if (g_audio.playing) {
+  if (qa_transport_load_32(&g_audio.playing)) {
     return 0;
   }
   qa_audio_free_schedule();
@@ -344,26 +381,39 @@ QA_EXPORT int32_t qa_audio_device_play(int64_t start_sample,
   if (!g_audio.device_open) {
     return 0;
   }
-  g_audio.position = start_sample;
-  g_audio.start_position = start_sample;
-  g_audio.stop_position = stop_sample;
-  g_audio.looping = looping ? 1 : 0;
-  g_audio.playing = 1;
+  // A restart while audible: silence the callback FIRST so it never mixes
+  // with a half-updated transport, then publish the fields, then arm. The
+  // seq-cst stores double as the release fence playing needs on ARM.
+  qa_transport_store_32(&g_audio.playing, 0);
+  qa_transport_store_64(&g_audio.position, start_sample);
+  qa_transport_store_64(&g_audio.start_position, start_sample);
+  qa_transport_store_64(&g_audio.stop_position, stop_sample);
+  qa_transport_store_32(&g_audio.looping, looping ? 1 : 0);
+  qa_transport_store_32(&g_audio.playing, 1);
   return 1;
 }
 
-QA_EXPORT void qa_audio_device_stop(void) { g_audio.playing = 0; }
+QA_EXPORT void qa_audio_device_stop(void) {
+  qa_transport_store_32(&g_audio.playing, 0);
+}
 
-QA_EXPORT int32_t qa_audio_device_is_playing(void) { return g_audio.playing; }
+QA_EXPORT int32_t qa_audio_device_is_playing(void) {
+  return qa_transport_load_32(&g_audio.playing);
+}
 
 // Samples handed to the device so far — THE clock. The picture reads this
 // and shows whatever frame it lands in; if rendering fell behind, frames
 // are dropped rather than the sound being made to wait.
-QA_EXPORT int64_t qa_audio_device_position(void) { return g_audio.position; }
+QA_EXPORT int64_t qa_audio_device_position(void) {
+  return qa_transport_load_64(&g_audio.position);
+}
 
 // Moves the transport without restarting anything: because the mixer
 // builds a mix rather than starting clips, seeking is just changing where
-// the next block is read from.
+// the next block is read from. A seek racing an in-flight callback block
+// can lose to that block's own position advance — a bounded, few-ms
+// staleness the next seek or block absorbs; the atomic store only rules
+// out torn values.
 QA_EXPORT void qa_audio_device_seek(int64_t sample) {
-  g_audio.position = sample;
+  qa_transport_store_64(&g_audio.position, sample);
 }
