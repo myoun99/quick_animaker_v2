@@ -16,6 +16,7 @@ import 'package:quick_animaker_v2/src/models/cut_metadata.dart';
 import 'package:quick_animaker_v2/src/models/frame.dart';
 import 'package:quick_animaker_v2/src/models/frame_id.dart';
 import 'package:quick_animaker_v2/src/models/layer.dart';
+import 'package:quick_animaker_v2/src/models/layer_folder.dart';
 import 'package:quick_animaker_v2/src/models/layer_id.dart';
 import 'package:quick_animaker_v2/src/models/layer_kind.dart';
 import 'package:quick_animaker_v2/src/models/layer_mark.dart';
@@ -795,6 +796,118 @@ void main() {
         fixture.historyManager.undo();
         expect(layerOf(const LayerId('base')).kind, LayerKind.animation);
         expect(layerOf(baseCopyId).kind, LayerKind.animation);
+      });
+
+      test('createFolderFromLayer folds the WHOLE attach group into a new '
+          'folder (contiguity free); dissolve releases; both undo', () {
+        final fixture = _fixture(
+          _project(
+            tracks: [
+              _track(id: 'track-1', name: 'V', cuts: [linkFixtureCut()]),
+            ],
+          ),
+          activeCutId: const CutId('cut-1'),
+        );
+
+        final folderId = fixture.coordinator.createFolderFromLayer(
+          cutId: const CutId('cut-1'),
+          // The attach member folds its whole group.
+          layerId: const LayerId('color'),
+        )!;
+
+        Cut cut() => _cutById(fixture.project, const CutId('cut-1'));
+        Layer layerOf(String id) =>
+            cut().layers.firstWhere((layer) => layer.id.value == id);
+        expect(cut().folders.single.id, folderId);
+        expect(cut().folders.single.name, 'Folder 1');
+        expect(layerOf('base').folderId, folderId);
+        expect(layerOf('color').folderId, folderId);
+        expect(layerOf('unrelated').folderId, isNull);
+        expect(
+          folderStructureProblem(
+            folders: cut().folders,
+            layerFolderIdsInStackOrder: [
+              for (final layer in cut().layers) layer.folderId,
+            ],
+          ),
+          isNull,
+        );
+
+        fixture.coordinator.dissolveFolder(
+          cutId: const CutId('cut-1'),
+          folderId: folderId,
+        );
+        expect(cut().folders, isEmpty);
+        expect(layerOf('base').folderId, isNull);
+
+        fixture.historyManager.undo();
+        expect(cut().folders.single.id, folderId);
+        expect(layerOf('base').folderId, folderId);
+
+        fixture.historyManager.undo();
+        expect(cut().folders, isEmpty);
+        expect(layerOf('base').folderId, isNull);
+      });
+
+      test('folder structure MIRRORS over 겸용 cuts: create appears around '
+          'the counterparts, rename follows, dissolve follows — each one '
+          'undo', () {
+        final fixture = _fixture(
+          _project(
+            tracks: [
+              _track(id: 'track-1', name: 'V', cuts: [linkFixtureCut()]),
+            ],
+          ),
+          activeCutId: const CutId('cut-1'),
+        );
+        fixture.coordinator.createLinkedCut(
+          sourceCutId: const CutId('cut-1'),
+          name: 'linked',
+        );
+        final linkedCutId = fixture
+            .cutsFor(const TrackId('track-1'))
+            .firstWhere((cut) => cut.name == 'linked')
+            .id;
+
+        final folderId = fixture.coordinator.createFolderFromLayer(
+          cutId: const CutId('cut-1'),
+          layerId: const LayerId('base'),
+        )!;
+
+        Cut origin() => _cutById(fixture.project, const CutId('cut-1'));
+        Cut linked() => _cutById(fixture.project, linkedCutId);
+        Layer linkedBase() =>
+            linked().layers.firstWhere((layer) => layer.name == 'base');
+        expect(origin().folders.single.id, folderId);
+        final mirrored = linked().folders.single;
+        expect(mirrored.id, isNot(folderId), reason: 'folder ids are per-cut');
+        expect(mirrored.name, 'Folder 1');
+        expect(linkedBase().folderId, mirrored.id,
+            reason: 'the counterpart member sits in the mirrored folder');
+
+        fixture.coordinator.renameFolder(
+          cutId: const CutId('cut-1'),
+          folderId: folderId,
+          name: 'Cel A',
+        );
+        expect(origin().folders.single.name, 'Cel A');
+        expect(linked().folders.single.name, 'Cel A');
+        fixture.historyManager.undo();
+        expect(linked().folders.single.name, 'Folder 1');
+        fixture.historyManager.redo();
+
+        fixture.coordinator.dissolveFolder(
+          cutId: const CutId('cut-1'),
+          folderId: folderId,
+        );
+        expect(origin().folders, isEmpty);
+        expect(linked().folders, isEmpty);
+        expect(linkedBase().folderId, isNull);
+
+        fixture.historyManager.undo();
+        expect(origin().folders.single.name, 'Cel A');
+        expect(linked().folders.single.name, 'Cel A');
+        expect(linkedBase().folderId, linked().folders.single.id);
       });
 
       test('deleting the CANONICAL cut promotes the survivor: registry '

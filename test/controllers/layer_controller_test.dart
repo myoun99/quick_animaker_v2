@@ -3,9 +3,11 @@ import 'package:quick_animaker_v2/src/controllers/layer_controller.dart';
 import 'package:quick_animaker_v2/src/models/canvas_size.dart';
 import 'package:quick_animaker_v2/src/models/cut.dart';
 import 'package:quick_animaker_v2/src/models/cut_id.dart';
+import 'package:quick_animaker_v2/src/models/folder_id.dart';
 import 'package:quick_animaker_v2/src/models/frame.dart';
 import 'package:quick_animaker_v2/src/models/frame_id.dart';
 import 'package:quick_animaker_v2/src/models/layer.dart';
+import 'package:quick_animaker_v2/src/models/layer_folder.dart';
 import 'package:quick_animaker_v2/src/models/layer_id.dart';
 import 'package:quick_animaker_v2/src/models/project.dart';
 import 'package:quick_animaker_v2/src/models/project_id.dart';
@@ -132,6 +134,42 @@ void main() {
         _findLayer(fixture.repository, const LayerId('layer-1')).opacity,
         0.5,
       );
+    });
+
+    test('folder eye, static opacity (clamped) and the collapse twirl '
+        '(L5) write the cut folder table', () {
+      final fixture = _createFixture();
+      const folderId = FolderId('folder-1');
+      fixture.repository.updateCutFolders(
+        cutId: const CutId('cut-1'),
+        update: (folders) => [
+          ...folders,
+          LayerFolder(id: folderId, name: 'F'),
+        ],
+      );
+      LayerFolder folder() => _findCut(
+        fixture.repository,
+        const CutId('cut-1'),
+      ).folders.single;
+
+      fixture.controller.toggleFolderVisibility(
+        cutId: const CutId('cut-1'),
+        folderId: folderId,
+      );
+      expect(folder().isVisible, isFalse);
+
+      fixture.controller.setFolderOpacity(
+        cutId: const CutId('cut-1'),
+        folderId: folderId,
+        opacity: 1.7,
+      );
+      expect(folder().opacity, 1.0, reason: 'clamped');
+
+      fixture.controller.toggleFolderCollapsed(
+        cutId: const CutId('cut-1'),
+        folderId: folderId,
+      );
+      expect(folder().collapsed, isTrue);
     });
 
     test('throws for missing layers', () {

@@ -5,7 +5,9 @@ import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
 
 import '../models/camera_instruction.dart';
+import '../models/folder_id.dart';
 import '../models/layer.dart';
+import '../models/layer_folder.dart';
 import '../models/layer_id.dart';
 import '../models/key_range_move.dart' show transformKeyFrameUnion;
 import '../models/layer_kind.dart';
@@ -419,6 +421,21 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
     }
 
     _session.renameActiveLayer(nextName);
+  }
+
+  Future<void> _renameFolder(FolderId folderId) async {
+    final folder = _session.activeCutOrNull?.folders.byId(folderId);
+    if (folder == null) {
+      return;
+    }
+    final nextName = await showDialog<String>(
+      context: context,
+      builder: (context) => RenameLayerDialog(initialName: folder.name),
+    );
+    if (!mounted || nextName == null) {
+      return;
+    }
+    _session.renameFolder(folderId, nextName);
   }
 
   /// THE unified instance-edit entrance (double-tap on any cell, and the
@@ -907,6 +924,13 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
           // every composite route (session view state).
           layerFxEnabledOf: _session.isLayerFxEnabled,
           layerIsLinkedOf: _session.isLayerLinked,
+          // Folder rows (L5): tree indent + twirl + eye on the rail, the
+          // aggregate block on the frame band.
+          folders: _session.activeCutOrNull?.folders ?? const [],
+          onToggleFolderCollapsed: _session.toggleFolderCollapsed,
+          onToggleFolderVisibility: _session.toggleFolderVisibility,
+          onRenameFolder: (folderId) => unawaited(_renameFolder(folderId)),
+          onDissolveFolder: _session.dissolveFolder,
           onToggleLayerFx: _session.toggleLayerFx,
           // Per-layer onion skin (UI-R17 #5, TVPaint style).
           layerOnionSkinEnabledOf: _session.isLayerOnionSkinEnabled,

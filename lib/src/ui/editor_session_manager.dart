@@ -34,6 +34,7 @@ import '../models/cut_camera.dart';
 import '../models/transform_track.dart';
 import '../models/cut_id.dart';
 import '../models/cut_metadata.dart';
+import '../models/folder_id.dart';
 import '../models/frame.dart';
 import '../models/frame_id.dart';
 import '../models/layer.dart';
@@ -2553,6 +2554,81 @@ class EditorSessionManager extends ChangeNotifier {
     if (audioDeviceTransport.carryingPlayback) {
       audioDeviceTransport.refreshSchedule();
     }
+  }
+
+  // --- Folders (L5) ---------------------------------------------------------
+
+  bool get canGroupActiveLayerIntoFolder =>
+      activeLayer != null && activeLayer!.kind == LayerKind.animation;
+
+  /// 폴더 생성: folds the active layer's whole attach group into a new
+  /// folder (mirrors into 겸용 cuts through the coordinator).
+  void groupActiveLayerIntoFolder() {
+    if (!canGroupActiveLayerIntoFolder) {
+      return;
+    }
+    final activeLayerId = activeLayer!.id;
+    _cutCommandCoordinator.createFolderFromLayer(
+      cutId: requireActiveCut.id,
+      layerId: activeLayerId,
+    );
+    _refreshAfterCutCommand(preferredActiveLayerId: activeLayerId);
+    notifyListeners();
+  }
+
+  void dissolveFolder(FolderId folderId) {
+    final cutId = _editingSession.activeCutId;
+    if (cutId == null) {
+      return;
+    }
+    _cutCommandCoordinator.dissolveFolder(cutId: cutId, folderId: folderId);
+    _refreshAfterCutCommand();
+    notifyListeners();
+  }
+
+  void renameFolder(FolderId folderId, String name) {
+    final cutId = _editingSession.activeCutId;
+    if (cutId == null) {
+      return;
+    }
+    _cutCommandCoordinator.renameFolder(
+      cutId: cutId,
+      folderId: folderId,
+      name: name,
+    );
+    _refreshAfterCutCommand();
+    notifyListeners();
+  }
+
+  void toggleFolderVisibility(FolderId folderId) {
+    final cutId = _editingSession.activeCutId;
+    if (cutId == null) {
+      return;
+    }
+    _layerController.toggleFolderVisibility(cutId: cutId, folderId: folderId);
+    notifyListeners();
+  }
+
+  void setFolderOpacity(FolderId folderId, double opacity) {
+    final cutId = _editingSession.activeCutId;
+    if (cutId == null) {
+      return;
+    }
+    _layerController.setFolderOpacity(
+      cutId: cutId,
+      folderId: folderId,
+      opacity: opacity,
+    );
+    notifyListeners();
+  }
+
+  void toggleFolderCollapsed(FolderId folderId) {
+    final cutId = _editingSession.activeCutId;
+    if (cutId == null) {
+      return;
+    }
+    _layerController.toggleFolderCollapsed(cutId: cutId, folderId: folderId);
+    notifyListeners();
   }
 
   /// Silences/unsilences an SE row's sounds (the mute button — view state

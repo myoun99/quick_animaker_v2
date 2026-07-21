@@ -129,6 +129,64 @@ void main() {
     );
   });
 
+  testWidgets('Layer: Group into Folder grows a folder row whose twirl '
+      'collapses the members into the aggregate header', (tester) async {
+    final repository = await pumpHome(tester);
+
+    await openMenu(tester, 'menu-layer');
+    await tester.tap(
+      find.byKey(const ValueKey<String>('menu-layer-group-into-folder')),
+    );
+    await tester.pumpAndSettle();
+
+    final cut = repository.requireProject().tracks.first.cuts.first;
+    expect(cut.folders, hasLength(1));
+    final folderId = cut.folders.single.id;
+    expect(
+      find.byKey(ValueKey<String>('timeline-folder-row-$folderId')),
+      findsOneWidget,
+    );
+    expect(find.text('Folder 1'), findsOneWidget);
+
+    // Collapse: the member (layer A) row hides — A is ACTIVE, so it
+    // stays; select nothing else is possible with one drawing layer, so
+    // just verify the twirl writes the model.
+    await tester.tap(
+      find.byKey(ValueKey<String>('timeline-folder-twirl-$folderId')),
+    );
+    await tester.pumpAndSettle();
+    expect(
+      repository
+          .requireProject()
+          .tracks
+          .first
+          .cuts
+          .first
+          .folders
+          .single
+          .collapsed,
+      isTrue,
+    );
+
+    // The folder eye writes the model too.
+    await tester.tap(
+      find.byKey(ValueKey<String>('timeline-folder-visibility-$folderId')),
+    );
+    await tester.pumpAndSettle();
+    expect(
+      repository
+          .requireProject()
+          .tracks
+          .first
+          .cuts
+          .first
+          .folders
+          .single
+          .isVisible,
+      isFalse,
+    );
+  });
+
   testWidgets('Cut: Create Linked Cut adds a linked cut; Convert arms only '
       'with another cut available', (tester) async {
     final repository = await pumpHome(tester);
