@@ -116,6 +116,9 @@ void main() {
   }) async {
     await tester.binding.setSurfaceSize(const Size(1120, 660));
     addTearDown(() => tester.binding.setSurfaceSize(null));
+    // Unmount at teardown: the dialog's dispose cancels the preview
+    // debounce timer — otherwise every test ends with a pending Timer.
+    addTearDown(() => tester.pumpWidget(const SizedBox.shrink()));
     await tester.pumpWidget(
       MaterialApp(
         home: Scaffold(
@@ -460,6 +463,102 @@ void main() {
       expect(statusText(tester), 'Exported 2 XDTS sheets.');
       final content = File('${temp.path}/CUT1.xdts').readAsStringSync();
       expect(content, contains('exchangeDigitalTimeSheet'));
+    });
+  });
+
+  group('preview & nav (EX3)', () {
+    testWidgets('the image tab exports the frame the nav points at',
+        (tester) async {
+      final state = await pumpDialog(
+        tester,
+        exportSession(),
+        exportDirectoryPicker: () async => temp.path,
+      );
+      await switchTab(tester, 'image');
+      expect(state.debugImageFrame, 0);
+      await tester.tap(find.byKey(const ValueKey<String>('export-nav-next')));
+      await tester.pump();
+      expect(state.debugImageFrame, 1);
+      final transport = tester.widget<Text>(
+        find.byKey(const ValueKey<String>('export-transport-line')),
+      );
+      expect(transport.data, 'F2 / 2 · Cut');
+
+      await browseTo(tester);
+      await tester.runAsync(state.export);
+      await tester.pump();
+      expect(filesIn(temp), ['Project.png']);
+    });
+
+    testWidgets('project scope: in/out trims by whole-track positions',
+        (tester) async {
+      final state = await pumpDialog(
+        tester,
+        exportSession(),
+        exportDirectoryPicker: () async => temp.path,
+      );
+      await browseTo(tester);
+      await pickStillPng(tester);
+      await tester.tap(
+        find.byKey(const ValueKey<String>('export-scope-project')),
+      );
+      await tester.pump();
+      await tester.enterText(
+        find.byKey(const ValueKey<String>('export-range-start-field')),
+        '2',
+      );
+      await tester.enterText(
+        find.byKey(const ValueKey<String>('export-range-end-field')),
+        '4',
+      );
+      await tester.pump();
+      await tester.runAsync(state.export);
+      await tester.pump();
+      expect(filesIn(temp), [
+        'frame_0001.png',
+        'frame_0002.png',
+        'frame_0003.png',
+      ]);
+    });
+
+    testWidgets('sequence scrub moves the playhead caption', (tester) async {
+      await pumpDialog(tester, exportSession());
+      final scrub = find.byKey(const ValueKey<String>('export-nav-scrub'));
+      final rect = tester.getRect(scrub);
+      await tester.tapAt(Offset(rect.right - 2, rect.center.dy));
+      await tester.pump();
+      final transport = tester.widget<Text>(
+        find.byKey(const ValueKey<String>('export-transport-line')),
+      );
+      expect(transport.data, contains('F2 · Cut'));
+    });
+
+    testWidgets('the timesheet tab has no nav bar yet', (tester) async {
+      await pumpDialog(tester, exportSession());
+      await switchTab(tester, 'timesheet');
+      expect(
+        find.byKey(const ValueKey<String>('export-nav-scrub')),
+        findsNothing,
+      );
+      expect(
+        find.byKey(const ValueKey<String>('export-transport-line')),
+        findsNothing,
+      );
+    });
+
+    testWidgets('a flushed preview shows the rendered picture',
+        (tester) async {
+      final state = await pumpDialog(tester, exportSession());
+      expect(
+        find.byKey(const ValueKey<String>('export-preview-image')),
+        findsNothing,
+      );
+      await tester.runAsync(state.debugFlushPreview);
+      await tester.pump();
+      expect(
+        find.byKey(const ValueKey<String>('export-preview-image')),
+        findsOneWidget,
+      );
     });
   });
 

@@ -1,10 +1,10 @@
 import 'dart:async';
 import 'dart:io';
 import 'dart:math' as math;
+import 'dart:ui' as ui;
 
 import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 
 import '../../models/canvas_size.dart';
 import '../../models/cut.dart';
@@ -19,8 +19,10 @@ import '../editor_session_manager.dart';
 import 'export_audio_mix.dart';
 import 'export_frame_renderer.dart';
 import 'export_job.dart';
+import 'export_nav_bar.dart';
 import 'export_plan.dart';
 import 'export_preset_rail.dart';
+import 'export_preview_engine.dart';
 import 'export_queue_column.dart';
 import 'export_settings_modules.dart';
 import 'png_sequence_export_service.dart';
@@ -87,6 +89,17 @@ class ExportDialogState extends State<ExportDialog> {
   String? _statusMessage;
   (int completed, int total)? _progress;
 
+  // EX3: the preview loop — one controller, two renderers (FX on/off; the
+  // toggle changes what frames look like, so flipping it clears the cache).
+  final ExportPreviewController _preview = ExportPreviewController();
+  late ExportFrameRenderer _previewRendererFx;
+  late ExportFrameRenderer _previewRendererRaw;
+  int _sequencePosition = 0;
+  late int _imageFrame;
+  int _celPosition = 0;
+  static const int _previewMaxWidth = 316;
+  static const int _previewMaxHeight = 300;
+
   EditorSessionManager get _session => widget.session;
 
   @override
@@ -108,6 +121,21 @@ class ExportDialogState extends State<ExportDialog> {
     _celSuffixController = TextEditingController(
       text: _specs.cels.naming.suffix,
     );
+    _previewRendererFx = ExportFrameRenderer(session: _session);
+    _previewRendererRaw = ExportFrameRenderer(
+      session: _session,
+      applyLayerFx: false,
+    );
+    _imageFrame = _session.editingFrameCursor.value.clamp(
+      0,
+      math.max(1, _session.requireActiveCut.duration) - 1,
+    );
+    _syncControllersFromSpecs();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        _refreshPreview();
+      }
+    });
     unawaited(_restoreFromStore());
   }
 
@@ -139,6 +167,7 @@ class ExportDialogState extends State<ExportDialog> {
     _namingBaseController.dispose();
     _celSuffixController.dispose();
     _queue.dispose();
+    _preview.dispose();
     super.dispose();
   }
 
@@ -161,6 +190,7 @@ class ExportDialogState extends State<ExportDialog> {
   void _updateSpec(ExportTabSpec spec) {
     setState(() => _specs = _specs.withSpec(spec));
     _persist();
+    _refreshPreview();
   }
 
   void _syncControllersFromSpecs() {
@@ -193,6 +223,9 @@ class ExportDialogState extends State<ExportDialog> {
       .exportOverrides
       .cutIncluded(cut.id);
 
+  /// The 0-based in/out marks on the SEQUENCE AXIS (cut-local frames
+  /// under the cut scope, whole-track positions under the project scope);
+  /// `null` = the fields don't form a valid range right now.
   (int?, int?)? _sequenceInOut() {
     int? parse(TextEditingController controller) {
       final raw = controller.text.trim();
@@ -214,31 +247,46 @@ class ExportDialogState extends State<ExportDialog> {
     return (inFrame, outFrame);
   }
 
-  /// The composite plan for the Sequence tab; `null` while the in/out
-  /// fields don't form a valid range.
-  List<ExportFrameTask>? _sequencePlan({required bool includeGaps}) {
+  /// The FULL sequence axis (untrimmed, gapless): what the nav bar scrubs
+  /// and the in/out marks live on.
+  List<ExportFrameTask> _sequenceAxisPlan() {
     final spec = _specs.sequence;
-    if (spec.scope == ExportScopeKind.project) {
-      return buildExportFramePlan(
-        project: _session.repository.requireProject(),
-        activeCutId: _activeCut.id,
-        range: ExportRange.allCuts,
-        includeGaps: includeGaps,
-      );
-    }
+    return buildExportFramePlan(
+      project: _session.repository.requireProject(),
+      activeCutId: _activeCut.id,
+      range: spec.scope == ExportScopeKind.project
+          ? ExportRange.allCuts
+          : ExportRange.activeCut,
+    );
+  }
+
+  /// The frames an export actually renders: the axis sliced by in/out.
+  /// `null` while the fields are invalid. An UNTRIMMED project-scope video
+  /// keeps the gap black frames (full-track sync, the old behavior); a
+  /// trimmed range is content-only.
+  List<ExportFrameTask>? _sequencePlanForRun({required bool video}) {
+    final spec = _specs.sequence;
     final inOut = _sequenceInOut();
     if (inOut == null) {
       return null;
     }
     final (inFrame, outFrame) = inOut;
-    final trimmed = inFrame != null || outFrame != null;
-    return buildExportFramePlan(
-      project: _session.repository.requireProject(),
-      activeCutId: _activeCut.id,
-      range: trimmed ? ExportRange.frameRange : ExportRange.activeCut,
-      rangeStartFrame: inFrame ?? 0,
-      rangeEndFrame: outFrame ?? math.max(1, _activeCut.duration) - 1,
-    );
+    final untrimmed = inFrame == null && outFrame == null;
+    if (video && untrimmed && spec.scope == ExportScopeKind.project) {
+      return buildExportFramePlan(
+        project: _session.repository.requireProject(),
+        activeCutId: _activeCut.id,
+        range: ExportRange.allCuts,
+        includeGaps: true,
+      );
+    }
+    final axis = _sequenceAxisPlan();
+    if (axis.isEmpty) {
+      return axis;
+    }
+    final lo = (inFrame ?? 0).clamp(0, axis.length - 1);
+    final hi = (outFrame ?? axis.length - 1).clamp(lo, axis.length - 1);
+    return axis.sublist(lo, hi + 1);
   }
 
   List<ExportCelTask> _celPlan() {
@@ -284,10 +332,20 @@ class ExportDialogState extends State<ExportDialog> {
     ).map((cut) => cut.canvasSize).toSet();
   }
 
+  /// The Image tab's frame: the nav bar owns it (seeded from the editing
+  /// playhead on open) — what the preview shows IS what exports.
   int _currentImageFrame() {
     final duration = math.max(1, _activeCut.duration);
-    return _session.editingFrameCursor.value.clamp(0, duration - 1);
+    return _imageFrame.clamp(0, duration - 1);
   }
+
+  @visibleForTesting
+  int get debugImageFrame => _currentImageFrame();
+
+  /// Test seam: awaits the debounced preview render (call inside
+  /// `tester.runAsync` so the raster completes).
+  @visibleForTesting
+  Future<void> debugFlushPreview() => _preview.debugFlushPending();
 
   /// The 1-based position of [cut] within its track (sheet/XDTS number).
   int _cutNumberOf(Cut cut) {
@@ -309,13 +367,160 @@ class ExportDialogState extends State<ExportDialog> {
 
   String _plural(int count, String noun) => count == 1 ? noun : '${noun}s';
 
+  // --- preview (EX3) --------------------------------------------------------
+
+  String _celCaption(ExportCelTask task) {
+    final number =
+        task.frame.name ??
+        '${task.layer.frames.indexWhere((frame) => frame.id == task.frame.id) + 1}';
+    return '${task.layer.name}-$number';
+  }
+
+  ExportNavAxis _sequenceAxis(List<ExportFrameTask> plan) => ExportNavAxis(
+    length: plan.length,
+    ticks: [
+      for (var i = 1; i < plan.length; i += 1)
+        if (plan[i].cut.id != plan[i - 1].cut.id) i,
+    ],
+    captionOf: (position) => 'F${position + 1}',
+  );
+
+  ExportNavAxis _imageAxis() => ExportNavAxis(
+    length: math.max(1, _activeCut.duration),
+    captionOf: (position) => 'F${position + 1}',
+  );
+
+  ExportNavAxis _celsAxis(List<ExportCelTask> plan) => ExportNavAxis(
+    length: plan.length,
+    ticks: [
+      for (var i = 1; i < plan.length; i += 1)
+        if (plan[i].layer.id != plan[i - 1].layer.id) i,
+    ],
+    captionOf: (position) => _celCaption(plan[position]),
+  );
+
+  /// Re-aims the preview at whatever the tab currently points at. Called
+  /// after every spec/nav/tab change; requests coalesce in the controller.
+  void _refreshPreview() {
+    switch (_tab) {
+      case ExportTab.sequence:
+        final spec = _specs.sequence;
+        final axis = _sequenceAxisPlan();
+        if (axis.isEmpty) {
+          return;
+        }
+        _sequencePosition = _sequencePosition.clamp(0, axis.length - 1);
+        final task = axis[_sequencePosition];
+        _requestCompositePreview(
+          task: task,
+          sizeMode: spec.sizeMode,
+          applyLayerFx: spec.applyLayerFx,
+          caption: 'F${_sequencePosition + 1}',
+        );
+      case ExportTab.image:
+        final spec = _specs.image;
+        _requestCompositePreview(
+          task: ExportFrameTask(
+            cut: _activeCut,
+            frameIndex: _currentImageFrame(),
+          ),
+          sizeMode: spec.sizeMode,
+          applyLayerFx: spec.applyLayerFx,
+          caption: 'F${_currentImageFrame() + 1}',
+        );
+      case ExportTab.cels:
+        final plan = _celPlan();
+        if (plan.isEmpty) {
+          _preview.clear();
+          return;
+        }
+        _celPosition = _celPosition.clamp(0, plan.length - 1);
+        final task = plan[_celPosition];
+        final transparent = _specs.cels.format.wantsAlpha;
+        _preview.request(
+          key: 'cel:${task.cut.id.value}:${task.layer.id.value}:'
+              '${task.frame.id.value}:$transparent',
+          caption: _celCaption(task),
+          render: () =>
+              _previewRendererRaw.renderCel(task, transparent: transparent),
+        );
+      case ExportTab.timesheet:
+        // The sheet preview arrives with the Timesheet round.
+        break;
+    }
+  }
+
+  void _requestCompositePreview({
+    required ExportFrameTask task,
+    required ExportSizeMode sizeMode,
+    required bool applyLayerFx,
+    required String caption,
+  }) {
+    final renderer = applyLayerFx ? _previewRendererFx : _previewRendererRaw;
+    final source = sizeMode == ExportSizeMode.camera
+        ? _session.cameraFrameSize
+        : task.cut.canvasSize;
+    final fitted = previewOutputSize(
+      sourceWidth: source.width,
+      sourceHeight: source.height,
+      maxWidth: _previewMaxWidth,
+      maxHeight: _previewMaxHeight,
+    );
+    final outputSize = fitted == null
+        ? null
+        : CanvasSize(width: fitted.width, height: fitted.height);
+    _preview.request(
+      key: 'frame:${task.cut.id.value}:${task.frameIndex}:'
+          '${sizeMode.jsonValue}:$applyLayerFx:'
+          '${outputSize?.width ?? source.width}x'
+          '${outputSize?.height ?? source.height}',
+      caption: caption,
+      render: () => task.isGap
+          ? Future<ui.Image?>.value()
+          : renderer.renderComposite(task, sizeMode, outputSize: outputSize),
+    );
+  }
+
+  String? _transportLine() {
+    switch (_tab) {
+      case ExportTab.sequence:
+        final axis = _sequenceAxisPlan();
+        if (axis.isEmpty) {
+          return null;
+        }
+        final inOut = _sequenceInOut();
+        final position = _sequencePosition.clamp(0, axis.length - 1);
+        final cutName = axis[position].cut.name;
+        if (inOut == null) {
+          return 'Invalid in/out · F${position + 1} · $cutName';
+        }
+        final lo = (inOut.$1 ?? 0) + 1;
+        final hi = (inOut.$2 ?? axis.length - 1) + 1;
+        return 'in $lo – out $hi (${hi - lo + 1}f) · '
+            'F${position + 1} · $cutName';
+      case ExportTab.image:
+        return 'F${_currentImageFrame() + 1} / '
+            '${math.max(1, _activeCut.duration)} · ${_activeCut.name}';
+      case ExportTab.cels:
+        final plan = _celPlan();
+        if (plan.isEmpty) {
+          return null;
+        }
+        final position = _celPosition.clamp(0, plan.length - 1);
+        return '${_celCaption(plan[position])} · '
+            '${position + 1} / ${plan.length}';
+      case ExportTab.timesheet:
+        return null;
+    }
+  }
+
   // --- summaries ------------------------------------------------------------
 
   String _planHeadline() {
     switch (_tab) {
       case ExportTab.sequence:
         final spec = _specs.sequence;
-        final plan = _sequencePlan(includeGaps: spec.format.isVideo);
+        final plan = _sequencePlanForRun(video: spec.format.isVideo);
         if (plan == null) {
           final duration = math.max(1, _activeCut.duration);
           return 'Enter a valid in/out range (1–$duration).';
@@ -399,7 +604,7 @@ class ExportDialogState extends State<ExportDialog> {
     switch (_tab) {
       case ExportTab.sequence:
         final plan =
-            _sequencePlan(includeGaps: _specs.sequence.format.isVideo);
+            _sequencePlanForRun(video: _specs.sequence.format.isVideo);
         return plan != null && plan.isNotEmpty;
       case ExportTab.image:
         return true;
@@ -473,7 +678,7 @@ class ExportDialogState extends State<ExportDialog> {
 
   Future<String> _exportVideo() async {
     final spec = _specs.sequence;
-    final plan = _sequencePlan(includeGaps: true)!;
+    final plan = _sequencePlanForRun(video: true)!;
     final renderer = ExportFrameRenderer(
       session: _session,
       applyLayerFx: spec.applyLayerFx,
@@ -516,7 +721,7 @@ class ExportDialogState extends State<ExportDialog> {
 
   Future<String> _exportPngSequence() async {
     final spec = _specs.sequence;
-    final plan = _sequencePlan(includeGaps: false)!;
+    final plan = _sequencePlanForRun(video: false)!;
     final renderer = ExportFrameRenderer(
       session: _session,
       applyLayerFx: spec.applyLayerFx,
@@ -663,6 +868,7 @@ class ExportDialogState extends State<ExportDialog> {
       _syncControllersFromSpecs();
     });
     _persist();
+    _refreshPreview();
   }
 
   Future<void> _saveCurrentPreset() async {
@@ -716,38 +922,67 @@ class ExportDialogState extends State<ExportDialog> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final presetsWidth = _presetsOpen ? 152.0 : 22.0;
-    final queueWidth = _queueOpen ? 200.0 : 22.0;
-    final width = presetsWidth + 330 + 272 + queueWidth + 4;
-
     return Dialog(
-      child: SizedBox(
-        width: width,
-        height: 560,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            _titleBar(theme),
-            _tabBar(theme),
-            _nameBar(theme),
-            Expanded(
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  SizedBox(width: presetsWidth, child: _presetsZone()),
-                  VerticalDivider(width: 1, color: theme.dividerColor),
-                  Expanded(child: _previewZone(theme)),
-                  VerticalDivider(width: 1, color: theme.dividerColor),
-                  SizedBox(width: 272, child: _settingsZone()),
-                  VerticalDivider(width: 1, color: theme.dividerColor),
-                  SizedBox(width: queueWidth, child: _queueZone()),
-                ],
-              ),
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          // The drawers yield before the preview does (v10: 전개 ~1020 /
+          // 최소 ~700): a tight surface collapses the queue, then the
+          // presets, to presentational strips — the stored preference
+          // stays untouched.
+          var presetsOpen = _presetsOpen;
+          var queueOpen = _queueOpen;
+          double widthFor() =>
+              (presetsOpen ? 152.0 : 22.0) +
+              330 +
+              272 +
+              (queueOpen ? 200.0 : 22.0) +
+              4;
+          if (widthFor() > constraints.maxWidth && queueOpen) {
+            queueOpen = false;
+          }
+          if (widthFor() > constraints.maxWidth && presetsOpen) {
+            presetsOpen = false;
+          }
+          final presetsWidth = presetsOpen ? 152.0 : 22.0;
+          final queueWidth = queueOpen ? 200.0 : 22.0;
+          final width = math.min(widthFor(), constraints.maxWidth);
+          final height = math.min(560.0, constraints.maxHeight);
+
+          return SizedBox(
+            width: width,
+            height: height,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                _titleBar(theme),
+                _tabBar(theme),
+                _nameBar(theme),
+                Expanded(
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      SizedBox(
+                        width: presetsWidth,
+                        child: _presetsZone(open: presetsOpen),
+                      ),
+                      VerticalDivider(width: 1, color: theme.dividerColor),
+                      Expanded(child: _previewZone(theme)),
+                      VerticalDivider(width: 1, color: theme.dividerColor),
+                      SizedBox(width: 272, child: _settingsZone()),
+                      VerticalDivider(width: 1, color: theme.dividerColor),
+                      SizedBox(
+                        width: queueWidth,
+                        child: _queueZone(open: queueOpen),
+                      ),
+                    ],
+                  ),
+                ),
+                Divider(height: 1, color: theme.dividerColor),
+                _footer(theme),
+              ],
             ),
-            Divider(height: 1, color: theme.dividerColor),
-            _footer(theme),
-          ],
-        ),
+          );
+        },
       ),
     );
   }
@@ -785,7 +1020,13 @@ class ExportDialogState extends State<ExportDialog> {
         key: ValueKey<String>('export-tab-${tab.jsonValue}'),
         onTap: _isExporting || selected
             ? null
-            : () => setState(() => _tab = tab),
+            : () {
+                setState(() => _tab = tab);
+                // Tabs share the one preview slot; a stale picture from
+                // another domain must not linger under the new axis.
+                _preview.clear();
+                _refreshPreview();
+              },
         child: Container(
           padding: const EdgeInsets.fromLTRB(13, 6, 13, 5),
           decoration: BoxDecoration(
@@ -915,8 +1156,8 @@ class ExportDialogState extends State<ExportDialog> {
     }
   }
 
-  Widget _presetsZone() {
-    if (!_presetsOpen) {
+  Widget _presetsZone({required bool open}) {
+    if (!open) {
       return ExportDrawerStrip(
         key: const ValueKey<String>('export-presets-strip'),
         caption: 'Presets',
@@ -959,8 +1200,55 @@ class ExportDialogState extends State<ExportDialog> {
     );
   }
 
+  ExportNavBar? _navBar() {
+    switch (_tab) {
+      case ExportTab.sequence:
+        final axis = _sequenceAxis(_sequenceAxisPlan());
+        final inOut = _sequenceInOut();
+        return ExportNavBar(
+          axis: axis,
+          position: _sequencePosition,
+          enabled: !_isExporting,
+          inController: _inController,
+          outController: _outController,
+          onInOutEdited: _writeInOutToSpec,
+          inMark: inOut?.$1,
+          outMark: inOut?.$2,
+          onChanged: (position) {
+            setState(() => _sequencePosition = position);
+            _refreshPreview();
+          },
+        );
+      case ExportTab.image:
+        return ExportNavBar(
+          axis: _imageAxis(),
+          position: _currentImageFrame(),
+          enabled: !_isExporting,
+          onChanged: (position) {
+            setState(() => _imageFrame = position);
+            _refreshPreview();
+          },
+        );
+      case ExportTab.cels:
+        return ExportNavBar(
+          axis: _celsAxis(_celPlan()),
+          position: _celPosition,
+          enabled: !_isExporting,
+          onChanged: (position) {
+            setState(() => _celPosition = position);
+            _refreshPreview();
+          },
+        );
+      case ExportTab.timesheet:
+        // The sheet page scrub arrives with the Timesheet round.
+        return null;
+    }
+  }
+
   Widget _previewZone(ThemeData theme) {
     final progress = _progress;
+    final navBar = _navBar();
+    final transport = _transportLine();
     return Padding(
       padding: const EdgeInsets.all(8),
       child: Column(
@@ -973,16 +1261,47 @@ class ExportDialogState extends State<ExportDialog> {
                 borderRadius: BorderRadius.circular(4),
               ),
               alignment: Alignment.center,
-              padding: const EdgeInsets.all(12),
-              child: Text(
-                _planHeadline(),
-                key: const ValueKey<String>('export-plan-headline'),
-                textAlign: TextAlign.center,
-                style: theme.textTheme.bodySmall,
+              padding: const EdgeInsets.all(8),
+              // The preview shows the CROPPED RESULT alone (v10: 오버레이
+              // 없음) — or the plan headline while nothing has resolved.
+              child: AnimatedBuilder(
+                animation: _preview,
+                builder: (context, _) {
+                  final image = _preview.image;
+                  if (image == null) {
+                    return Text(
+                      _planHeadline(),
+                      key: const ValueKey<String>('export-plan-headline'),
+                      textAlign: TextAlign.center,
+                      style: theme.textTheme.bodySmall,
+                    );
+                  }
+                  return RawImage(
+                    key: const ValueKey<String>('export-preview-image'),
+                    image: image,
+                    fit: BoxFit.contain,
+                    filterQuality: FilterQuality.medium,
+                  );
+                },
               ),
             ),
           ),
-          const SizedBox(height: 6),
+          if (navBar != null) ...[const SizedBox(height: 6), navBar],
+          if (transport != null) ...[
+            const SizedBox(height: 3),
+            Text(
+              transport,
+              key: const ValueKey<String>('export-transport-line'),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              textAlign: TextAlign.center,
+              style: theme.textTheme.bodySmall?.copyWith(
+                fontSize: 10.5,
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+            ),
+          ],
+          const SizedBox(height: 4),
           Text(
             _outputLine(),
             key: const ValueKey<String>('export-output-line'),
@@ -1071,53 +1390,11 @@ class ExportDialogState extends State<ExportDialog> {
                   : spec.sizeMode,
             ),
           ),
+          // The in/out fields live on the nav bar's ends (v10) — the
+          // module keeps the scope choice alone.
           note: projectScope
               ? 'No cut list here — in/out alone trims the sequence.'
               : null,
-          child: projectScope
-              ? null
-              : Row(
-                  children: [
-                    Expanded(
-                      child: TextField(
-                        key: const ValueKey<String>(
-                          'export-range-start-field',
-                        ),
-                        controller: _inController,
-                        enabled: !_isExporting,
-                        keyboardType: TextInputType.number,
-                        inputFormatters: [
-                          FilteringTextInputFormatter.digitsOnly,
-                        ],
-                        decoration: const InputDecoration(
-                          labelText: 'In',
-                          isDense: true,
-                        ),
-                        onChanged: (_) => _writeInOutToSpec(),
-                      ),
-                    ),
-                    const Padding(
-                      padding: EdgeInsets.symmetric(horizontal: 6),
-                      child: Text('–'),
-                    ),
-                    Expanded(
-                      child: TextField(
-                        key: const ValueKey<String>('export-range-end-field'),
-                        controller: _outController,
-                        enabled: !_isExporting,
-                        keyboardType: TextInputType.number,
-                        inputFormatters: [
-                          FilteringTextInputFormatter.digitsOnly,
-                        ],
-                        decoration: const InputDecoration(
-                          labelText: 'Out',
-                          isDense: true,
-                        ),
-                        onChanged: (_) => _writeInOutToSpec(),
-                      ),
-                    ),
-                  ],
-                ),
         ),
       ),
       ExportAccordion(
@@ -1181,7 +1458,10 @@ class ExportDialogState extends State<ExportDialog> {
           value: spec.applyLayerFx,
           onChanged: _isExporting
               ? null
-              : (value) => _updateSpec(spec.copyWith(applyLayerFx: value)),
+              : (value) {
+                  _preview.clear();
+                  _updateSpec(spec.copyWith(applyLayerFx: value));
+                },
         ),
       ),
     ];
@@ -1200,6 +1480,7 @@ class ExportDialogState extends State<ExportDialog> {
     if (inOut != null) {
       _persist();
     }
+    _refreshPreview();
   }
 
   List<Widget> _imageModules() {
@@ -1244,7 +1525,10 @@ class ExportDialogState extends State<ExportDialog> {
           value: spec.applyLayerFx,
           onChanged: _isExporting
               ? null
-              : (value) => _updateSpec(spec.copyWith(applyLayerFx: value)),
+              : (value) {
+                  _preview.clear();
+                  _updateSpec(spec.copyWith(applyLayerFx: value));
+                },
         ),
       ),
     ];
@@ -1359,8 +1643,8 @@ class ExportDialogState extends State<ExportDialog> {
     ];
   }
 
-  Widget _queueZone() {
-    if (!_queueOpen) {
+  Widget _queueZone({required bool open}) {
+    if (!open) {
       return ExportDrawerStrip(
         key: const ValueKey<String>('export-queue-strip'),
         caption: 'Queue',
