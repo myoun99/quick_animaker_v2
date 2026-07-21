@@ -1,3 +1,5 @@
+import 'dart:async' show unawaited;
+
 import 'package:file_selector/file_selector.dart';
 import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
@@ -12,6 +14,7 @@ import 'dialogs/delete_layer_dialog.dart';
 import 'dialogs/frame_name_conflict_dialog.dart';
 import 'dialogs/instruction_event_dialog.dart';
 import 'dialogs/instruction_set_editor_dialog.dart';
+import 'dialogs/layer_audio_dialog.dart';
 import 'dialogs/rename_frame_dialog.dart';
 import 'dialogs/rename_layer_dialog.dart';
 import 'dialogs/se_instance_dialog.dart';
@@ -882,8 +885,16 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
                 fadeOutFrames: fadeOut,
               ),
           onSetAudioClipGain: _session.setAudioClipGain,
+          onSetAudioClipFadeCurve: _session.setAudioClipFadeCurve,
+          onSetAudioClipEnvelope: _session.setAudioClipEnvelope,
           onAddLayer: _session.addLayer,
           onToggleLayerMuted: _session.toggleLayerMuted,
+          isLayerSoloed: (layerId) =>
+              _session.soloedSeLayerIds.value.contains(layerId),
+          onToggleLayerSolo: _session.toggleLayerSolo,
+          onEditLayerAudio: (layerId) => unawaited(
+            showLayerAudioDialog(context, session: _session, layerId: layerId),
+          ),
           // Kind-dispatched (unified layer controls): the camera row drives
           // the camera-view notifiers, every other row the layer flags.
           onToggleLayerVisibility: _toggleLayerVisibility,

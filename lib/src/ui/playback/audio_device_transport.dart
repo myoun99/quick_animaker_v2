@@ -19,6 +19,7 @@ library;
 
 import 'dart:math' as math;
 
+import '../../models/layer_id.dart';
 import '../../models/project.dart';
 import '../../models/project_frame_rate.dart';
 import '../../native/qa_audio_device.dart';
@@ -37,8 +38,12 @@ class AudioDeviceTransport {
     required this.conformStore,
     QaAudioDevice? Function()? resolveDevice,
     int Function(int sampleRate)? resolveUserOffsetSamples,
+    this.resolveSoloedLayerIds,
   }) : _resolveDevice = resolveDevice ?? (() => QaAudioDevice.instance),
        _resolveUserOffsetSamples = resolveUserOffsetSamples ?? ((_) => 0);
+
+  /// The session's solo set (monitoring state, AUDIO-PRO R1).
+  final Set<LayerId> Function()? resolveSoloedLayerIds;
 
   final CanvasPlaybackController controller;
   final ProjectFrameRate Function() resolveFrameRate;
@@ -167,6 +172,7 @@ class AudioDeviceTransport {
       project: resolveProject(),
       rate: _rate,
       durationSecondsFor: conformStore.durationSecondsFor,
+      soloedLayerIds: resolveSoloedLayerIds?.call(),
     );
 
     // The device opens lazily and stays open across runs (opening tears

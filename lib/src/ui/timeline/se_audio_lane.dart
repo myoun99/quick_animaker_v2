@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import 'package:flutter/gestures.dart' show DragStartBehavior;
 import 'package:flutter/material.dart';
 
+import '../../models/audio_clip.dart' show AudioFadeCurve, AudioVolumeKey;
 import '../../models/layer.dart';
 import '../../models/layer_id.dart';
 import '../../models/layer_kind.dart';
@@ -151,6 +152,8 @@ class SeAudioLaneFrameRow extends StatelessWidget {
     this.offsetDrag,
     this.onSetClipFades,
     this.onSetClipGain,
+    this.onSetClipFadeCurve,
+    this.onSetClipEnvelope,
     this.axis = Axis.horizontal,
     this.keyPrefix = 'timeline',
   });
@@ -181,6 +184,15 @@ class SeAudioLaneFrameRow extends StatelessWidget {
   /// Commits the gain picked in the span's context-menu dialog (one undo);
   /// null hides the menu entry.
   final void Function(int clipIndex, double gain)? onSetClipGain;
+
+  /// Commits the fade curve toggled in the span's context menu (one undo,
+  /// AUDIO-PRO R1); null hides the entry.
+  final void Function(int clipIndex, AudioFadeCurve curve)? onSetClipFadeCurve;
+
+  /// Commits the volume envelope edited in the span's dialog (one undo,
+  /// AUDIO-PRO R1); null hides the entry.
+  final void Function(int clipIndex, List<AudioVolumeKey> keys)?
+  onSetClipEnvelope;
 
   final Axis axis;
   final String keyPrefix;
@@ -235,6 +247,12 @@ class SeAudioLaneFrameRow extends StatelessWidget {
         onSetGain: onSetClipGain == null
             ? null
             : (gain) => onSetClipGain!(span.clipIndex, gain),
+        onSetFadeCurve: onSetClipFadeCurve == null
+            ? null
+            : (curve) => onSetClipFadeCurve!(span.clipIndex, curve),
+        onSetEnvelope: onSetClipEnvelope == null
+            ? null
+            : (keys) => onSetClipEnvelope!(span.clipIndex, keys),
       );
       spans.add(
         horizontal
@@ -318,6 +336,8 @@ class _SeAudioLaneSpan extends StatefulWidget {
     this.liveOffsetDrag,
     this.onSetFades,
     this.onSetGain,
+    this.onSetFadeCurve,
+    this.onSetEnvelope,
   });
 
   final SeAudioSpan span;
@@ -329,6 +349,8 @@ class _SeAudioLaneSpan extends StatefulWidget {
   final _SpanLiveOffsetDrag? liveOffsetDrag;
   final void Function(int fadeInFrames, int fadeOutFrames)? onSetFades;
   final ValueChanged<double>? onSetGain;
+  final ValueChanged<AudioFadeCurve>? onSetFadeCurve;
+  final ValueChanged<List<AudioVolumeKey>>? onSetEnvelope;
 
   @override
   State<_SeAudioLaneSpan> createState() => _SeAudioLaneSpanState();
@@ -469,12 +491,14 @@ class _SeAudioLaneSpanState extends State<_SeAudioLaneSpan> {
     }
   }
 
+  bool get _hasSpanMenu =>
+      widget.onSetGain != null ||
+      widget.onSetFadeCurve != null ||
+      widget.onSetEnvelope != null;
+
   Future<void> _showSpanMenu(Offset globalPosition) async {
-    final onSetGain = widget.onSetGain;
-    if (onSetGain == null) {
-      return;
-    }
     final overlay = Overlay.of(context).context.findRenderObject();
+    final clip = widget.span.clip;
     final selected = await showMenu<String>(
       context: context,
       position: RelativeRect.fromRect(
@@ -482,24 +506,60 @@ class _SeAudioLaneSpanState extends State<_SeAudioLaneSpan> {
         Offset.zero & (overlay as RenderBox).size,
       ),
       popUpAnimationStyle: instantMenuAnimation,
-      items: const [
-        PopupMenuItem<String>(
-          key: ValueKey<String>('audio-lane-menu-gain'),
-          value: 'gain',
-          child: Text('Gain…'),
-        ),
+      items: [
+        if (widget.onSetGain != null)
+          const PopupMenuItem<String>(
+            key: ValueKey<String>('audio-lane-menu-gain'),
+            value: 'gain',
+            child: Text('Gain…'),
+          ),
+        if (widget.onSetEnvelope != null)
+          const PopupMenuItem<String>(
+            key: ValueKey<String>('audio-lane-menu-envelope'),
+            value: 'envelope',
+            child: Text('Volume envelope…'),
+          ),
+        if (widget.onSetFadeCurve != null)
+          PopupMenuItem<String>(
+            key: const ValueKey<String>('audio-lane-menu-fade-curve'),
+            value: 'fade-curve',
+            child: Text(
+              clip.fadeCurve == AudioFadeCurve.equalPower
+                  ? 'Fades: equal-power (switch to linear)'
+                  : 'Fades: linear (switch to equal-power)',
+            ),
+          ),
       ],
     );
-    if (selected != 'gain' || !mounted) {
+    if (!mounted || selected == null) {
       return;
     }
-    final gain = await showDialog<double>(
-      context: context,
-      builder: (context) =>
-          _AudioGainDialog(initialGain: widget.span.clip.gain),
-    );
-    if (gain != null) {
-      onSetGain(gain);
+    switch (selected) {
+      case 'gain':
+        final gain = await showDialog<double>(
+          context: context,
+          builder: (context) => _AudioGainDialog(initialGain: clip.gain),
+        );
+        if (gain != null) {
+          widget.onSetGain?.call(gain);
+        }
+      case 'envelope':
+        final keys = await showDialog<List<AudioVolumeKey>>(
+          context: context,
+          builder: (context) => _AudioEnvelopeDialog(
+            initialKeys: clip.volumeKeys,
+            spanLengthFrames: widget.span.lengthFrames,
+          ),
+        );
+        if (keys != null) {
+          widget.onSetEnvelope?.call(keys);
+        }
+      case 'fade-curve':
+        widget.onSetFadeCurve?.call(
+          clip.fadeCurve == AudioFadeCurve.equalPower
+              ? AudioFadeCurve.linear
+              : AudioFadeCurve.equalPower,
+        );
     }
   }
 
@@ -621,10 +681,10 @@ class _SeAudioLaneSpanState extends State<_SeAudioLaneSpan> {
       // .down: the drag measures from the pointer-down origin, so the
       // recognizer's slop never eats into the slid amount.
       dragStartBehavior: DragStartBehavior.down,
-      onSecondaryTapUp: widget.onSetGain != null
+      onSecondaryTapUp: _hasSpanMenu
           ? (details) => _showSpanMenu(details.globalPosition)
           : null,
-      onLongPressStart: widget.onSetGain != null
+      onLongPressStart: _hasSpanMenu
           ? (details) => _showSpanMenu(details.globalPosition)
           : null,
       onHorizontalDragStart: editable && horizontal
@@ -651,6 +711,158 @@ class _SeAudioLaneSpanState extends State<_SeAudioLaneSpan> {
             : MouseCursor.defer,
         child: Stack(clipBehavior: Clip.hardEdge, children: children),
       ),
+    );
+  }
+}
+
+/// The volume-envelope editor (AUDIO-PRO R1): keyed gains at clip-local
+/// frames, edited as rows. Deliberately a LIST editor for the first pass —
+/// the 28px lane has no room for a rubber band, and typed numbers are the
+/// timesheet idiom anyway.
+class _AudioEnvelopeDialog extends StatefulWidget {
+  const _AudioEnvelopeDialog({
+    required this.initialKeys,
+    required this.spanLengthFrames,
+  });
+
+  final List<AudioVolumeKey> initialKeys;
+  final int spanLengthFrames;
+
+  @override
+  State<_AudioEnvelopeDialog> createState() => _AudioEnvelopeDialogState();
+}
+
+class _AudioEnvelopeDialogState extends State<_AudioEnvelopeDialog> {
+  late final List<({TextEditingController frame, TextEditingController gain})>
+  _rows = [
+    for (final key in widget.initialKeys)
+      (
+        frame: TextEditingController(text: '${key.frame}'),
+        gain: TextEditingController(text: '${(key.gain * 100).round()}'),
+      ),
+  ];
+
+  @override
+  void dispose() {
+    for (final row in _rows) {
+      row.frame.dispose();
+      row.gain.dispose();
+    }
+    super.dispose();
+  }
+
+  void _addRow() {
+    setState(() {
+      _rows.add(
+        (
+          frame: TextEditingController(
+            text: _rows.isEmpty ? '0' : '${widget.spanLengthFrames}',
+          ),
+          gain: TextEditingController(text: '100'),
+        ),
+      );
+    });
+  }
+
+  List<AudioVolumeKey> _collect() {
+    final keys = <AudioVolumeKey>[];
+    for (final row in _rows) {
+      final frame = int.tryParse(row.frame.text.trim());
+      final gainPercent = int.tryParse(row.gain.text.trim());
+      if (frame == null || gainPercent == null || frame < 0 || gainPercent < 0) {
+        continue; // unparseable rows drop rather than block the apply
+      }
+      keys.add(AudioVolumeKey(frame: frame, gain: gainPercent / 100));
+    }
+    keys.sort((a, b) => a.frame.compareTo(b.frame));
+    return keys;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      key: const ValueKey<String>('audio-envelope-dialog'),
+      title: const Text('Volume Envelope'),
+      content: SizedBox(
+        width: 300,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Keyed gains at clip frames (linear between keys, held past '
+              'the ends). Empty = flat.',
+              style: TextStyle(fontSize: 12),
+            ),
+            const SizedBox(height: 8),
+            ConstrainedBox(
+              constraints: const BoxConstraints(maxHeight: 240),
+              child: ListView(
+                shrinkWrap: true,
+                children: [
+                  for (var index = 0; index < _rows.length; index += 1)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 4),
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: TextField(
+                              key: ValueKey<String>('audio-envelope-frame-$index'),
+                              controller: _rows[index].frame,
+                              keyboardType: TextInputType.number,
+                              decoration: const InputDecoration(
+                                isDense: true,
+                                labelText: 'frame',
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: TextField(
+                              key: ValueKey<String>('audio-envelope-gain-$index'),
+                              controller: _rows[index].gain,
+                              keyboardType: TextInputType.number,
+                              decoration: const InputDecoration(
+                                isDense: true,
+                                labelText: 'gain %',
+                              ),
+                            ),
+                          ),
+                          IconButton(
+                            key: ValueKey<String>('audio-envelope-remove-$index'),
+                            icon: const Icon(Icons.close, size: 16),
+                            onPressed: () => setState(() {
+                              final row = _rows.removeAt(index);
+                              row.frame.dispose();
+                              row.gain.dispose();
+                            }),
+                          ),
+                        ],
+                      ),
+                    ),
+                ],
+              ),
+            ),
+            TextButton.icon(
+              key: const ValueKey<String>('audio-envelope-add'),
+              onPressed: _addRow,
+              icon: const Icon(Icons.add, size: 16),
+              label: const Text('Add key'),
+            ),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Cancel'),
+        ),
+        TextButton(
+          key: const ValueKey<String>('audio-envelope-apply'),
+          onPressed: () => Navigator.of(context).pop(_collect()),
+          child: const Text('Apply'),
+        ),
+      ],
     );
   }
 }

@@ -11,6 +11,39 @@ import 'layer_label_controls.dart';
 import 'timeline_grid_metrics.dart';
 
 class TimelineLayerControlsRow extends StatelessWidget {
+  Future<void> _showMixMenu(BuildContext context, Offset globalPosition) async {
+    final overlay = Overlay.of(context).context.findRenderObject();
+    final selected = await showMenu<String>(
+      context: context,
+      position: RelativeRect.fromRect(
+        globalPosition & const Size(1, 1),
+        Offset.zero & (overlay as RenderBox).size,
+      ),
+      items: [
+        if (onToggleLayerSolo != null)
+          PopupMenuItem<String>(
+            key: ValueKey<String>('timeline-layer-solo-${layer.id}'),
+            value: 'solo',
+            child: Text(isLayerSoloed ? 'Unsolo' : 'Solo'),
+          ),
+        if (onEditLayerAudio != null)
+          PopupMenuItem<String>(
+            key: ValueKey<String>('timeline-layer-audio-${layer.id}'),
+            value: 'audio',
+            child: const Text('Layer audio…'),
+          ),
+      ],
+    );
+    switch (selected) {
+      case 'solo':
+        onToggleLayerSolo?.call(layer.id);
+      case 'audio':
+        onEditLayerAudio?.call(layer.id);
+      case _:
+        break;
+    }
+  }
+
   const TimelineLayerControlsRow({
     super.key,
     required this.layer,
@@ -24,6 +57,9 @@ class TimelineLayerControlsRow extends StatelessWidget {
     required this.onLayerMarkSelected,
     this.onToggleLayerFillReference,
     this.onToggleLayerMuted,
+    this.isLayerSoloed = false,
+    this.onToggleLayerSolo,
+    this.onEditLayerAudio,
     this.hasLanes = false,
     this.lanesExpanded = false,
     this.onToggleLanes,
@@ -59,6 +95,18 @@ class TimelineLayerControlsRow extends StatelessWidget {
   /// SE rows' speaker button (the audio counterpart of visibility); null
   /// hides it.
   final ValueChanged<LayerId>? onToggleLayerMuted;
+
+  /// Whether this SE row is soloed (AUDIO-PRO R1) — the speaker tints
+  /// accent while soloing narrows monitoring to the soloed rows.
+  final bool isLayerSoloed;
+
+  /// Toggles the SE row's solo — on the speaker's context menu (the rail
+  /// has no room for another column; the menu also carries the layer's
+  /// fader/pan entry).
+  final ValueChanged<LayerId>? onToggleLayerSolo;
+
+  /// Opens the layer's audio dialog (fader + pan).
+  final ValueChanged<LayerId>? onEditLayerAudio;
 
   /// AE-style property-lane twirl-down: layers with lanes get a chevron
   /// leading the row; rows without lanes keep an empty slot so labels stay
@@ -381,19 +429,39 @@ class TimelineLayerControlsRow extends StatelessWidget {
                 SizedBox(
                   width: layerMuteSlotWidth,
                   height: 26,
-                  child: IconButton(
-                    key: ValueKey<String>('timeline-layer-mute-${layer.id}'),
-                    tooltip: layer.muted ? 'Unmute layer' : 'Mute layer',
-                    padding: EdgeInsets.zero,
-                    constraints: const BoxConstraints.tightFor(
-                      width: layerMuteSlotWidth,
-                      height: 26,
+                  // Right-click/long-press: the mix menu (solo + fader/pan
+                  // dialog) — the rail has no room for more columns, so
+                  // the speaker doubles as the SE row's mixer entrance.
+                  child: GestureDetector(
+                    onSecondaryTapUp:
+                        onToggleLayerSolo == null && onEditLayerAudio == null
+                        ? null
+                        : (details) =>
+                              _showMixMenu(context, details.globalPosition),
+                    onLongPressStart:
+                        onToggleLayerSolo == null && onEditLayerAudio == null
+                        ? null
+                        : (details) =>
+                              _showMixMenu(context, details.globalPosition),
+                    child: IconButton(
+                      key: ValueKey<String>('timeline-layer-mute-${layer.id}'),
+                      tooltip: layer.muted ? 'Unmute layer' : 'Mute layer',
+                      padding: EdgeInsets.zero,
+                      constraints: const BoxConstraints.tightFor(
+                        width: layerMuteSlotWidth,
+                        height: 26,
+                      ),
+                      icon: Icon(
+                        layer.muted ? Icons.volume_off : Icons.volume_up,
+                        size: 16,
+                        // Soloed rows tint accent (selection style: color
+                        // only, no checkmarks).
+                        color: isLayerSoloed
+                            ? Theme.of(context).colorScheme.primary
+                            : null,
+                      ),
+                      onPressed: () => onToggleLayerMuted!(layer.id),
                     ),
-                    icon: Icon(
-                      layer.muted ? Icons.volume_off : Icons.volume_up,
-                      size: 16,
-                    ),
-                    onPressed: () => onToggleLayerMuted!(layer.id),
                   ),
                 )
               else

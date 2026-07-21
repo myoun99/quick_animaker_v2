@@ -104,6 +104,8 @@ final class QaAudioDevice {
       Pointer<Float>,
       Int64,
       Pointer<Int64>,
+      Pointer<QaAudioEnvelopeKeyStruct>,
+      Int32,
     ),
     int Function(
       Pointer<QaAudioClipStruct>,
@@ -113,6 +115,8 @@ final class QaAudioDevice {
       Pointer<Float>,
       int,
       Pointer<Int64>,
+      Pointer<QaAudioEnvelopeKeyStruct>,
+      int,
     )
   >('qa_audio_device_set_schedule');
   late final _play = _library
@@ -184,18 +188,38 @@ final class QaAudioDevice {
     );
     final pcm = calloc<Float>(totalFloats <= 0 ? 1 : totalFloats);
     final offsetArray = calloc<Int64>(offsets.isEmpty ? 1 : offsets.length);
+    // The clips' envelopes flatten into one shared key array, exactly as
+    // the mixer FFI does (the C copies it beside the PCM).
+    var envelopeTotal = 0;
+    for (final clip in clips) {
+      envelopeTotal += clip.envelope.length;
+    }
+    final envelopeArray = calloc<QaAudioEnvelopeKeyStruct>(
+      envelopeTotal <= 0 ? 1 : envelopeTotal,
+    );
     try {
+      var envelopeCursor = 0;
       for (var index = 0; index < clips.length; index += 1) {
         final clip = clips[index];
         final target = clipArray[index];
         target.gain = clip.gain;
+        target.panLeft = clip.panLeft;
+        target.panRight = clip.panRight;
         target.startSample = clip.startSample;
         target.endSample = clip.endSample;
         target.sourceOffset = clip.sourceOffset;
         target.fadeInSamples = clip.fadeInSamples;
         target.fadeOutSamples = clip.fadeOutSamples;
         target.sourceIndex = clip.sourceIndex;
-        target.reserved = 0;
+        target.fadeCurve = clip.fadeCurve;
+        target.envelopeOffset = envelopeCursor;
+        target.envelopeCount = clip.envelope.length;
+        for (final point in clip.envelope) {
+          final key = envelopeArray[envelopeCursor];
+          key.sample = point.sample;
+          key.gain = point.gain;
+          envelopeCursor += 1;
+        }
       }
       for (var index = 0; index < sources.length; index += 1) {
         final source = sources[index];
@@ -224,9 +248,12 @@ final class QaAudioDevice {
             pcm,
             totalFloats,
             offsetArray,
+            envelopeArray,
+            envelopeTotal,
           ) !=
           0;
     } finally {
+      calloc.free(envelopeArray);
       calloc.free(offsetArray);
       calloc.free(pcm);
       calloc.free(sourceArray);

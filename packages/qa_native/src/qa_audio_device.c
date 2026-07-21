@@ -45,13 +45,17 @@
 // concern and no headers of its own.
 typedef struct {
   double gain;
+  double pan_left;
+  double pan_right;
   int64_t start_sample;
   int64_t end_sample;
   int64_t source_offset;
   int64_t fade_in_samples;
   int64_t fade_out_samples;
   int32_t source_index;
-  int32_t reserved;
+  int32_t fade_curve;
+  int32_t envelope_offset;
+  int32_t envelope_count;
 } qa_audio_clip;
 
 typedef struct {
@@ -62,10 +66,17 @@ typedef struct {
   const float* samples;
 } qa_audio_source;
 
+typedef struct {
+  int64_t sample;
+  double gain;
+} qa_audio_envelope_key;
+
 extern void qa_audio_mix(const qa_audio_clip* clips,
                          int32_t clip_count,
                          const qa_audio_source* sources,
                          int32_t source_count,
+                         const qa_audio_envelope_key* envelope_keys,
+                         int32_t envelope_key_count,
                          int64_t start_sample,
                          int32_t sample_count,
                          int32_t out_channels,
@@ -76,6 +87,7 @@ extern void qa_audio_mix(const qa_audio_clip* clips,
 // is checked at open() rather than trusted (Fable audit 2026-07-21).
 extern int32_t qa_audio_clip_sizeof(void);
 extern int32_t qa_audio_source_sizeof(void);
+extern int32_t qa_audio_envelope_key_sizeof(void);
 
 // Transport fields shared between the realtime callback and the control
 // thread go through miniaudio's atomics (Fable audit 2026-07-21): aligned
@@ -121,6 +133,8 @@ typedef struct {
   int32_t source_count;
   float* source_pcm;  // one owned block holding every source's samples
   int64_t source_pcm_floats;
+  qa_audio_envelope_key* envelope_keys;  // the clips' shared key array
+  int32_t envelope_key_count;
 
   int32_t channels;
   int32_t sample_rate;
@@ -178,8 +192,9 @@ static void qa_audio_data_callback(ma_device* device,
     }
 
     qa_audio_mix(g_audio.clips, g_audio.clip_count, g_audio.sources,
-                 g_audio.source_count, position, (int32_t)block, channels,
-                 g_audio.scratch);
+                 g_audio.source_count, g_audio.envelope_keys,
+                 g_audio.envelope_key_count, position, (int32_t)block,
+                 channels, g_audio.scratch);
 
     const size_t written = (size_t)block * (size_t)channels;
     float* target = out + (size_t)done * (size_t)channels;
@@ -204,12 +219,15 @@ static void qa_audio_free_schedule(void) {
   free(g_audio.clips);
   free(g_audio.sources);
   free(g_audio.source_pcm);
+  free(g_audio.envelope_keys);
   g_audio.clips = NULL;
   g_audio.sources = NULL;
   g_audio.source_pcm = NULL;
+  g_audio.envelope_keys = NULL;
   g_audio.clip_count = 0;
   g_audio.source_count = 0;
   g_audio.source_pcm_floats = 0;
+  g_audio.envelope_key_count = 0;
 }
 
 // Opens the output device. [backend] 0 = let miniaudio choose, 1 = the
@@ -233,7 +251,9 @@ QA_EXPORT int32_t qa_audio_device_open(int32_t sample_rate,
   // to qa_engine.c's originals — checked, not trusted (both TUs link
   // into the one shared library, so the probes are callable here).
   if (qa_audio_clip_sizeof() != (int32_t)sizeof(qa_audio_clip) ||
-      qa_audio_source_sizeof() != (int32_t)sizeof(qa_audio_source)) {
+      qa_audio_source_sizeof() != (int32_t)sizeof(qa_audio_source) ||
+      qa_audio_envelope_key_sizeof() !=
+          (int32_t)sizeof(qa_audio_envelope_key)) {
     return 0;
   }
 
@@ -321,12 +341,15 @@ QA_EXPORT int32_t qa_audio_device_set_schedule(
     int32_t source_count,
     const float* pcm,
     int64_t pcm_floats,
-    const int64_t* source_offsets) {
+    const int64_t* source_offsets,
+    const qa_audio_envelope_key* envelope_keys,
+    int32_t envelope_key_count) {
   if (qa_transport_load_32(&g_audio.playing)) {
     return 0;
   }
   qa_audio_free_schedule();
-  if (clip_count < 0 || source_count < 0 || pcm_floats < 0) {
+  if (clip_count < 0 || source_count < 0 || pcm_floats < 0 ||
+      envelope_key_count < 0) {
     return 0;
   }
 
@@ -338,6 +361,18 @@ QA_EXPORT int32_t qa_audio_device_set_schedule(
     }
     memcpy(g_audio.clips, clips, (size_t)clip_count * sizeof(qa_audio_clip));
     g_audio.clip_count = clip_count;
+  }
+
+  if (envelope_key_count > 0) {
+    g_audio.envelope_keys = (qa_audio_envelope_key*)malloc(
+        (size_t)envelope_key_count * sizeof(qa_audio_envelope_key));
+    if (g_audio.envelope_keys == NULL) {
+      qa_audio_free_schedule();
+      return 0;
+    }
+    memcpy(g_audio.envelope_keys, envelope_keys,
+           (size_t)envelope_key_count * sizeof(qa_audio_envelope_key));
+    g_audio.envelope_key_count = envelope_key_count;
   }
 
   if (pcm_floats > 0) {

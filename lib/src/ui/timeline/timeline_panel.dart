@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
+import '../../models/audio_clip.dart' show AudioFadeCurve, AudioVolumeKey;
 import '../../models/camera_instruction.dart';
 import '../../models/layer.dart';
 import '../../services/audio/audio_peaks_extractor.dart';
@@ -51,6 +52,11 @@ class TimelinePanel extends StatefulWidget {
     this.audioOffsetDrag,
     this.onSetAudioClipFades,
     this.onSetAudioClipGain,
+    this.onSetAudioClipFadeCurve,
+    this.onSetAudioClipEnvelope,
+    this.isLayerSoloed,
+    this.onToggleLayerSolo,
+    this.onEditLayerAudio,
     required this.onAddLayer,
     required this.onToggleLayerVisibility,
     required this.onLayerOpacityChanged,
@@ -179,6 +185,24 @@ class TimelinePanel extends StatefulWidget {
   /// Commits the audio-lane gain dialog, both orientations.
   final void Function(LayerId layerId, int clipIndex, double gain)?
   onSetAudioClipGain;
+
+  /// Commits the audio-lane fade-curve toggle (AUDIO-PRO R1).
+  final void Function(LayerId layerId, int clipIndex, AudioFadeCurve curve)?
+  onSetAudioClipFadeCurve;
+
+  /// Commits the audio-lane volume-envelope dialog (AUDIO-PRO R1).
+  final void Function(
+    LayerId layerId,
+    int clipIndex,
+    List<AudioVolumeKey> keys,
+  )?
+  onSetAudioClipEnvelope;
+
+  /// The SE mix menu (AUDIO-PRO R1): solo state/toggle + the fader/pan
+  /// dialog entrance, on the speaker button's context menu.
+  final bool Function(LayerId layerId)? isLayerSoloed;
+  final ValueChanged<LayerId>? onToggleLayerSolo;
+  final ValueChanged<LayerId>? onEditLayerAudio;
 
   final VoidCallback onAddLayer;
   final ValueChanged<LayerId> onToggleLayerVisibility;
@@ -391,8 +415,13 @@ class _TimelinePanelState extends State<TimelinePanel> {
                     audioOffsetDrag: widget.audioOffsetDrag,
                     onSetAudioClipFades: widget.onSetAudioClipFades,
                     onSetAudioClipGain: widget.onSetAudioClipGain,
+                    onSetAudioClipFadeCurve: widget.onSetAudioClipFadeCurve,
+                    onSetAudioClipEnvelope: widget.onSetAudioClipEnvelope,
                     onAddLayer: widget.onAddLayer,
                     onToggleLayerMuted: widget.onToggleLayerMuted,
+                    isLayerSoloed: widget.isLayerSoloed,
+                    onToggleLayerSolo: widget.onToggleLayerSolo,
+                    onEditLayerAudio: widget.onEditLayerAudio,
                     onToggleLayerFillReference:
                         widget.onToggleLayerFillReference,
                     onToggleLayerVisibility: widget.onToggleLayerVisibility,
@@ -455,8 +484,13 @@ class _TimelinePanelState extends State<TimelinePanel> {
                     audioOffsetDrag: widget.audioOffsetDrag,
                     onSetAudioClipFades: widget.onSetAudioClipFades,
                     onSetAudioClipGain: widget.onSetAudioClipGain,
+                    onSetAudioClipFadeCurve: widget.onSetAudioClipFadeCurve,
+                    onSetAudioClipEnvelope: widget.onSetAudioClipEnvelope,
                     onAddLayer: widget.onAddLayer,
                     onToggleLayerMuted: widget.onToggleLayerMuted,
+                    isLayerSoloed: widget.isLayerSoloed,
+                    onToggleLayerSolo: widget.onToggleLayerSolo,
+                    onEditLayerAudio: widget.onEditLayerAudio,
                     onToggleLayerFillReference:
                         widget.onToggleLayerFillReference,
                     onToggleLayerVisibility: widget.onToggleLayerVisibility,

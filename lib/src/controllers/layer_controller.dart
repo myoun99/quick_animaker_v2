@@ -180,6 +180,22 @@ class LayerController {
     );
   }
 
+  /// The SE row's track fader + pan (AUDIO-PRO R1) — mix state alongside
+  /// [toggleLayerMuted], written the same repo-direct way.
+  void setLayerAudio({
+    required LayerId layerId,
+    double? gain,
+    double? pan,
+  }) {
+    _repository.updateLayer(
+      layerId: layerId,
+      update: (layer) => layer.copyWith(
+        audioGain: gain == null ? null : (gain < 0.0 ? 0.0 : gain),
+        audioPan: pan?.clamp(-1.0, 1.0),
+      ),
+    );
+  }
+
   void setLayerOpacity({required LayerId layerId, required double opacity}) {
     // Static opacity mirrors like the eye; per-use fades belong to the
     // local FX opacity lane instead.
