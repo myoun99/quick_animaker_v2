@@ -10,11 +10,13 @@ import '../../models/frame.dart';
 import '../../models/frame_id.dart';
 import '../../models/layer.dart';
 import '../../models/layer_id.dart';
+import '../../models/timeline_coverage.dart';
 import '../../services/cut_frame_composite_plan.dart';
 import '../camera/camera_frame_render_service.dart';
 import '../canvas/layer_pose_paint.dart';
 import '../editor_session_manager.dart';
 import '../storyboard_cut_fade_policy.dart';
+import 'export_cel_group_plan.dart';
 import 'export_plan.dart';
 
 /// Renders export output at full quality straight from the brush store, so
@@ -196,6 +198,66 @@ class ExportFrameRenderer {
       picture.dispose();
       image.dispose();
     }
+  }
+
+  /// One LABEL-GROUP cel (EX5): the gated members' frames composited
+  /// bottom-up at their static opacities — a delivery cel is the stack
+  /// (기준+어태치), not the pieces. Null when NO member has artwork.
+  /// The renderer's background carries the channel choice (transparent
+  /// for RGBA, the picked backing for RGB); [ExportSizeMode.camera]
+  /// crops through the camera at the base cel's FIRST exposure (a cel
+  /// has no time of its own — where it first shows is the honest frame).
+  Future<ui.Image?> renderCelGroup(
+    ExportCelGroupTask task,
+    ExportSizeMode mode, {
+    CanvasSize? outputSize,
+  }) async {
+    final layers = <CutFrameCompositeLayer>[];
+    for (var i = 0; i < task.members.length; i += 1) {
+      final frame = task.memberFrames[i];
+      if (frame == null) {
+        continue;
+      }
+      final surface = _surfaceFor(task.cut, task.members[i], frame);
+      if (surface == null) {
+        continue;
+      }
+      layers.add(
+        CutFrameCompositeLayer(
+          surface: surface,
+          opacity: task.members[i].opacity,
+        ),
+      );
+    }
+    if (layers.isEmpty) {
+      return null;
+    }
+    CameraPose pose;
+    if (mode == ExportSizeMode.camera) {
+      var firstExposure = 0;
+      for (final block in drawingBlocks(task.baseLayer.timeline)) {
+        if (block.frameId == task.baseFrame.id) {
+          firstExposure = block.startIndex;
+          break;
+        }
+      }
+      pose = session.cameraPoseForCut(task.cut, firstExposure);
+    } else {
+      pose = CameraPose(
+        center: CanvasPoint(
+          x: task.cut.canvasSize.width / 2,
+          y: task.cut.canvasSize.height / 2,
+        ),
+      );
+    }
+    return renderService.renderThroughCamera(
+      layers: layers,
+      pose: pose,
+      cameraFrameSize: mode == ExportSizeMode.camera
+          ? session.cameraFrameSize
+          : task.cut.canvasSize,
+      outputSize: outputSize,
+    );
   }
 
   /// One cel exactly as drawn, no compositing; `null` when the frame has no
