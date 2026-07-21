@@ -22,12 +22,9 @@ void main() {
       expect(coverage(coverage: 1).coverage, 1);
     });
 
-    test('rejects negative x', () {
-      expect(() => coverage(x: -1), throwsArgumentError);
-    });
-
-    test('rejects negative y', () {
-      expect(() => coverage(y: -1), throwsArgumentError);
+    test('accepts negative x/y (pasteboard space)', () {
+      expect(coverage(x: -1).x, -1);
+      expect(coverage(y: -1).y, -1);
     });
 
     test('rejects negative coverage', () {

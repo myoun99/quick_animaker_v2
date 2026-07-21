@@ -14,6 +14,7 @@ import 'package:quick_animaker_v2/src/models/brush_tip_shape.dart';
 import 'package:quick_animaker_v2/src/models/canvas_point.dart';
 import 'package:quick_animaker_v2/src/models/canvas_size.dart';
 import 'package:quick_animaker_v2/src/models/cut.dart';
+import 'package:quick_animaker_v2/src/models/pasteboard_bounds.dart';
 import 'package:quick_animaker_v2/src/models/cut_id.dart';
 import 'package:quick_animaker_v2/src/models/frame.dart';
 import 'package:quick_animaker_v2/src/models/frame_id.dart';
@@ -49,22 +50,35 @@ void main() {
     QaNativeEngine.debugForceDartFallback = false;
   });
 
+  // Flattens over the PASTEBOARD rect (strokes clip there now, so tiles
+  // can sit at negative coords) — the byte compare covers off-canvas
+  // painting too.
   Uint8List snapshot(BitmapSurface surface, CanvasSize canvasSize) {
-    final bytes = Uint8List(canvasSize.width * canvasSize.height * 4);
+    final left = canvasSize.pasteboardLeft;
+    final top = canvasSize.pasteboardTop;
+    final width = canvasSize.pasteboardRightExclusive - left;
+    final height = canvasSize.pasteboardBottomExclusive - top;
+    final bytes = Uint8List(width * height * 4);
     for (final tile in surface.tiles.values) {
       final pixels = tile.pixels;
       for (var y = 0; y < tile.size; y += 1) {
         final globalY = tile.coord.y * tile.size + y;
-        if (globalY >= canvasSize.height) {
+        if (globalY >= canvasSize.pasteboardBottomExclusive) {
           break;
+        }
+        if (globalY < top) {
+          continue;
         }
         for (var x = 0; x < tile.size; x += 1) {
           final globalX = tile.coord.x * tile.size + x;
-          if (globalX >= canvasSize.width) {
+          if (globalX >= canvasSize.pasteboardRightExclusive) {
             break;
           }
+          if (globalX < left) {
+            continue;
+          }
           final source = (y * tile.size + x) * 4;
-          final target = (globalY * canvasSize.width + globalX) * 4;
+          final target = ((globalY - top) * width + (globalX - left)) * 4;
           bytes.setRange(target, target + 4, pixels, source);
         }
       }

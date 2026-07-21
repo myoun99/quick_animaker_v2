@@ -408,6 +408,18 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
                 fxBypassedLayerIds: session.fxBypassedLayerIds,
                 options: widget.fillOptions?.value ?? const FloodFillOptions(),
                 paperColor: session.projectBackground.argb,
+                // Extended fills refuse OPEN regions (the flood reached
+                // the pasteboard apron wall) — say why nothing filled.
+                onOpenRegion: () => ScaffoldMessenger.maybeOf(
+                  context,
+                )?.showSnackBar(
+                  const SnackBar(
+                    content: Text(
+                      'Region is not closed — nothing filled '
+                      '(Fill Beyond Canvas needs an enclosed area).',
+                    ),
+                  ),
+                ),
               ),
               // Layers below/above the active one composite around the
               // interactive view from the layer image cache — this is what makes

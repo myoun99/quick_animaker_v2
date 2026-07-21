@@ -31,8 +31,11 @@ DirtyRegion? dirtyRegionForBrushDab(BrushDab dab) {
     halfExtentX = radius * cosAbs + minorRadius * sinAbs;
     halfExtentY = radius * sinAbs + minorRadius * cosAbs;
   }
-  final left = math.max(0, (dab.center.x - halfExtentX).floor());
-  final top = math.max(0, (dab.center.y - halfExtentY).floor());
+  // Raw dab bounds — NOT clamped to the canvas origin: pasteboard
+  // painting reaches negative space. Paint paths clamp the region to the
+  // surface's pasteboard rect at their clip step.
+  final left = (dab.center.x - halfExtentX).floor();
+  final top = (dab.center.y - halfExtentY).floor();
   final rightExclusive = (dab.center.x + halfExtentX).ceil();
   final bottomExclusive = (dab.center.y + halfExtentY).ceil();
 

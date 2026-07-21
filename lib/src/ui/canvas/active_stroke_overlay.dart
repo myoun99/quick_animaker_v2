@@ -7,7 +7,9 @@ import 'package:flutter/foundation.dart';
 
 import '../../models/bitmap_tile.dart';
 import '../../models/brush_dab.dart';
+import '../../models/canvas_size.dart';
 import '../../models/dirty_region.dart';
+import '../../models/pasteboard_bounds.dart';
 import '../../models/tile_coord.dart';
 import '../../native/qa_native_engine.dart' show QaStampScratch;
 import '../../services/brush_live_stroke_rasterizer.dart'
@@ -146,8 +148,20 @@ class ActiveStrokeOverlayModel extends ChangeNotifier {
 
     final left = coord.x * tileSize;
     final top = coord.y * tileSize;
-    final width = math.min(tileSize, source.canvasWidth - left);
-    final height = math.min(tileSize, source.canvasHeight - top);
+    // Snapshot clamps at the PASTEBOARD edge, not the canvas — live
+    // strokes paint (and must display) past the canvas rect.
+    final sourceCanvasSize = CanvasSize(
+      width: source.canvasWidth,
+      height: source.canvasHeight,
+    );
+    final width = math.min(
+      tileSize,
+      sourceCanvasSize.pasteboardRightExclusive - left,
+    );
+    final height = math.min(
+      tileSize,
+      sourceCanvasSize.pasteboardBottomExclusive - top,
+    );
 
     // R25 fast path: a FULL interior tile of a native-backed live
     // rasterizer shares this model's 128px grid, so snapshot +

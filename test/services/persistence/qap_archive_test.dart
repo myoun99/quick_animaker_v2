@@ -92,6 +92,38 @@ void main() {
     expect(remapped.mediaAssets[1].path, 'E:/elsewhere/hiss.wav');
   });
 
+  test('pasteboard tiles (negative coords) round-trip through the cel '
+      'blob (v2 signed coords)', () {
+    final pixels = Uint8List(8 * 8 * 4);
+    for (var i = 0; i < pixels.length; i += 1) {
+      pixels[i] = (i * 11) & 0xFF;
+    }
+    final surface = BitmapSurface(
+      canvasSize: CanvasSize(width: 16, height: 16),
+      tileSize: 8,
+      tiles: {
+        TileCoord(x: -1, y: -2): BitmapTile(
+          coord: TileCoord(x: -1, y: -2),
+          size: 8,
+          pixels: pixels,
+        ),
+        TileCoord(x: 3, y: 0): BitmapTile.blank(
+          coord: TileCoord(x: 3, y: 0),
+          size: 8,
+        ),
+      },
+    );
+
+    final blob = QapCelBlob.encode(QapCelEntry.fromSurface(key, surface));
+    final reopened = QapCelBlob(blob.bytes).decode().toSurface();
+    expect(
+      reopened.tiles[TileCoord(x: -1, y: -2)]!.pixels,
+      pixels,
+      reason: 'off-canvas artwork reopens byte for byte',
+    );
+    expect(reopened.tiles.containsKey(TileCoord(x: 3, y: 0)), isTrue);
+  });
+
   test('legacy v1 entries (drawings/tips) are IGNORED without error — the '
       'v1 reader is deleted (R20-E3, no production v1 file exists)', () {
     final archive = Archive()

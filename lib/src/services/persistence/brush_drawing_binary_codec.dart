@@ -69,7 +69,9 @@ class QapCelEntry {
   }
 }
 
-const int qapCelBinaryVersion = 1;
+/// v2 (pasteboard): tile coords are SIGNED i32 — pasteboard tiles sit at
+/// negative coords. v1 files (u32 coords) still decode.
+const int qapCelBinaryVersion = 2;
 
 /// Encodes a baked cel: key, canvas geometry, then each tile's coord and
 /// RAW straight-alpha RGBA bytes (the ZIP container's deflate compresses
@@ -88,8 +90,8 @@ Uint8List encodeCelEntry(QapCelEntry entry) {
     ..u32(entry.tiles.length);
   for (final tile in entry.tiles) {
     writer
-      ..u32(tile.x)
-      ..u32(tile.y)
+      ..i32(tile.x)
+      ..i32(tile.y)
       ..bytes(tile.pixels);
   }
   return writer.takeBytes();
@@ -120,8 +122,8 @@ QapCelEntry decodeCelEntry(Uint8List bytes) {
     tiles: [
       for (var i = 0; i < tileCount; i += 1)
         (
-          x: reader.u32(),
-          y: reader.u32(),
+          x: version >= 2 ? reader.i32() : reader.u32(),
+          y: version >= 2 ? reader.i32() : reader.u32(),
           pixels: reader.bytes(tileByteLength),
         ),
     ],
@@ -229,6 +231,11 @@ class _ByteWriter {
     _builder.add(_scratch.buffer.asUint8List(0, 4));
   }
 
+  void i32(int value) {
+    _scratch.setInt32(0, value, Endian.little);
+    _builder.add(_scratch.buffer.asUint8List(0, 4));
+  }
+
   void f32(double value) {
     _scratch.setFloat32(0, value, Endian.little);
     _builder.add(_scratch.buffer.asUint8List(0, 4));
@@ -266,6 +273,12 @@ class _ByteReader {
 
   int u32() {
     final value = _data.getUint32(_offset, Endian.little);
+    _offset += 4;
+    return value;
+  }
+
+  int i32() {
+    final value = _data.getInt32(_offset, Endian.little);
     _offset += 4;
     return value;
   }

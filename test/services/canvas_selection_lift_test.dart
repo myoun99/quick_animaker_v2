@@ -1,6 +1,7 @@
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:quick_animaker_v2/src/core/floor_math.dart';
 import 'package:quick_animaker_v2/src/models/bitmap_surface.dart';
 import 'package:quick_animaker_v2/src/models/brush_dab.dart';
 import 'package:quick_animaker_v2/src/models/brush_dab_sequence.dart';
@@ -48,7 +49,11 @@ void main() {
 
   List<int> pixelAt(BitmapSurface surface, int x, int y) {
     final tileSize = surface.tileSize;
-    final tile = surface.tiles[TileCoord(x: x ~/ tileSize, y: y ~/ tileSize)];
+    // floorDiv so pasteboard (negative) pixels resolve to their tile.
+    final tile = surface.tiles[TileCoord(
+      x: floorDiv(x, tileSize),
+      y: floorDiv(y, tileSize),
+    )];
     if (tile == null) {
       return const [0, 0, 0, 0];
     }
@@ -119,6 +124,60 @@ void main() {
     // Destination: the exact source bytes landed +8 to the right.
     expect(pixelAt(after, 10, 2), pixelAt(surface, 2, 2));
     expect(pixelAt(after, 11, 4), pixelAt(surface, 3, 4));
+  });
+
+  test('a selection moved OFF the canvas keeps its pixels on the '
+      'pasteboard, and moving it back restores them byte-exactly', () {
+    final surface = paintedSurface();
+    final before = snapshot(surface);
+
+    // Lift the whole block and drop it 10px past the LEFT canvas edge:
+    // block columns [2, 5] land at [-8, -5] — pure pasteboard space.
+    final lift = buildSelectionLiftDabs(
+      shape: CanvasSelectionShape.rect(left: 1, top: 1, right: 7, bottom: 7),
+      surface: surface,
+      liftId: 'off-canvas',
+    )!;
+    final movedOff = materializeBrushDabSequenceOnBitmapSurface(
+      surface: surface,
+      sequence: BrushDabSequence([
+        lift.eraseDab,
+        lift.stampDab.copyWith(
+          center: CanvasPoint(
+            x: lift.stampDab.center.x - 10,
+            y: lift.stampDab.center.y,
+          ),
+        ),
+      ]),
+    ).surface;
+
+    // The origin is cut, the pixels live at negative coords.
+    expect(pixelAt(movedOff, 2, 2), const [0, 0, 0, 0]);
+    expect(pixelAt(movedOff, -8, 2), pixelAt(surface, 2, 2));
+    expect(pixelAt(movedOff, -5, 5), pixelAt(surface, 5, 5));
+
+    // Select the off-canvas block and move it back: byte-identical.
+    final liftBack = buildSelectionLiftDabs(
+      shape: CanvasSelectionShape.rect(left: -9, top: 1, right: -3, bottom: 7),
+      surface: movedOff,
+      liftId: 'back',
+    )!;
+    final restored = materializeBrushDabSequenceOnBitmapSurface(
+      surface: movedOff,
+      sequence: BrushDabSequence([
+        liftBack.eraseDab,
+        liftBack.stampDab.copyWith(
+          center: CanvasPoint(
+            x: liftBack.stampDab.center.x + 10,
+            y: liftBack.stampDab.center.y,
+          ),
+        ),
+      ]),
+    ).surface;
+
+    expect(snapshot(restored), before);
+    // No pasteboard residue left behind.
+    expect(pixelAt(restored, -8, 2), const [0, 0, 0, 0]);
   });
 
   test('a selection over empty canvas builds no lift', () {

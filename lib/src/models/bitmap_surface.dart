@@ -1,6 +1,7 @@
 import '../core/collection_equality.dart';
 import 'bitmap_tile.dart';
 import 'canvas_size.dart';
+import 'pasteboard_bounds.dart';
 import 'tile_coord.dart';
 
 class BitmapSurface {
@@ -22,17 +23,23 @@ class BitmapSurface {
 
   Map<TileCoord, BitmapTile> get tiles => Map.unmodifiable(_tiles);
 
+  /// CANVAS-grid tile columns (tiles that cover the canvas rect from the
+  /// origin). Pasteboard tiles live outside this grid — see
+  /// [containsTileCoord] for the storable range.
   int get tileColumnCount => _ceilDiv(canvasSize.width, tileSize);
 
   int get tileRowCount => _ceilDiv(canvasSize.height, tileSize);
 
   int get tileCount => tileColumnCount * tileRowCount;
 
+  /// Whether [coord] is storable: any tile intersecting the PASTEBOARD
+  /// (canvas + one canvas size in every direction), negative coords
+  /// included.
   bool containsTileCoord(TileCoord coord) {
-    return coord.x >= 0 &&
-        coord.y >= 0 &&
-        coord.x < tileColumnCount &&
-        coord.y < tileRowCount;
+    return coord.x >= canvasSize.pasteboardTileXMin(tileSize) &&
+        coord.y >= canvasSize.pasteboardTileYMin(tileSize) &&
+        coord.x < canvasSize.pasteboardTileXEndExclusive(tileSize) &&
+        coord.y < canvasSize.pasteboardTileYEndExclusive(tileSize);
   }
 
   BitmapTile? tileAt(TileCoord coord) => _tiles[coord];

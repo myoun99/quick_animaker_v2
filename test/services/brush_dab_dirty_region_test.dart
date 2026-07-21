@@ -57,10 +57,10 @@ void main() {
       );
     });
 
-    test('clamps left/top to zero', () {
+    test('keeps raw bounds across the origin (pasteboard space)', () {
       expect(
         dirtyRegionForBrushDab(dab(x: 1, y: 1, size: 4)),
-        DirtyRegion(left: 0, top: 0, rightExclusive: 3, bottomExclusive: 3),
+        DirtyRegion(left: -1, top: -1, rightExclusive: 3, bottomExclusive: 3),
       );
     });
 

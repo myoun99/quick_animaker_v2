@@ -1,7 +1,9 @@
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:quick_animaker_v2/src/core/floor_math.dart';
 import 'package:quick_animaker_v2/src/models/bitmap_surface.dart';
+import 'package:quick_animaker_v2/src/models/pasteboard_bounds.dart';
 import 'package:quick_animaker_v2/src/models/bitmap_tile.dart';
 import 'package:quick_animaker_v2/src/models/brush_dab.dart';
 import 'package:quick_animaker_v2/src/models/brush_dab_sequence.dart';
@@ -28,17 +30,17 @@ BrushSurfaceMaterialization referenceMaterialize({
   required BrushDabSequence sequence,
 }) {
   final transparent = RgbaColor(r: 0, g: 0, b: 0, a: 0);
+  // The oracle clips at the PASTEBOARD, exactly like the fast path —
+  // painting past the canvas edge is in-bounds now.
+  final canvasSize = surface.canvasSize;
 
   RgbaColor destinationAt(int x, int y) {
-    if (x < 0 ||
-        y < 0 ||
-        x >= surface.canvasSize.width ||
-        y >= surface.canvasSize.height) {
+    if (!canvasSize.containsPasteboardPixel(x: x, y: y)) {
       return transparent;
     }
 
-    final tileX = x ~/ surface.tileSize;
-    final tileY = y ~/ surface.tileSize;
+    final tileX = floorDiv(x, surface.tileSize);
+    final tileY = floorDiv(y, surface.tileSize);
     final tile = surface.tileAt(TileCoord(x: tileX, y: tileY));
     if (tile == null) return transparent;
 
@@ -56,16 +58,13 @@ BrushSurfaceMaterialization referenceMaterialize({
 
   final operationsByCoord = <TileCoord, List<BrushPixelBlendOperation>>{};
   for (final operation in operations) {
-    if (operation.x < 0 ||
-        operation.y < 0 ||
-        operation.x >= surface.canvasSize.width ||
-        operation.y >= surface.canvasSize.height) {
+    if (!canvasSize.containsPasteboardPixel(x: operation.x, y: operation.y)) {
       continue;
     }
 
     final coord = TileCoord(
-      x: operation.x ~/ surface.tileSize,
-      y: operation.y ~/ surface.tileSize,
+      x: floorDiv(operation.x, surface.tileSize),
+      y: floorDiv(operation.y, surface.tileSize),
     );
     operationsByCoord.putIfAbsent(coord, () => []).add(operation);
   }
@@ -195,7 +194,7 @@ void main() {
       );
     });
 
-    test('dabs overhanging canvas corners are clipped identically', () {
+    test('dabs overhanging canvas corners paint the pasteboard identically', () {
       expectParity(
         surface: blankSurface(),
         sequence: strokeOf([
@@ -203,7 +202,20 @@ void main() {
           dab(x: 199.5, y: 159.5, size: 20, sequence: 1),
           dab(x: -3, y: 80, size: 16, sequence: 2),
         ]),
-        reason: 'edge clipping',
+        reason: 'pasteboard edge painting',
+      );
+    });
+
+    test('dabs overhanging the pasteboard edge are clipped identically', () {
+      // blankSurface is 200×160 → pasteboard x ∈ [-200, 400).
+      expectParity(
+        surface: blankSurface(),
+        sequence: strokeOf([
+          dab(x: -198, y: 40, size: 20, sequence: 0),
+          dab(x: 398, y: 120, size: 20, sequence: 1),
+          dab(x: 40, y: -158, size: 20, sequence: 2),
+        ]),
+        reason: 'pasteboard edge clipping',
       );
     });
 

@@ -1,10 +1,12 @@
 import 'dart:math' as math;
 import 'dart:typed_data';
 
+import '../core/floor_math.dart';
 import '../models/brush_dab.dart';
 import '../models/brush_tip_shape.dart';
 import '../models/canvas_size.dart';
 import '../models/dirty_region.dart';
+import '../models/pasteboard_bounds.dart';
 import '../native/qa_native_engine.dart';
 import 'brush_dab_dirty_region.dart';
 import 'brush_tip_mask_sampling.dart';
@@ -65,7 +67,15 @@ class BrushLiveStrokeRasterizer implements ActiveStrokePixelSource {
       <int, QaNativeTileBuffer>{};
   final QaNativeEngine? _native = QaNativeEngine.instance;
 
-  late final int _tilesPerRow = (canvasSize.width + tileSize - 1) ~/ tileSize;
+  // The linear key grid spans the PASTEBOARD (strokes reach one canvas
+  // size past every edge), offset so keys stay non-negative.
+  late final int _tileXMin = canvasSize.pasteboardTileXMin(tileSize);
+  late final int _tileYMin = canvasSize.pasteboardTileYMin(tileSize);
+  late final int _tilesPerRow =
+      canvasSize.pasteboardTileXEndExclusive(tileSize) - _tileXMin;
+
+  int _tileKey(int tileX, int tileY) =>
+      (tileY - _tileYMin) * _tilesPerRow + (tileX - _tileXMin);
 
   DirtyRegion? _strokeBounds;
   int _blendedDabCount = 0;
@@ -107,7 +117,7 @@ class BrushLiveStrokeRasterizer implements ActiveStrokePixelSource {
     if (native == null) {
       return null;
     }
-    final buffer = _nativeBuffers[tileY * _tilesPerRow + tileX];
+    final buffer = _nativeBuffers[_tileKey(tileX, tileY)];
     if (buffer == null) {
       return null;
     }
@@ -118,14 +128,14 @@ class BrushLiveStrokeRasterizer implements ActiveStrokePixelSource {
   }
 
   Uint8List _tileBuffer(int tileX, int tileY) {
-    return _tiles.putIfAbsent(tileY * _tilesPerRow + tileX, () {
+    return _tiles.putIfAbsent(_tileKey(tileX, tileY), () {
       final native = _native;
       if (native != null) {
         final buffer = native.acquireTileBuffer(
           tileSize * tileSize * 4,
           zeroed: true,
         );
-        _nativeBuffers[tileY * _tilesPerRow + tileX] = buffer;
+        _nativeBuffers[_tileKey(tileX, tileY)] = buffer;
         return buffer.view;
       }
       return Uint8List(tileSize * tileSize * 4);
@@ -137,13 +147,13 @@ class BrushLiveStrokeRasterizer implements ActiveStrokePixelSource {
     var remaining = count;
     var sourceX = x;
     var writeOffset = targetOffset;
-    final tileY = y ~/ tileSize;
+    final tileY = floorDiv(y, tileSize);
     final localRowOffset = (y - tileY * tileSize) * tileSize;
     while (remaining > 0) {
-      final tileX = sourceX ~/ tileSize;
+      final tileX = floorDiv(sourceX, tileSize);
       final tileLeft = tileX * tileSize;
       final spanCount = math.min(remaining, tileLeft + tileSize - sourceX);
-      final buffer = _tiles[tileY * _tilesPerRow + tileX];
+      final buffer = _tiles[_tileKey(tileX, tileY)];
       if (buffer == null) {
         target.fillRange(writeOffset, writeOffset + spanCount * 4, 0);
       } else {
@@ -253,12 +263,18 @@ class BrushLiveStrokeRasterizer implements ActiveStrokePixelSource {
     final centerY = dab.center.y;
     final dabOpacity = dab.opacity;
     final dabFlow = dab.flow;
-    final width = canvasSize.width;
-
-    final top = region.top;
-    final bottomExclusive = math.min(region.bottomExclusive, canvasSize.height);
-    final left = region.left;
-    final rightExclusive = math.min(region.rightExclusive, width);
+    // Pasteboard clip — must mirror the commit rasterizer exactly
+    // (live == commit byte parity).
+    final top = math.max(region.top, canvasSize.pasteboardTop);
+    final bottomExclusive = math.min(
+      region.bottomExclusive,
+      canvasSize.pasteboardBottomExclusive,
+    );
+    final left = math.max(region.left, canvasSize.pasteboardLeft);
+    final rightExclusive = math.min(
+      region.rightExclusive,
+      canvasSize.pasteboardRightExclusive,
+    );
     if (rightExclusive <= left || bottomExclusive <= top) {
       return null;
     }
@@ -339,8 +355,8 @@ class BrushLiveStrokeRasterizer implements ActiveStrokePixelSource {
             offset: 0.0,
           );
 
-    final tileXStart = left ~/ tileSize;
-    final tileXEnd = (rightExclusive - 1) ~/ tileSize;
+    final tileXStart = floorDiv(left, tileSize);
+    final tileXEnd = floorDiv(rightExclusive - 1, tileSize);
 
     // R21: the C kernel runs the live blend exactly like the commit —
     // same spec, same lattices, srcOver only (the live overlay never
@@ -405,8 +421,8 @@ class BrushLiveStrokeRasterizer implements ActiveStrokePixelSource {
         texVFraction: textureVLattice?.fraction,
         texVOneMinus: textureVLattice?.oneMinusFraction,
       );
-      final tileYStart = top ~/ tileSize;
-      final tileYEnd = (bottomExclusive - 1) ~/ tileSize;
+      final tileYStart = floorDiv(top, tileSize);
+      final tileYEnd = floorDiv(bottomExclusive - 1, tileSize);
       var spanCount = 0;
       native.ensureTileSpanBatch(
         (tileYEnd - tileYStart + 1) * (tileXEnd - tileXStart + 1),
@@ -420,7 +436,7 @@ class BrushLiveStrokeRasterizer implements ActiveStrokePixelSource {
         );
         for (var tileX = tileXStart; tileX <= tileXEnd; tileX += 1) {
           _tileBuffer(tileX, tileY);
-          final buffer = _nativeBuffers[tileY * _tilesPerRow + tileX]!;
+          final buffer = _nativeBuffers[_tileKey(tileX, tileY)]!;
           final tileLeft = tileX * tileSize;
           native.setTileSpan(
             spanCount,
@@ -452,7 +468,7 @@ class BrushLiveStrokeRasterizer implements ActiveStrokePixelSource {
         // Same effect as the scalar |tipV| > radius per-pixel cull.
         continue;
       }
-      final tileY = y ~/ tileSize;
+      final tileY = floorDiv(y, tileSize);
       final localRowOffset = (y - tileY * tileSize) * tileSize;
 
       for (var tileX = tileXStart; tileX <= tileXEnd; tileX += 1) {

@@ -81,12 +81,21 @@ Uint8List _assemblePremultipliedRgba(
   final buffer = Uint8List(width * height * 4);
   for (final tile in tiles) {
     final pixels = tile.pixels;
+    // Clip BOTH sides to the canvas raster: pasteboard tiles sit at
+    // negative origins (and past the right/bottom edge) — the canvas
+    // image simply crops them.
+    final startX = math.max(0, -tile.originX);
+    final startY = math.max(0, -tile.originY);
     final copyWidth = math.min(tile.size, width - tile.originX);
     final copyHeight = math.min(tile.size, height - tile.originY);
-    for (var localY = 0; localY < copyHeight; localY += 1) {
-      var source = localY * tile.size * 4;
-      var target = ((tile.originY + localY) * width + tile.originX) * 4;
-      for (var localX = 0; localX < copyWidth; localX += 1) {
+    if (copyWidth <= startX || copyHeight <= startY) {
+      continue;
+    }
+    for (var localY = startY; localY < copyHeight; localY += 1) {
+      var source = (localY * tile.size + startX) * 4;
+      var target =
+          ((tile.originY + localY) * width + tile.originX + startX) * 4;
+      for (var localX = startX; localX < copyWidth; localX += 1) {
         final alpha = pixels[source + 3];
         if (alpha == 255) {
           buffer[target] = pixels[source];

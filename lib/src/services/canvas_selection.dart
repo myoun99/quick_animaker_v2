@@ -1,7 +1,9 @@
 import 'dart:math' as math;
 import 'dart:typed_data';
 
+import '../core/floor_math.dart';
 import '../models/bitmap_surface.dart';
+import '../models/pasteboard_bounds.dart';
 import '../models/brush_dab.dart';
 import '../models/brush_stamp_image.dart';
 import '../models/brush_tip_shape.dart';
@@ -863,8 +865,9 @@ SelectionLiftDabs? buildSelectionLiftDabs({
   required String liftId,
   SelectionMaskOptions options = SelectionMaskOptions.none,
 }) {
-  final canvasWidth = surface.canvasSize.width;
-  final canvasHeight = surface.canvasSize.height;
+  // Pasteboard clip, not canvas — off-canvas artwork is selectable and
+  // liftable (the whole point of moving things on and off the stage).
+  final canvasSize = surface.canvasSize;
   var minX = double.infinity, minY = double.infinity;
   var maxX = double.negativeInfinity, maxY = double.negativeInfinity;
   for (final point in shape.points) {
@@ -875,10 +878,16 @@ SelectionLiftDabs? buildSelectionLiftDabs({
   }
   // R26: grow/feather/AA may write beyond the polygon's bbox.
   final pad = options.bboxPad;
-  final left = math.max(0, minX.floor() - pad);
-  final top = math.max(0, minY.floor() - pad);
-  final rightExclusive = math.min(canvasWidth, maxX.ceil() + 1 + pad);
-  final bottomExclusive = math.min(canvasHeight, maxY.ceil() + 1 + pad);
+  final left = math.max(canvasSize.pasteboardLeft, minX.floor() - pad);
+  final top = math.max(canvasSize.pasteboardTop, minY.floor() - pad);
+  final rightExclusive = math.min(
+    canvasSize.pasteboardRightExclusive,
+    maxX.ceil() + 1 + pad,
+  );
+  final bottomExclusive = math.min(
+    canvasSize.pasteboardBottomExclusive,
+    maxY.ceil() + 1 + pad,
+  );
   if (rightExclusive <= left || bottomExclusive <= top) {
     return null;
   }
@@ -943,7 +952,13 @@ SelectionLiftDabs? buildSelectionLiftDabs({
         continue;
       }
       final x = left + col;
-      final coord = TileCoord(x: x ~/ tileSize, y: y ~/ tileSize);
+      // floorDiv, not ~/: pasteboard pixels sit at negative coords (Dart's
+      // % already floor-mods for a positive divisor, so the local offset
+      // below is correct as-is).
+      final coord = TileCoord(
+        x: floorDiv(x, tileSize),
+        y: floorDiv(y, tileSize),
+      );
       final pixels = tileCache.putIfAbsent(
         coord,
         () => surface.tiles[coord]?.pixels,

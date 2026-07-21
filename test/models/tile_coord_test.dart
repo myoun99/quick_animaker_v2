@@ -9,14 +9,12 @@ void main() {
       expect(coord.y, 1);
     });
 
-    test(
-      'negative x throws',
-      () => expect(() => TileCoord(x: -1, y: 0), throwsArgumentError),
-    );
-    test(
-      'negative y throws',
-      () => expect(() => TileCoord(x: 0, y: -1), throwsArgumentError),
-    );
+    test('negative coords are allowed (pasteboard tiles)', () {
+      final coord = TileCoord(x: -3, y: -1);
+      expect(coord.x, -3);
+      expect(coord.y, -1);
+      expect(TileCoord.fromJson(coord.toJson()), coord);
+    });
 
     test('copyWith updates x', () {
       final coord = TileCoord(x: 1, y: 2);
@@ -64,20 +62,16 @@ void main() {
       );
     });
 
-    test(
-      'fromPixel rejects negative pixelX',
-      () => expect(
-        () => TileCoord.fromPixel(pixelX: -1, pixelY: 0, tileSize: 256),
-        throwsArgumentError,
-      ),
-    );
-    test(
-      'fromPixel rejects negative pixelY',
-      () => expect(
-        () => TileCoord.fromPixel(pixelX: 0, pixelY: -1, tileSize: 256),
-        throwsArgumentError,
-      ),
-    );
+    test('fromPixel floor-divides negative pixels (pasteboard space)', () {
+      expect(
+        TileCoord.fromPixel(pixelX: -1, pixelY: -1, tileSize: 256),
+        TileCoord(x: -1, y: -1),
+      );
+      expect(
+        TileCoord.fromPixel(pixelX: -256, pixelY: -257, tileSize: 256),
+        TileCoord(x: -1, y: -2),
+      );
+    });
     test(
       'fromPixel rejects zero tileSize',
       () => expect(

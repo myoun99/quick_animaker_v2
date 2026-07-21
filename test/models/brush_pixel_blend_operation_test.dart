@@ -19,20 +19,15 @@ void main() {
       expect(value.after, after);
     });
 
-    test('rejects negative x', () {
-      expect(
-        () =>
-            BrushPixelBlendOperation(x: -1, y: 0, before: before, after: after),
-        throwsArgumentError,
+    test('accepts negative x/y (pasteboard space)', () {
+      final value = BrushPixelBlendOperation(
+        x: -1,
+        y: -2,
+        before: before,
+        after: after,
       );
-    });
-
-    test('rejects negative y', () {
-      expect(
-        () =>
-            BrushPixelBlendOperation(x: 0, y: -1, before: before, after: after),
-        throwsArgumentError,
-      );
+      expect(value.x, -1);
+      expect(value.y, -2);
     });
 
     test('rejects before equal to after', () {
