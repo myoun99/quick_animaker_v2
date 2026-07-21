@@ -186,32 +186,47 @@ class InputInspectorHost extends StatelessWidget {
 
   final Widget child;
 
+  static void _recordIfVisible(PointerEvent event) {
+    if (InputInspector.visible.value) {
+      InputInspector.record(event);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
-    return ValueListenableBuilder<bool>(
-      valueListenable: InputInspector.visible,
-      builder: (context, visible, _) {
-        if (!visible) {
-          return child;
-        }
-        return Stack(
-          children: [
-            Listener(
-              behavior: HitTestBehavior.translucent,
-              onPointerDown: InputInspector.record,
-              onPointerMove: InputInspector.record,
-              onPointerUp: InputInspector.record,
-              onPointerCancel: InputInspector.record,
-              onPointerHover: InputInspector.record,
-              onPointerSignal: InputInspector.record,
-              onPointerPanZoomStart: InputInspector.record,
-              onPointerPanZoomUpdate: InputInspector.record,
-              child: child,
-            ),
-            const Positioned(right: 12, bottom: 12, child: _InspectorCard()),
-          ],
-        );
-      },
+    // R26 #33: the tree SHAPE is constant — the listener and the card
+    // slot are always mounted, and visibility only decides whether the
+    // listener's events record and whether the card paints. The old
+    // build swapped `child` between wrapped and bare, remounting the
+    // ENTIRE editor under it on every toggle — that remount's relayout
+    // was the visible "layout jumps, then comes back". The gate lives in
+    // the HOST's handlers (not in [InputInspector.record]) so the pen
+    // sidecar services keep their direct-record contract.
+    return Stack(
+      children: [
+        Listener(
+          behavior: HitTestBehavior.translucent,
+          onPointerDown: _recordIfVisible,
+          onPointerMove: _recordIfVisible,
+          onPointerUp: _recordIfVisible,
+          onPointerCancel: _recordIfVisible,
+          onPointerHover: _recordIfVisible,
+          onPointerSignal: _recordIfVisible,
+          onPointerPanZoomStart: _recordIfVisible,
+          onPointerPanZoomUpdate: _recordIfVisible,
+          child: child,
+        ),
+        Positioned(
+          right: 12,
+          bottom: 12,
+          child: ValueListenableBuilder<bool>(
+            valueListenable: InputInspector.visible,
+            builder: (context, visible, _) => visible
+                ? const _InspectorCard()
+                : const SizedBox.shrink(),
+          ),
+        ),
+      ],
     );
   }
 }
