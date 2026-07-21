@@ -15,8 +15,6 @@ import 'package:quick_animaker_v2/src/models/timeline_coverage.dart'
 import 'package:quick_animaker_v2/src/models/timeline_exposure.dart';
 import 'package:quick_animaker_v2/src/models/track.dart';
 import 'package:quick_animaker_v2/src/models/track_id.dart';
-import 'package:quick_animaker_v2/src/services/audio/audio_peaks_extractor.dart';
-import 'package:quick_animaker_v2/src/ui/audio/audio_peaks_store.dart';
 import 'package:quick_animaker_v2/src/ui/editor_session_manager.dart';
 import 'package:quick_animaker_v2/src/ui/media/media_asset_drag_data.dart';
 import 'package:quick_animaker_v2/src/ui/timeline/timeline_orientation.dart';
@@ -295,13 +293,6 @@ void main() {
     const foot = r'C:\snd\foot.wav';
     const dragSourceKey = ValueKey<String>('test-media-drag-source');
     final session = EditorSessionManager(
-      // The linked clip makes the SE row ask for waveform peaks on rebuild;
-      // the stub extractor keeps the real ffmpeg out of fake async (its
-      // pending process would outlive the test).
-      audioPeaksStore: AudioPeaksStore(
-        extractor: const _FailingExtractor(),
-        log: (_) {},
-      ),
       initialProject: Project(
         id: const ProjectId('drop-project'),
         name: 'Drop Project',
@@ -415,12 +406,4 @@ void main() {
     expect(seLayer().audioClips.single.offsetFrames, 6);
     await tester.pumpAndSettle();
   });
-}
-
-class _FailingExtractor extends AudioPeaksExtractor {
-  const _FailingExtractor();
-
-  @override
-  Future<AudioPeaksExtraction> extract(String filePath) async =>
-      const AudioPeaksExtraction.failure('test stub');
 }

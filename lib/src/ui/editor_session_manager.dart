@@ -104,7 +104,6 @@ import '../services/commands/track_se_layer_commands.dart';
 import '../services/history_manager.dart';
 import '../services/project_repository.dart';
 import 'audio/audio_conform_store.dart';
-import 'audio/audio_peaks_store.dart';
 import 'brush/brush_canvas_panel.dart';
 import 'brush/brush_editor_selection.dart';
 import 'timeline/instruction_span_editing.dart';
@@ -141,7 +140,6 @@ typedef SeRowMovePair = ({
 class EditorSessionManager extends ChangeNotifier {
   EditorSessionManager({
     required Project initialProject,
-    AudioPeaksStore? audioPeaksStore,
     AudioConformStore? audioConformStore,
     AppLanguageSettingsStore? languageSettingsStore,
     AppAccentSettingsStore? accentSettingsStore,
@@ -149,7 +147,6 @@ class EditorSessionManager extends ChangeNotifier {
     AppSaveSettingsStore? saveSettingsStore,
     AudioSyncSettingsStore? audioSyncSettingsStore,
   }) : _editingSession = EditingSessionState.forProject(initialProject),
-       _injectedAudioPeaksStore = audioPeaksStore,
        _injectedAudioConformStore = audioConformStore,
        _audioSyncSettingsStore = audioSyncSettingsStore,
        _languageSettingsStore = languageSettingsStore,
@@ -802,7 +799,6 @@ class EditorSessionManager extends ChangeNotifier {
     cutFrameCompositeCache.dispose();
     layerFrameImageCache.dispose();
     audioConformStore.dispose();
-    audioPeaksStore.dispose();
     languageSettings.dispose();
     audioSyncSettings.dispose();
     editingFrameCursor.dispose();
@@ -821,20 +817,8 @@ class EditorSessionManager extends ChangeNotifier {
     super.dispose();
   }
 
-  /// Test seam: widget tests inject a store with a stub extractor so SE-row
-  /// rebuilds never spawn the real ffmpeg inside fake async.
-  final AudioPeaksStore? _injectedAudioPeaksStore;
-
-  /// ffmpeg-extracted peaks — the CONFORM store's fallback for formats the
-  /// native decoder does not read (m4a/aac/ogg until the OS decoders
-  /// land); its notifications forward through the session so SE rows
-  /// repaint when a waveform lands.
-  late final AudioPeaksStore audioPeaksStore =
-      (_injectedAudioPeaksStore ?? AudioPeaksStore())
-        ..addListener(notifyListeners);
-
-  /// Test seam, like [_injectedAudioPeaksStore]: widget tests inject a
-  /// store with a fake runner so SE rows never decode real files.
+  /// Test seam: widget tests inject a store with a fake runner so SE rows
+  /// never decode real files.
   final AudioConformStore? _injectedAudioConformStore;
 
   /// Conformed audio per source path (audio program wiring): waveform
@@ -846,7 +830,6 @@ class EditorSessionManager extends ChangeNotifier {
       (_injectedAudioConformStore ??
           AudioConformStore(
             resolveConformPath: _conformPathFor,
-            undecodableFallback: audioPeaksStore,
             // Widget tests: run conforms inline — a worker isolate started
             // under fake async outlives the test (the prerender scheduler's
             // FLUTTER_TEST branch, same reason). Missing fixture paths
