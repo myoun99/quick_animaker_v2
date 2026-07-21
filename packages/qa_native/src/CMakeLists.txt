@@ -46,6 +46,10 @@ if(WIN32)
     C_STANDARD 99
     C_STANDARD_REQUIRED ON
   )
+  if(MSVC)
+    # Same UTF-8 sources, same C4819 story as qa_engine below.
+    target_compile_options(qa_tablet PRIVATE /utf-8)
+  endif()
 endif()
 
 # Vendored dr_libs emits a few benign conversion warnings. We do not edit
@@ -99,7 +103,12 @@ if(MSVC)
   string(REPLACE "/RTC1" "" CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG}")
   string(REPLACE "/Od" "" CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG}")
   string(REPLACE "/Ob0" "" CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG}")
-  target_compile_options(qa_engine PRIVATE /O2 /fp:precise)
+  # /utf-8: the sources ARE UTF-8 (em-dash and Korean comments). Without
+  # it MSVC reads them in the SYSTEM code page and floods C4819 on
+  # Japanese/Korean Windows (CP932/949) - harmless here (non-ASCII lives
+  # only in comments, and UTF-8 never emits a 0x5C byte) but noisy on
+  # every app build.
+  target_compile_options(qa_engine PRIVATE /O2 /fp:precise /utf-8)
 else()
   # -O3 auto-vectorizes the pixel loops (SSE/AVX on x86, NEON on ARM);
   # no hand-written intrinsics needed.
