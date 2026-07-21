@@ -152,6 +152,37 @@ void main() {
       expect(device.isPlaying, isTrue, reason: 'a seek must not stop playback');
     }, skip: skip);
 
+    test('the meter reads the pre-clip bus peak and zeroes on stop '
+        '(AUDIO-PRO R2)', () async {
+      final device = openNull();
+      device.setSchedule(
+        clips: const [
+          // Gain 2.0 pushes the bus past unity: the meter must show the
+          // PRE-CLIP peak (that is the whole point), while the device
+          // output clamps.
+          AudioMixClip(
+            sourceIndex: 0,
+            startSample: 0,
+            endSample: 480000,
+            gain: 2.0,
+          ),
+        ],
+        sources: [constantSource(0.6, 48000, 2)],
+      );
+      device.play(startSample: 0, looping: true);
+      expect(
+        await waitFor(() => device.peakFor(0) > 1.0),
+        isTrue,
+        reason: 'a 1.2 bus peak must read past unity — clipping made visible',
+      );
+      expect(device.peakFor(1), greaterThan(1.0));
+
+      device.stop();
+      expect(device.peakFor(0), 0,
+          reason: 'a stopped transport meters silence, not a frozen bar');
+      expect(device.peakFor(1), 0);
+    }, skip: skip);
+
     test('a stop point ends playback instead of running on', () async {
       final device = openNull();
       device.setSchedule(

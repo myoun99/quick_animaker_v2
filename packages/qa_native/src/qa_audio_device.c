@@ -136,6 +136,13 @@ typedef struct {
   qa_audio_envelope_key* envelope_keys;  // the clips' shared key array
   int32_t envelope_key_count;
 
+  // The last mixed block's PRE-CLIP bus peak per output side (float bits,
+  // stored atomically) - the level meter's feed (AUDIO-PRO R2). Pre-clip
+  // on purpose: a peak past 1.0 is exactly the "why does it sound
+  // squashed" answer the meter exists to make visible.
+  volatile ma_uint32 peak_left_bits;
+  volatile ma_uint32 peak_right_bits;
+
   int32_t channels;
   int32_t sample_rate;
   double* scratch;  // the mix bus, sized once at open
@@ -198,8 +205,22 @@ static void qa_audio_data_callback(ma_device* device,
 
     const size_t written = (size_t)block * (size_t)channels;
     float* target = out + (size_t)done * (size_t)channels;
+    double peak_left = 0.0;
+    double peak_right = 0.0;
     for (size_t index = 0; index < written; index += 1) {
       double value = g_audio.scratch[index];
+      // Meter feed BEFORE the clamp: the peak that matters is the one the
+      // bus actually reached.
+      const double magnitude = value < 0.0 ? -value : value;
+      if (channels == 1 || (index % (size_t)channels) == 0) {
+        if (magnitude > peak_left) {
+          peak_left = magnitude;
+        }
+      } else if ((index % (size_t)channels) == 1) {
+        if (magnitude > peak_right) {
+          peak_right = magnitude;
+        }
+      }
       // The bus has headroom; the DEVICE does not. Clipping belongs here,
       // at the boundary, exactly as it does for the int16 path.
       if (value > 1.0) {
@@ -208,6 +229,16 @@ static void qa_audio_data_callback(ma_device* device,
         value = -1.0;
       }
       target[index] = (float)value;
+    }
+    {
+      const float left = (float)peak_left;
+      const float right = (float)(channels == 1 ? peak_left : peak_right);
+      ma_uint32 left_bits;
+      ma_uint32 right_bits;
+      memcpy(&left_bits, &left, sizeof(left_bits));
+      memcpy(&right_bits, &right, sizeof(right_bits));
+      qa_transport_store_32(&g_audio.peak_left_bits, (int32_t)left_bits);
+      qa_transport_store_32(&g_audio.peak_right_bits, (int32_t)right_bits);
     }
 
     qa_transport_store_64(&g_audio.position, position + (int64_t)block);
@@ -428,8 +459,24 @@ QA_EXPORT int32_t qa_audio_device_play(int64_t start_sample,
   return 1;
 }
 
+// The last mixed block's PRE-CLIP bus peak for [channel] (0 = left,
+// 1 = right; a mono device mirrors left) - the level meter's read
+// (AUDIO-PRO R2). >1.0 means the output stage is clipping.
+QA_EXPORT double qa_audio_device_peak(int32_t channel) {
+  const int32_t bits = qa_transport_load_32(
+      channel == 1 ? &g_audio.peak_right_bits : &g_audio.peak_left_bits);
+  float value;
+  ma_uint32 raw = (ma_uint32)bits;
+  memcpy(&value, &raw, sizeof(value));
+  return (double)value;
+}
+
 QA_EXPORT void qa_audio_device_stop(void) {
   qa_transport_store_32(&g_audio.playing, 0);
+  // A stopped transport meters silence - the bars must not freeze at the
+  // last audible block.
+  qa_transport_store_32(&g_audio.peak_left_bits, 0);
+  qa_transport_store_32(&g_audio.peak_right_bits, 0);
 }
 
 QA_EXPORT int32_t qa_audio_device_is_playing(void) {
