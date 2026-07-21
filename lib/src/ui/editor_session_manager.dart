@@ -316,7 +316,14 @@ class EditorSessionManager extends ChangeNotifier {
 
   /// App-level brush stroke store shared with the canvas host, so commands
   /// (e.g. anchored canvas resize) can transform stroke data.
-  final BrushFrameStore brushFrameStore = BrushFrameStore();
+  ///
+  /// The link resolver reads the CURRENT project's registry on every
+  /// resolve (L1) — link edits need no event plumbing to reach the store.
+  late final BrushFrameStore brushFrameStore = BrushFrameStore()
+    ..setLinkResolver(
+      (key) =>
+          _repository.currentProject?.linkRegistry.canonicalCelKey(key) ?? key,
+    );
 
   /// Production sink for brush edit invalidations; playback caches and the
   /// prerender scheduler listen here.

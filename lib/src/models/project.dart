@@ -2,6 +2,7 @@ import '../core/collection_equality.dart';
 import 'camera_instruction.dart';
 import 'canvas_size.dart';
 import 'layer.dart';
+import 'layer_link_registry.dart';
 import 'media_asset.dart';
 import 'project_background.dart';
 import 'project_frame_rate.dart';
@@ -24,10 +25,12 @@ class Project {
     CameraInstructionSet? cameraInstructions,
     List<MediaAsset> mediaAssets = const [],
     int trailingFrames = 0,
+    LayerLinkRegistry? linkRegistry,
   }) : tracks = List.unmodifiable(tracks),
        cameraInstructions = cameraInstructions ?? CameraInstructionSet.standard,
        mediaAssets = immutableMediaAssetList(mediaAssets),
-       trailingFrames = trailingFrames < 0 ? 0 : trailingFrames;
+       trailingFrames = trailingFrames < 0 ? 0 : trailingFrames,
+       linkRegistry = linkRegistry ?? LayerLinkRegistry.empty;
 
   final ProjectId id;
   final String name;
@@ -67,6 +70,10 @@ class Project {
   /// (and hand-edited files) always open with a complete pool.
   final List<MediaAsset> mediaAssets;
 
+  /// The film's layer link table ("이름이 같으면 같은 그림"): groups of
+  /// layers sharing one cel bank. Empty on projects that never link.
+  final LayerLinkRegistry linkRegistry;
+
   MediaAsset? mediaAssetByPath(String path) {
     for (final asset in mediaAssets) {
       if (asset.path == path) {
@@ -88,6 +95,7 @@ class Project {
     CameraInstructionSet? cameraInstructions,
     List<MediaAsset>? mediaAssets,
     int? trailingFrames,
+    LayerLinkRegistry? linkRegistry,
   }) {
     return Project(
       id: id ?? this.id,
@@ -101,6 +109,7 @@ class Project {
       cameraInstructions: cameraInstructions ?? this.cameraInstructions,
       mediaAssets: mediaAssets ?? this.mediaAssets,
       trailingFrames: trailingFrames ?? this.trailingFrames,
+      linkRegistry: linkRegistry ?? this.linkRegistry,
     );
   }
 
@@ -121,6 +130,8 @@ class Project {
     'cameraInstructions': cameraInstructions.toJson(),
     'mediaAssets': mediaAssets.map((asset) => asset.toJson()).toList(),
     if (trailingFrames != 0) 'trailingFrames': trailingFrames,
+    // Omitted when empty: unlinked projects keep their exact legacy JSON.
+    if (linkRegistry.isNotEmpty) 'linkRegistry': linkRegistry.toJson(),
   };
 
   factory Project.fromJson(Map<String, dynamic> json) {
@@ -164,6 +175,11 @@ class Project {
             ),
       mediaAssets: reconciledMediaAssets(storedAssets, tracks),
       trailingFrames: (json['trailingFrames'] as int?) ?? 0,
+      linkRegistry: json['linkRegistry'] == null
+          ? null
+          : LayerLinkRegistry.fromJson(
+              json['linkRegistry'] as Map<String, dynamic>,
+            ),
     );
   }
 
@@ -181,7 +197,8 @@ class Project {
           other.timesheetInfo == timesheetInfo &&
           other.cameraInstructions == cameraInstructions &&
           listEquals(other.mediaAssets, mediaAssets) &&
-          other.trailingFrames == trailingFrames;
+          other.trailingFrames == trailingFrames &&
+          other.linkRegistry == linkRegistry;
 
   @override
   int get hashCode => Object.hash(
@@ -196,6 +213,7 @@ class Project {
     cameraInstructions,
     Object.hashAll(mediaAssets),
     trailingFrames,
+    linkRegistry,
   );
 
   @override
