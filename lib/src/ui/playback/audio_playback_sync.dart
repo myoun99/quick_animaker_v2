@@ -1,12 +1,9 @@
 import 'dart:async';
 import 'dart:math' as math;
 
-import '../../models/cut_id.dart';
 import '../../models/project.dart';
 import '../../models/project_frame_rate.dart';
-import '../../models/se_audio_spans.dart';
-import '../../models/track.dart';
-import '../storyboard_timeline_layout.dart';
+import 'audio_playback_schedule.dart';
 import 'canvas_playback_controller.dart';
 
 /// One playing audio clip. The production implementation wraps an
@@ -86,7 +83,7 @@ class AudioPlaybackSync {
   /// scheduled audio — null means no sound at all, not a fallback.
   final Project? Function()? resolveProject;
 
-  List<_ScheduledClip> _schedule = const [];
+  List<ScheduledAudioClip> _schedule = const [];
   List<AudioClipPlayer> _players = const [];
   final Set<int> _playing = {};
 
@@ -125,7 +122,12 @@ class AudioPlaybackSync {
     final active = controller.isActive;
     final playing = controller.isPlaying;
     if (active && !_wasActive) {
-      _schedule = _buildSchedule(controller.playlist);
+      _schedule = buildAudioPlaybackSchedule(
+        playlist: controller.playlist,
+        project: resolveProject?.call(),
+        rate: resolveFrameRate(),
+        durationSecondsFor: durationSecondsFor,
+      );
       _players = [for (final _ in _schedule) playerFactory()];
       for (var index = 0; index < _schedule.length; index += 1) {
         unawaited(_players[index].prepare(_schedule[index].filePath));
@@ -198,7 +200,7 @@ class AudioPlaybackSync {
   /// start, fade-out ramps into its scheduled end (block/cut/file clamp),
   /// overlapping fades multiply. Clamped into 0..1 — platform players
   /// don't amplify past 1 (export applies the exact gain instead).
-  double _volumeAt(_ScheduledClip clip, int frame) {
+  double _volumeAt(ScheduledAudioClip clip, int frame) {
     var volume = clip.gain;
     final position = frame - clip.startFrame;
     if (clip.fadeInFrames > 0 && position < clip.fadeInFrames) {
@@ -278,204 +280,4 @@ class AudioPlaybackSync {
     _lastFrame = null;
   }
 
-  /// Clamps [endFrameExclusive] to the file's own audible length.
-  ///
-  /// Rounding UP is deliberate — a file ending mid-frame still has audio
-  /// in that frame, and truncating would clip real sound. What must not
-  /// happen is rounding up on float noise alone: a 2.000s file at 24fps
-  /// computes as 48.000000000000004, and a bare `.ceil()` would hand it a
-  /// 49th frame of silence. [ProjectFrameRate.framesCoveringSeconds]
-  /// treats a value within a millionth of a frame of whole as whole.
-  int _clampToFileLength({
-    required int startFrame,
-    required int endFrameExclusive,
-    required String filePath,
-    required int offsetFrames,
-    required ProjectFrameRate rate,
-  }) {
-    final seconds = durationSecondsFor(filePath);
-    if (seconds == null) {
-      return endFrameExclusive;
-    }
-    return math.min(
-      endFrameExclusive,
-      startFrame + rate.framesCoveringSeconds(seconds) - offsetFrames,
-    );
-  }
-
-  List<_ScheduledClip> _buildSchedule(
-    List<StoryboardTimelineLayoutEntry> playlist,
-  ) {
-    final rate = resolveFrameRate();
-    final schedule = <_ScheduledClip>[];
-
-    // SE rows are TRACK-owned and live on each track's GLOBAL frame axis;
-    // a cut merely shows a window onto them. Cut-owned SE is a legacy file
-    // shape that `Track.fromJson` lifts onto the track at load, so no
-    // loaded project can carry one — and scheduling from cut layers would
-    // clamp sounds at cut boundaries, which is exactly the restart-per-cut
-    // behaviour the global model exists to remove.
-    //
-    // Spans map into the playlist axis once — at the entry containing the
-    // start (or the first overlapping entry when the playlist begins
-    // mid-sound, bumping the file offset by the clipped lead) — and run to
-    // the span's true end, clamped only where the playlist run stops being
-    // contiguous with the track.
-    final project = resolveProject?.call();
-    if (project != null && playlist.isNotEmpty) {
-      final trackStartByCutId = <CutId, int>{};
-      final trackByCutId = <CutId, Track>{};
-      for (final track in project.tracks) {
-        var start = 0;
-        for (final cut in track.cuts) {
-          start += cut.leadingGapFrames;
-          trackStartByCutId[cut.id] = start;
-          trackByCutId[cut.id] = track;
-          start += cut.duration;
-        }
-      }
-
-      /// The playlist frame where the contiguous run starting at
-      /// [entryIndex] ends. Contiguous = the playlist and track axes
-      /// advance by the SAME amount between entries — back-to-back cuts,
-      /// or a leading gap the playlist plays through as black. Sounds keep
-      /// running through played gaps (audio lives on the global axis).
-      int contiguousPlaylistEndFrom(int entryIndex) {
-        var end = playlist[entryIndex].endFrame;
-        var trackEnd =
-            (trackStartByCutId[playlist[entryIndex].cutId] ?? 0) +
-            playlist[entryIndex].duration;
-        final track = trackByCutId[playlist[entryIndex].cutId];
-        for (var i = entryIndex + 1; i < playlist.length; i += 1) {
-          final next = playlist[i];
-          final nextTrackStart = trackStartByCutId[next.cutId];
-          if (nextTrackStart == null ||
-              next.startFrame < end ||
-              next.startFrame - end != nextTrackStart - trackEnd ||
-              !identical(trackByCutId[next.cutId], track)) {
-            break;
-          }
-          end = next.endFrame;
-          trackEnd = nextTrackStart + next.duration;
-        }
-        return end;
-      }
-
-      for (var i = 0; i < playlist.length; i += 1) {
-        final entry = playlist[i];
-        final track = trackByCutId[entry.cutId];
-        final cutTrackStart = trackStartByCutId[entry.cutId];
-        if (track == null || cutTrackStart == null) {
-          continue;
-        }
-        // A run-start entry also carries sounds spilling in from before
-        // the playlist window (offset-bumped); interior entries only emit
-        // spans STARTING in their window (no duplicates). The window
-        // extends back over the entry's PLAYED leading gap — playlist
-        // frames before the cut that map 1:1 onto the track frames before
-        // it — so sounds starting inside a gap are scheduled too.
-        final previous = i == 0 ? null : playlist[i - 1];
-        final previousTrackStart = previous == null
-            ? null
-            : trackStartByCutId[previous.cutId];
-        final playlistLead = entry.startFrame - (previous?.endFrame ?? 0);
-        final axesAligned = previous == null
-            // The playlist head maps straight onto the track axis
-            // (all-cuts playlists ARE the track axis; a rebased
-            // single-cut playlist has no lead at all).
-            ? playlistLead >= 0
-            : previousTrackStart != null &&
-                  identical(trackByCutId[previous.cutId], track) &&
-                  playlistLead >= 0 &&
-                  cutTrackStart - (previousTrackStart + previous.duration) ==
-                      playlistLead;
-        final coveredLead = axesAligned ? playlistLead : 0;
-        final isRunStart = previous == null || !axesAligned;
-        final windowStart = cutTrackStart - coveredLead;
-        final windowEnd = cutTrackStart + entry.duration;
-        final runEnd = contiguousPlaylistEndFrom(i);
-
-        for (final layer in track.seLayers) {
-          if (layer.muted) {
-            continue;
-          }
-          for (final span in seAudioSpans(layer)) {
-            final spanEnd = span.startFrame + span.lengthFrames;
-            final startsHere =
-                span.startFrame >= windowStart && span.startFrame < windowEnd;
-            final spillsIntoRunStart =
-                isRunStart &&
-                span.startFrame < windowStart &&
-                spanEnd > windowStart;
-            if (!startsHere && !spillsIntoRunStart) {
-              continue;
-            }
-            final clippedLead = spillsIntoRunStart
-                ? windowStart - span.startFrame
-                : 0;
-            // entry.startFrame - coveredLead = the playlist frame the
-            // (gap-extended) window begins at.
-            final startFrame =
-                entry.startFrame -
-                coveredLead +
-                (spillsIntoRunStart ? 0 : span.startFrame - windowStart);
-            var endFrameExclusive = math.min(
-              runEnd,
-              startFrame + span.lengthFrames - clippedLead,
-            );
-            final offsetFrames = span.clip.offsetFrames + clippedLead;
-            endFrameExclusive = _clampToFileLength(
-              startFrame: startFrame,
-              endFrameExclusive: endFrameExclusive,
-              filePath: span.clip.filePath,
-              offsetFrames: offsetFrames,
-              rate: rate,
-            );
-            if (endFrameExclusive <= startFrame) {
-              continue;
-            }
-            schedule.add(
-              _ScheduledClip(
-                filePath: span.clip.filePath,
-                startFrame: startFrame,
-                endFrameExclusive: endFrameExclusive,
-                offsetFrames: offsetFrames,
-                gain: span.clip.gain,
-                fadeInFrames: span.clip.fadeInFrames,
-                fadeOutFrames: span.clip.fadeOutFrames,
-              ),
-            );
-          }
-        }
-      }
-    }
-    return schedule;
-  }
-}
-
-/// A clip laid out on the playlist-global frame axis, end clamped at its
-/// cut's boundary.
-class _ScheduledClip {
-  const _ScheduledClip({
-    required this.filePath,
-    required this.startFrame,
-    required this.endFrameExclusive,
-    this.offsetFrames = 0,
-    this.gain = 1.0,
-    this.fadeInFrames = 0,
-    this.fadeOutFrames = 0,
-  });
-
-  final String filePath;
-  final int startFrame;
-  final int endFrameExclusive;
-
-  /// Frames skipped into the file where the block starts (the clip's trim).
-  final int offsetFrames;
-
-  /// The clip's volume envelope (see [AudioClip]); fades anchor to this
-  /// schedule entry's own start/end.
-  final double gain;
-  final int fadeInFrames;
-  final int fadeOutFrames;
 }
