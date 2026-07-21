@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -14,14 +15,31 @@ import 'package:quick_animaker_v2/src/models/project.dart';
 import 'package:quick_animaker_v2/src/models/project_id.dart';
 import 'package:quick_animaker_v2/src/models/track.dart';
 import 'package:quick_animaker_v2/src/models/track_id.dart';
+import 'package:quick_animaker_v2/src/services/persistence/app_export_settings.dart';
+import 'package:quick_animaker_v2/src/services/persistence/app_export_settings_store.dart';
 import 'package:quick_animaker_v2/src/ui/editor_session_manager.dart';
 import 'package:quick_animaker_v2/src/ui/export/export_dialog.dart';
-import 'package:quick_animaker_v2/src/ui/export/export_plan.dart';
 import 'package:quick_animaker_v2/src/ui/export/video_export_service.dart';
 
 import 'fake_ffmpeg_process.dart';
 
 void main() {
+  late Directory temp;
+
+  setUp(() {
+    AppExport.settings.value = AppExportSettings();
+    temp = Directory.systemTemp.createTempSync('qa-export-dialog');
+  });
+
+  tearDown(() {
+    AppExport.settings.value = AppExportSettings();
+    try {
+      temp.deleteSync(recursive: true);
+    } on Object {
+      // Windows may hold a handle a beat; leaking a temp dir beats failing.
+    }
+  });
+
   Frame frame(String id) =>
       Frame(id: FrameId(id), duration: 1, strokes: const []);
 
@@ -92,519 +110,439 @@ void main() {
     WidgetTester tester,
     EditorSessionManager session, {
     ExportDirectoryPicker? exportDirectoryPicker,
-    ExportVideoPathPicker? exportVideoPathPicker,
-    ExportXdtsPathPicker? exportXdtsPathPicker,
     VideoExportService videoExportService = const VideoExportService(),
+    AppExportSettingsStore? settingsStore,
+    Key? dialogKey,
   }) async {
+    await tester.binding.setSurfaceSize(const Size(1120, 660));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
     await tester.pumpWidget(
       MaterialApp(
         home: Scaffold(
           body: ExportDialog(
+            // A distinct key forces a COLD State — same-type pumps reuse
+            // the element and skip initState (the store-restore path).
+            key: dialogKey,
             session: session,
             exportDirectoryPicker: exportDirectoryPicker,
-            exportVideoPathPicker: exportVideoPathPicker,
-            exportXdtsPathPicker: exportXdtsPathPicker,
             videoExportService: videoExportService,
+            settingsStore: settingsStore,
           ),
         ),
       ),
     );
+    await tester.pump();
     return tester.state<ExportDialogState>(find.byType(ExportDialog));
   }
 
-  Future<void> selectMp4Format(WidgetTester tester) async {
-    await tester.tap(
-      find.byKey(const ValueKey<String>('export-format-dropdown')),
-    );
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('MP4 video').last);
-    await tester.pumpAndSettle();
+  Future<void> browseTo(WidgetTester tester) async {
+    await tester.tap(find.byKey(const ValueKey<String>('export-browse-button')));
+    await tester.pump();
+    await tester.pump();
   }
 
-  Future<void> selectXdtsFormat(WidgetTester tester) async {
+  Future<void> pickStillPng(WidgetTester tester) async {
     await tester.tap(
-      find.byKey(const ValueKey<String>('export-format-dropdown')),
+      find.byKey(const ValueKey<String>('export-format-still-png')),
     );
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('XDTS timesheet').last);
-    await tester.pumpAndSettle();
+    await tester.pump();
   }
 
-  Directory tempDirectory(String prefix) {
-    // Sync IO: real async IO futures never complete inside the widget-test
-    // fake-async zone.
-    final directory = Directory.systemTemp.createTempSync(prefix);
-    addTearDown(() => directory.deleteSync(recursive: true));
-    return directory;
+  Future<void> switchTab(WidgetTester tester, String tab) async {
+    await tester.tap(find.byKey(ValueKey<String>('export-tab-$tab')));
+    await tester.pump();
   }
 
-  List<String> fileNames(Directory directory) =>
-      directory
-          .listSync()
-          .whereType<File>()
-          .map((file) => file.uri.pathSegments.last)
-          .toList()
-        ..sort();
-
-  /// Width/height straight from the PNG IHDR chunk (big-endian at 16/20).
-  (int, int) pngDimensions(File file) {
-    final bytes = file.readAsBytesSync();
-    int be32(int offset) =>
-        (bytes[offset] << 24) |
-        (bytes[offset + 1] << 16) |
-        (bytes[offset + 2] << 8) |
-        bytes[offset + 3];
-    return (be32(16), be32(20));
-  }
-
-  testWidgets('summarizes the default camera export of the active cut', (
-    tester,
-  ) async {
-    await pumpDialog(tester, exportSession());
-
-    expect(find.text('2 frames at 32×18 through the camera.'), findsOneWidget);
-  });
-
-  testWidgets('exports the active cut through the camera', (tester) async {
-    final directory = tempDirectory('export_dialog_camera');
-    final state = await pumpDialog(
-      tester,
-      exportSession(),
-      exportDirectoryPicker: () async => directory.path,
-    );
-
-    await tester.runAsync(state.export);
-    await tester.pump();
-
-    expect(fileNames(directory), ['frame_0001.png', 'frame_0002.png']);
-    for (final file in directory.listSync().whereType<File>()) {
-      expect(pngDimensions(file), (32, 18));
-    }
-    expect(find.text('Exported 2 frames.'), findsOneWidget);
-  });
-
-  testWidgets('canvas size mode exports raw canvas pixels', (tester) async {
-    final directory = tempDirectory('export_dialog_canvas');
-    final state = await pumpDialog(
-      tester,
-      exportSession(),
-      exportDirectoryPicker: () async => directory.path,
-    );
-
-    await tester.tap(find.byKey(const ValueKey<String>('export-size-canvas')));
-    await tester.pump();
-    expect(find.text('2 frames at 8×8 (raw canvas).'), findsOneWidget);
-
-    await tester.runAsync(state.export);
-    await tester.pump();
-
-    expect(fileNames(directory), ['frame_0001.png', 'frame_0002.png']);
-    for (final file in directory.listSync().whereType<File>()) {
-      expect(pngDimensions(file), (8, 8));
-    }
-  });
-
-  testWidgets('all cuts exports every cut of the active track in order', (
-    tester,
-  ) async {
-    final directory = tempDirectory('export_dialog_all');
-    final state = await pumpDialog(
-      tester,
-      exportSession(),
-      exportDirectoryPicker: () async => directory.path,
-    );
-
-    await tester.tap(
-      find.byKey(const ValueKey<String>('export-range-all-cuts')),
-    );
-    await tester.pump();
-    expect(find.text('5 frames at 32×18 through the camera.'), findsOneWidget);
-
-    await tester.runAsync(state.export);
-    await tester.pump();
-
-    expect(fileNames(directory), [
-      'frame_0001.png',
-      'frame_0002.png',
-      'frame_0003.png',
-      'frame_0004.png',
-      'frame_0005.png',
-    ]);
-    expect(find.text('Exported 5 frames.'), findsOneWidget);
-  });
-
-  testWidgets('frame range exports the chosen 1-based inclusive range', (
-    tester,
-  ) async {
-    final directory = tempDirectory('export_dialog_range');
-    final state = await pumpDialog(
-      tester,
-      exportSession(),
-      exportDirectoryPicker: () async => directory.path,
-    );
-
-    await tester.tap(
-      find.byKey(const ValueKey<String>('export-range-frame-range')),
-    );
-    await tester.pump();
-    await tester.enterText(
-      find.byKey(const ValueKey<String>('export-range-start-field')),
-      '2',
-    );
-    await tester.pump();
-
-    await tester.runAsync(state.export);
-    await tester.pump();
-
-    expect(fileNames(directory), ['frame_0001.png']);
-    expect(find.text('Exported 1 frame.'), findsOneWidget);
-  });
-
-  testWidgets('an invalid frame range disables export and shows the valid '
-      'range', (tester) async {
-    await pumpDialog(tester, exportSession());
-
-    await tester.tap(
-      find.byKey(const ValueKey<String>('export-range-frame-range')),
-    );
-    await tester.pump();
-    await tester.enterText(
-      find.byKey(const ValueKey<String>('export-range-start-field')),
-      '0',
-    );
-    await tester.pump();
-
-    expect(find.text('Enter a valid frame range (1–2).'), findsOneWidget);
-    final runButton = tester.widget<TextButton>(
+  bool exportEnabled(WidgetTester tester) {
+    final button = tester.widget<FilledButton>(
       find.byKey(const ValueKey<String>('export-run-button')),
     );
-    expect(runButton.onPressed, isNull);
-  });
+    return button.onPressed != null;
+  }
 
-  testWidgets('instance export lists cels and skips the empty ones', (
-    tester,
-  ) async {
-    final directory = tempDirectory('export_dialog_cels');
-    final state = await pumpDialog(
-      tester,
-      exportSession(),
-      exportDirectoryPicker: () async => directory.path,
+  String statusText(WidgetTester tester) {
+    final status = tester.widget<Text>(
+      find.byKey(const ValueKey<String>('export-status')),
     );
+    return status.data ?? '';
+  }
 
-    // The fx toggle row made the dialog taller — scroll the control into
-    // view first.
-    await tester.ensureVisible(
-      find.byKey(const ValueKey<String>('export-instance-toggle')),
-    );
-    await tester.pump();
-    await tester.tap(
-      find.byKey(const ValueKey<String>('export-instance-toggle')),
-    );
-    await tester.pump();
-    expect(
-      find.text('2 cels as transparent PNGs, no compositing.'),
-      findsOneWidget,
-    );
-    expect(find.text('Example: A1.png'), findsOneWidget);
+  List<String> filesIn(Directory directory) => directory
+      .listSync(recursive: true)
+      .whereType<File>()
+      .map(
+        (file) => file.path
+            .substring(directory.path.length + 1)
+            .replaceAll('\\', '/'),
+      )
+      .toList()
+    ..sort();
 
-    await tester.runAsync(state.export);
-    await tester.pump();
-
-    // No brush artwork in the test store, so both cels skip their files.
-    expect(fileNames(directory), isEmpty);
-    expect(find.text('Exported 0 cels (2 empty skipped).'), findsOneWidget);
-  });
-
-  testWidgets('cel options rebuild the example name and the opaque summary', (
-    tester,
-  ) async {
-    await pumpDialog(tester, exportSession());
-
-    // The dialog body scrolls, so bring each control on-screen first.
-    Future<void> tapVisible(String key) async {
-      final finder = find.byKey(ValueKey<String>(key));
-      await tester.ensureVisible(finder);
-      await tester.pump();
-      await tester.tap(finder);
-      await tester.pump();
+  int pngSignatureCount(Uint8List bytes) {
+    const signature = [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A];
+    var count = 0;
+    for (var i = 0; i + signature.length <= bytes.length; i += 1) {
+      var match = true;
+      for (var j = 0; j < signature.length; j += 1) {
+        if (bytes[i + j] != signature[j]) {
+          match = false;
+          break;
+        }
+      }
+      if (match) {
+        count += 1;
+      }
     }
+    return count;
+  }
 
-    Future<void> typeVisible(String key, String text) async {
-      final finder = find.byKey(ValueKey<String>(key));
-      await tester.ensureVisible(finder);
+  group('shell', () {
+    testWidgets('export stays disabled until a location is chosen',
+        (tester) async {
+      await pumpDialog(tester, exportSession());
+      expect(exportEnabled(tester), isFalse);
+      expect(find.text('Choose a folder…'), findsOneWidget);
+
+      await pumpDialog(
+        tester,
+        exportSession(),
+        exportDirectoryPicker: () async => temp.path,
+      );
+      await browseTo(tester);
+      expect(exportEnabled(tester), isTrue);
+    });
+
+    testWidgets('plan headline covers the active cut by default',
+        (tester) async {
+      await pumpDialog(tester, exportSession());
+      final headline = tester.widget<Text>(
+        find.byKey(const ValueKey<String>('export-plan-headline')),
+      );
+      expect(headline.data, contains('2 frames'));
+      expect(headline.data, contains('32×18'));
+    });
+
+    testWidgets('drawers collapse to strips and reopen', (tester) async {
+      await pumpDialog(tester, exportSession());
+      await tester.tap(
+        find.byKey(const ValueKey<String>('export-presets-collapse')),
+      );
       await tester.pump();
-      await tester.enterText(finder, text);
+      expect(
+        find.byKey(const ValueKey<String>('export-presets-strip')),
+        findsOneWidget,
+      );
+      await tester.tap(
+        find.byKey(const ValueKey<String>('export-presets-strip')),
+      );
       await tester.pump();
-    }
-
-    await tapVisible('export-instance-toggle');
-
-    await typeVisible('export-cel-digits-field', '4');
-    expect(find.text('Example: A0001.png'), findsOneWidget);
-
-    await tapVisible('export-cel-include-cut');
-    expect(find.text('Example: Cut_A0001.png'), findsOneWidget);
-
-    await tapVisible('export-cel-include-layer');
-    expect(find.text('Example: Cut_0001.png'), findsOneWidget);
-
-    await typeVisible('export-cel-suffix-field', '_fix');
-    expect(find.text('Example: Cut_0001_fix.png'), findsOneWidget);
-
-    await tapVisible('export-cel-layer-folder');
-    expect(find.text('Example: A/Cut_0001_fix.png'), findsOneWidget);
-
-    await tapVisible('export-cel-transparent-toggle');
-    expect(
-      find.text('2 cels as opaque white PNGs, no compositing.'),
-      findsOneWidget,
-    );
-    expect(find.text('Opaque background (white paper)'), findsOneWidget);
+      expect(
+        find.byKey(const ValueKey<String>('export-preset-save-current')),
+        findsOneWidget,
+      );
+    });
   });
 
-  testWidgets('MP4 export pipes rendered frames into ffmpeg at project fps', (
-    tester,
-  ) async {
-    final process = FakeFfmpegProcess();
-    List<String>? capturedArguments;
-    final state = await pumpDialog(
-      tester,
-      exportSession(),
-      // Deliberately without the .mp4 extension: the dialog appends it.
-      exportVideoPathPicker: (suggestedName) async {
-        expect(suggestedName, 'Project.mp4');
-        return 'C:/out/take';
-      },
-      videoExportService: VideoExportService(
-        processStarter: (executable, arguments) async {
-          capturedArguments = arguments;
-          return process;
-        },
-      ),
-    );
+  group('sequence stills', () {
+    testWidgets('numbered PNG files land in the location', (tester) async {
+      final state = await pumpDialog(
+        tester,
+        exportSession(),
+        exportDirectoryPicker: () async => temp.path,
+      );
+      await browseTo(tester);
+      await pickStillPng(tester);
+      await tester.runAsync(state.export);
+      await tester.pump();
 
-    await selectMp4Format(tester);
-    expect(
-      find.text('Encoded with FFmpeg — it must be installed and on PATH.'),
-      findsOneWidget,
-    );
+      expect(filesIn(temp), ['frame_0001.png', 'frame_0002.png']);
+      expect(statusText(tester), 'Exported 2 frames.');
+    });
 
-    await tester.runAsync(state.export);
-    await tester.pump();
+    testWidgets('naming module renames the base', (tester) async {
+      final state = await pumpDialog(
+        tester,
+        exportSession(),
+        exportDirectoryPicker: () async => temp.path,
+      );
+      await browseTo(tester);
+      await pickStillPng(tester);
+      // The Naming accordion is collapsed by default — open, then edit.
+      await tester.ensureVisible(find.textContaining('Naming'));
+      await tester.tap(find.textContaining('Naming'));
+      await tester.pump();
+      await tester.ensureVisible(
+        find.byKey(const ValueKey<String>('export-naming-base-field')),
+      );
+      await tester.enterText(
+        find.byKey(const ValueKey<String>('export-naming-base-field')),
+        'shot',
+      );
+      await tester.pump();
+      await tester.runAsync(state.export);
+      await tester.pump();
 
-    final arguments = capturedArguments!;
-    expect(arguments.last, 'C:/out/take.mp4');
-    final framerateIndex = arguments.indexOf('-framerate');
-    expect(arguments[framerateIndex + 1], '24');
-    expect(process.receivedPngCount, 2);
-    expect(find.text('Exported video (2 frames).'), findsOneWidget);
+      expect(filesIn(temp), ['shot_0001.png', 'shot_0002.png']);
+    });
+
+    testWidgets('in/out trims the cut scope; a reversed range disables',
+        (tester) async {
+      final state = await pumpDialog(
+        tester,
+        exportSession(),
+        exportDirectoryPicker: () async => temp.path,
+      );
+      await browseTo(tester);
+      await pickStillPng(tester);
+      await tester.enterText(
+        find.byKey(const ValueKey<String>('export-range-start-field')),
+        '2',
+      );
+      await tester.pump();
+      await tester.runAsync(state.export);
+      await tester.pump();
+      expect(filesIn(temp), ['frame_0001.png']);
+
+      await tester.enterText(
+        find.byKey(const ValueKey<String>('export-range-start-field')),
+        '2',
+      );
+      await tester.enterText(
+        find.byKey(const ValueKey<String>('export-range-end-field')),
+        '1',
+      );
+      await tester.pump();
+      expect(exportEnabled(tester), isFalse);
+    });
+
+    testWidgets(
+        'project scope walks the active track in order and forces camera',
+        (tester) async {
+      final state = await pumpDialog(
+        tester,
+        exportSession(),
+        exportDirectoryPicker: () async => temp.path,
+      );
+      await browseTo(tester);
+      await pickStillPng(tester);
+      await tester.tap(
+        find.byKey(const ValueKey<String>('export-scope-project')),
+      );
+      await tester.pump();
+      expect(
+        find.byKey(const ValueKey<String>('export-size-canvas')),
+        findsNothing,
+      );
+      await tester.runAsync(state.export);
+      await tester.pump();
+
+      expect(filesIn(temp), [
+        'frame_0001.png',
+        'frame_0002.png',
+        'frame_0003.png',
+        'frame_0004.png',
+        'frame_0005.png',
+      ]);
+    });
   });
 
-  testWidgets('video export with mixed canvas sizes is blocked', (
-    tester,
-  ) async {
-    final session = EditorSessionManager(
-      initialProject: Project(
-        id: const ProjectId('project'),
-        name: 'Project',
-        cameraSize: const CanvasSize(width: 32, height: 18),
-        tracks: [
-          Track(
-            id: const TrackId('track'),
-            name: 'Track',
-            cuts: [
-              Cut(
-                id: const CutId('cut'),
-                name: 'Cut',
-                duration: 2,
-                canvasSize: const CanvasSize(width: 8, height: 8),
-                layers: [createCameraLayer(cutId: const CutId('cut'))],
-              ),
-              Cut(
-                id: const CutId('cut-b'),
-                name: 'Cut B',
-                duration: 2,
-                canvasSize: const CanvasSize(width: 16, height: 16),
-                layers: [createCameraLayer(cutId: const CutId('cut-b'))],
-              ),
-            ],
-          ),
-        ],
-        createdAt: DateTime.utc(2026),
-      ),
-    );
-    await pumpDialog(tester, session);
+  group('sequence video', () {
+    testWidgets('MP4 pipes every planned frame to the encoder',
+        (tester) async {
+      final fake = FakeFfmpegProcess();
+      late List<String> capturedArgs;
+      final state = await pumpDialog(
+        tester,
+        exportSession(),
+        exportDirectoryPicker: () async => temp.path,
+        videoExportService: VideoExportService(
+          processStarter: (executable, arguments) async {
+            capturedArgs = arguments;
+            return fake;
+          },
+        ),
+      );
+      await browseTo(tester);
+      await tester.runAsync(state.export);
+      await tester.pump();
 
-    await tester.tap(
-      find.byKey(const ValueKey<String>('export-range-all-cuts')),
-    );
-    await tester.pump();
-    await tester.tap(find.byKey(const ValueKey<String>('export-size-canvas')));
-    await tester.pump();
-    await selectMp4Format(tester);
+      expect(
+        pngSignatureCount(Uint8List.fromList(fake.collectedStdin.toBytes())),
+        2,
+      );
+      expect(capturedArgs, contains('24'));
+      expect(
+        capturedArgs.last.replaceAll('\\', '/'),
+        endsWith('/Project.mp4'),
+      );
+      expect(statusText(tester), 'Exported video (2 frames).');
+    });
 
-    expect(find.textContaining('Video needs one picture size'), findsOneWidget);
-    final runButton = tester.widget<TextButton>(
-      find.byKey(const ValueKey<String>('export-run-button')),
-    );
-    expect(runButton.onPressed, isNull);
-
-    // The camera size is constant, so switching back re-enables export.
-    await tester.tap(find.byKey(const ValueKey<String>('export-size-camera')));
-    await tester.pump();
-    expect(
-      tester
-          .widget<TextButton>(
-            find.byKey(const ValueKey<String>('export-run-button')),
-          )
-          .onPressed,
-      isNotNull,
-    );
+    testWidgets('audio accordion reports the toggle in its summary',
+        (tester) async {
+      await pumpDialog(tester, exportSession());
+      expect(find.textContaining('SE muxed'), findsOneWidget);
+      await tester.ensureVisible(find.textContaining('Audio'));
+      await tester.tap(find.textContaining('Audio'));
+      await tester.pump();
+      await tester.ensureVisible(
+        find.byKey(const ValueKey<String>('export-audio-toggle')),
+      );
+      await tester.tap(
+        find.byKey(const ValueKey<String>('export-audio-toggle')),
+      );
+      await tester.pump();
+      await tester.ensureVisible(find.text('Audio'));
+      await tester.tap(find.text('Audio'));
+      await tester.pump();
+      expect(find.textContaining('Audio — Off'), findsOneWidget);
+    });
   });
 
-  testWidgets('instance export forces the PNG sequence format', (tester) async {
-    await pumpDialog(tester, exportSession());
-    await selectMp4Format(tester);
+  group('image tab', () {
+    testWidgets('exports the current frame as a single file', (tester) async {
+      final state = await pumpDialog(
+        tester,
+        exportSession(),
+        exportDirectoryPicker: () async => temp.path,
+      );
+      await switchTab(tester, 'image');
+      await browseTo(tester);
+      await tester.runAsync(state.export);
+      await tester.pump();
 
-    await tester.ensureVisible(
-      find.byKey(const ValueKey<String>('export-instance-toggle')),
-    );
-    await tester.pump();
-    await tester.tap(
-      find.byKey(const ValueKey<String>('export-instance-toggle')),
-    );
-    await tester.pump();
-
-    final dropdown = tester.widget<DropdownButton<ExportFormat>>(
-      find.byKey(const ValueKey<String>('export-format-dropdown')),
-    );
-    expect(dropdown.value, ExportFormat.pngSequence);
-    expect(dropdown.onChanged, isNull);
+      expect(filesIn(temp), ['Project.png']);
+      expect(statusText(tester), 'Exported Project.png.');
+    });
   });
 
-  testWidgets("the Apply-layer-FX toggle defaults ON and disables for cel "
-      'export (cels never carry FX)', (tester) async {
-    await pumpDialog(tester, exportSession());
+  group('cels tab', () {
+    testWidgets('pattern preview names the first cel; empty cels skip',
+        (tester) async {
+      final state = await pumpDialog(
+        tester,
+        exportSession(),
+        exportDirectoryPicker: () async => temp.path,
+      );
+      await switchTab(tester, 'cels');
+      final pattern = tester.widget<Text>(
+        find.byKey(const ValueKey<String>('export-pattern-preview')),
+      );
+      expect(pattern.data, 'A1.png');
 
-    final fxToggle = find.byKey(
-      const ValueKey<String>('export-apply-fx-toggle'),
-    );
-    await tester.ensureVisible(fxToggle);
-    await tester.pump();
-    expect(tester.widget<Switch>(fxToggle).value, isTrue);
-    expect(tester.widget<Switch>(fxToggle).onChanged, isNotNull);
-
-    await tester.tap(fxToggle);
-    await tester.pump();
-    expect(tester.widget<Switch>(fxToggle).value, isFalse);
-
-    await tester.ensureVisible(
-      find.byKey(const ValueKey<String>('export-instance-toggle')),
-    );
-    await tester.pump();
-    await tester.tap(
-      find.byKey(const ValueKey<String>('export-instance-toggle')),
-    );
-    await tester.pump();
-    expect(tester.widget<Switch>(fxToggle).onChanged, isNull);
+      await browseTo(tester);
+      await tester.runAsync(state.export);
+      await tester.pump();
+      // The fixture cels carry no strokes — renders resolve empty, files
+      // skip, and the summary says so.
+      expect(statusText(tester), contains('empty skipped'));
+    });
   });
 
-  testWidgets('XDTS export writes the active cut sheet through the save '
-      'picker', (tester) async {
-    final directory = tempDirectory('export_dialog_xdts');
-    final path = '${directory.path}${Platform.pathSeparator}sheet.xdts';
-    final state = await pumpDialog(
-      tester,
-      exportSession(),
-      exportXdtsPathPicker: (suggestedName) async {
-        expect(suggestedName, 'CUT1.xdts');
-        return path;
-      },
-    );
+  group('timesheet tab', () {
+    testWidgets('writes one xdts per cut under the project scope',
+        (tester) async {
+      final state = await pumpDialog(
+        tester,
+        exportSession(),
+        exportDirectoryPicker: () async => temp.path,
+      );
+      await switchTab(tester, 'timesheet');
+      await browseTo(tester);
+      await tester.tap(
+        find.byKey(const ValueKey<String>('export-scope-project')),
+      );
+      await tester.pump();
+      await tester.runAsync(state.export);
+      await tester.pump();
 
-    await selectXdtsFormat(tester);
-    expect(
-      find.text('1 XDTS sheet (cels + serifu + camerawork columns).'),
-      findsOneWidget,
-    );
-    // Size/frame-range controls are moot for sheet data.
-    expect(
-      tester
-          .widget<ChoiceChip>(
-            find.byKey(const ValueKey<String>('export-size-camera')),
-          )
-          .onSelected,
-      isNull,
-    );
-    expect(
-      tester
-          .widget<ChoiceChip>(
-            find.byKey(const ValueKey<String>('export-range-frame-range')),
-          )
-          .onSelected,
-      isNull,
-    );
-
-    await tester.runAsync(state.export);
-    await tester.pump();
-
-    final content = File(path).readAsStringSync();
-    expect(content, startsWith('exchangeDigitalTimeSheet Save Data\n'));
-    expect(content, contains('"cut": "1"'));
-    expect(content, contains('"version": 5'));
-    expect(find.text('Exported 1 XDTS sheet.'), findsOneWidget);
+      expect(filesIn(temp), ['CUT1.xdts', 'CUT2.xdts']);
+      expect(statusText(tester), 'Exported 2 XDTS sheets.');
+      final content = File('${temp.path}/CUT1.xdts').readAsStringSync();
+      expect(content, contains('exchangeDigitalTimeSheet'));
+    });
   });
 
-  testWidgets('XDTS all-cuts export writes one sheet per cut into the '
-      'directory', (tester) async {
-    final directory = tempDirectory('export_dialog_xdts_all');
-    final state = await pumpDialog(
-      tester,
-      exportSession(),
-      exportDirectoryPicker: () async => directory.path,
-    );
+  group('presets', () {
+    testWidgets('save current, drift away, apply snaps back', (tester) async {
+      await pumpDialog(
+        tester,
+        exportSession(),
+        exportDirectoryPicker: () async => temp.path,
+      );
+      await browseTo(tester);
+      await pickStillPng(tester);
+      await tester.tap(
+        find.byKey(const ValueKey<String>('export-preset-save-current')),
+      );
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 300));
+      await tester.enterText(
+        find.byKey(const ValueKey<String>('export-preset-name-field')),
+        '납품 PNG',
+      );
+      await tester.tap(
+        find.byKey(const ValueKey<String>('export-preset-name-save')),
+      );
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 300));
+      expect(find.text('납품 PNG'), findsOneWidget);
 
-    await selectXdtsFormat(tester);
-    await tester.tap(
-      find.byKey(const ValueKey<String>('export-range-all-cuts')),
-    );
-    await tester.pump();
+      // Drift back to video, then apply the preset — PNG returns.
+      await tester.tap(
+        find.byKey(const ValueKey<String>('export-format-container-mp4')),
+      );
+      await tester.pump();
+      expect(find.textContaining('frame_0001.png …'), findsNothing);
+      await tester.tap(find.text('납품 PNG'));
+      await tester.pump();
+      final output = tester.widget<Text>(
+        find.byKey(const ValueKey<String>('export-output-line')),
+      );
+      expect(output.data, contains('frame_0001.png'));
+    });
 
-    await tester.runAsync(state.export);
-    await tester.pump();
+    testWidgets('presets persist through the injected store', (tester) async {
+      final store = AppExportSettingsStore(
+        filePath: '${temp.path.replaceAll('\\', '/')}/export_settings.json',
+      );
+      await pumpDialog(tester, exportSession(), settingsStore: store);
+      await tester.pump();
+      await pickStillPng(tester);
+      await tester.tap(
+        find.byKey(const ValueKey<String>('export-preset-save-current')),
+      );
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 300));
+      await tester.enterText(
+        find.byKey(const ValueKey<String>('export-preset-name-field')),
+        'p1',
+      );
+      await tester.tap(
+        find.byKey(const ValueKey<String>('export-preset-name-save')),
+      );
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 300));
+      expect(File(store.filePath).existsSync(), isTrue);
+      expect(File(store.filePath).readAsStringSync(), contains('p1'));
+      final reloaded = await store.load();
+      expect(reloaded?.presets.map((preset) => preset.name), ['p1']);
 
-    expect(fileNames(directory), ['CUT1.xdts', 'CUT2.xdts']);
-    expect(find.text('Exported 2 XDTS sheets.'), findsOneWidget);
-  });
-
-  testWidgets('cancelling the video path picker leaves no status', (
-    tester,
-  ) async {
-    final state = await pumpDialog(
-      tester,
-      exportSession(),
-      exportVideoPathPicker: (_) async => null,
-    );
-
-    await selectMp4Format(tester);
-    await tester.runAsync(state.export);
-    await tester.pump();
-
-    expect(find.byKey(const ValueKey<String>('export-status')), findsNothing);
-  });
-
-  testWidgets('cancelling the directory picker leaves no status', (
-    tester,
-  ) async {
-    final state = await pumpDialog(
-      tester,
-      exportSession(),
-      exportDirectoryPicker: () async => null,
-    );
-
-    await tester.runAsync(state.export);
-    await tester.pump();
-
-    expect(find.byKey(const ValueKey<String>('export-status')), findsNothing);
+      // A cold dialog (fresh in-memory state) restores from the store.
+      AppExport.settings.value = AppExportSettings();
+      await pumpDialog(
+        tester,
+        exportSession(),
+        settingsStore: store,
+        dialogKey: const ValueKey<String>('cold-dialog'),
+      );
+      await tester.pump();
+      expect(
+        AppExport.settings.value.presets.map((preset) => preset.name),
+        ['p1'],
+        reason: 'the second dialog should adopt the store on open',
+      );
+      expect(find.text('p1'), findsOneWidget);
+    });
   });
 }

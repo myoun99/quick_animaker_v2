@@ -27,14 +27,18 @@ class AppExportSettingsStore {
 
   static const int version = 1;
 
+  // Sync dart:io on purpose (the settings JSON is tiny): async File futures
+  // stall under testWidgets' fake-async zone — the documented SAVE-1
+  // gotcha — and the export dialog reads/writes this store from widget
+  // code that widget tests drive directly.
   Future<AppExportSettings?> load() async {
     try {
       final file = File(filePath);
-      if (!await file.exists()) {
+      if (!file.existsSync()) {
         return null;
       }
       final decoded =
-          jsonDecode(await file.readAsString()) as Map<String, dynamic>;
+          jsonDecode(file.readAsStringSync()) as Map<String, dynamic>;
       if ((decoded['version'] as int? ?? 0) > version) {
         return null;
       }
@@ -45,10 +49,14 @@ class AppExportSettingsStore {
   }
 
   Future<void> save(AppExportSettings settings) async {
-    final file = File(filePath);
-    await file.parent.create(recursive: true);
-    await file.writeAsString(
-      jsonEncode({'version': version, ...settings.toJson()}),
-    );
+    try {
+      final file = File(filePath);
+      file.parent.createSync(recursive: true);
+      file.writeAsStringSync(
+        jsonEncode({'version': version, ...settings.toJson()}),
+      );
+    } on Object {
+      // Settings persistence is best-effort; the live state stays valid.
+    }
   }
 }

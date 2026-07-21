@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 import 'dart:math' as math;
 
@@ -7,59 +8,43 @@ import 'package:flutter/services.dart';
 
 import '../../models/canvas_size.dart';
 import '../../models/cut.dart';
+import '../../models/export_format_selection.dart';
+import '../../models/export_preset.dart';
+import '../../models/export_spec.dart';
 import '../../services/audio/audio_mixer_reference.dart' show AudioMixSource;
 import '../../services/export/xdts_builder.dart';
-import '../camera/camera_frame_render_service.dart';
+import '../../services/persistence/app_export_settings.dart';
+import '../../services/persistence/app_export_settings_store.dart';
 import '../editor_session_manager.dart';
 import 'export_audio_mix.dart';
 import 'export_frame_renderer.dart';
+import 'export_job.dart';
 import 'export_plan.dart';
+import 'export_preset_rail.dart';
+import 'export_queue_column.dart';
+import 'export_settings_modules.dart';
 import 'png_sequence_export_service.dart';
 import 'video_export_service.dart';
 
-/// Picks the directory export files are written into; `null` on cancel.
+/// Picks the output directory (the Browse… button); `null` on cancel.
 typedef ExportDirectoryPicker = Future<String?> Function();
-
-/// Picks the video output file path; `null` on cancel.
-typedef ExportVideoPathPicker = Future<String?> Function(String suggestedName);
-
-/// Picks the XDTS output file path; `null` on cancel.
-typedef ExportXdtsPathPicker = Future<String?> Function(String suggestedName);
 
 Future<String?> _pickExportDirectory() => getDirectoryPath();
 
-Future<String?> _pickExportVideoPath(String suggestedName) async {
-  final location = await getSaveLocation(
-    suggestedName: suggestedName,
-    acceptedTypeGroups: const [
-      XTypeGroup(label: 'MP4 video', extensions: ['mp4']),
-    ],
-  );
-  return location?.path;
-}
-
-Future<String?> _pickExportXdtsPath(String suggestedName) async {
-  final location = await getSaveLocation(
-    suggestedName: suggestedName,
-    acceptedTypeGroups: const [
-      XTypeGroup(label: 'XDTS timesheet', extensions: ['xdts']),
-    ],
-  );
-  return location?.path;
-}
-
-/// The TVPaint-style export window: range (active cut / all cuts / frame
-/// subrange), output size (through the camera or the raw cut canvas),
-/// format (PNG sequence now, video later) and instance-only cel export.
-/// Always renders at full quality, streaming one file at a time.
+/// The v10 export window: five zones (file/location bar → presets |
+/// preview | settings | queue → footer), four tabs, location-first flow —
+/// Export starts immediately, files land in the chosen location.
+///
+/// EX2 ships the shell with today's capabilities behind the new grammar
+/// (MP4·H.264 / PNG / XDTS); the format lineup, the live preview and the
+/// queue runner widen it in later rounds.
 class ExportDialog extends StatefulWidget {
   const ExportDialog({
     super.key,
     required this.session,
     this.exportDirectoryPicker,
-    this.exportVideoPathPicker,
-    this.exportXdtsPathPicker,
     this.videoExportService = const VideoExportService(),
+    this.settingsStore,
   });
 
   final EditorSessionManager session;
@@ -67,14 +52,13 @@ class ExportDialog extends StatefulWidget {
   /// Injectable for tests; defaults to the platform directory picker.
   final ExportDirectoryPicker? exportDirectoryPicker;
 
-  /// Injectable for tests; defaults to the platform save-file dialog.
-  final ExportVideoPathPicker? exportVideoPathPicker;
-
-  /// Injectable for tests; defaults to the platform save-file dialog.
-  final ExportXdtsPathPicker? exportXdtsPathPicker;
-
-  /// Injectable for tests; the real one shells out to ffmpeg.
+  /// Injectable for tests; the real one prefers the OS encoder and falls
+  /// back to ffmpeg.
   final VideoExportService videoExportService;
+
+  /// Persists presets/last-used state. Null (the test default) keeps the
+  /// state in memory only — no test may write the user's real settings.
+  final AppExportSettingsStore? settingsStore;
 
   @override
   State<ExportDialog> createState() => ExportDialogState();
@@ -83,176 +67,231 @@ class ExportDialog extends StatefulWidget {
 class ExportDialogState extends State<ExportDialog> {
   static const _exportService = PngSequenceExportService();
 
-  ExportRange _range = ExportRange.activeCut;
-  ExportSizeMode _sizeMode = ExportSizeMode.camera;
-  ExportFormat _format = ExportFormat.pngSequence;
-  bool _instanceOnly = false;
+  ExportTab _tab = ExportTab.sequence;
+  late ExportTabSpecs _specs;
+  String? _location;
+  bool _presetsOpen = true;
+  bool _queueOpen = true;
+  final Map<String, bool> _expanded = {};
+  final ExportQueueModel _queue = ExportQueueModel();
 
-  /// R4 new-feature 1: false bypasses EVERY layer's FX in the rendered
-  /// output (MP4 and PNG alike); true (default) exports WYSIWYG with
-  /// playback. Cels never carry FX either way.
-  bool _applyLayerFx = true;
-  bool _celTransparent = true;
-  bool _celTimesheetOnly = false;
-  bool _celIncludeProject = false;
-  bool _celIncludeCut = false;
-  bool _celIncludeLayer = true;
-  bool _celCutFolder = false;
-  bool _celLayerFolder = false;
-  late final TextEditingController _rangeStartController =
-      TextEditingController(text: '1');
-  late final TextEditingController _rangeEndController = TextEditingController(
-    text: '${math.max(1, widget.session.requireActiveCut.duration)}',
-  );
-  late final TextEditingController _celDigitsController = TextEditingController(
-    text: '0',
-  );
-  late final TextEditingController _celSuffixController =
-      TextEditingController();
+  late final TextEditingController _sequenceFileController;
+  late final TextEditingController _imageFileController;
+  late final TextEditingController _inController = TextEditingController();
+  late final TextEditingController _outController = TextEditingController();
+  late final TextEditingController _namingBaseController;
+  late final TextEditingController _celSuffixController;
+
   bool _isExporting = false;
   bool _cancelRequested = false;
   String? _statusMessage;
   (int completed, int total)? _progress;
 
+  EditorSessionManager get _session => widget.session;
+
+  @override
+  void initState() {
+    super.initState();
+    final restored = AppExport.settings.value;
+    _specs = restored.lastSpecs;
+    _location = restored.lastLocation;
+    _presetsOpen = restored.presetsDrawerOpen;
+    _queueOpen = restored.queueDrawerOpen;
+    final projectName = sanitizeExportFileComponent(
+      _session.repository.requireProject().name,
+    );
+    _sequenceFileController = TextEditingController(text: '$projectName.mp4');
+    _imageFileController = TextEditingController(text: '$projectName.png');
+    _namingBaseController = TextEditingController(
+      text: _specs.sequence.naming.baseName,
+    );
+    _celSuffixController = TextEditingController(
+      text: _specs.cels.naming.suffix,
+    );
+    unawaited(_restoreFromStore());
+  }
+
+  Future<void> _restoreFromStore() async {
+    final store = widget.settingsStore;
+    if (store == null) {
+      return;
+    }
+    final loaded = await store.load();
+    if (loaded == null || !mounted) {
+      return;
+    }
+    AppExport.settings.value = loaded;
+    setState(() {
+      _specs = loaded.lastSpecs;
+      _location = loaded.lastLocation ?? _location;
+      _presetsOpen = loaded.presetsDrawerOpen;
+      _queueOpen = loaded.queueDrawerOpen;
+      _syncControllersFromSpecs();
+    });
+  }
+
   @override
   void dispose() {
-    _rangeStartController.dispose();
-    _rangeEndController.dispose();
-    _celDigitsController.dispose();
+    _sequenceFileController.dispose();
+    _imageFileController.dispose();
+    _inController.dispose();
+    _outController.dispose();
+    _namingBaseController.dispose();
     _celSuffixController.dispose();
+    _queue.dispose();
     super.dispose();
   }
 
-  int? _parseRangeField(TextEditingController controller) {
-    final value = int.tryParse(controller.text.trim());
-    return (value == null || value < 1) ? null : value;
+  // --- state plumbing -------------------------------------------------------
+
+  void _persist() {
+    final next = AppExport.settings.value.copyWith(
+      lastSpecs: _specs,
+      lastLocation: _location,
+      presetsDrawerOpen: _presetsOpen,
+      queueDrawerOpen: _queueOpen,
+    );
+    AppExport.settings.value = next;
+    final store = widget.settingsStore;
+    if (store != null) {
+      unawaited(store.save(next));
+    }
   }
 
-  /// The composite plan for the current selections; `null` while the frame
-  /// range fields don't form a valid 1-based range.
-  List<ExportFrameTask>? _framePlan() {
-    int? start;
-    int? end;
-    if (_range == ExportRange.frameRange) {
-      final startField = _parseRangeField(_rangeStartController);
-      final endField = _parseRangeField(_rangeEndController);
-      if (startField == null || endField == null || startField > endField) {
+  void _updateSpec(ExportTabSpec spec) {
+    setState(() => _specs = _specs.withSpec(spec));
+    _persist();
+  }
+
+  void _syncControllersFromSpecs() {
+    _namingBaseController.text = _specs.sequence.naming.baseName;
+    _celSuffixController.text = _specs.cels.naming.suffix;
+    _inController.text = _specs.sequence.inFrame == null
+        ? ''
+        : '${_specs.sequence.inFrame! + 1}';
+    _outController.text = _specs.sequence.outFrame == null
+        ? ''
+        : '${_specs.sequence.outFrame! + 1}';
+  }
+
+  bool _expandedFor(String id, {bool fallback = false}) =>
+      _expanded['${_tab.jsonValue}:$id'] ?? fallback;
+
+  void _toggleExpanded(String id, {bool fallback = false}) {
+    setState(() {
+      _expanded['${_tab.jsonValue}:$id'] =
+          !_expandedFor(id, fallback: fallback);
+    });
+  }
+
+  // --- plans ----------------------------------------------------------------
+
+  Cut get _activeCut => _session.requireActiveCut;
+
+  bool _cutInScope(Cut cut) => _session.repository
+      .requireProject()
+      .exportOverrides
+      .cutIncluded(cut.id);
+
+  (int?, int?)? _sequenceInOut() {
+    int? parse(TextEditingController controller) {
+      final raw = controller.text.trim();
+      if (raw.isEmpty) {
         return null;
       }
-      start = startField - 1;
-      end = endField - 1;
+      final value = int.tryParse(raw);
+      return (value == null || value < 1) ? -1 : value - 1;
     }
+
+    final inFrame = parse(_inController);
+    final outFrame = parse(_outController);
+    if (inFrame == -1 || outFrame == -1) {
+      return null;
+    }
+    if (inFrame != null && outFrame != null && inFrame > outFrame) {
+      return null;
+    }
+    return (inFrame, outFrame);
+  }
+
+  /// The composite plan for the Sequence tab; `null` while the in/out
+  /// fields don't form a valid range.
+  List<ExportFrameTask>? _sequencePlan({required bool includeGaps}) {
+    final spec = _specs.sequence;
+    if (spec.scope == ExportScopeKind.project) {
+      return buildExportFramePlan(
+        project: _session.repository.requireProject(),
+        activeCutId: _activeCut.id,
+        range: ExportRange.allCuts,
+        includeGaps: includeGaps,
+      );
+    }
+    final inOut = _sequenceInOut();
+    if (inOut == null) {
+      return null;
+    }
+    final (inFrame, outFrame) = inOut;
+    final trimmed = inFrame != null || outFrame != null;
     return buildExportFramePlan(
-      project: widget.session.repository.requireProject(),
-      activeCutId: widget.session.requireActiveCut.id,
-      range: _range,
-      rangeStartFrame: start,
-      rangeEndFrame: end,
-      // Video matches all-cuts playback frame for frame, so cut gaps
-      // export as black frames; a PNG sequence skips them.
-      includeGaps: _format == ExportFormat.mp4Video,
+      project: _session.repository.requireProject(),
+      activeCutId: _activeCut.id,
+      range: trimmed ? ExportRange.frameRange : ExportRange.activeCut,
+      rangeStartFrame: inFrame ?? 0,
+      rangeEndFrame: outFrame ?? math.max(1, _activeCut.duration) - 1,
     );
   }
 
-  ExportCelNaming get _celNaming => ExportCelNaming(
-    includeProjectName: _celIncludeProject,
-    includeCutName: _celIncludeCut,
-    includeLayerName: _celIncludeLayer,
-    frameDigits: int.tryParse(_celDigitsController.text.trim()) ?? 0,
-    suffix: _celSuffixController.text.trim(),
-    cutFolder: _celCutFolder,
-    layerFolder: _celLayerFolder,
-  );
+  List<ExportCelTask> _celPlan() {
+    final spec = _specs.cels;
+    final plan = buildExportCelPlan(
+      project: _session.repository.requireProject(),
+      activeCutId: _activeCut.id,
+      range: spec.scope == ExportScopeKind.project
+          ? ExportRange.allCuts
+          : ExportRange.activeCut,
+      naming: spec.naming,
+      onTimesheetOnly: spec.onTimesheetOnly,
+    );
+    // The project-side cut checks trim the project scope (the grid UI
+    // arrives with EX5 — the seam is live already).
+    return [
+      for (final task in plan)
+        if (_cutInScope(task.cut)) task,
+    ];
+  }
 
-  List<ExportCelTask> _celPlan() => buildExportCelPlan(
-    project: widget.session.repository.requireProject(),
-    activeCutId: widget.session.requireActiveCut.id,
-    range: _range,
-    naming: _celNaming,
-    onTimesheetOnly: _celTimesheetOnly,
-  );
+  List<Cut> _timesheetCuts() {
+    final cuts = resolveExportCuts(
+      project: _session.repository.requireProject(),
+      activeCutId: _activeCut.id,
+      range: _specs.timesheet.scope == ExportScopeKind.project
+          ? ExportRange.allCuts
+          : ExportRange.activeCut,
+    );
+    return [
+      for (final cut in cuts)
+        if (_cutInScope(cut)) cut,
+    ];
+  }
 
-  /// The canvas sizes the current range covers; one entry means every
-  /// exported cut shares it.
-  Set<CanvasSize> _rangeCanvasSizes() {
+  Set<CanvasSize> _scopeCanvasSizes(ExportScopeKind scope) {
     return resolveExportCuts(
-      project: widget.session.repository.requireProject(),
-      activeCutId: widget.session.requireActiveCut.id,
-      range: _range,
+      project: _session.repository.requireProject(),
+      activeCutId: _activeCut.id,
+      range: scope == ExportScopeKind.project
+          ? ExportRange.allCuts
+          : ExportRange.activeCut,
     ).map((cut) => cut.canvasSize).toSet();
   }
 
-  /// Video needs one constant picture size; the camera size always is, but
-  /// raw canvas mode breaks when the range mixes cut canvas sizes.
-  bool get _videoSizeConflict =>
-      _format == ExportFormat.mp4Video &&
-      !_instanceOnly &&
-      _sizeMode == ExportSizeMode.canvas &&
-      _rangeCanvasSizes().length > 1;
-
-  /// Sheet-data export: size/frame-range/rendering do not apply.
-  bool get _isXdts => !_instanceOnly && _format == ExportFormat.xdtsTimesheet;
-
-  String _planSummary() {
-    if (_isXdts) {
-      final count = _xdtsCuts().length;
-      return '$count XDTS ${_plural(count, 'sheet')} '
-          '(cels + serifu + camerawork columns).';
-    }
-    if (_instanceOnly) {
-      final count = _celPlan().length;
-      final background = _celTransparent ? 'transparent' : 'opaque white';
-      return '$count ${_plural(count, 'cel')} as $background PNGs, '
-          'no compositing.';
-    }
-    final plan = _framePlan();
-    if (plan == null) {
-      final duration = math.max(1, widget.session.requireActiveCut.duration);
-      return 'Enter a valid frame range (1–$duration).';
-    }
-    final frames = '${plan.length} ${_plural(plan.length, 'frame')}';
-    if (_sizeMode == ExportSizeMode.camera) {
-      final size = widget.session.cameraFrameSize;
-      return '$frames at ${size.width}×${size.height} through the camera.';
-    }
-    final sizes = _rangeCanvasSizes();
-    if (sizes.length == 1) {
-      final size = sizes.first;
-      return '$frames at ${size.width}×${size.height} (raw canvas).';
-    }
-    if (_videoSizeConflict) {
-      return 'Video needs one picture size, but the cuts in this range have '
-          'different canvas sizes — use the camera size instead.';
-    }
-    return "$frames at each cut's own canvas size.";
+  int _currentImageFrame() {
+    final duration = math.max(1, _activeCut.duration);
+    return _session.editingFrameCursor.value.clamp(0, duration - 1);
   }
 
-  String _plural(int count, String noun) => count == 1 ? noun : '${noun}s';
-
-  String _summaryMessage(
-    ExportWriteSummary summary,
-    int planned,
-    bool instanceOnly,
-  ) {
-    if (summary.processed < planned) {
-      return 'Export cancelled after ${summary.written} '
-          '${_plural(summary.written, 'file')}.';
-    }
-    if (instanceOnly) {
-      final skipped = summary.processed - summary.written;
-      final cels = '${summary.written} ${_plural(summary.written, 'cel')}';
-      return skipped > 0
-          ? 'Exported $cels ($skipped empty skipped).'
-          : 'Exported $cels.';
-    }
-    return 'Exported ${summary.written} '
-        '${_plural(summary.written, 'frame')}.';
-  }
-
-  /// The 1-based position of [cut] within its track — the sheet/XDTS cut
-  /// number.
+  /// The 1-based position of [cut] within its track (sheet/XDTS number).
   int _cutNumberOf(Cut cut) {
-    for (final track in widget.session.repository.requireProject().tracks) {
+    for (final track in _session.repository.requireProject().tracks) {
       final index = track.cuts.indexWhere((entry) => entry.id == cut.id);
       if (index != -1) {
         return index + 1;
@@ -261,192 +300,140 @@ class ExportDialogState extends State<ExportDialog> {
     return 1;
   }
 
-  List<Cut> _xdtsCuts() => resolveExportCuts(
-    project: widget.session.repository.requireProject(),
-    activeCutId: widget.session.requireActiveCut.id,
-    // XDTS has no frame subrange — a sheet always covers its whole cut.
-    range: _range == ExportRange.allCuts
-        ? ExportRange.allCuts
-        : ExportRange.activeCut,
-  );
+  String _sequenceFileNameFor(int index) {
+    final naming = _specs.sequence.naming;
+    final number = '${index + 1}'.padLeft(naming.digits, '0');
+    final extension = _specs.sequence.format.stillFormat.fileExtension;
+    return '${naming.baseName}_$number.$extension';
+  }
 
-  /// XDTS export writes sheet data straight to disk — no rendering: one
-  /// .xdts per cut (save dialog for the active cut, a directory for all).
-  Future<void> _exportXdts() async {
-    final cuts = _xdtsCuts();
-    if (cuts.isEmpty) {
-      return;
-    }
-    final defById = widget.session.cameraInstructionSet.defById;
+  String _plural(int count, String noun) => count == 1 ? noun : '${noun}s';
 
-    final targets = <(Cut, String)>[];
-    if (cuts.length == 1) {
-      final picker = widget.exportXdtsPathPicker ?? _pickExportXdtsPath;
-      var path = await picker('CUT${_cutNumberOf(cuts.single)}.xdts');
-      if (path == null || !mounted) {
-        return;
-      }
-      if (!path.toLowerCase().endsWith('.xdts')) {
-        path = '$path.xdts';
-      }
-      targets.add((cuts.single, path));
-    } else {
-      final picker = widget.exportDirectoryPicker ?? _pickExportDirectory;
-      final directoryPath = await picker();
-      if (directoryPath == null || !mounted) {
-        return;
-      }
-      for (final cut in cuts) {
-        targets.add((
-          cut,
-          '$directoryPath${Platform.pathSeparator}'
-              'CUT${_cutNumberOf(cut)}.xdts',
-        ));
-      }
-    }
+  // --- summaries ------------------------------------------------------------
 
-    setState(() {
-      _isExporting = true;
-      _statusMessage = 'Exporting…';
-    });
-    try {
-      for (final (cut, path) in targets) {
-        final content = buildXdtsContent(
-          cut: cut,
-          cutNumber: _cutNumberOf(cut),
-          instructionDefById: defById,
-        );
-        final file = File(path);
-        await file.parent.create(recursive: true);
-        await file.writeAsString(content, flush: true);
-      }
-      if (mounted) {
-        setState(
-          () => _statusMessage =
-              'Exported ${targets.length} XDTS '
-              '${_plural(targets.length, 'sheet')}.',
-        );
-      }
-    } catch (error) {
-      if (mounted) {
-        setState(() => _statusMessage = 'Export failed: $error');
-      }
-    } finally {
-      if (mounted) {
-        setState(() => _isExporting = false);
-      }
+  String _planHeadline() {
+    switch (_tab) {
+      case ExportTab.sequence:
+        final spec = _specs.sequence;
+        final plan = _sequencePlan(includeGaps: spec.format.isVideo);
+        if (plan == null) {
+          final duration = math.max(1, _activeCut.duration);
+          return 'Enter a valid in/out range (1–$duration).';
+        }
+        final frames = '${plan.length} ${_plural(plan.length, 'frame')}';
+        if (spec.sizeMode == ExportSizeMode.camera) {
+          final size = _session.cameraFrameSize;
+          return '$frames at ${size.width}×${size.height} through the camera.';
+        }
+        final sizes = _scopeCanvasSizes(spec.scope);
+        if (sizes.length == 1) {
+          final size = sizes.first;
+          return '$frames at ${size.width}×${size.height} (raw canvas).';
+        }
+        return "$frames at each cut's own canvas size.";
+      case ExportTab.image:
+        final size = _specs.image.sizeMode == ExportSizeMode.camera
+            ? _session.cameraFrameSize
+            : _activeCut.canvasSize;
+        return 'Frame ${_currentImageFrame() + 1} of ${_activeCut.name} at '
+            '${size.width}×${size.height}.';
+      case ExportTab.cels:
+        final count = _celPlan().length;
+        final background = _specs.cels.format.wantsAlpha
+            ? 'transparent'
+            : 'opaque';
+        return '$count ${_plural(count, 'cel')} as $background '
+            '${_specs.cels.format.stillFormat.label} files, no compositing.';
+      case ExportTab.timesheet:
+        final count = _timesheetCuts().length;
+        return '$count XDTS ${_plural(count, 'sheet')} '
+            '(cels + serifu + camerawork columns).';
     }
   }
 
-  /// Public for tests; the Export button is the production entry point.
-  Future<void> export() async {
-    final instanceOnly = _instanceOnly;
-    final celTransparent = _celTransparent;
-    final sizeMode = _sizeMode;
-    if (!instanceOnly && _format == ExportFormat.xdtsTimesheet) {
-      if (_isExporting) {
-        return;
-      }
-      await _exportXdts();
-      return;
+  String _outputLine() {
+    final location = _location;
+    if (location == null || location.isEmpty) {
+      return 'Choose a location to enable Export.';
     }
-    final isVideo = !instanceOnly && _format == ExportFormat.mp4Video;
-    final celPlan = instanceOnly ? _celPlan() : const <ExportCelTask>[];
-    final framePlan = instanceOnly ? const <ExportFrameTask>[] : _framePlan();
-    final count = instanceOnly ? celPlan.length : (framePlan?.length ?? 0);
-    if (count == 0 || _isExporting || _videoSizeConflict) {
-      return;
+    switch (_tab) {
+      case ExportTab.sequence:
+        final spec = _specs.sequence;
+        if (spec.format.isVideo) {
+          return '→ ${_singleFileName(_sequenceFileController, 'mp4')}';
+        }
+        return '→ ${_sequenceFileNameFor(0)} …';
+      case ExportTab.image:
+        return '→ ${_singleFileName(_imageFileController, 'png')}';
+      case ExportTab.cels:
+        final plan = _celPlan();
+        return plan.isEmpty ? '→ (no cels)' : '→ ${plan.first.fileName} …';
+      case ExportTab.timesheet:
+        final cuts = _timesheetCuts();
+        return cuts.isEmpty
+            ? '→ (no cuts)'
+            : '→ CUT${_cutNumberOf(cuts.first)}.xdts'
+                  '${cuts.length > 1 ? ' …' : ''}';
     }
+  }
 
-    String? directoryPath;
-    String? videoPath;
-    if (isVideo) {
-      final picker = widget.exportVideoPathPicker ?? _pickExportVideoPath;
-      final suggestedName =
-          '${sanitizeExportFileComponent(widget.session.repository.requireProject().name)}.mp4';
-      videoPath = await picker(suggestedName);
-      if (videoPath == null || !mounted) {
-        return;
-      }
-      if (!videoPath.toLowerCase().endsWith('.mp4')) {
-        videoPath = '$videoPath.mp4';
-      }
-    } else {
-      final picker = widget.exportDirectoryPicker ?? _pickExportDirectory;
-      directoryPath = await picker();
-      if (directoryPath == null || !mounted) {
-        return;
-      }
+  String _singleFileName(TextEditingController controller, String extension) {
+    var name = controller.text.trim();
+    if (name.isEmpty) {
+      name = sanitizeExportFileComponent(
+        _session.repository.requireProject().name,
+      );
     }
+    if (!name.toLowerCase().endsWith('.$extension')) {
+      name = '$name.$extension';
+    }
+    return name;
+  }
 
-    final renderer = ExportFrameRenderer(
-      session: widget.session,
-      applyLayerFx: _applyLayerFx,
-    );
+  bool get _hasLocation => _location != null && _location!.isNotEmpty;
+
+  bool get _canExport {
+    if (_isExporting || !_hasLocation) {
+      return false;
+    }
+    switch (_tab) {
+      case ExportTab.sequence:
+        final plan =
+            _sequencePlan(includeGaps: _specs.sequence.format.isVideo);
+        return plan != null && plan.isNotEmpty;
+      case ExportTab.image:
+        return true;
+      case ExportTab.cels:
+        return _celPlan().isNotEmpty;
+      case ExportTab.timesheet:
+        return _timesheetCuts().isNotEmpty;
+    }
+  }
+
+  // --- export runners -------------------------------------------------------
+
+  String _joinLocation(String name) =>
+      '$_location${Platform.pathSeparator}$name';
+
+  void _reportProgress(int completed, int total) {
+    if (mounted) {
+      setState(() {
+        _progress = (completed, total);
+        _statusMessage = 'Exporting… $completed/$total';
+      });
+    }
+  }
+
+  Future<void> _runGuarded(Future<String> Function() run) async {
     setState(() {
       _isExporting = true;
       _cancelRequested = false;
-      _progress = (0, count);
       _statusMessage = 'Exporting…';
     });
     try {
-      void reportProgress(int completed, int total) {
-        if (mounted) {
-          setState(() {
-            _progress = (completed, total);
-            _statusMessage = 'Exporting… $completed/$total';
-          });
-        }
-      }
-
-      final ExportWriteSummary summary;
-      if (isVideo) {
-        final videoPlan = framePlan!;
-        // The audio mix renders FIRST, through the same mixer playback
-        // uses (EXPORT-AUDIO): what the preview played is what the file
-        // holds. ffmpeg only encodes the finished PCM.
-        final audioMixPath = await _renderAudioMix(videoPlan);
-        try {
-          summary = await widget.videoExportService.exportVideo(
-            count: count,
-            // Video frames bake the cut fade (MP4 has no alpha channel).
-            renderImage: (index) =>
-                renderer.renderCompositeForVideo(videoPlan[index], sizeMode),
-            outputFilePath: videoPath!,
-            frameRate: widget.session.projectFrameRate,
-            audioMixPath: audioMixPath,
-            isCancelled: () => _cancelRequested,
-            onProgress: reportProgress,
-          );
-        } finally {
-          if (audioMixPath != null) {
-            try {
-              File(audioMixPath).deleteSync();
-            } on Object {
-              // A leftover temp mix is untidy, not an export failure.
-            }
-          }
-        }
-      } else {
-        summary = await _exportService.exportImages(
-          count: count,
-          renderImage: (index) => instanceOnly
-              ? renderer.renderCel(celPlan[index], transparent: celTransparent)
-              : renderer.renderComposite(framePlan![index], sizeMode),
-          fileNameFor: (index) => instanceOnly
-              ? celPlan[index].fileName
-              : cameraSequenceFileName(index),
-          directoryPath: directoryPath!,
-          isCancelled: () => _cancelRequested,
-          onProgress: reportProgress,
-        );
-      }
+      final message = await run();
       if (mounted) {
-        setState(
-          () => _statusMessage = isVideo
-              ? _videoSummaryMessage(summary, count)
-              : _summaryMessage(summary, count, instanceOnly),
-        );
+        setState(() => _statusMessage = message);
       }
     } catch (error) {
       if (mounted) {
@@ -462,23 +449,178 @@ class ExportDialogState extends State<ExportDialog> {
     }
   }
 
-  /// Renders the SE mix for [videoPlan] to a temp WAV through the same
-  /// mixer playback uses; null = nothing audible (video-only encode).
-  /// Sources come from the conform store — awaited, so an export right
-  /// after an import waits for the conform instead of dropping the sound.
+  /// Public for tests; the Export button is the production entry point.
+  Future<void> export() async {
+    if (!_canExport) {
+      return;
+    }
+    switch (_tab) {
+      case ExportTab.sequence:
+        final spec = _specs.sequence;
+        if (spec.format.isVideo) {
+          await _runGuarded(_exportVideo);
+        } else {
+          await _runGuarded(_exportPngSequence);
+        }
+      case ExportTab.image:
+        await _runGuarded(_exportCurrentFrame);
+      case ExportTab.cels:
+        await _runGuarded(_exportCels);
+      case ExportTab.timesheet:
+        await _runGuarded(_exportXdts);
+    }
+  }
+
+  Future<String> _exportVideo() async {
+    final spec = _specs.sequence;
+    final plan = _sequencePlan(includeGaps: true)!;
+    final renderer = ExportFrameRenderer(
+      session: _session,
+      applyLayerFx: spec.applyLayerFx,
+    );
+    final videoPath = _joinLocation(
+      _singleFileName(_sequenceFileController, 'mp4'),
+    );
+    final audioMixPath =
+        spec.includeAudio ? await _renderAudioMix(plan) : null;
+    try {
+      final summary = await widget.videoExportService.exportVideo(
+        count: plan.length,
+        // Video frames bake the cut fade (H.264 carries no alpha).
+        renderImage: (index) =>
+            renderer.renderCompositeForVideo(plan[index], spec.sizeMode),
+        outputFilePath: videoPath,
+        frameRate: _session.projectFrameRate,
+        audioMixPath: audioMixPath,
+        isCancelled: () => _cancelRequested,
+        onProgress: _reportProgress,
+      );
+      if (summary.processed < plan.length) {
+        return summary.written == 0
+            ? 'Export cancelled.'
+            : 'Export cancelled after ${summary.written} '
+                  '${_plural(summary.written, 'frame')} (partial video kept).';
+      }
+      return 'Exported video (${summary.written} '
+          '${_plural(summary.written, 'frame')}).';
+    } finally {
+      if (audioMixPath != null) {
+        try {
+          File(audioMixPath).deleteSync();
+        } on Object {
+          // A leftover temp mix is untidy, not an export failure.
+        }
+      }
+    }
+  }
+
+  Future<String> _exportPngSequence() async {
+    final spec = _specs.sequence;
+    final plan = _sequencePlan(includeGaps: false)!;
+    final renderer = ExportFrameRenderer(
+      session: _session,
+      applyLayerFx: spec.applyLayerFx,
+    );
+    final summary = await _exportService.exportImages(
+      count: plan.length,
+      renderImage: (index) =>
+          renderer.renderComposite(plan[index], spec.sizeMode),
+      fileNameFor: _sequenceFileNameFor,
+      directoryPath: _location!,
+      isCancelled: () => _cancelRequested,
+      onProgress: _reportProgress,
+    );
+    if (summary.processed < plan.length) {
+      return 'Export cancelled after ${summary.written} '
+          '${_plural(summary.written, 'file')}.';
+    }
+    return 'Exported ${summary.written} '
+        '${_plural(summary.written, 'frame')}.';
+  }
+
+  Future<String> _exportCurrentFrame() async {
+    final spec = _specs.image;
+    final renderer = ExportFrameRenderer(
+      session: _session,
+      applyLayerFx: spec.applyLayerFx,
+    );
+    final task = ExportFrameTask(
+      cut: _activeCut,
+      frameIndex: _currentImageFrame(),
+    );
+    final fileName = _singleFileName(_imageFileController, 'png');
+    final summary = await _exportService.exportImages(
+      count: 1,
+      renderImage: (_) => renderer.renderComposite(task, spec.sizeMode),
+      fileNameFor: (_) => fileName,
+      directoryPath: _location!,
+      isCancelled: () => _cancelRequested,
+      onProgress: _reportProgress,
+    );
+    return summary.written == 1
+        ? 'Exported $fileName.'
+        : 'Nothing to export (empty frame).';
+  }
+
+  Future<String> _exportCels() async {
+    final spec = _specs.cels;
+    final plan = _celPlan();
+    final renderer = ExportFrameRenderer(
+      session: _session,
+      applyLayerFx: false,
+    );
+    final summary = await _exportService.exportImages(
+      count: plan.length,
+      renderImage: (index) => renderer.renderCel(
+        plan[index],
+        transparent: spec.format.wantsAlpha,
+      ),
+      fileNameFor: (index) => plan[index].fileName,
+      directoryPath: _location!,
+      isCancelled: () => _cancelRequested,
+      onProgress: _reportProgress,
+    );
+    if (summary.processed < plan.length) {
+      return 'Export cancelled after ${summary.written} '
+          '${_plural(summary.written, 'file')}.';
+    }
+    final skipped = summary.processed - summary.written;
+    final cels = '${summary.written} ${_plural(summary.written, 'cel')}';
+    return skipped > 0
+        ? 'Exported $cels ($skipped empty skipped).'
+        : 'Exported $cels.';
+  }
+
+  Future<String> _exportXdts() async {
+    final cuts = _timesheetCuts();
+    final defById = _session.cameraInstructionSet.defById;
+    var written = 0;
+    for (final cut in cuts) {
+      final content = buildXdtsContent(
+        cut: cut,
+        cutNumber: _cutNumberOf(cut),
+        instructionDefById: defById,
+      );
+      final file = File(_joinLocation('CUT${_cutNumberOf(cut)}.xdts'));
+      await file.parent.create(recursive: true);
+      await file.writeAsString(content, flush: true);
+      written += 1;
+      _reportProgress(written, cuts.length);
+    }
+    return 'Exported $written XDTS ${_plural(written, 'sheet')}.';
+  }
+
+  /// Renders the SE mix to a temp WAV through the same mixer playback
+  /// uses; null = nothing audible (video-only encode).
   Future<String?> _renderAudioMix(List<ExportFrameTask> videoPlan) async {
     final schedule = buildExportAudioPlan(
       plan: videoPlan,
-      // Track-owned SE rows lay in from the tracks' global axes.
-      project: widget.session.repository.requireProject(),
+      project: _session.repository.requireProject(),
     );
     if (schedule.isEmpty) {
       return null;
     }
-    final store = widget.session.audioConformStore;
-    // Land every conform BEFORE the render starts: the streaming check
-    // below is synchronous, and a not-yet-conformed long file must be
-    // KNOWN long by then, not discovered mid-render.
+    final store = _session.audioConformStore;
     for (final clip in schedule) {
       await store.ensureFor(clip.filePath);
     }
@@ -487,7 +629,7 @@ class ExportDialogState extends State<ExportDialog> {
         'qa_export_mix_${DateTime.now().microsecondsSinceEpoch}.wav';
     final written = await writeExportAudioMixWav(
       schedule: schedule,
-      rate: widget.session.projectFrameRate,
+      rate: _session.projectFrameRate,
       totalFrames: videoPlan.length,
       sampleRate: store.projectSampleRate,
       resolveSource: (filePath) async {
@@ -498,8 +640,6 @@ class ExportDialogState extends State<ExportDialog> {
         }
         return AudioMixSource(samples: samples, channels: entry!.channels);
       },
-      // Long conforms render straight off their disk WAV (AUDIO-PRO R6) —
-      // the export reads them block by block, same as playback windows.
       resolveStreamReader: (filePath) =>
           store.isStreaming(filePath) ? store.streamReaderFor(filePath) : null,
       outputPath: path,
@@ -508,436 +648,800 @@ class ExportDialogState extends State<ExportDialog> {
     return written ? path : null;
   }
 
-  String _videoSummaryMessage(ExportWriteSummary summary, int planned) {
-    if (summary.processed < planned) {
-      return summary.written == 0
-          ? 'Export cancelled.'
-          : 'Export cancelled after ${summary.written} '
-                '${_plural(summary.written, 'frame')} (partial video kept).';
-    }
-    return 'Exported video (${summary.written} '
-        '${_plural(summary.written, 'frame')}).';
-  }
-
   void cancelExport() {
     _cancelRequested = true;
   }
 
-  Widget _sectionLabel(String text) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 6),
-      child: Text(text, style: Theme.of(context).textTheme.labelMedium),
-    );
+  // --- presets --------------------------------------------------------------
+
+  List<ExportPreset> get _tabPresets =>
+      AppExport.settings.value.presetsFor(_tab);
+
+  void _applyPreset(ExportPreset preset) {
+    setState(() {
+      _specs = _specs.withSpec(preset.spec);
+      _syncControllersFromSpecs();
+    });
+    _persist();
   }
 
-  Widget _rangeChip(String label, ExportRange range, String keySuffix) {
-    // A sheet always covers its whole cut — no frame subrange for XDTS.
-    final unavailable = _isXdts && range == ExportRange.frameRange;
-    return ChoiceChip(
-      key: ValueKey<String>('export-range-$keySuffix'),
-      label: Text(label),
-      selected: _range == range,
-      onSelected: _isExporting || unavailable
-          ? null
-          : (_) => setState(() => _range = range),
-    );
-  }
-
-  Widget _sizeChip(String label, ExportSizeMode mode, String keySuffix) {
-    return ChoiceChip(
-      key: ValueKey<String>('export-size-$keySuffix'),
-      label: Text(label),
-      selected: _sizeMode == mode,
-      // Cels are always raw canvas artwork and XDTS carries no pictures,
-      // so size mode is moot for both.
-      onSelected: _isExporting || _instanceOnly || _isXdts
-          ? null
-          : (_) => setState(() => _sizeMode = mode),
-    );
-  }
-
-  Widget _celOptionChip(
-    String label,
-    bool selected,
-    void Function(bool value) apply,
-    String key,
-  ) {
-    return FilterChip(
-      key: ValueKey<String>(key),
-      label: Text(label),
-      selected: selected,
-      onSelected: _isExporting ? null : (value) => setState(() => apply(value)),
-    );
-  }
-
-  Widget _rangeField(
-    TextEditingController controller,
-    String label,
-    String key,
-  ) {
-    return Expanded(
-      child: TextField(
-        key: ValueKey<String>(key),
-        controller: controller,
-        enabled: !_isExporting,
-        keyboardType: TextInputType.number,
-        inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-        decoration: InputDecoration(labelText: label),
-        onChanged: (_) => setState(() {}),
+  Future<void> _saveCurrentPreset() async {
+    final name = await showExportPresetNameDialog(context);
+    if (name == null || name.isEmpty || !mounted) {
+      return;
+    }
+    final preset = ExportPreset(
+      id: ExportPresetId(
+        'preset-${DateTime.now().microsecondsSinceEpoch}',
       ),
+      name: name,
+      spec: _specs.specFor(_tab),
     );
+    final settings = AppExport.settings.value;
+    AppExport.settings.value = settings.copyWith(
+      presets: [...settings.presets, preset],
+    );
+    setState(() {});
+    _persist();
   }
+
+  void _deletePreset(ExportPreset preset) {
+    final settings = AppExport.settings.value;
+    AppExport.settings.value = settings.copyWith(
+      presets: [
+        for (final entry in settings.presets)
+          if (entry.id != preset.id) entry,
+      ],
+    );
+    setState(() {});
+    _persist();
+  }
+
+  // --- build ----------------------------------------------------------------
+
+  Future<void> _browseLocation() async {
+    final picker = widget.exportDirectoryPicker ?? _pickExportDirectory;
+    final directory = await picker();
+    if (directory == null || !mounted) {
+      return;
+    }
+    setState(() => _location = directory);
+    _persist();
+  }
+
+  bool get _singleFileTab =>
+      _tab == ExportTab.image ||
+      (_tab == ExportTab.sequence && _specs.sequence.format.isVideo);
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final cameraSize = widget.session.cameraFrameSize;
-    final canvasSizes = _rangeCanvasSizes();
-    final canvasLabel = canvasSizes.length == 1
-        ? 'Canvas ${canvasSizes.first.width}×${canvasSizes.first.height}'
-        : 'Canvas (per cut)';
-    final progress = _progress;
-    final celPlan = _instanceOnly ? _celPlan() : const <ExportCelTask>[];
-    final canExport =
-        !_isExporting &&
-        !_videoSizeConflict &&
-        (_isXdts
-            ? _xdtsCuts().isNotEmpty
-            : _instanceOnly
-            ? celPlan.isNotEmpty
-            : (_framePlan()?.isNotEmpty ?? false));
+    final presetsWidth = _presetsOpen ? 152.0 : 22.0;
+    final queueWidth = _queueOpen ? 200.0 : 22.0;
+    final width = presetsWidth + 330 + 272 + queueWidth + 4;
 
-    return AlertDialog(
-      title: const Text('Export'),
-      content: SizedBox(
-        width: 420,
-        child: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              _sectionLabel('Range'),
-              Wrap(
-                spacing: 6,
-                runSpacing: 6,
+    return Dialog(
+      child: SizedBox(
+        width: width,
+        height: 560,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            _titleBar(theme),
+            _tabBar(theme),
+            _nameBar(theme),
+            Expanded(
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  _rangeChip('Active cut', ExportRange.activeCut, 'active-cut'),
-                  _rangeChip('All cuts', ExportRange.allCuts, 'all-cuts'),
-                  _rangeChip(
-                    'Frame range',
-                    ExportRange.frameRange,
-                    'frame-range',
-                  ),
+                  SizedBox(width: presetsWidth, child: _presetsZone()),
+                  VerticalDivider(width: 1, color: theme.dividerColor),
+                  Expanded(child: _previewZone(theme)),
+                  VerticalDivider(width: 1, color: theme.dividerColor),
+                  SizedBox(width: 272, child: _settingsZone()),
+                  VerticalDivider(width: 1, color: theme.dividerColor),
+                  SizedBox(width: queueWidth, child: _queueZone()),
                 ],
               ),
-              if (_range == ExportRange.frameRange && !_instanceOnly)
-                Padding(
-                  padding: const EdgeInsets.only(top: 8),
-                  child: Row(
-                    children: [
-                      _rangeField(
-                        _rangeStartController,
-                        'From frame',
-                        'export-range-start-field',
-                      ),
-                      const Padding(
-                        padding: EdgeInsets.symmetric(horizontal: 8),
-                        child: Text('–'),
-                      ),
-                      _rangeField(
-                        _rangeEndController,
-                        'To frame',
-                        'export-range-end-field',
-                      ),
-                    ],
+            ),
+            Divider(height: 1, color: theme.dividerColor),
+            _footer(theme),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _titleBar(ThemeData theme) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(12, 8, 6, 0),
+      child: Row(
+        children: [
+          Text(
+            'Export',
+            style: theme.textTheme.titleSmall?.copyWith(
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          const Spacer(),
+          IconButton(
+            key: const ValueKey<String>('export-close-button'),
+            onPressed: _isExporting
+                ? null
+                : () => Navigator.of(context).pop(),
+            icon: const Icon(Icons.close, size: 16),
+            visualDensity: VisualDensity.compact,
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _tabBar(ThemeData theme) {
+    Widget tabButton(ExportTab tab) {
+      final selected = _tab == tab;
+      final accent = theme.colorScheme.primary;
+      return InkWell(
+        key: ValueKey<String>('export-tab-${tab.jsonValue}'),
+        onTap: _isExporting || selected
+            ? null
+            : () => setState(() => _tab = tab),
+        child: Container(
+          padding: const EdgeInsets.fromLTRB(13, 6, 13, 5),
+          decoration: BoxDecoration(
+            border: Border(
+              bottom: BorderSide(
+                width: 2,
+                color: selected ? accent : Colors.transparent,
+              ),
+            ),
+          ),
+          child: Text(
+            ExportPresetRail.tabLabel(tab),
+            style: theme.textTheme.labelMedium?.copyWith(
+              color: selected ? accent : theme.colorScheme.onSurfaceVariant,
+              fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
+            ),
+          ),
+        ),
+      );
+    }
+
+    return Container(
+      decoration: BoxDecoration(
+        border: Border(bottom: BorderSide(color: theme.dividerColor)),
+      ),
+      padding: const EdgeInsets.symmetric(horizontal: 8),
+      child: Row(children: [for (final tab in ExportTab.values) tabButton(tab)]),
+    );
+  }
+
+  Widget _nameBar(ThemeData theme) {
+    final singleFile = _singleFileTab;
+    final controller = _tab == ExportTab.image
+        ? _imageFileController
+        : _sequenceFileController;
+    return Container(
+      decoration: BoxDecoration(
+        border: Border(bottom: BorderSide(color: theme.dividerColor)),
+      ),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
+      child: Row(
+        children: [
+          Text(
+            singleFile ? 'File' : 'Pattern',
+            style: theme.textTheme.labelSmall?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
+          ),
+          const SizedBox(width: 8),
+          if (singleFile)
+            SizedBox(
+              width: 180,
+              child: TextField(
+                key: const ValueKey<String>('export-file-name-field'),
+                controller: controller,
+                enabled: !_isExporting,
+                style: theme.textTheme.bodySmall,
+                decoration: const InputDecoration(
+                  isDense: true,
+                  border: OutlineInputBorder(),
+                  contentPadding: EdgeInsets.symmetric(
+                    horizontal: 7,
+                    vertical: 5,
                   ),
                 ),
-              if (_range == ExportRange.frameRange && _instanceOnly)
-                Padding(
-                  padding: const EdgeInsets.only(top: 8),
-                  child: Text(
-                    'Cel export always covers the whole cut; the frame range '
-                    'does not apply.',
-                    style: theme.textTheme.bodySmall,
-                  ),
-                ),
-              const SizedBox(height: 12),
-              _sectionLabel('Size'),
-              Wrap(
-                spacing: 6,
-                runSpacing: 6,
-                children: [
-                  _sizeChip(
-                    'Camera ${cameraSize.width}×${cameraSize.height}',
-                    ExportSizeMode.camera,
-                    'camera',
-                  ),
-                  _sizeChip(canvasLabel, ExportSizeMode.canvas, 'canvas'),
-                ],
+                onChanged: (_) => setState(() {}),
               ),
-              const SizedBox(height: 12),
-              _sectionLabel('Format'),
-              Row(
-                children: [
-                  DropdownButton<ExportFormat>(
-                    key: const ValueKey<String>('export-format-dropdown'),
-                    // Cels are always individual PNGs.
-                    value: _instanceOnly ? ExportFormat.pngSequence : _format,
-                    items: const [
-                      DropdownMenuItem(
-                        value: ExportFormat.pngSequence,
-                        child: Text('PNG sequence'),
-                      ),
-                      DropdownMenuItem(
-                        value: ExportFormat.mp4Video,
-                        child: Text('MP4 video'),
-                      ),
-                      DropdownMenuItem(
-                        value: ExportFormat.xdtsTimesheet,
-                        child: Text('XDTS timesheet'),
-                      ),
-                    ],
-                    onChanged: _isExporting || _instanceOnly
-                        ? null
-                        : (format) => setState(
-                            () => _format = format ?? ExportFormat.pngSequence,
-                          ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Text(
-                      _isXdts
-                          ? 'One .xdts digital timesheet per cut (OpenToonz/'
-                                'CSP-compatible sheet data, no rendering).'
-                          : _format == ExportFormat.mp4Video && !_instanceOnly
-                          ? 'Encoded with FFmpeg — it must be installed and '
-                                'on PATH.'
-                          : 'One PNG file per frame.',
-                      style: theme.textTheme.bodySmall,
-                    ),
-                  ),
-                ],
+            )
+          else
+            Text(
+              _patternPreview(),
+              key: const ValueKey<String>('export-pattern-preview'),
+              style: theme.textTheme.bodySmall?.copyWith(
+                fontFamily: 'monospace',
+                fontSize: 11,
               ),
-              if (!_isXdts) ...[
-                const SizedBox(height: 12),
-                Row(
+            ),
+          const SizedBox(width: 14),
+          Text(
+            'Location',
+            style: theme.textTheme.labelSmall?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              _location ?? 'Choose a folder…',
+              key: const ValueKey<String>('export-location-label'),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: theme.textTheme.bodySmall?.copyWith(
+                fontFamily: 'monospace',
+                fontSize: 11,
+                color: _hasLocation
+                    ? theme.colorScheme.onSurface
+                    : theme.colorScheme.onSurfaceVariant,
+              ),
+            ),
+          ),
+          const SizedBox(width: 8),
+          OutlinedButton(
+            key: const ValueKey<String>('export-browse-button'),
+            onPressed: _isExporting ? null : _browseLocation,
+            style: OutlinedButton.styleFrom(
+              visualDensity: VisualDensity.compact,
+              padding: const EdgeInsets.symmetric(horizontal: 10),
+            ),
+            child: const Text('Browse…'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  String _patternPreview() {
+    switch (_tab) {
+      case ExportTab.sequence:
+        return _sequenceFileNameFor(0);
+      case ExportTab.cels:
+        final plan = _celPlan();
+        return plan.isEmpty ? '(no cels)' : plan.first.fileName;
+      case ExportTab.timesheet:
+        return 'CUT1.xdts';
+      case ExportTab.image:
+        return '';
+    }
+  }
+
+  Widget _presetsZone() {
+    if (!_presetsOpen) {
+      return ExportDrawerStrip(
+        key: const ValueKey<String>('export-presets-strip'),
+        caption: 'Presets',
+        chevron: Icons.chevron_right,
+        onTap: () {
+          setState(() => _presetsOpen = true);
+          _persist();
+        },
+      );
+    }
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Align(
+          alignment: Alignment.centerRight,
+          child: InkWell(
+            key: const ValueKey<String>('export-presets-collapse'),
+            onTap: () {
+              setState(() => _presetsOpen = false);
+              _persist();
+            },
+            child: const Padding(
+              padding: EdgeInsets.all(2),
+              child: Icon(Icons.chevron_left, size: 13),
+            ),
+          ),
+        ),
+        Expanded(
+          child: ExportPresetRail(
+            tab: _tab,
+            presets: _tabPresets,
+            currentSpec: _specs.specFor(_tab),
+            enabled: !_isExporting,
+            onApply: _applyPreset,
+            onSaveCurrent: () => unawaited(_saveCurrentPreset()),
+            onDelete: _deletePreset,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _previewZone(ThemeData theme) {
+    final progress = _progress;
+    return Padding(
+      padding: const EdgeInsets.all(8),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Expanded(
+            child: Container(
+              decoration: BoxDecoration(
+                border: Border.all(color: theme.dividerColor),
+                borderRadius: BorderRadius.circular(4),
+              ),
+              alignment: Alignment.center,
+              padding: const EdgeInsets.all(12),
+              child: Text(
+                _planHeadline(),
+                key: const ValueKey<String>('export-plan-headline'),
+                textAlign: TextAlign.center,
+                style: theme.textTheme.bodySmall,
+              ),
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            _outputLine(),
+            key: const ValueKey<String>('export-output-line'),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: theme.textTheme.bodySmall?.copyWith(
+              fontFamily: 'monospace',
+              fontSize: 10.5,
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
+          ),
+          if (progress != null) ...[
+            const SizedBox(height: 6),
+            LinearProgressIndicator(
+              value: progress.$2 > 0 ? progress.$1 / progress.$2 : null,
+              minHeight: 4,
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _settingsZone() {
+    final children = switch (_tab) {
+      ExportTab.sequence => _sequenceModules(),
+      ExportTab.image => _imageModules(),
+      ExportTab.cels => _celsModules(),
+      ExportTab.timesheet => _timesheetModules(),
+    };
+    // A plain scroll view (not a lazy list): a handful of modules, and
+    // collapsed accordions must exist for finders/ensureVisible.
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(8),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          for (final child in children) ...[
+            child,
+            const SizedBox(height: exportModuleGap),
+          ],
+        ],
+      ),
+    );
+  }
+
+  List<Widget> _sequenceModules() {
+    final spec = _specs.sequence;
+    final projectScope = spec.scope == ExportScopeKind.project;
+    return [
+      ExportAccordion(
+        title: 'Format',
+        summary: ExportFormatModule.summarize(spec.format),
+        expanded: _expandedFor('format', fallback: true),
+        onToggle: () => _toggleExpanded('format', fallback: true),
+        resetEnabled: spec.format != const ExportFormatSelection(),
+        onReset: () =>
+            _updateSpec(spec.copyWith(format: const ExportFormatSelection())),
+        child: ExportFormatModule(
+          selection: spec.format,
+          capabilities: const ExportFormatCapabilities(
+            stills: [ExportStillFormat.png],
+            video: {
+              ExportVideoContainer.mp4: [ExportVideoCodec.h264],
+            },
+          ),
+          enabled: !_isExporting,
+          onChanged: (format) => _updateSpec(spec.copyWith(format: format)),
+        ),
+      ),
+      ExportAccordion(
+        title: 'Scope',
+        summary: ExportScopeModule.summarize(spec.scope),
+        expanded: _expandedFor('scope', fallback: true),
+        onToggle: () => _toggleExpanded('scope', fallback: true),
+        child: ExportScopeModule(
+          scope: spec.scope,
+          enabled: !_isExporting,
+          onChanged: (scope) => _updateSpec(
+            spec.copyWith(
+              scope: scope,
+              // The v10 coupling: a project scope renders through the
+              // camera (per-cut canvases cannot make one movie).
+              sizeMode: scope == ExportScopeKind.project
+                  ? ExportSizeMode.camera
+                  : spec.sizeMode,
+            ),
+          ),
+          note: projectScope
+              ? 'No cut list here — in/out alone trims the sequence.'
+              : null,
+          child: projectScope
+              ? null
+              : Row(
                   children: [
-                    Switch(
-                      key: const ValueKey<String>('export-apply-fx-toggle'),
-                      // Cels never carry FX (raw artwork rule) — the toggle
-                      // only gates composite renders.
-                      value: _applyLayerFx,
-                      onChanged: _isExporting || _instanceOnly
-                          ? null
-                          : (value) => setState(() => _applyLayerFx = value),
-                    ),
-                    const SizedBox(width: 8),
                     Expanded(
-                      child: Text(
-                        _instanceOnly
-                            ? 'Cels export as raw artwork — layer FX never '
-                                  'apply.'
-                            : 'Apply layer FX (transforms and animated '
-                                  'opacity); off exports the raw layers.',
-                        style: theme.textTheme.bodySmall,
-                      ),
-                    ),
-                  ],
-                ),
-              ],
-              const SizedBox(height: 12),
-              Row(
-                children: [
-                  Switch(
-                    key: const ValueKey<String>('export-instance-toggle'),
-                    value: _instanceOnly,
-                    onChanged: _isExporting
-                        ? null
-                        : (value) => setState(() => _instanceOnly = value),
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      'Instance export: each unique cel as its own PNG, '
-                      'no compositing.',
-                      style: theme.textTheme.bodySmall,
-                    ),
-                  ),
-                ],
-              ),
-              if (_instanceOnly) ...[
-                const SizedBox(height: 4),
-                _sectionLabel('Cel options'),
-                Row(
-                  children: [
-                    Switch(
-                      key: const ValueKey<String>(
-                        'export-cel-transparent-toggle',
-                      ),
-                      value: _celTransparent,
-                      onChanged: _isExporting
-                          ? null
-                          : (value) => setState(() => _celTransparent = value),
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        _celTransparent
-                            ? 'Transparent background'
-                            : 'Opaque background (white paper)',
-                        style: theme.textTheme.bodySmall,
-                      ),
-                    ),
-                  ],
-                ),
-                Row(
-                  children: [
-                    Switch(
-                      key: const ValueKey<String>(
-                        'export-cel-timesheet-only-toggle',
-                      ),
-                      value: _celTimesheetOnly,
-                      onChanged: _isExporting
-                          ? null
-                          : (value) =>
-                                setState(() => _celTimesheetOnly = value),
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        _celTimesheetOnly
-                            ? 'Timesheet layers only'
-                            : 'All visible drawing layers',
-                        style: theme.textTheme.bodySmall,
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 8),
-                Wrap(
-                  spacing: 6,
-                  runSpacing: 6,
-                  children: [
-                    _celOptionChip(
-                      'Project name',
-                      _celIncludeProject,
-                      (value) => _celIncludeProject = value,
-                      'export-cel-include-project',
-                    ),
-                    _celOptionChip(
-                      'Cut name',
-                      _celIncludeCut,
-                      (value) => _celIncludeCut = value,
-                      'export-cel-include-cut',
-                    ),
-                    _celOptionChip(
-                      'Layer name',
-                      _celIncludeLayer,
-                      (value) => _celIncludeLayer = value,
-                      'export-cel-include-layer',
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 8),
-                Row(
-                  children: [
-                    SizedBox(
-                      width: 130,
                       child: TextField(
-                        key: const ValueKey<String>('export-cel-digits-field'),
-                        controller: _celDigitsController,
+                        key: const ValueKey<String>(
+                          'export-range-start-field',
+                        ),
+                        controller: _inController,
                         enabled: !_isExporting,
                         keyboardType: TextInputType.number,
                         inputFormatters: [
                           FilteringTextInputFormatter.digitsOnly,
                         ],
                         decoration: const InputDecoration(
-                          labelText: 'Digits (0 = off)',
+                          labelText: 'In',
+                          isDense: true,
                         ),
-                        onChanged: (_) => setState(() {}),
+                        onChanged: (_) => _writeInOutToSpec(),
                       ),
                     ),
-                    const SizedBox(width: 12),
+                    const Padding(
+                      padding: EdgeInsets.symmetric(horizontal: 6),
+                      child: Text('–'),
+                    ),
                     Expanded(
                       child: TextField(
-                        key: const ValueKey<String>('export-cel-suffix-field'),
-                        controller: _celSuffixController,
+                        key: const ValueKey<String>('export-range-end-field'),
+                        controller: _outController,
                         enabled: !_isExporting,
-                        decoration: const InputDecoration(labelText: 'Suffix'),
-                        onChanged: (_) => setState(() {}),
+                        keyboardType: TextInputType.number,
+                        inputFormatters: [
+                          FilteringTextInputFormatter.digitsOnly,
+                        ],
+                        decoration: const InputDecoration(
+                          labelText: 'Out',
+                          isDense: true,
+                        ),
+                        onChanged: (_) => _writeInOutToSpec(),
                       ),
                     ),
                   ],
                 ),
-                const SizedBox(height: 8),
-                Wrap(
-                  spacing: 6,
-                  runSpacing: 6,
-                  children: [
-                    _celOptionChip(
-                      'Cut folder',
-                      _celCutFolder,
-                      (value) => _celCutFolder = value,
-                      'export-cel-cut-folder',
-                    ),
-                    _celOptionChip(
-                      'Layer folder',
-                      _celLayerFolder,
-                      (value) => _celLayerFolder = value,
-                      'export-cel-layer-folder',
-                    ),
-                  ],
-                ),
-              ],
-              const SizedBox(height: 12),
-              Text(_planSummary(), style: theme.textTheme.bodyMedium),
-              if (_instanceOnly && celPlan.isNotEmpty)
-                Padding(
-                  padding: const EdgeInsets.only(top: 4),
-                  child: Text(
-                    'Example: ${celPlan.first.fileName}',
-                    key: const ValueKey<String>('export-cel-example'),
-                    style: theme.textTheme.bodySmall,
-                  ),
-                ),
-              if (progress != null)
-                Padding(
-                  padding: const EdgeInsets.only(top: 8),
-                  child: LinearProgressIndicator(
-                    value: progress.$2 > 0 ? progress.$1 / progress.$2 : null,
-                  ),
-                ),
-              if (_statusMessage != null)
-                Padding(
-                  padding: const EdgeInsets.only(top: 8),
-                  child: Text(
-                    _statusMessage!,
-                    key: const ValueKey<String>('export-status'),
-                    style: theme.textTheme.bodySmall,
-                  ),
-                ),
-            ],
-          ),
         ),
       ),
-      actions: [
-        if (_isExporting)
-          TextButton(
-            key: const ValueKey<String>('export-cancel-button'),
-            onPressed: cancelExport,
-            child: const Text('Cancel'),
-          ),
-        TextButton(
-          key: const ValueKey<String>('export-run-button'),
-          onPressed: canExport ? export : null,
-          child: const Text('Export…'),
+      ExportAccordion(
+        title: 'Size',
+        summary: ExportSizeModule.summarize(spec.sizeMode),
+        expanded: _expandedFor('size', fallback: true),
+        onToggle: () => _toggleExpanded('size', fallback: true),
+        child: ExportSizeModule(
+          sizeMode: spec.sizeMode,
+          cameraSize: _session.cameraFrameSize,
+          canvasSizes: _scopeCanvasSizes(spec.scope),
+          projectScope: projectScope,
+          enabled: !_isExporting,
+          onChanged: (mode) => _updateSpec(spec.copyWith(sizeMode: mode)),
         ),
-        TextButton(
-          key: const ValueKey<String>('export-close-button'),
-          onPressed: _isExporting ? null : () => Navigator.of(context).pop(),
-          child: const Text('Close'),
+      ),
+      if (spec.format.isVideo)
+        ExportAccordion(
+          title: 'Audio',
+          summary: spec.includeAudio ? 'SE muxed · AAC' : 'Off',
+          expanded: _expandedFor('audio'),
+          onToggle: () => _toggleExpanded('audio'),
+          child: ExportToggleRow(
+            widgetKey: const ValueKey<String>('export-audio-toggle'),
+            label: 'Mux the SE mix into the video',
+            value: spec.includeAudio,
+            onChanged: _isExporting
+                ? null
+                : (value) => _updateSpec(spec.copyWith(includeAudio: value)),
+          ),
+        ),
+      if (spec.format.isStill)
+        ExportAccordion(
+          title: 'Naming',
+          summary: ExportSequenceNamingModule.summarize(
+            spec.naming,
+            spec.format.stillFormat.fileExtension,
+          ),
+          expanded: _expandedFor('naming'),
+          onToggle: () => _toggleExpanded('naming'),
+          resetEnabled: spec.naming != const ExportSequenceNaming(),
+          onReset: () {
+            _updateSpec(spec.copyWith(naming: const ExportSequenceNaming()));
+            _namingBaseController.text = 'frame';
+          },
+          child: ExportSequenceNamingModule(
+            naming: spec.naming,
+            enabled: !_isExporting,
+            baseNameController: _namingBaseController,
+            onChanged: (naming) => _updateSpec(spec.copyWith(naming: naming)),
+          ),
+        ),
+      ExportAccordion(
+        title: 'Options',
+        summary: spec.applyLayerFx ? 'FX on' : 'FX off',
+        expanded: _expandedFor('options'),
+        onToggle: () => _toggleExpanded('options'),
+        child: ExportToggleRow(
+          widgetKey: const ValueKey<String>('export-apply-fx-toggle'),
+          label: 'Apply layer FX (transforms and animated opacity)',
+          value: spec.applyLayerFx,
+          onChanged: _isExporting
+              ? null
+              : (value) => _updateSpec(spec.copyWith(applyLayerFx: value)),
+        ),
+      ),
+    ];
+  }
+
+  void _writeInOutToSpec() {
+    final spec = _specs.sequence;
+    final inOut = _sequenceInOut();
+    setState(() {
+      if (inOut != null) {
+        _specs = _specs.withSpec(
+          spec.copyWith(inFrame: inOut.$1, outFrame: inOut.$2),
+        );
+      }
+    });
+    if (inOut != null) {
+      _persist();
+    }
+  }
+
+  List<Widget> _imageModules() {
+    final spec = _specs.image;
+    return [
+      ExportAccordion(
+        title: 'Format',
+        summary: ExportFormatModule.summarize(spec.format),
+        expanded: _expandedFor('format', fallback: true),
+        onToggle: () => _toggleExpanded('format', fallback: true),
+        child: ExportFormatModule(
+          selection: spec.format,
+          capabilities: const ExportFormatCapabilities(
+            stills: [ExportStillFormat.png],
+          ),
+          enabled: !_isExporting,
+          onChanged: (format) => _updateSpec(spec.copyWith(format: format)),
+        ),
+      ),
+      ExportAccordion(
+        title: 'Size',
+        summary: ExportSizeModule.summarize(spec.sizeMode),
+        expanded: _expandedFor('size', fallback: true),
+        onToggle: () => _toggleExpanded('size', fallback: true),
+        child: ExportSizeModule(
+          sizeMode: spec.sizeMode,
+          cameraSize: _session.cameraFrameSize,
+          canvasSizes: {_activeCut.canvasSize},
+          projectScope: false,
+          enabled: !_isExporting,
+          onChanged: (mode) => _updateSpec(spec.copyWith(sizeMode: mode)),
+        ),
+      ),
+      ExportAccordion(
+        title: 'Options',
+        summary: spec.applyLayerFx ? 'FX on' : 'FX off',
+        expanded: _expandedFor('options'),
+        onToggle: () => _toggleExpanded('options'),
+        child: ExportToggleRow(
+          widgetKey: const ValueKey<String>('export-image-fx-toggle'),
+          label: 'Apply layer FX',
+          value: spec.applyLayerFx,
+          onChanged: _isExporting
+              ? null
+              : (value) => _updateSpec(spec.copyWith(applyLayerFx: value)),
+        ),
+      ),
+    ];
+  }
+
+  List<Widget> _celsModules() {
+    final spec = _specs.cels;
+    return [
+      ExportAccordion(
+        title: 'Format',
+        summary: ExportFormatModule.summarize(spec.format),
+        expanded: _expandedFor('format', fallback: true),
+        onToggle: () => _toggleExpanded('format', fallback: true),
+        child: ExportFormatModule(
+          selection: spec.format,
+          capabilities: const ExportFormatCapabilities(
+            stills: [ExportStillFormat.png],
+          ),
+          enabled: !_isExporting,
+          onChanged: (format) => _updateSpec(spec.copyWith(format: format)),
+        ),
+      ),
+      ExportAccordion(
+        title: 'Layers',
+        summary: spec.onTimesheetOnly ? 'Sheet only' : 'All visible',
+        expanded: _expandedFor('layers', fallback: true),
+        onToggle: () => _toggleExpanded('layers', fallback: true),
+        child: ExportToggleRow(
+          widgetKey: const ValueKey<String>('export-cel-timesheet-only-toggle'),
+          label: 'On-timesheet layers only',
+          value: spec.onTimesheetOnly,
+          onChanged: _isExporting
+              ? null
+              : (value) =>
+                    _updateSpec(spec.copyWith(onTimesheetOnly: value)),
+        ),
+      ),
+      ExportAccordion(
+        title: 'Naming',
+        summary: ExportCelNamingModule.summarize(spec.naming),
+        expanded: _expandedFor('naming'),
+        onToggle: () => _toggleExpanded('naming'),
+        resetEnabled: spec.naming != const ExportCelNaming(),
+        onReset: () {
+          _updateSpec(spec.copyWith(naming: const ExportCelNaming()));
+          _celSuffixController.text = '';
+        },
+        child: ExportCelNamingModule(
+          naming: spec.naming,
+          enabled: !_isExporting,
+          suffixController: _celSuffixController,
+          onChanged: (naming) => _updateSpec(spec.copyWith(naming: naming)),
+        ),
+      ),
+      ExportAccordion(
+        title: 'Scope',
+        summary: ExportScopeModule.summarize(spec.scope),
+        expanded: _expandedFor('scope'),
+        onToggle: () => _toggleExpanded('scope'),
+        child: ExportScopeModule(
+          scope: spec.scope,
+          enabled: !_isExporting,
+          onChanged: (scope) => _updateSpec(spec.copyWith(scope: scope)),
+          note: spec.scope == ExportScopeKind.project
+              ? 'Per-cut checks arrive with the cut grid.'
+              : null,
+        ),
+      ),
+    ];
+  }
+
+  List<Widget> _timesheetModules() {
+    final spec = _specs.timesheet;
+    return [
+      ExportAccordion(
+        title: 'Format',
+        summary: 'XDTS',
+        expanded: _expandedFor('format', fallback: true),
+        onToggle: () => _toggleExpanded('format', fallback: true),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Wrap(
+              spacing: 5,
+              children: const [
+                ExportChip(label: 'XDTS', selected: true),
+              ],
+            ),
+            const SizedBox(height: 5),
+            exportModuleNote(
+              context,
+              'One .xdts digital timesheet per cut (OpenToonz/CSP-'
+              'compatible sheet data, no rendering).',
+            ),
+          ],
+        ),
+      ),
+      ExportAccordion(
+        title: 'Scope',
+        summary: ExportScopeModule.summarize(spec.scope),
+        expanded: _expandedFor('scope', fallback: true),
+        onToggle: () => _toggleExpanded('scope', fallback: true),
+        child: ExportScopeModule(
+          scope: spec.scope,
+          enabled: !_isExporting,
+          onChanged: (scope) => _updateSpec(spec.copyWith(scope: scope)),
+          note: spec.scope == ExportScopeKind.project
+              ? 'Per-cut checks arrive with the cut grid.'
+              : null,
+        ),
+      ),
+    ];
+  }
+
+  Widget _queueZone() {
+    if (!_queueOpen) {
+      return ExportDrawerStrip(
+        key: const ValueKey<String>('export-queue-strip'),
+        caption: 'Queue',
+        chevron: Icons.chevron_left,
+        badgeCount: _queue.jobs.length,
+        onTap: () {
+          setState(() => _queueOpen = true);
+          _persist();
+        },
+      );
+    }
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Align(
+          alignment: Alignment.centerLeft,
+          child: InkWell(
+            key: const ValueKey<String>('export-queue-collapse'),
+            onTap: () {
+              setState(() => _queueOpen = false);
+              _persist();
+            },
+            child: const Padding(
+              padding: EdgeInsets.all(2),
+              child: Icon(Icons.chevron_right, size: 13),
+            ),
+          ),
+        ),
+        Expanded(
+          child: ExportQueueColumn(queue: _queue, enabled: !_isExporting),
         ),
       ],
+    );
+  }
+
+  Widget _footer(ThemeData theme) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(12, 7, 12, 8),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(
+              _statusMessage ?? '',
+              key: const ValueKey<String>('export-status'),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+            ),
+          ),
+          if (_isExporting) ...[
+            TextButton(
+              key: const ValueKey<String>('export-cancel-button'),
+              onPressed: cancelExport,
+              child: const Text('Cancel'),
+            ),
+            const SizedBox(width: 6),
+          ],
+          Tooltip(
+            message: 'The queue runner arrives in a later round.',
+            child: OutlinedButton(
+              key: const ValueKey<String>('export-queue-add-button'),
+              onPressed: null,
+              style: OutlinedButton.styleFrom(
+                visualDensity: VisualDensity.compact,
+              ),
+              child: const Text('Add to Queue'),
+            ),
+          ),
+          const SizedBox(width: 6),
+          FilledButton(
+            key: const ValueKey<String>('export-run-button'),
+            onPressed: _canExport ? () => unawaited(export()) : null,
+            style: FilledButton.styleFrom(
+              visualDensity: VisualDensity.compact,
+            ),
+            child: const Text('Export'),
+          ),
+        ],
+      ),
     );
   }
 }
