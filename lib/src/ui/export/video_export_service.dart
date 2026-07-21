@@ -6,10 +6,41 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/foundation.dart' show visibleForTesting;
 
+import '../../models/export_format_selection.dart';
 import '../../models/project_frame_rate.dart';
 import '../../native/qa_video_encoder.dart';
 import '../../services/audio/conform_wav_stream.dart';
 import 'png_sequence_export_service.dart' show ExportWriteSummary;
+
+/// The ABI v21 integers the native encoder speaks (qa_video_encode.c).
+extension ExportVideoContainerAbi on ExportVideoContainer {
+  int get abiValue => switch (this) {
+    ExportVideoContainer.mp4 => 0,
+    ExportVideoContainer.mov => 1,
+  };
+}
+
+extension ExportVideoCodecAbi on ExportVideoCodec {
+  int get abiValue => switch (this) {
+    ExportVideoCodec.h264 => 0,
+    ExportVideoCodec.h265 => 1,
+    ExportVideoCodec.proresProxy => 2,
+    ExportVideoCodec.proresLt => 3,
+    ExportVideoCodec.prores422 => 4,
+    ExportVideoCodec.proresHq => 5,
+    ExportVideoCodec.prores4444 => 6,
+  };
+
+  /// The ffmpeg prores_ks profile index (proxy..4444).
+  int get proresKsProfile => switch (this) {
+    ExportVideoCodec.proresProxy => 0,
+    ExportVideoCodec.proresLt => 1,
+    ExportVideoCodec.prores422 => 2,
+    ExportVideoCodec.proresHq => 3,
+    ExportVideoCodec.prores4444 => 4,
+    _ => 2,
+  };
+}
 
 /// Injectable process launcher so tests can stand in for the real ffmpeg.
 typedef VideoProcessStarter =
@@ -68,27 +99,61 @@ class VideoExportService {
   final VideoProcessStarter processStarter;
   final VideoEncoderResolver encoderResolver;
 
-  /// The ffmpeg pad filter keeping H.264-required even dimensions; odd
-  /// sizes gain one white pixel instead of failing the whole export.
-  static const String _evenPadFilter =
-      'pad=ceil(iw/2)*2:ceil(ih/2)*2:color=white';
-
-  /// Builds the full ffmpeg argument list.
+  /// Builds the full ffmpeg argument list for the codec matrix (EX4):
+  /// MP4 = libx264/libx265 (the confirmed software H.265), MOV = libx264
+  /// or prores_ks with the profile per flavor — 4444 in 10-bit 4:4:4,
+  /// with alpha when asked. ProRes carries PCM (the delivery convention);
+  /// the H.26x containers carry AAC.
   ///
   /// Audio, when present, arrives as ONE finished WAV ([audioMixPath]) —
   /// already mixed by the same mixer that carries playback (EXPORT-AUDIO
-  /// round). ffmpeg's whole audio job is `-c:a aac`: no seeks, no filter
-  /// graph, no second mixer to disagree with the preview.
+  /// round); ffmpeg only transcodes it.
   ///
-  /// The rate goes out as ffmpeg's own fraction (`24000/1001`), so a
-  /// 23.976 project exports at exactly the rate it was authored at — not
-  /// at a decimal ffmpeg would have to round.
+  /// The even-dimension pad H.264/H.265 require gains white pixels —
+  /// TRANSPARENT ones under alpha, where a paper hairline would read as
+  /// content. The rate goes out as ffmpeg's own fraction (`24000/1001`).
   @visibleForTesting
   static List<String> buildFfmpegArguments({
     required ProjectFrameRate frameRate,
     required String outputFilePath,
     String? audioMixPath,
+    ExportVideoContainer container = ExportVideoContainer.mp4,
+    ExportVideoCodec codec = ExportVideoCodec.h264,
+    bool alpha = false,
+    int bitrateBps = 0,
   }) {
+    final keepAlpha = codec.supportsAlpha && alpha;
+    final padFilter =
+        'pad=ceil(iw/2)*2:ceil(ih/2)*2:color=${keepAlpha ? 'black@0.0' : 'white'}';
+    final video = <String>[
+      if (codec.isProRes) ...[
+        '-c:v',
+        'prores_ks',
+        '-profile:v',
+        '${codec.proresKsProfile}',
+        '-vendor',
+        'apl0',
+        '-pix_fmt',
+        codec == ExportVideoCodec.prores4444
+            ? (keepAlpha ? 'yuva444p10le' : 'yuv444p10le')
+            : 'yuv422p10le',
+      ] else ...[
+        '-c:v',
+        codec == ExportVideoCodec.h265 ? 'libx265' : 'libx264',
+        '-pix_fmt',
+        'yuv420p',
+        if (bitrateBps > 0) ...[
+          '-b:v',
+          '$bitrateBps',
+        ] else ...[
+          '-crf',
+          codec == ExportVideoCodec.h265 ? '20' : '18',
+        ],
+      ],
+      '-vf',
+      padFilter,
+    ];
+    final audioCodec = codec.isProRes ? 'pcm_s16le' : 'aac';
     final args = <String>[
       '-y',
       '-f',
@@ -99,17 +164,7 @@ class VideoExportService {
       '-',
     ];
     if (audioMixPath == null) {
-      return args..addAll([
-        '-c:v',
-        'libx264',
-        '-pix_fmt',
-        'yuv420p',
-        '-vf',
-        _evenPadFilter,
-        '-crf',
-        '18',
-        outputFilePath,
-      ]);
+      return args..addAll([...video, outputFilePath]);
     }
     return args..addAll([
       '-i',
@@ -118,16 +173,9 @@ class VideoExportService {
       '0:v',
       '-map',
       '1:a',
-      '-c:v',
-      'libx264',
-      '-pix_fmt',
-      'yuv420p',
-      '-vf',
-      _evenPadFilter,
-      '-crf',
-      '18',
+      ...video,
       '-c:a',
-      'aac',
+      audioCodec,
       '-shortest',
       outputFilePath,
     ]);
@@ -139,6 +187,10 @@ class VideoExportService {
     required String outputFilePath,
     required ProjectFrameRate frameRate,
     String? audioMixPath,
+    ExportVideoContainer container = ExportVideoContainer.mp4,
+    ExportVideoCodec codec = ExportVideoCodec.h264,
+    bool alpha = false,
+    int bitrateBps = 0,
     void Function(int completed, int total)? onProgress,
     bool Function()? isCancelled,
   }) async {
@@ -152,12 +204,17 @@ class VideoExportService {
           outputFilePath: outputFilePath,
           frameRate: frameRate,
           audioMixPath: audioMixPath,
+          container: container,
+          codec: codec,
+          alpha: alpha,
+          bitrateBps: bitrateBps,
           onProgress: onProgress,
           isCancelled: isCancelled,
         );
       } on _OsEncoderRefused {
         // The OS could not take the job (an N-edition Windows with no
-        // codec pack, a refused format) — the ffmpeg path below still can.
+        // codec pack, MOV/ProRes on Windows, a refused format) — the
+        // ffmpeg path below still can.
       }
     }
     return _exportViaFfmpeg(
@@ -166,6 +223,10 @@ class VideoExportService {
       outputFilePath: outputFilePath,
       frameRate: frameRate,
       audioMixPath: audioMixPath,
+      container: container,
+      codec: codec,
+      alpha: alpha,
+      bitrateBps: bitrateBps,
       onProgress: onProgress,
       isCancelled: isCancelled,
     );
@@ -181,6 +242,10 @@ class VideoExportService {
     required String outputFilePath,
     required ProjectFrameRate frameRate,
     String? audioMixPath,
+    required ExportVideoContainer container,
+    required ExportVideoCodec codec,
+    required bool alpha,
+    required int bitrateBps,
     void Function(int completed, int total)? onProgress,
     bool Function()? isCancelled,
   }) async {
@@ -221,6 +286,10 @@ class VideoExportService {
       fpsDenominator: frameRate.denominator,
       sampleRate: audio?.sampleRate ?? 0,
       channels: audio?.channels ?? 0,
+      container: container.abiValue,
+      codec: codec.abiValue,
+      alpha: alpha,
+      bitrateBps: bitrateBps,
     )) {
       first.dispose();
       audio?.close();
@@ -334,6 +403,10 @@ class VideoExportService {
     required String outputFilePath,
     required ProjectFrameRate frameRate,
     String? audioMixPath,
+    ExportVideoContainer container = ExportVideoContainer.mp4,
+    ExportVideoCodec codec = ExportVideoCodec.h264,
+    bool alpha = false,
+    int bitrateBps = 0,
     void Function(int completed, int total)? onProgress,
     bool Function()? isCancelled,
   }) async {
@@ -345,6 +418,10 @@ class VideoExportService {
           frameRate: frameRate,
           outputFilePath: outputFilePath,
           audioMixPath: audioMixPath,
+          container: container,
+          codec: codec,
+          alpha: alpha,
+          bitrateBps: bitrateBps,
         ),
       );
     } on ProcessException {

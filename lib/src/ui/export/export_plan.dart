@@ -358,6 +358,7 @@ List<ExportCelTask> buildExportCelPlan({
   required ExportRange range,
   ExportCelNaming naming = const ExportCelNaming(),
   bool onTimesheetOnly = false,
+  String fileExtension = 'png',
 }) {
   final cuts = resolveExportCuts(
     project: project,
@@ -392,10 +393,10 @@ List<ExportCelTask> buildExportCelPlan({
           if (naming.layerFolder) sanitizeExportFileComponent(layer.name),
         ].join('/');
         final prefix = folder.isEmpty ? '' : '$folder/';
-        var fileName = '$prefix$base.png';
+        var fileName = '$prefix$base.$fileExtension';
         var bump = 2;
         while (!usedNames.add(fileName)) {
-          fileName = '$prefix${base}_$bump.png';
+          fileName = '$prefix${base}_$bump.$fileExtension';
           bump += 1;
         }
         plan.add(

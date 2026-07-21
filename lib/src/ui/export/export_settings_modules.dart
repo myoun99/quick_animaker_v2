@@ -215,23 +215,54 @@ Widget exportModuleNote(BuildContext context, String text) => Text(
   ),
 );
 
-/// What the Format module may offer in a given tab/build: the still list,
-/// and the container→codec map for video (empty = the video group row is
-/// hidden). Widens as encoders land — the picker never shows a format the
-/// app cannot write today.
+/// What the Format module offers in a tab: the LINEUP (v10 — every chip
+/// shows), with per-chip enablement + reason from the machine's actual
+/// encoders. A grayed chip says why on hover; nothing fails only at
+/// Export.
 class ExportFormatCapabilities {
   const ExportFormatCapabilities({
     required this.stills,
     this.video = const {},
+    this.stillEnabled,
+    this.videoEnabled,
+    this.videoReason,
   });
 
   final List<ExportStillFormat> stills;
   final Map<ExportVideoContainer, List<ExportVideoCodec>> video;
 
+  /// Null = everything in the lineup is writable (the EX2 behavior).
+  final bool Function(ExportStillFormat format)? stillEnabled;
+  final bool Function(ExportVideoContainer container, ExportVideoCodec codec)?
+      videoEnabled;
+  final String? Function(
+    ExportVideoContainer container,
+    ExportVideoCodec codec,
+  )? videoReason;
+
   bool get hasVideo => video.isNotEmpty;
 
   List<ExportVideoCodec> codecsFor(ExportVideoContainer container) =>
       video[container] ?? const [];
+
+  bool isStillEnabled(ExportStillFormat format) =>
+      stillEnabled?.call(format) ?? true;
+
+  bool isVideoEnabled(ExportVideoContainer container, ExportVideoCodec codec) =>
+      videoEnabled?.call(container, codec) ?? true;
+
+  /// A container chip stays live while ANY of its codecs does.
+  bool isContainerEnabled(ExportVideoContainer container) {
+    for (final codec in codecsFor(container)) {
+      if (isVideoEnabled(container, codec)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  String? reasonFor(ExportVideoContainer container, ExportVideoCodec codec) =>
+      videoReason?.call(container, codec);
 }
 
 /// The shared Format module (v10: 포맷·코덱·세부가 한 몸). Renders the
@@ -270,6 +301,9 @@ class ExportFormatModule extends StatelessWidget {
     }
   }
 
+  Widget _maybeTooltip(String? reason, Widget chip) =>
+      reason == null ? chip : Tooltip(message: reason, child: chip);
+
   @override
   Widget build(BuildContext context) {
     final containers = capabilities.video.keys.toList();
@@ -281,6 +315,9 @@ class ExportFormatModule extends StatelessWidget {
     final showBackground =
         selection.isStill &&
         selection.effectiveChannels == ExportChannels.rgb;
+    final showBitrate = selection.isVideo && !selection.videoCodec.isProRes;
+    final showQuality =
+        selection.isStill && selection.stillFormat == ExportStillFormat.jpg;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -292,21 +329,49 @@ class ExportFormatModule extends StatelessWidget {
               runSpacing: 4,
               children: [
                 for (final container in containers)
-                  ExportChip(
-                    key: ValueKey<String>(
-                      'export-format-container-${container.jsonValue}',
+                  _maybeTooltip(
+                    capabilities.isContainerEnabled(container)
+                        ? null
+                        : capabilities.reasonFor(
+                            container,
+                            capabilities.codecsFor(container).first,
+                          ),
+                    ExportChip(
+                      key: ValueKey<String>(
+                        'export-format-container-${container.jsonValue}',
+                      ),
+                      label: container.label,
+                      selected: selection.isVideo &&
+                          selection.container == container,
+                      onTap: enabled &&
+                              capabilities.isContainerEnabled(container)
+                          ? () {
+                              // Land on that container's first WRITABLE
+                              // codec when the current one is off there.
+                              var next = selection.copyWith(
+                                kind: ExportMediaKind.video,
+                                container: container,
+                              );
+                              if (!capabilities.isVideoEnabled(
+                                container,
+                                next.videoCodec,
+                              )) {
+                                for (final codec
+                                    in capabilities.codecsFor(container)) {
+                                  if (capabilities.isVideoEnabled(
+                                    container,
+                                    codec,
+                                  )) {
+                                    next =
+                                        next.copyWith(videoCodec: codec);
+                                    break;
+                                  }
+                                }
+                              }
+                              _change(next);
+                            }
+                          : null,
                     ),
-                    label: container.label,
-                    selected: selection.isVideo &&
-                        selection.container == container,
-                    onTap: enabled
-                        ? () => _change(
-                            selection.copyWith(
-                              kind: ExportMediaKind.video,
-                              container: container,
-                            ),
-                          )
-                        : null,
                   ),
               ],
             ),
@@ -318,21 +383,26 @@ class ExportFormatModule extends StatelessWidget {
             runSpacing: 4,
             children: [
               for (final still in capabilities.stills)
-                ExportChip(
-                  key: ValueKey<String>(
-                    'export-format-still-${still.jsonValue}',
+                _maybeTooltip(
+                  capabilities.isStillEnabled(still)
+                      ? null
+                      : 'Not available in this build yet.',
+                  ExportChip(
+                    key: ValueKey<String>(
+                      'export-format-still-${still.jsonValue}',
+                    ),
+                    label: still.label,
+                    selected: selection.isStill &&
+                        selection.stillFormat == still,
+                    onTap: enabled && capabilities.isStillEnabled(still)
+                        ? () => _change(
+                            selection.copyWith(
+                              kind: ExportMediaKind.still,
+                              stillFormat: still,
+                            ),
+                          )
+                        : null,
                   ),
-                  label: still.label,
-                  selected: selection.isStill &&
-                      selection.stillFormat == still,
-                  onTap: enabled
-                      ? () => _change(
-                          selection.copyWith(
-                            kind: ExportMediaKind.still,
-                            stillFormat: still,
-                          ),
-                        )
-                      : null,
                 ),
             ],
           ),
@@ -345,16 +415,91 @@ class ExportFormatModule extends StatelessWidget {
               runSpacing: 4,
               children: [
                 for (final codec in codecs)
-                  ExportChip(
-                    key: ValueKey<String>(
-                      'export-format-codec-${codec.jsonValue}',
+                  _maybeTooltip(
+                    capabilities.isVideoEnabled(selection.container, codec)
+                        ? null
+                        : capabilities.reasonFor(selection.container, codec),
+                    ExportChip(
+                      key: ValueKey<String>(
+                        'export-format-codec-${codec.jsonValue}',
+                      ),
+                      label: codec.label,
+                      selected: selection.videoCodec == codec,
+                      onTap: enabled &&
+                              capabilities.isVideoEnabled(
+                                selection.container,
+                                codec,
+                              )
+                          ? () =>
+                              _change(selection.copyWith(videoCodec: codec))
+                          : null,
                     ),
-                    label: codec.label,
-                    selected: selection.videoCodec == codec,
-                    onTap: enabled
-                        ? () => _change(selection.copyWith(videoCodec: codec))
+                  ),
+              ],
+            ),
+          ),
+        if (showBitrate)
+          ExportModuleRow(
+            label: 'Bitrate',
+            child: Row(
+              children: [
+                Expanded(
+                  child: Slider(
+                    key: const ValueKey<String>('export-format-bitrate'),
+                    value: selection.videoBitrateMbps
+                        .clamp(0, 50)
+                        .toDouble(),
+                    max: 50,
+                    divisions: 50,
+                    onChanged: enabled
+                        ? (value) => _change(
+                            selection.copyWith(
+                              videoBitrateMbps: value.round(),
+                            ),
+                          )
                         : null,
                   ),
+                ),
+                SizedBox(
+                  width: 52,
+                  child: Text(
+                    selection.videoBitrateMbps <= 0
+                        ? 'Auto'
+                        : '${selection.videoBitrateMbps} Mb',
+                    textAlign: TextAlign.right,
+                    style: Theme.of(context).textTheme.labelSmall,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        if (showQuality)
+          ExportModuleRow(
+            label: 'Quality',
+            child: Row(
+              children: [
+                Expanded(
+                  child: Slider(
+                    key: const ValueKey<String>('export-format-quality'),
+                    value: selection.jpgQuality.clamp(1, 100).toDouble(),
+                    min: 1,
+                    max: 100,
+                    divisions: 99,
+                    onChanged: enabled
+                        ? (value) => _change(
+                            selection.copyWith(jpgQuality: value.round()),
+                          )
+                        : null,
+                  ),
+                ),
+                SizedBox(
+                  width: 52,
+                  child: Text(
+                    '${selection.jpgQuality}',
+                    textAlign: TextAlign.right,
+                    style: Theme.of(context).textTheme.labelSmall,
+                  ),
+                ),
               ],
             ),
           ),

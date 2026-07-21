@@ -3326,4 +3326,6 @@ QA_EXPORT int64_t qa_audio_resample_frames(int64_t input_frames,
 // v17: qa_audio_resample - the polyphase resampler (2B).
 // v19: AUDIO-PRO R5 - qa_audio_capture_* (the guide-voice recorder).
 // v20: AUDIO-PRO R7 - qa_video_export_* (the OS video encoder).
-QA_EXPORT int32_t qa_engine_abi_version(void) { return 20; }
+// v21: EX4 - qa_video_export_open gains container/codec/alpha/bitrate,
+//      qa_video_export_probe, and qa_image_encode_jpg (stb).
+QA_EXPORT int32_t qa_engine_abi_version(void) { return 21; }
