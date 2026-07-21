@@ -41,6 +41,7 @@ class AudioConformStore extends ChangeNotifier {
   AudioConformStore({
     required this.resolveConformPath,
     ConformRunner? runner,
+    ResampleRunner? resampleRunner,
     AudioPeaksStore? undecodableFallback,
     this.projectSampleRate = 48000,
     this.bucketsPerSecond = 80,
@@ -50,6 +51,7 @@ class AudioConformStore extends ChangeNotifier {
     void Function(String message)? log,
     this.libraryPathOverride,
   }) : _runner = runner ?? runConformInIsolate,
+       _resampleRunner = resampleRunner ?? runResampleInIsolate,
        _undecodableFallback = undecodableFallback,
        _now = now ?? DateTime.now,
        _log = log ?? debugPrint;
@@ -60,6 +62,7 @@ class AudioConformStore extends ChangeNotifier {
   final String? Function(String sourcePath) resolveConformPath;
 
   final ConformRunner _runner;
+  final ResampleRunner _resampleRunner;
 
   /// Carries the waveform for formats the native decoder cannot read.
   final AudioPeaksStore? _undecodableFallback;
@@ -142,6 +145,71 @@ class AudioConformStore extends ChangeNotifier {
     return entry != null && entry.isUsable ? entry.samples : null;
   }
 
+  final Map<String, Map<int, Float32List>> _resampledByRate = {};
+  final Set<String> _resamplePending = {};
+
+  /// The conformed PCM at [sampleRate] — [samplesFor] when the device runs
+  /// at the project rate (the common case, bit-exact, no filter), a cached
+  /// rate conversion otherwise (WASAPI shared mode owns its own rate and
+  /// may refuse the one asked for). A missing conversion is kicked async
+  /// and lands with a notify, exactly like a conform: the transport stands
+  /// down for THIS run and carries the next one.
+  Float32List? samplesAtRate(String sourcePath, int sampleRate) {
+    if (sampleRate == projectSampleRate) {
+      return samplesFor(sourcePath);
+    }
+    final entry = resultFor(sourcePath);
+    final samples = entry != null && entry.isUsable ? entry.samples : null;
+    if (samples == null) {
+      return null;
+    }
+    final cached = _resampledByRate[sourcePath]?[sampleRate];
+    if (cached != null) {
+      return cached;
+    }
+    final key = '$sampleRate|$sourcePath';
+    if (_resamplePending.add(key)) {
+      unawaited(_resampleTo(sourcePath, entry!, sampleRate, key));
+    }
+    return null;
+  }
+
+  Future<void> _resampleTo(
+    String sourcePath,
+    ConformResult entry,
+    int sampleRate,
+    String pendingKey,
+  ) async {
+    try {
+      final converted = await _resampleRunner(
+        ResampleRequest(
+          samples: entry.samples!,
+          channels: entry.channels,
+          inputRate: entry.sampleRate,
+          outputRate: sampleRate,
+          libraryPathOverride: libraryPathOverride,
+        ),
+      );
+      if (_disposed) {
+        return;
+      }
+      (_resampledByRate[sourcePath] ??= {})[sampleRate] = converted;
+    } catch (error) {
+      if (_disposed) {
+        return;
+      }
+      _log(
+        '[AudioConformStore] device-rate conversion failed for '
+        '$sourcePath → ${sampleRate}Hz: $error',
+      );
+    } finally {
+      if (!_disposed) {
+        _resamplePending.remove(pendingKey);
+        notifyListeners();
+      }
+    }
+  }
+
   /// The last failure reason, or null while unknown/pending/usable.
   String? failureFor(String sourcePath) => _failures[sourcePath]?.reason;
 
@@ -193,6 +261,7 @@ class AudioConformStore extends ChangeNotifier {
   void invalidate(String sourcePath) {
     _entries.remove(sourcePath);
     _failures.remove(sourcePath);
+    _resampledByRate.remove(sourcePath);
     _undecodableFallback?.invalidate(sourcePath);
   }
 

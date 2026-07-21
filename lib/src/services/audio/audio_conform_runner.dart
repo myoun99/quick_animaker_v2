@@ -12,6 +12,7 @@
 library;
 
 import 'dart:isolate';
+import 'dart:typed_data';
 
 import '../../native/qa_audio_decoder.dart';
 import '../../native/qa_audio_native.dart';
@@ -52,15 +53,67 @@ typedef ConformRunner = Future<ConformResult> Function(ConformRequest request);
 Future<ConformResult> runConformInIsolate(ConformRequest request) =>
     Isolate.run(() => runConformHere(request));
 
-/// The pipeline itself, on whichever isolate this is called from —
-/// [runConformInIsolate]'s worker body, and directly callable by tests
-/// that want the real native path without isolate indirection.
-ConformResult runConformHere(ConformRequest request) {
-  final override = request.libraryPathOverride;
+/// One rate conversion of already-conformed PCM — the device opened at a
+/// rate the conform is not at (WASAPI shared mode owns its own rate and
+/// may hand back 44.1k however nicely 48k was asked for), so the sources
+/// have to meet the device where it is. Sendable values only, same as
+/// [ConformRequest].
+class ResampleRequest {
+  const ResampleRequest({
+    required this.samples,
+    required this.channels,
+    required this.inputRate,
+    required this.outputRate,
+    this.libraryPathOverride,
+  });
+
+  final Float32List samples;
+  final int channels;
+  final int inputRate;
+  final int outputRate;
+  final String? libraryPathOverride;
+}
+
+/// How a store runs a rate conversion; production is
+/// [runResampleInIsolate], tests substitute a synchronous fake.
+typedef ResampleRunner = Future<Float32List> Function(ResampleRequest request);
+
+/// The production resample runner.
+Future<Float32List> runResampleInIsolate(ResampleRequest request) =>
+    Isolate.run(() => runResampleHere(request));
+
+/// The conversion itself, on whichever isolate this is called from.
+Float32List runResampleHere(ResampleRequest request) {
+  _applyLibraryOverride(request.libraryPathOverride);
+  final native = QaAudioNative.instance;
+  if (native != null) {
+    return native.resample(
+      samples: request.samples,
+      channels: request.channels,
+      inputRate: request.inputRate,
+      outputRate: request.outputRate,
+    );
+  }
+  return resampleAudioReference(
+    samples: request.samples,
+    channels: request.channels,
+    inputRate: request.inputRate,
+    outputRate: request.outputRate,
+  ).samples;
+}
+
+void _applyLibraryOverride(String? override) {
   if (override != null) {
     QaAudioDecoder.debugLibraryPathOverride = override;
     QaAudioNative.debugLibraryPathOverride = override;
   }
+}
+
+/// The pipeline itself, on whichever isolate this is called from —
+/// [runConformInIsolate]'s worker body, and directly callable by tests
+/// that want the real native path without isolate indirection.
+ConformResult runConformHere(ConformRequest request) {
+  _applyLibraryOverride(request.libraryPathOverride);
   final pipeline = AudioConformPipeline(
     decode: (bytes) {
       final decoded = QaAudioDecoder.instance?.decode(bytes);

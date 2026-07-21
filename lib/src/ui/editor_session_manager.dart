@@ -11,6 +11,7 @@ import '../services/persistence/app_accent_settings_store.dart';
 import '../services/persistence/app_input_settings_store.dart';
 import '../services/persistence/app_save_settings.dart';
 import '../services/persistence/app_save_settings_store.dart';
+import '../services/persistence/audio_sync_settings_store.dart';
 import 'input/app_input_settings.dart';
 import 'theme/app_accents.dart';
 import 'theme/app_theme.dart' show AppColors;
@@ -67,7 +68,9 @@ import '../services/playback/playback_frame_mapping.dart';
 import 'canvas/canvas_layer_stack_view.dart';
 import 'canvas/layer_pose_paint.dart';
 import 'dev_profile.dart';
+import 'playback/audio_device_transport.dart';
 import 'playback/audio_playback_sync.dart';
+import 'playback/audio_sync_settings.dart';
 import 'playback/audioplayers_clip_player.dart';
 import 'playback/canvas_playback_controller.dart';
 import 'playback/cut_frame_composite_cache.dart';
@@ -143,9 +146,11 @@ class EditorSessionManager extends ChangeNotifier {
     AppAccentSettingsStore? accentSettingsStore,
     AppInputSettingsStore? inputSettingsStore,
     AppSaveSettingsStore? saveSettingsStore,
+    AudioSyncSettingsStore? audioSyncSettingsStore,
   }) : _editingSession = EditingSessionState.forProject(initialProject),
        _injectedAudioPeaksStore = audioPeaksStore,
        _injectedAudioConformStore = audioConformStore,
+       _audioSyncSettingsStore = audioSyncSettingsStore,
        _languageSettingsStore = languageSettingsStore,
        _accentSettingsStore = accentSettingsStore,
        _inputSettingsStore = inputSettingsStore,
@@ -155,6 +160,7 @@ class EditorSessionManager extends ChangeNotifier {
     unawaited(_restoreAccentSettings());
     unawaited(_restoreInputSettings());
     unawaited(_restoreSaveSettings());
+    unawaited(_restoreAudioSyncSettings());
     _historyManager = HistoryManager();
     _cutCommandCoordinator = CutCommandCoordinator(
       repository: _repository,
@@ -164,6 +170,9 @@ class EditorSessionManager extends ChangeNotifier {
     );
     _rebuildActiveCutControllers();
     cacheInvalidationHub.addBrushFrameListener(_onBrushFrameInvalidated);
+    // Transport FIRST: listener order is its contract with the fallback —
+    // carryingPlayback must be decided before the sync consults it.
+    audioDeviceTransport.attach();
     audioPlaybackSync.attach();
     playback.globalFrameIndexListenable.addListener(_followPlaybackCut);
     // Dirty tracking (P3): every history change — commands, undo/redo and
@@ -276,6 +285,35 @@ class EditorSessionManager extends ChangeNotifier {
     }
   }
 
+  // --- A/V offset (audio program 2D) ----------------------------------------
+
+  /// Injectable persistence; null (tests) keeps the in-memory defaults.
+  final AudioSyncSettingsStore? _audioSyncSettingsStore;
+
+  /// The user's A/V offset — the residual correction for THIS machine's
+  /// output path (screen pipeline, Bluetooth, an AV receiver). App state,
+  /// not project state: a rig's delay must not travel inside a `.qap`.
+  final ValueNotifier<AudioSyncSettings> audioSyncSettings =
+      ValueNotifier<AudioSyncSettings>(AudioSyncSettings.defaults);
+
+  Future<void> _restoreAudioSyncSettings() async {
+    final restored = await _audioSyncSettingsStore?.load();
+    if (restored != null) {
+      audioSyncSettings.value = restored;
+    }
+  }
+
+  void setAudioSyncSettings(AudioSyncSettings settings) {
+    if (settings == audioSyncSettings.value) {
+      return;
+    }
+    audioSyncSettings.value = settings;
+    final store = _audioSyncSettingsStore;
+    if (store != null) {
+      unawaited(store.save(settings));
+    }
+  }
+
   /// App-level brush stroke store shared with the canvas host, so commands
   /// (e.g. anchored canvas resize) can transform stroke data.
   final BrushFrameStore brushFrameStore = BrushFrameStore();
@@ -380,9 +418,32 @@ class EditorSessionManager extends ChangeNotifier {
     onPlaylistWarmRequested: _onPlaybackPlaylistWarmRequested,
   );
 
+  /// The native device transport (audio program wiring): when it carries a
+  /// run, playback rides the audio master clock — the picture follows the
+  /// samples handed to the device, and cumulative drift is structurally
+  /// zero. Stands down per run (no binary/device, PCM not resident) onto
+  /// [audioPlaybackSync].
+  late final AudioDeviceTransport audioDeviceTransport = AudioDeviceTransport(
+    controller: playback,
+    resolveFrameRate: () => projectFrameRate,
+    resolveProject: () => _repository.currentProject,
+    conformStore: audioConformStore,
+    // Widget tests must never open a real OS audio device.
+    resolveDevice: Platform.environment['FLUTTER_TEST'] == 'true'
+        ? () => null
+        : null,
+    resolveUserOffsetSamples: (sampleRate) => audioSyncSettings.value
+        .offsetSamples(
+          sampleRate: sampleRate,
+          frameRateNumerator: projectFrameRate.numerator,
+          frameRateDenominator: projectFrameRate.denominator,
+        ),
+  );
+
   /// Frame-synced SE audio riding [playback]'s frame signals; clip lengths
   /// come from the conform store (exact sample counts, with the ffmpeg
-  /// peaks approximation as its own fallback).
+  /// peaks approximation as its own fallback). Fallback path — stands down
+  /// for runs the device transport carries.
   late final AudioPlaybackSync audioPlaybackSync = AudioPlaybackSync(
     controller: playback,
     resolveFrameRate: () => projectFrameRate,
@@ -390,6 +451,7 @@ class EditorSessionManager extends ChangeNotifier {
     playerFactory: AudioplayersClipPlayer.new,
     // Track-owned SE rows schedule from the tracks' global axes.
     resolveProject: () => _repository.currentProject,
+    deviceCarriesPlayback: () => audioDeviceTransport.carryingPlayback,
   );
 
   void _onPlaybackStopped(PlaybackPosition lastPosition) {
@@ -710,6 +772,7 @@ class EditorSessionManager extends ChangeNotifier {
     playback.globalFrameIndexListenable.removeListener(_followPlaybackCut);
     _historyManager.removeListener(_markProjectDirty);
     audioPlaybackSync.dispose();
+    audioDeviceTransport.dispose();
     playback.dispose();
     prerenderScheduler.dispose();
     cutFrameCompositeCache.dispose();
@@ -717,6 +780,7 @@ class EditorSessionManager extends ChangeNotifier {
     audioConformStore.dispose();
     audioPeaksStore.dispose();
     languageSettings.dispose();
+    audioSyncSettings.dispose();
     editingFrameCursor.dispose();
     frameScrubActive.dispose();
     frameSeekCommitted.dispose();

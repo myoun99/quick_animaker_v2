@@ -68,7 +68,16 @@ class AudioPlaybackSync {
     required this.durationSecondsFor,
     required this.playerFactory,
     this.resolveProject,
+    this.deviceCarriesPlayback,
   });
+
+  /// Consulted ONCE at activation: true means the native device transport
+  /// carries this run's audio, so no platform players are built — playing
+  /// both would double every sound. (The transport attaches FIRST, so its
+  /// decision is made by the time this is read.) This class remains the
+  /// fallback: no binary, no device, or PCM not resident yet, and it
+  /// carries the run exactly as before.
+  final bool Function()? deviceCarriesPlayback;
 
   final CanvasPlaybackController controller;
 
@@ -122,12 +131,14 @@ class AudioPlaybackSync {
     final active = controller.isActive;
     final playing = controller.isPlaying;
     if (active && !_wasActive) {
-      _schedule = buildAudioPlaybackSchedule(
-        playlist: controller.playlist,
-        project: resolveProject?.call(),
-        rate: resolveFrameRate(),
-        durationSecondsFor: durationSecondsFor,
-      );
+      _schedule = (deviceCarriesPlayback?.call() ?? false)
+          ? const []
+          : buildAudioPlaybackSchedule(
+              playlist: controller.playlist,
+              project: resolveProject?.call(),
+              rate: resolveFrameRate(),
+              durationSecondsFor: durationSecondsFor,
+            );
       _players = [for (final _ in _schedule) playerFactory()];
       for (var index = 0; index < _schedule.length; index += 1) {
         unawaited(_players[index].prepare(_schedule[index].filePath));

@@ -146,6 +146,35 @@ void main() {
     store.dispose();
   });
 
+  test('samplesAtRate: the project rate is the samples themselves; another '
+      'rate kicks ONE async conversion and serves it once landed', () async {
+    final resampled = <(int, int)>[];
+    final store = AudioConformStore(
+      resolveConformPath: (_) => null,
+      runner: (request) async => _usableResult(),
+      resampleRunner: (request) async {
+        resampled.add((request.inputRate, request.outputRate));
+        return Float32List.fromList([0.9]);
+      },
+      log: (_) {},
+    );
+    store.resultFor('a.wav');
+    await pumpEventQueue();
+
+    // Project rate: the conform PCM itself, no conversion.
+    expect(store.samplesAtRate('a.wav', 48000), hasLength(4));
+    expect(resampled, isEmpty);
+
+    // Device rate mismatch: null now (the transport stands down this run),
+    // conversion kicked once, served after it lands.
+    expect(store.samplesAtRate('a.wav', 44100), isNull);
+    expect(store.samplesAtRate('a.wav', 44100), isNull);
+    await pumpEventQueue();
+    expect(resampled, [(48000, 44100)]);
+    expect(store.samplesAtRate('a.wav', 44100), hasLength(1));
+    store.dispose();
+  });
+
   test('warmPaths kicks every unknown path once', () async {
     final seen = <String>[];
     final store = AudioConformStore(
