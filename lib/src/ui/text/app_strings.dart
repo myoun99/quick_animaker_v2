@@ -16,6 +16,50 @@ class AppStrings {
     required this.noticeNoFrameHere,
     required this.noticeActionSectionOnly,
     required this.noticeNothingToTransform,
+    required this.commonCancel,
+    required this.commonApply,
+    required this.commonRefresh,
+    required this.audioOffsetTitle,
+    required this.audioOffsetHelp,
+    required this.audioOffsetLabel,
+    required this.audioUnitFrames,
+    required this.audioDevicesTitle,
+    required this.audioDevicesHelp,
+    required this.audioOutputLabel,
+    required this.audioInputLabel,
+    required this.audioSystemDefault,
+    required this.audioDeviceDefaultSuffix,
+    required this.audioDeviceMissingSuffix,
+    required this.audioSyncInspectorTitle,
+    required this.recordVoiceTooltip,
+    required this.recordVoiceStopTooltip,
+    required this.recordMicOpenFailed,
+    required this.recordMicPermissionDenied,
+    required this.recordNothingRecording,
+    required this.recordTakeEmpty,
+    required this.recordPlacementFailed,
+    required this.recordDroppedFramesTemplate,
+    required this.layerAudioTitle,
+    required this.audioGainLabel,
+    required this.audioPanLabel,
+    required this.layerAudioPanHelp,
+    required this.audioSolo,
+    required this.audioUnsolo,
+    required this.audioLayerAudioMenu,
+    required this.audioClipGainMenu,
+    required this.audioEnvelopeMenu,
+    required this.audioFadesEqualPowerMenu,
+    required this.audioFadesLinearMenu,
+    required this.audioClipGainTitle,
+    required this.audioEnvelopeTitle,
+    required this.audioEnvelopeHelp,
+    required this.audioEnvelopeFrameLabel,
+    required this.audioEnvelopeGainPercentLabel,
+    required this.audioEnvelopeAddKey,
+    required this.fpsAudioTitleTemplate,
+    required this.fpsAudioBody,
+    required this.fpsAudioKeep,
+    required this.fpsAudioPull,
   });
 
   final String languageSettingsTitle;
@@ -40,6 +84,68 @@ class AppStrings {
   final String noticeActionSectionOnly;
   final String noticeNothingToTransform;
 
+  /// Shared dialog verbs — tabled once, reused by every dialog that
+  /// adopts localization.
+  final String commonCancel;
+  final String commonApply;
+  final String commonRefresh;
+
+  // --- The audio program's UI (Preferences ▸ Audio, 2D + AUDIO-PRO R4) ---
+  final String audioOffsetTitle;
+  final String audioOffsetHelp;
+  final String audioOffsetLabel;
+
+  /// The A/V offset unit dropdown's frame entry ('ms' is universal).
+  final String audioUnitFrames;
+  final String audioDevicesTitle;
+  final String audioDevicesHelp;
+  final String audioOutputLabel;
+  final String audioInputLabel;
+  final String audioSystemDefault;
+
+  /// Appended to a device name: '{name}{suffix}'.
+  final String audioDeviceDefaultSuffix;
+  final String audioDeviceMissingSuffix;
+  final String audioSyncInspectorTitle;
+
+  // --- Guide voice recording (AUDIO-PRO R5) ---
+  final String recordVoiceTooltip;
+  final String recordVoiceStopTooltip;
+  final String recordMicOpenFailed;
+  final String recordMicPermissionDenied;
+  final String recordNothingRecording;
+  final String recordTakeEmpty;
+  final String recordPlacementFailed;
+
+  /// '{count}' is replaced with the dropped-frame count.
+  final String recordDroppedFramesTemplate;
+
+  // --- Mix controls (AUDIO-PRO R1) ---
+  final String layerAudioTitle;
+  final String audioGainLabel;
+  final String audioPanLabel;
+  final String layerAudioPanHelp;
+  final String audioSolo;
+  final String audioUnsolo;
+  final String audioLayerAudioMenu;
+  final String audioClipGainMenu;
+  final String audioEnvelopeMenu;
+  final String audioFadesEqualPowerMenu;
+  final String audioFadesLinearMenu;
+  final String audioClipGainTitle;
+  final String audioEnvelopeTitle;
+  final String audioEnvelopeHelp;
+  final String audioEnvelopeFrameLabel;
+  final String audioEnvelopeGainPercentLabel;
+  final String audioEnvelopeAddKey;
+
+  // --- The fps-change audio notice (EXPORT-AUDIO ④) ---
+  /// '{from}'/'{to}' are replaced with the rate labels.
+  final String fpsAudioTitleTemplate;
+  final String fpsAudioBody;
+  final String fpsAudioKeep;
+  final String fpsAudioPull;
+
   static AppStrings of(AppLanguage language) => switch (language) {
     AppLanguage.en => _en,
     AppLanguage.ja => _ja,
@@ -60,6 +166,74 @@ class AppStrings {
     noticeNoFrameHere: 'No frame here',
     noticeActionSectionOnly: 'Only the Action section can be drawn on',
     noticeNothingToTransform: 'Nothing to transform',
+    commonCancel: 'Cancel',
+    commonApply: 'Apply',
+    commonRefresh: 'Refresh',
+    audioOffsetTitle: 'A/V offset',
+    audioOffsetHelp:
+        'Fine-tunes when the picture is shown relative to the sound. '
+        'The measurable part of the delay is corrected automatically; '
+        'this removes what remains — wireless headphones commonly sit '
+        '150–300 ms behind and report nothing. Positive shows the '
+        'picture LATER (sound arriving late is the common case).',
+    audioOffsetLabel: 'Offset',
+    audioUnitFrames: 'frames',
+    audioDevicesTitle: 'Devices',
+    audioDevicesHelp:
+        'Which speaker playback uses and which microphone recording '
+        'will use. Changes apply from the next playback run; a device '
+        'that is no longer attached falls back to the system default.',
+    audioOutputLabel: 'Output',
+    audioInputLabel: 'Input',
+    audioSystemDefault: 'System default',
+    audioDeviceDefaultSuffix: ' (default)',
+    audioDeviceMissingSuffix: ' (missing)',
+    audioSyncInspectorTitle: 'Sync inspector',
+    recordVoiceTooltip: 'Record voice at the playhead',
+    recordVoiceStopTooltip: 'Stop recording (places the take)',
+    recordMicOpenFailed:
+        'Could not open the microphone — check Preferences ▸ Audio '
+        'and the OS microphone permission.',
+    recordMicPermissionDenied: 'Microphone permission was not granted.',
+    recordNothingRecording: 'Nothing was recording.',
+    recordTakeEmpty: 'The take was empty — nothing to place.',
+    recordPlacementFailed: 'The recording could not be placed.',
+    recordDroppedFramesTemplate:
+        'Recorded, but {count} frames were dropped (the machine could '
+        'not keep up) — check the take.',
+    layerAudioTitle: 'Layer Audio',
+    audioGainLabel: 'Gain',
+    audioPanLabel: 'Pan',
+    layerAudioPanHelp:
+        'Pan applies on the device mixer path (equal-power law).',
+    audioSolo: 'Solo',
+    audioUnsolo: 'Unsolo',
+    audioLayerAudioMenu: 'Layer audio…',
+    audioClipGainMenu: 'Gain…',
+    audioEnvelopeMenu: 'Volume envelope…',
+    audioFadesEqualPowerMenu: 'Fades: equal-power (switch to linear)',
+    audioFadesLinearMenu: 'Fades: linear (switch to equal-power)',
+    audioClipGainTitle: 'Clip Gain',
+    audioEnvelopeTitle: 'Volume Envelope',
+    audioEnvelopeHelp:
+        'Keyed gains at clip frames (linear between keys, held past '
+        'the ends). Empty = flat.',
+    audioEnvelopeFrameLabel: 'frame',
+    audioEnvelopeGainPercentLabel: 'gain %',
+    audioEnvelopeAddKey: 'Add key',
+    fpsAudioTitleTemplate: '{from} → {to}: what happens to sound?',
+    fpsAudioBody:
+        'These two rates differ by 0.1% in real speed, and audio exists '
+        'in real seconds — it cannot stay both frame-exact and '
+        'time-exact.\n\n'
+        '• Keep audio timing: sounds keep their real seconds; their '
+        'frame positions drift by 0.1% (about one frame every 42 '
+        'seconds).\n\n'
+        '• Pull audio 0.1%: sounds are resampled by the exact pulldown '
+        'ratio (an inaudible pitch change — the standard telecine '
+        'conform) so every sound keeps its exact frame span.',
+    fpsAudioKeep: 'Keep audio timing',
+    fpsAudioPull: 'Pull audio 0.1%',
   );
 
   static const _ja = AppStrings._(
@@ -74,6 +248,69 @@ class AppStrings {
     noticeNoFrameHere: 'フレームがありません',
     noticeActionSectionOnly: 'アクション欄でのみ描けます',
     noticeNothingToTransform: '変形する絵がありません',
+    commonCancel: 'キャンセル',
+    commonApply: '適用',
+    commonRefresh: '更新',
+    audioOffsetTitle: 'A/Vオフセット',
+    audioOffsetHelp:
+        '音に対して絵をいつ表示するかを微調整します。測定できる遅延は自動補正され、'
+        'これは残りを取り除くための設定です — ワイヤレスイヤホンは150〜300ms'
+        '遅れているのに何も報告しないのが普通です。正の値で絵が遅く表示されます'
+        '（音が遅れて届くのが一般的なケース）。',
+    audioOffsetLabel: 'オフセット',
+    audioUnitFrames: 'コマ',
+    audioDevicesTitle: 'デバイス',
+    audioDevicesHelp:
+        '再生に使うスピーカーと録音に使うマイクの選択。変更は次の再生から適用'
+        'されます。取り外されたデバイスはシステム既定にフォールバックします。',
+    audioOutputLabel: '出力',
+    audioInputLabel: '入力',
+    audioSystemDefault: 'システム既定',
+    audioDeviceDefaultSuffix: '（既定）',
+    audioDeviceMissingSuffix: '（未接続）',
+    audioSyncInspectorTitle: '同期インスペクタ',
+    recordVoiceTooltip: '再生ヘッド位置にボイスを録音',
+    recordVoiceStopTooltip: '録音を停止（テイクを配置）',
+    recordMicOpenFailed:
+        'マイクを開けませんでした — 環境設定▸オーディオとOSのマイク権限を'
+        '確認してください。',
+    recordMicPermissionDenied: 'マイクの権限が許可されませんでした。',
+    recordNothingRecording: '録音中ではありません。',
+    recordTakeEmpty: 'テイクが空でした — 配置するものがありません。',
+    recordPlacementFailed: '録音を配置できませんでした。',
+    recordDroppedFramesTemplate:
+        '録音しましたが{count}フレームが欠落しました（処理が追いつきません'
+        'でした）— テイクを確認してください。',
+    layerAudioTitle: 'レイヤーオーディオ',
+    audioGainLabel: 'ゲイン',
+    audioPanLabel: 'パン',
+    layerAudioPanHelp: 'パンはデバイスミキサー経路で適用されます（等パワー則）。',
+    audioSolo: 'ソロ',
+    audioUnsolo: 'ソロ解除',
+    audioLayerAudioMenu: 'レイヤーオーディオ…',
+    audioClipGainMenu: 'ゲイン…',
+    audioEnvelopeMenu: 'ボリュームエンベロープ…',
+    audioFadesEqualPowerMenu: 'フェード：等パワー（リニアに切替）',
+    audioFadesLinearMenu: 'フェード：リニア（等パワーに切替）',
+    audioClipGainTitle: 'クリップゲイン',
+    audioEnvelopeTitle: 'ボリュームエンベロープ',
+    audioEnvelopeHelp:
+        'クリップ内コマ位置ごとのゲインキー（キー間は直線、両端は保持）。'
+        '空＝フラット。',
+    audioEnvelopeFrameLabel: 'コマ',
+    audioEnvelopeGainPercentLabel: 'ゲイン %',
+    audioEnvelopeAddKey: 'キーを追加',
+    fpsAudioTitleTemplate: '{from} → {to}：音はどうしますか？',
+    fpsAudioBody:
+        'この2つのレートは実速度が0.1%異なり、音は実時間で存在します — '
+        'コマ厳密と時間厳密を両立することはできません。\n\n'
+        '• 音のタイミングを維持：音は実時間を保ち、コマ位置が0.1%ずれます'
+        '（約42秒ごとに1コマ）。\n\n'
+        '• 音を0.1%プル：正確なプルダウン比でリサンプルします（聴き取れない'
+        'ピッチ変化 — テレシネの標準コンフォーム）。全ての音がコマ範囲を'
+        '維持します。',
+    fpsAudioKeep: '音のタイミングを維持',
+    fpsAudioPull: '音を0.1%プル',
   );
 
   static const _ko = AppStrings._(
@@ -88,6 +325,70 @@ class AppStrings {
     noticeNoFrameHere: '프레임이 존재하지 않습니다',
     noticeActionSectionOnly: '액션 섹션에서만 그릴 수 있습니다',
     noticeNothingToTransform: '변형할 그림이 없습니다',
+    commonCancel: '취소',
+    commonApply: '적용',
+    commonRefresh: '새로고침',
+    audioOffsetTitle: 'A/V 오프셋',
+    audioOffsetHelp:
+        '소리에 대해 그림을 언제 표시할지 미세 조정합니다. 측정 가능한 '
+        '지연은 자동 보정되며, 이 설정은 그 잔차를 제거합니다 — 무선 '
+        '이어폰은 150~300ms 늦으면서 아무것도 보고하지 않는 게 보통입니다. '
+        '양수면 그림이 더 늦게 표시됩니다(소리가 늦게 도착하는 경우가 '
+        '일반적).',
+    audioOffsetLabel: '오프셋',
+    audioUnitFrames: '프레임',
+    audioDevicesTitle: '장치',
+    audioDevicesHelp:
+        '재생에 쓸 스피커와 녹음에 쓸 마이크. 변경은 다음 재생부터 '
+        '적용되며, 분리된 장치는 시스템 기본값으로 대체됩니다.',
+    audioOutputLabel: '출력',
+    audioInputLabel: '입력',
+    audioSystemDefault: '시스템 기본값',
+    audioDeviceDefaultSuffix: ' (기본)',
+    audioDeviceMissingSuffix: ' (미연결)',
+    audioSyncInspectorTitle: '싱크 인스펙터',
+    recordVoiceTooltip: '플레이헤드 위치에 보이스 녹음',
+    recordVoiceStopTooltip: '녹음 정지(테이크 배치)',
+    recordMicOpenFailed:
+        '마이크를 열 수 없습니다 — 환경설정▸오디오와 OS 마이크 권한을 '
+        '확인하세요.',
+    recordMicPermissionDenied: '마이크 권한이 허용되지 않았습니다.',
+    recordNothingRecording: '녹음 중이 아닙니다.',
+    recordTakeEmpty: '테이크가 비어 있어 배치할 것이 없습니다.',
+    recordPlacementFailed: '녹음을 배치하지 못했습니다.',
+    recordDroppedFramesTemplate:
+        '녹음됐지만 {count}프레임이 유실됐습니다(처리가 따라가지 못함) — '
+        '테이크를 확인하세요.',
+    layerAudioTitle: '레이어 오디오',
+    audioGainLabel: '게인',
+    audioPanLabel: '팬',
+    layerAudioPanHelp: '팬은 장치 믹서 경로에서 적용됩니다(등파워 법칙).',
+    audioSolo: '솔로',
+    audioUnsolo: '솔로 해제',
+    audioLayerAudioMenu: '레이어 오디오…',
+    audioClipGainMenu: '게인…',
+    audioEnvelopeMenu: '볼륨 엔벨로프…',
+    audioFadesEqualPowerMenu: '페이드: 등파워(리니어로 전환)',
+    audioFadesLinearMenu: '페이드: 리니어(등파워로 전환)',
+    audioClipGainTitle: '클립 게인',
+    audioEnvelopeTitle: '볼륨 엔벨로프',
+    audioEnvelopeHelp:
+        '클립 내 프레임 위치별 게인 키(키 사이는 직선, 양 끝은 유지). '
+        '비어 있으면 플랫.',
+    audioEnvelopeFrameLabel: '프레임',
+    audioEnvelopeGainPercentLabel: '게인 %',
+    audioEnvelopeAddKey: '키 추가',
+    fpsAudioTitleTemplate: '{from} → {to}: 소리는 어떻게 할까요?',
+    fpsAudioBody:
+        '두 레이트는 실제 속도가 0.1% 다르고, 소리는 실시간으로 존재합니다 '
+        '— 프레임 정확과 시간 정확을 동시에 지킬 수 없습니다.\n\n'
+        '• 오디오 타이밍 유지: 소리는 실시간을 지키고, 프레임 위치가 '
+        '0.1% 어긋납니다(약 42초마다 1프레임).\n\n'
+        '• 오디오 0.1% 당김: 정확한 풀다운 비율로 리샘플합니다(들리지 않는 '
+        '피치 변화 — 텔레시네 표준 컨폼). 모든 소리가 프레임 범위를 '
+        '유지합니다.',
+    fpsAudioKeep: '오디오 타이밍 유지',
+    fpsAudioPull: '오디오 0.1% 당김',
   );
 
   static const _fr = AppStrings._(
@@ -103,6 +404,80 @@ class AppStrings {
     noticeActionSectionOnly:
         'Dessin possible uniquement dans la section Action',
     noticeNothingToTransform: 'Rien a transformer',
+    commonCancel: 'Annuler',
+    commonApply: 'Appliquer',
+    commonRefresh: 'Actualiser',
+    audioOffsetTitle: 'Décalage A/V',
+    audioOffsetHelp:
+        'Ajuste finement le moment où l\'image s\'affiche par rapport au '
+        'son. La part mesurable du retard est corrigée automatiquement ; '
+        'ce réglage retire le reste — les écouteurs sans fil ont souvent '
+        '150 à 300 ms de retard sans rien signaler. Une valeur positive '
+        'affiche l\'image PLUS TARD (le son en retard est le cas '
+        'courant).',
+    audioOffsetLabel: 'Décalage',
+    audioUnitFrames: 'images',
+    audioDevicesTitle: 'Périphériques',
+    audioDevicesHelp:
+        'Le haut-parleur utilisé en lecture et le micro utilisé en '
+        'enregistrement. Les changements s\'appliquent à la prochaine '
+        'lecture ; un périphérique débranché retombe sur le choix '
+        'système.',
+    audioOutputLabel: 'Sortie',
+    audioInputLabel: 'Entrée',
+    audioSystemDefault: 'Défaut système',
+    audioDeviceDefaultSuffix: ' (défaut)',
+    audioDeviceMissingSuffix: ' (absent)',
+    audioSyncInspectorTitle: 'Inspecteur de synchro',
+    recordVoiceTooltip: 'Enregistrer la voix à la tête de lecture',
+    recordVoiceStopTooltip: 'Arrêter l\'enregistrement (place la prise)',
+    recordMicOpenFailed:
+        'Impossible d\'ouvrir le micro — vérifiez Préférences ▸ Audio '
+        'et l\'autorisation micro du système.',
+    recordMicPermissionDenied: 'L\'autorisation micro a été refusée.',
+    recordNothingRecording: 'Aucun enregistrement en cours.',
+    recordTakeEmpty: 'La prise était vide — rien à placer.',
+    recordPlacementFailed: 'La prise n\'a pas pu être placée.',
+    recordDroppedFramesTemplate:
+        'Enregistré, mais {count} trames ont été perdues (la machine '
+        'n\'a pas suivi) — vérifiez la prise.',
+    layerAudioTitle: 'Audio du calque',
+    audioGainLabel: 'Gain',
+    audioPanLabel: 'Panoramique',
+    layerAudioPanHelp:
+        'Le panoramique s\'applique sur la voie du mixeur natif (loi à '
+        'puissance constante).',
+    audioSolo: 'Solo',
+    audioUnsolo: 'Retirer le solo',
+    audioLayerAudioMenu: 'Audio du calque…',
+    audioClipGainMenu: 'Gain…',
+    audioEnvelopeMenu: 'Enveloppe de volume…',
+    audioFadesEqualPowerMenu:
+        'Fondus : puissance constante (passer en linéaire)',
+    audioFadesLinearMenu:
+        'Fondus : linéaire (passer en puissance constante)',
+    audioClipGainTitle: 'Gain du clip',
+    audioEnvelopeTitle: 'Enveloppe de volume',
+    audioEnvelopeHelp:
+        'Clés de gain aux images du clip (linéaire entre les clés, '
+        'maintenu aux extrémités). Vide = plat.',
+    audioEnvelopeFrameLabel: 'image',
+    audioEnvelopeGainPercentLabel: 'gain %',
+    audioEnvelopeAddKey: 'Ajouter une clé',
+    fpsAudioTitleTemplate: '{from} → {to} : que faire du son ?',
+    fpsAudioBody:
+        'Ces deux cadences diffèrent de 0,1 % en vitesse réelle, et le '
+        'son existe en secondes réelles — il ne peut pas rester à la '
+        'fois exact à l\'image et exact au temps.\n\n'
+        '• Garder le timing audio : les sons gardent leurs secondes '
+        'réelles ; leurs positions d\'image dérivent de 0,1 % (environ '
+        'une image toutes les 42 secondes).\n\n'
+        '• Tirer l\'audio de 0,1 % : les sons sont rééchantillonnés au '
+        'rapport de pulldown exact (variation de hauteur inaudible — la '
+        'conformation télécinéma standard) et chaque son garde sa plage '
+        'd\'images exacte.',
+    fpsAudioKeep: 'Garder le timing audio',
+    fpsAudioPull: 'Tirer l\'audio de 0,1 %',
   );
 
   static const _zhHans = AppStrings._(
@@ -117,5 +492,65 @@ class AppStrings {
     noticeNoFrameHere: '此处没有帧',
     noticeActionSectionOnly: '只能在动作区绘制',
     noticeNothingToTransform: '没有可变形的内容',
+    commonCancel: '取消',
+    commonApply: '应用',
+    commonRefresh: '刷新',
+    audioOffsetTitle: 'A/V 偏移',
+    audioOffsetHelp:
+        '微调画面相对声音的显示时机。可测量的延迟会自动校正，此设置'
+        '用于消除剩余部分 — 无线耳机通常落后 150~300 毫秒且不作任何'
+        '报告。正值让画面更晚显示（声音迟到是常见情况）。',
+    audioOffsetLabel: '偏移',
+    audioUnitFrames: '帧',
+    audioDevicesTitle: '设备',
+    audioDevicesHelp:
+        '播放使用的扬声器与录音使用的麦克风。更改自下次播放起生效；'
+        '已拔出的设备将回退到系统默认。',
+    audioOutputLabel: '输出',
+    audioInputLabel: '输入',
+    audioSystemDefault: '系统默认',
+    audioDeviceDefaultSuffix: '（默认）',
+    audioDeviceMissingSuffix: '（未连接）',
+    audioSyncInspectorTitle: '同步检查器',
+    recordVoiceTooltip: '在播放头位置录制语音',
+    recordVoiceStopTooltip: '停止录音（放置素材）',
+    recordMicOpenFailed:
+        '无法打开麦克风 — 请检查首选项▸音频以及系统麦克风权限。',
+    recordMicPermissionDenied: '麦克风权限未被授予。',
+    recordNothingRecording: '当前没有在录音。',
+    recordTakeEmpty: '录音为空 — 没有可放置的内容。',
+    recordPlacementFailed: '录音未能放置。',
+    recordDroppedFramesTemplate:
+        '已录音，但丢失了 {count} 帧（机器未能跟上）— 请检查这条录音。',
+    layerAudioTitle: '图层音频',
+    audioGainLabel: '增益',
+    audioPanLabel: '声像',
+    layerAudioPanHelp: '声像在原生混音器路径上生效（等功率法则）。',
+    audioSolo: '独奏',
+    audioUnsolo: '取消独奏',
+    audioLayerAudioMenu: '图层音频…',
+    audioClipGainMenu: '增益…',
+    audioEnvelopeMenu: '音量包络…',
+    audioFadesEqualPowerMenu: '淡变：等功率（切换为线性）',
+    audioFadesLinearMenu: '淡变：线性（切换为等功率）',
+    audioClipGainTitle: '片段增益',
+    audioEnvelopeTitle: '音量包络',
+    audioEnvelopeHelp:
+        '按片段内帧位置设置增益关键点（关键点之间线性，两端保持）。'
+        '留空＝平直。',
+    audioEnvelopeFrameLabel: '帧',
+    audioEnvelopeGainPercentLabel: '增益 %',
+    audioEnvelopeAddKey: '添加关键点',
+    fpsAudioTitleTemplate: '{from} → {to}：声音怎么办？',
+    fpsAudioBody:
+        '这两个帧率的实际速度相差 0.1%，而声音存在于真实时间中 — '
+        '无法同时保持帧精确与时间精确。\n\n'
+        '• 保持音频时间：声音保持真实秒数；帧位置漂移 0.1%'
+        '（约每 42 秒一帧）。\n\n'
+        '• 拉伸音频 0.1%：按精确的 pulldown 比例重采样（听不出的'
+        '音高变化 — 电视电影的标准做法），每个声音保持其精确的'
+        '帧范围。',
+    fpsAudioKeep: '保持音频时间',
+    fpsAudioPull: '拉伸音频 0.1%',
   );
 }

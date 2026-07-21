@@ -1,9 +1,11 @@
 import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
 
+import '../../models/app_language.dart' show AppLanguage;
 import '../../models/playback_quality.dart';
 import '../../services/persistence/app_documents.dart' show AppStorage;
 import '../editor_session_manager.dart';
+import '../text/app_strings.dart';
 import '../theme/app_theme.dart' show instantMenuAnimation;
 import 'audio_level_meter.dart';
 import 'canvas_playback_controller.dart';
@@ -16,17 +18,17 @@ Future<void> toggleVoiceRecordingWithFeedback(
   EditorSessionManager session,
 ) async {
   final messenger = ScaffoldMessenger.maybeOf(context);
+  final strings = session.uiStrings;
   final String? message;
   if (session.isVoiceRecording.value) {
     message = session.stopVoiceRecordingAndPlace();
   } else if (!await AppStorage.ensureMicrophoneAccess()) {
     // Android's runtime grant; the Future waits out the system dialog.
-    message = 'Microphone permission was not granted.';
+    message = strings.recordMicPermissionDenied;
   } else {
     message = session.startVoiceRecording()
         ? null
-        : 'Could not open the microphone — check Preferences ▸ Audio '
-              'and the OS microphone permission.';
+        : strings.recordMicOpenFailed;
   }
   if (message != null) {
     messenger?.showSnackBar(SnackBar(content: Text(message)));
@@ -49,6 +51,7 @@ class PlaybackTransportControls extends StatelessWidget {
     this.resolveMeterPeaks,
     this.isVoiceRecording,
     this.onToggleVoiceRecording,
+    this.resolveStrings,
   });
 
   final CanvasPlaybackController controller;
@@ -64,6 +67,10 @@ class PlaybackTransportControls extends StatelessWidget {
   /// Works stopped (record a line cold) AND while playing (record along).
   final ValueListenable<bool>? isVoiceRecording;
   final VoidCallback? onToggleVoiceRecording;
+
+  /// The PROGRAM-language table for the mic tooltips; null keeps English
+  /// (the incremental-coverage rule).
+  final AppStrings Function()? resolveStrings;
 
   /// Where playback begins in this scope (e.g. the timeline playhead);
   /// defaults to frame 0.
@@ -140,21 +147,25 @@ class PlaybackTransportControls extends StatelessWidget {
             if (isVoiceRecording != null && onToggleVoiceRecording != null)
               ValueListenableBuilder<bool>(
                 valueListenable: isVoiceRecording!,
-                builder: (context, recording, _) => IconButton(
-                  key: const ValueKey<String>('playback-record-voice-button'),
-                  tooltip: recording
-                      ? 'Stop recording (places the take)'
-                      : 'Record voice at the playhead',
-                  iconSize: 18,
-                  visualDensity: VisualDensity.compact,
-                  icon: Icon(
-                    recording ? Icons.stop_circle : Icons.mic,
-                    color: recording
-                        ? Theme.of(context).colorScheme.error
-                        : null,
-                  ),
-                  onPressed: onToggleVoiceRecording,
-                ),
+                builder: (context, recording, _) {
+                  final strings =
+                      resolveStrings?.call() ?? AppStrings.of(AppLanguage.en);
+                  return IconButton(
+                    key: const ValueKey<String>('playback-record-voice-button'),
+                    tooltip: recording
+                        ? strings.recordVoiceStopTooltip
+                        : strings.recordVoiceTooltip,
+                    iconSize: 18,
+                    visualDensity: VisualDensity.compact,
+                    icon: Icon(
+                      recording ? Icons.stop_circle : Icons.mic,
+                      color: recording
+                          ? Theme.of(context).colorScheme.error
+                          : null,
+                    ),
+                    onPressed: onToggleVoiceRecording,
+                  );
+                },
               ),
             PopupMenuButton<PlaybackQuality>(
               key: const ValueKey<String>('playback-quality-selector'),

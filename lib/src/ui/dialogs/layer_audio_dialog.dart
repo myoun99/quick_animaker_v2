@@ -44,9 +44,10 @@ class _LayerAudioDialogState extends State<_LayerAudioDialog> {
 
   @override
   Widget build(BuildContext context) {
+    final strings = widget.session.uiStrings;
     return AlertDialog(
       key: const ValueKey<String>('layer-audio-dialog'),
-      title: const Text('Layer Audio'),
+      title: Text(strings.layerAudioTitle),
       content: SizedBox(
         width: 260,
         child: Column(
@@ -57,7 +58,7 @@ class _LayerAudioDialogState extends State<_LayerAudioDialog> {
               min: 0,
               max: 2,
               value: _gain,
-              label: 'Gain',
+              label: strings.audioGainLabel,
               valueText: '${(_gain * 100).round()}%',
               displayFactor: 100,
               onChanged: (value) => setState(() => _gain = value),
@@ -68,7 +69,7 @@ class _LayerAudioDialogState extends State<_LayerAudioDialog> {
               min: -1,
               max: 1,
               value: _pan,
-              label: 'Pan',
+              label: strings.audioPanLabel,
               valueText: _pan == 0
                   ? 'C'
                   : _pan < 0
@@ -78,9 +79,9 @@ class _LayerAudioDialogState extends State<_LayerAudioDialog> {
               onChanged: (value) => setState(() => _pan = value),
             ),
             const SizedBox(height: 4),
-            const Text(
-              'Pan applies on the device mixer path (equal-power law).',
-              style: TextStyle(fontSize: 11),
+            Text(
+              strings.layerAudioPanHelp,
+              style: const TextStyle(fontSize: 11),
             ),
           ],
         ),
@@ -88,7 +89,7 @@ class _LayerAudioDialogState extends State<_LayerAudioDialog> {
       actions: [
         TextButton(
           onPressed: () => Navigator.of(context).pop(),
-          child: const Text('Cancel'),
+          child: Text(strings.commonCancel),
         ),
         TextButton(
           key: const ValueKey<String>('layer-audio-apply'),
@@ -100,7 +101,7 @@ class _LayerAudioDialogState extends State<_LayerAudioDialog> {
             );
             Navigator.of(context).pop();
           },
-          child: const Text('Apply'),
+          child: Text(strings.commonApply),
         ),
       ],
     );

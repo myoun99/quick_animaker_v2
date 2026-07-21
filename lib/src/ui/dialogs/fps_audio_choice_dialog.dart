@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../models/project_frame_rate.dart';
+import '../text/app_strings.dart';
 
 /// EXPORT-AUDIO ④ (the RT conform semantics): what happens to SOUND on a
 /// pulldown-pair rate change.
@@ -24,42 +25,39 @@ Future<FpsAudioChoice?> showFpsAudioChoiceDialog(
   BuildContext context, {
   required ProjectFrameRate from,
   required ProjectFrameRate to,
+  required AppStrings strings,
 }) {
   return showDialog<FpsAudioChoice>(
     context: context,
     builder: (context) => AlertDialog(
       key: const ValueKey<String>('fps-audio-choice-dialog'),
-      title: Text('${from.label} → ${to.label}: what happens to sound?'),
-      content: const SizedBox(
+      title: Text(
+        strings.fpsAudioTitleTemplate
+            .replaceAll('{from}', from.label)
+            .replaceAll('{to}', to.label),
+      ),
+      content: SizedBox(
         width: 440,
         child: Text(
-          'These two rates differ by 0.1% in real speed, and audio exists '
-          'in real seconds — it cannot stay both frame-exact and '
-          'time-exact.\n\n'
-          '• Keep audio timing: sounds keep their real seconds; their '
-          'frame positions drift by 0.1% (about one frame every 42 '
-          'seconds).\n\n'
-          '• Pull audio 0.1%: sounds are resampled by the exact pulldown '
-          'ratio (an inaudible pitch change — the standard telecine '
-          'conform) so every sound keeps its exact frame span.',
-          style: TextStyle(fontSize: 13),
+          strings.fpsAudioBody,
+          style: const TextStyle(fontSize: 13),
         ),
       ),
       actions: [
         TextButton(
           key: const ValueKey<String>('fps-audio-cancel'),
           onPressed: () => Navigator.of(context).pop(),
-          child: const Text('Cancel'),
+          child: Text(strings.commonCancel),
         ),
         TextButton(
           key: const ValueKey<String>('fps-audio-keep'),
           onPressed: () => Navigator.of(context).pop(FpsAudioChoice.keep),
-          child: const Text('Keep audio timing'),
+          child: Text(strings.fpsAudioKeep),
         ),
         FilledButton(
           key: const ValueKey<String>('fps-audio-pull'),
           onPressed: () => Navigator.of(context).pop(FpsAudioChoice.pull),
-          child: const Text('Pull audio 0.1%'),
+          child: Text(strings.fpsAudioPull),
         ),
       ],
     ),

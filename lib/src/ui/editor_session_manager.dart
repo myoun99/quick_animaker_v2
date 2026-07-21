@@ -81,6 +81,7 @@ import 'playback/layer_frame_image_cache.dart';
 import 'playback/playback_cache_budget.dart';
 import 'playback/playback_prerender_scheduler.dart';
 import 'storyboard_cut_fade_policy.dart';
+import 'text/app_strings.dart';
 import '../models/track_frame_axis.dart';
 import 'storyboard_timeline_layout.dart';
 import '../models/drawing_block_move.dart';
@@ -206,6 +207,12 @@ class EditorSessionManager extends ChangeNotifier {
   /// subscribe where they read strings; no whole-session notify).
   final ValueNotifier<AppLanguageSettings> languageSettings =
       ValueNotifier<AppLanguageSettings>(const AppLanguageSettings());
+
+  /// The PROGRAM-language string table, read at call time — for session
+  /// verbs that produce user-facing messages and for widgets that already
+  /// hold the session.
+  AppStrings get uiStrings =>
+      AppStrings.of(languageSettings.value.programLanguage);
 
   Future<void> _restoreLanguageSettings() async {
     final restored = await _languageSettingsStore?.load();
@@ -3324,10 +3331,10 @@ class EditorSessionManager extends ChangeNotifier {
     isVoiceRecording.value = false;
     final recording = recorder?.stop();
     if (recording == null) {
-      return 'Nothing was recording.';
+      return uiStrings.recordNothingRecording;
     }
     if (recording.length == 0) {
-      return 'The take was empty — nothing to place.';
+      return uiStrings.recordTakeEmpty;
     }
     final placed = placeVoiceRecording(
       recording,
@@ -3336,11 +3343,13 @@ class EditorSessionManager extends ChangeNotifier {
       headTrimSamples: _voiceRecordHeadTrimSamples,
     );
     if (!placed) {
-      return 'The recording could not be placed.';
+      return uiStrings.recordPlacementFailed;
     }
     if (recording.droppedFrames > 0) {
-      return 'Recorded, but ${recording.droppedFrames} frames were dropped '
-          '(the machine could not keep up) — check the take.';
+      return uiStrings.recordDroppedFramesTemplate.replaceAll(
+        '{count}',
+        '${recording.droppedFrames}',
+      );
     }
     return null;
   }

@@ -1010,6 +1010,7 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
           onSetAudioClipGain: _session.setAudioClipGain,
           onSetAudioClipFadeCurve: _session.setAudioClipFadeCurve,
           onSetAudioClipEnvelope: _session.setAudioClipEnvelope,
+          resolveStrings: () => _session.uiStrings,
           onAddLayer: _session.addLayer,
           onToggleLayerMuted: _session.toggleLayerMuted,
           isLayerSoloed: (layerId) =>
@@ -1280,6 +1281,7 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
             isVoiceRecording: _session.isVoiceRecording,
             onToggleVoiceRecording: () =>
                 toggleVoiceRecordingWithFeedback(context, _session),
+            resolveStrings: () => _session.uiStrings,
           ),
           Expanded(
             child: TimelineActionToolbar(

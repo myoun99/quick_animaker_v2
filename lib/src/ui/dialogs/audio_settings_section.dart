@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 
+import '../../models/app_language.dart';
 import '../editor_session_manager.dart';
 import '../playback/audio_sync_settings.dart';
+import '../text/app_strings.dart';
 
 /// Audio program 2D: the A/V offset and the sync inspector
 /// (Preferences ▸ Audio).
@@ -25,6 +27,7 @@ class _AudioSettingsSectionState extends State<AudioSettingsSection> {
   /// missing) so the choice is visible rather than silently reverted —
   /// the open-time fallback handles the audio side.
   Widget _deviceRow({
+    required AppStrings strings,
     required String label,
     required String keyValue,
     required bool capture,
@@ -42,21 +45,23 @@ class _AudioSettingsSectionState extends State<AudioSettingsSection> {
           isDense: true,
           style: const TextStyle(fontSize: 12),
           items: [
-            const DropdownMenuItem<String?>(
-              child: Text('System default'),
+            DropdownMenuItem<String?>(
+              child: Text(strings.audioSystemDefault),
             ),
             for (final device in devices)
               DropdownMenuItem<String?>(
                 value: device.name,
                 child: Text(
-                  device.isDefault ? '${device.name} (default)' : device.name,
+                  device.isDefault
+                      ? '${device.name}${strings.audioDeviceDefaultSuffix}'
+                      : device.name,
                   overflow: TextOverflow.ellipsis,
                 ),
               ),
             if (selected != null && !names.contains(selected))
               DropdownMenuItem<String?>(
                 value: selected,
-                child: Text('$selected (missing)'),
+                child: Text('$selected${strings.audioDeviceMissingSuffix}'),
               ),
           ],
           onChanged: onChanged,
@@ -67,6 +72,17 @@ class _AudioSettingsSectionState extends State<AudioSettingsSection> {
 
   @override
   Widget build(BuildContext context) {
+    // Language is a live subscription (the timeline empty-state pattern):
+    // an open Preferences window follows a language switch immediately.
+    return ValueListenableBuilder<AppLanguageSettings>(
+      valueListenable: widget.session.languageSettings,
+      builder: (context, language, _) => _buildSection(
+        AppStrings.of(language.programLanguage),
+      ),
+    );
+  }
+
+  Widget _buildSection(AppStrings strings) {
     return ValueListenableBuilder<AudioSyncSettings>(
       valueListenable: widget.session.audioSyncSettings,
       builder: (context, settings, _) {
@@ -74,24 +90,23 @@ class _AudioSettingsSectionState extends State<AudioSettingsSection> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text(
-              'A/V offset',
-              style: TextStyle(fontWeight: FontWeight.w600),
+            Text(
+              strings.audioOffsetTitle,
+              style: const TextStyle(fontWeight: FontWeight.w600),
             ),
             const SizedBox(height: 4),
-            const Text(
-              'Fine-tunes when the picture is shown relative to the sound. '
-              'The measurable part of the delay is corrected automatically; '
-              'this removes what remains — wireless headphones commonly sit '
-              '150–300 ms behind and report nothing. Positive shows the '
-              'picture LATER (sound arriving late is the common case).',
-              style: TextStyle(fontSize: 12),
+            Text(
+              strings.audioOffsetHelp,
+              style: const TextStyle(fontSize: 12),
             ),
             const SizedBox(height: 8),
             Row(
               children: [
-                const Expanded(
-                  child: Text('Offset', style: TextStyle(fontSize: 12)),
+                Expanded(
+                  child: Text(
+                    strings.audioOffsetLabel,
+                    style: const TextStyle(fontSize: 12),
+                  ),
                 ),
                 SizedBox(
                   width: 72,
@@ -115,14 +130,14 @@ class _AudioSettingsSectionState extends State<AudioSettingsSection> {
                   value: settings.unit,
                   isDense: true,
                   style: const TextStyle(fontSize: 12),
-                  items: const [
-                    DropdownMenuItem(
+                  items: [
+                    const DropdownMenuItem(
                       value: AvOffsetUnit.milliseconds,
                       child: Text('ms'),
                     ),
                     DropdownMenuItem(
                       value: AvOffsetUnit.frames,
-                      child: Text('frames'),
+                      child: Text(strings.audioUnitFrames),
                     ),
                   ],
                   // Switching units keeps the NUMBER (it is what the user
@@ -144,20 +159,19 @@ class _AudioSettingsSectionState extends State<AudioSettingsSection> {
               ],
             ),
             const Divider(height: 24),
-            const Text(
-              'Devices',
-              style: TextStyle(fontWeight: FontWeight.w600),
+            Text(
+              strings.audioDevicesTitle,
+              style: const TextStyle(fontWeight: FontWeight.w600),
             ),
             const SizedBox(height: 4),
-            const Text(
-              'Which speaker playback uses and which microphone recording '
-              'will use. Changes apply from the next playback run; a device '
-              'that is no longer attached falls back to the system default.',
-              style: TextStyle(fontSize: 12),
+            Text(
+              strings.audioDevicesHelp,
+              style: const TextStyle(fontSize: 12),
             ),
             const SizedBox(height: 8),
             _deviceRow(
-              label: 'Output',
+              strings: strings,
+              label: strings.audioOutputLabel,
               keyValue: 'settings-audio-output-device',
               capture: false,
               selected: settings.outputDeviceName,
@@ -167,7 +181,8 @@ class _AudioSettingsSectionState extends State<AudioSettingsSection> {
             ),
             const SizedBox(height: 4),
             _deviceRow(
-              label: 'Input',
+              strings: strings,
+              label: strings.audioInputLabel,
               keyValue: 'settings-audio-input-device',
               capture: true,
               selected: settings.inputDeviceName,
@@ -178,16 +193,16 @@ class _AudioSettingsSectionState extends State<AudioSettingsSection> {
             const Divider(height: 24),
             Row(
               children: [
-                const Expanded(
+                Expanded(
                   child: Text(
-                    'Sync inspector',
-                    style: TextStyle(fontWeight: FontWeight.w600),
+                    strings.audioSyncInspectorTitle,
+                    style: const TextStyle(fontWeight: FontWeight.w600),
                   ),
                 ),
                 IconButton(
                   key: const ValueKey<String>('settings-audio-report-refresh'),
                   icon: const Icon(Icons.refresh, size: 16),
-                  tooltip: 'Refresh',
+                  tooltip: strings.commonRefresh,
                   onPressed: () => setState(() {}),
                 ),
               ],

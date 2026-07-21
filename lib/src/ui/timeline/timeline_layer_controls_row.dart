@@ -1,11 +1,13 @@
 import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
 
+import '../../models/app_language.dart' show AppLanguage;
 import '../../models/attached_placement.dart';
 import '../../models/layer.dart';
 import '../../models/layer_kind.dart';
 import '../../models/layer_id.dart';
 import '../../models/layer_mark.dart';
+import '../text/app_strings.dart';
 import '../widgets/field_slider.dart';
 import 'layer_label_controls.dart';
 import 'timeline_grid_metrics.dart';
@@ -13,6 +15,7 @@ import 'timeline_grid_metrics.dart';
 class TimelineLayerControlsRow extends StatelessWidget {
   Future<void> _showMixMenu(BuildContext context, Offset globalPosition) async {
     final overlay = Overlay.of(context).context.findRenderObject();
+    final strings = resolveStrings?.call() ?? AppStrings.of(AppLanguage.en);
     final selected = await showMenu<String>(
       context: context,
       position: RelativeRect.fromRect(
@@ -24,13 +27,13 @@ class TimelineLayerControlsRow extends StatelessWidget {
           PopupMenuItem<String>(
             key: ValueKey<String>('timeline-layer-solo-${layer.id}'),
             value: 'solo',
-            child: Text(isLayerSoloed ? 'Unsolo' : 'Solo'),
+            child: Text(isLayerSoloed ? strings.audioUnsolo : strings.audioSolo),
           ),
         if (onEditLayerAudio != null)
           PopupMenuItem<String>(
             key: ValueKey<String>('timeline-layer-audio-${layer.id}'),
             value: 'audio',
-            child: const Text('Layer audio…'),
+            child: Text(strings.audioLayerAudioMenu),
           ),
       ],
     );
@@ -60,6 +63,7 @@ class TimelineLayerControlsRow extends StatelessWidget {
     this.isLayerSoloed = false,
     this.onToggleLayerSolo,
     this.onEditLayerAudio,
+    this.resolveStrings,
     this.hasLanes = false,
     this.lanesExpanded = false,
     this.onToggleLanes,
@@ -108,6 +112,9 @@ class TimelineLayerControlsRow extends StatelessWidget {
 
   /// Opens the layer's audio dialog (fader + pan).
   final ValueChanged<LayerId>? onEditLayerAudio;
+
+  /// The PROGRAM-language table for the mix menu; null keeps English.
+  final AppStrings Function()? resolveStrings;
 
   /// AE-style property-lane twirl-down: layers with lanes get a chevron
   /// leading the row; rows without lanes keep an empty slot so labels stay

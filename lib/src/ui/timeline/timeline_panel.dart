@@ -7,6 +7,7 @@ import '../../models/folder_id.dart';
 import '../../models/layer.dart';
 import '../../models/layer_folder.dart';
 import '../../services/audio/audio_peaks_extractor.dart';
+import '../text/app_strings.dart';
 import '../../models/layer_id.dart';
 import '../../models/layer_mark.dart';
 import 'layer_timeline_display_adapter.dart';
@@ -56,6 +57,7 @@ class TimelinePanel extends StatefulWidget {
     this.onSetAudioClipGain,
     this.onSetAudioClipFadeCurve,
     this.onSetAudioClipEnvelope,
+    this.resolveStrings,
     this.isLayerSoloed,
     this.onToggleLayerSolo,
     this.onEditLayerAudio,
@@ -207,6 +209,10 @@ class TimelinePanel extends StatefulWidget {
     List<AudioVolumeKey> keys,
   )?
   onSetAudioClipEnvelope;
+
+  /// The PROGRAM-language table for the audio menus and dialogs; null
+  /// keeps English (the incremental-coverage rule).
+  final AppStrings Function()? resolveStrings;
 
   /// The SE mix menu (AUDIO-PRO R1): solo state/toggle + the fader/pan
   /// dialog entrance, on the speaker button's context menu.
@@ -441,6 +447,7 @@ class _TimelinePanelState extends State<TimelinePanel> {
                     onSetAudioClipGain: widget.onSetAudioClipGain,
                     onSetAudioClipFadeCurve: widget.onSetAudioClipFadeCurve,
                     onSetAudioClipEnvelope: widget.onSetAudioClipEnvelope,
+                    resolveStrings: widget.resolveStrings,
                     onAddLayer: widget.onAddLayer,
                     onToggleLayerMuted: widget.onToggleLayerMuted,
                     isLayerSoloed: widget.isLayerSoloed,
@@ -518,6 +525,7 @@ class _TimelinePanelState extends State<TimelinePanel> {
                     onSetAudioClipGain: widget.onSetAudioClipGain,
                     onSetAudioClipFadeCurve: widget.onSetAudioClipFadeCurve,
                     onSetAudioClipEnvelope: widget.onSetAudioClipEnvelope,
+                    resolveStrings: widget.resolveStrings,
                     onAddLayer: widget.onAddLayer,
                     onToggleLayerMuted: widget.onToggleLayerMuted,
                     isLayerSoloed: widget.isLayerSoloed,

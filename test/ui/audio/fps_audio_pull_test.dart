@@ -3,7 +3,9 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:quick_animaker_v2/src/controllers/default_project_helpers.dart';
+import 'package:quick_animaker_v2/src/models/app_language.dart';
 import 'package:quick_animaker_v2/src/models/audio_clip.dart';
+import 'package:quick_animaker_v2/src/ui/text/app_strings.dart';
 import 'package:quick_animaker_v2/src/models/frame.dart';
 import 'package:quick_animaker_v2/src/models/frame_id.dart';
 import 'package:quick_animaker_v2/src/models/layer.dart';
@@ -264,6 +266,7 @@ void main() {
                 context,
                 from: const ProjectFrameRate.ntsc(24),
                 to: const ProjectFrameRate.integer(24),
+                strings: AppStrings.of(AppLanguage.en),
               );
             },
             child: const Text('open'),
