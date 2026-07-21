@@ -33,11 +33,17 @@ class AudioScrubber {
     required this.conformStore,
     QaAudioDevice? Function()? resolveDevice,
     this.resolveSoloedLayerIds,
+    this.resolveOutputDeviceName,
   }) : _resolveDevice = resolveDevice ?? (() => QaAudioDevice.instance);
 
   /// The session's solo set — a scrub monitors exactly what playback
   /// would.
   final Set<LayerId> Function()? resolveSoloedLayerIds;
+
+  /// The chosen output device (AUDIO-PRO R4) — a scrub plays through the
+  /// same speaker playback would. Only consulted when the device is not
+  /// already open (the transport owns reopen-on-change).
+  final String? Function()? resolveOutputDeviceName;
 
   final CanvasPlaybackController controller;
   final ProjectFrameRate Function() resolveFrameRate;
@@ -107,7 +113,18 @@ class AudioScrubber {
       return;
     }
     if (!device.isOpen) {
-      if (device.open(sampleRate: conformStore.projectSampleRate) <= 0) {
+      final index = audioOutputDeviceIndexByName(
+        device,
+        resolveOutputDeviceName?.call(),
+      );
+      var opened = device.open(
+        sampleRate: conformStore.projectSampleRate,
+        deviceIndex: index,
+      );
+      if (opened <= 0 && index >= 0) {
+        opened = device.open(sampleRate: conformStore.projectSampleRate);
+      }
+      if (opened <= 0) {
         return;
       }
     }

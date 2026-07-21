@@ -168,6 +168,95 @@ typedef struct {
 
 static qa_audio_device_state g_audio;
 
+// The context outlives devices (AUDIO-PRO R4): enumeration and open-by-
+// index both need one, and re-creating it per open would re-probe the
+// whole OS audio stack. 0 = none, 1 = default backends, 2 = null backend.
+static ma_context g_context;
+static int32_t g_context_kind;
+static ma_device_info* g_playback_infos;
+static ma_uint32 g_playback_count;
+static ma_device_info* g_capture_infos;
+static ma_uint32 g_capture_count;
+
+static int qa_audio_ensure_context(int32_t backend) {
+  const int32_t want = backend == 1 ? 2 : 1;
+  if (g_context_kind == want) {
+    return 1;
+  }
+  // Never yank the context out from under an open device.
+  if (g_audio.device_open) {
+    return g_context_kind != 0;
+  }
+  if (g_context_kind != 0) {
+    ma_context_uninit(&g_context);
+    g_context_kind = 0;
+    g_playback_infos = NULL;
+    g_playback_count = 0;
+    g_capture_infos = NULL;
+    g_capture_count = 0;
+  }
+  if (backend == 1) {
+    ma_backend backends[1];
+    backends[0] = ma_backend_null;
+    if (ma_context_init(backends, 1, NULL, &g_context) != MA_SUCCESS) {
+      return 0;
+    }
+  } else {
+    if (ma_context_init(NULL, 0, NULL, &g_context) != MA_SUCCESS) {
+      return 0;
+    }
+  }
+  g_context_kind = want;
+  return 1;
+}
+
+static int qa_audio_refresh_devices(void) {
+  return ma_context_get_devices(&g_context, &g_playback_infos,
+                                &g_playback_count, &g_capture_infos,
+                                &g_capture_count) == MA_SUCCESS;
+}
+
+// Enumerates and returns how many devices [kind] has (0 = playback,
+// 1 = capture), or -1 when the context cannot come up. Refreshes the
+// cached list — call before qa_audio_device_describe.
+QA_EXPORT int32_t qa_audio_device_count(int32_t kind, int32_t backend) {
+  if (!qa_audio_ensure_context(backend)) {
+    return -1;
+  }
+  if (!qa_audio_refresh_devices()) {
+    return -1;
+  }
+  return (int32_t)(kind == 1 ? g_capture_count : g_playback_count);
+}
+
+// Copies device [index]'s UTF-8 name into [out_name] (NUL-terminated)
+// and reports whether it is the system default. Returns the name's byte
+// length, or -1 for a bad index/capacity. Reads the list the last
+// qa_audio_device_count call cached.
+QA_EXPORT int32_t qa_audio_device_describe(int32_t kind,
+                                           int32_t index,
+                                           char* out_name,
+                                           int32_t capacity,
+                                           int32_t* out_is_default) {
+  const ma_device_info* infos = kind == 1 ? g_capture_infos : g_playback_infos;
+  const ma_uint32 count = kind == 1 ? g_capture_count : g_playback_count;
+  if (infos == NULL || index < 0 || (ma_uint32)index >= count ||
+      out_name == NULL || capacity <= 1) {
+    return -1;
+  }
+  const char* name = infos[index].name;
+  int32_t length = 0;
+  while (name[length] != '\0' && length < capacity - 1) {
+    out_name[length] = name[length];
+    length += 1;
+  }
+  out_name[length] = '\0';
+  if (out_is_default != NULL) {
+    *out_is_default = infos[index].isDefault ? 1 : 0;
+  }
+  return length;
+}
+
 // The realtime callback. memcpy and a weighted sum, nothing else: no
 // allocation, no locks, no I/O, no Dart.
 static void qa_audio_data_callback(ma_device* device,
@@ -293,6 +382,9 @@ static void qa_audio_free_schedule(void) {
 // Opens the output device. [backend] 0 = let miniaudio choose, 1 = the
 // NULL backend, which runs the real callback on a real thread with no
 // hardware — how the transport is tested on a CI runner with no sound card.
+// [device_index] picks from the last enumeration (AUDIO-PRO R4); -1 = the
+// system default. A stale or bad index FAILS rather than silently opening
+// something else — the caller's fallback to default is an informed one.
 //
 // Returns the device's actual sample rate, or 0 on failure. The rate is
 // returned rather than assumed because a device may refuse the one asked
@@ -300,7 +392,8 @@ static void qa_audio_free_schedule(void) {
 // speed.
 QA_EXPORT int32_t qa_audio_device_open(int32_t sample_rate,
                                        int32_t channels,
-                                       int32_t backend) {
+                                       int32_t backend,
+                                       int32_t device_index) {
   if (g_audio.device_open) {
     return g_audio.sample_rate;
   }
@@ -316,25 +409,25 @@ QA_EXPORT int32_t qa_audio_device_open(int32_t sample_rate,
           (int32_t)sizeof(qa_audio_envelope_key)) {
     return 0;
   }
+  if (!qa_audio_ensure_context(backend)) {
+    return 0;
+  }
 
   ma_device_config config = ma_device_config_init(ma_device_type_playback);
   config.playback.format = ma_format_f32;
   config.playback.channels = (ma_uint32)channels;
   config.sampleRate = (ma_uint32)sample_rate;
   config.dataCallback = qa_audio_data_callback;
-
-  ma_result result;
-  if (backend == 1) {
-    ma_backend backends[1];
-    backends[0] = ma_backend_null;
-    static ma_context context;
-    if (ma_context_init(backends, 1, NULL, &context) != MA_SUCCESS) {
+  if (device_index >= 0) {
+    if (!qa_audio_refresh_devices() ||
+        (ma_uint32)device_index >= g_playback_count) {
       return 0;
     }
-    result = ma_device_init(&context, &config, &g_audio.device);
-  } else {
-    result = ma_device_init(NULL, &config, &g_audio.device);
+    config.playback.pDeviceID = &g_playback_infos[device_index].id;
   }
+
+  const ma_result result =
+      ma_device_init(&g_context, &config, &g_audio.device);
   if (result != MA_SUCCESS) {
     return 0;
   }

@@ -101,6 +101,7 @@ import '../services/onion_skin_plan.dart';
 import '../services/persistence/project_autosave_service.dart';
 import '../services/persistence/qap_file_service.dart';
 import '../services/commands/cut_reorder_planner.dart';
+import '../native/qa_audio_device.dart' show QaAudioDevice;
 import '../services/audio/audio_conform_pipeline.dart' show ProjectAssetLayout;
 import '../services/audio/audio_conform_runner.dart' show runConformHere;
 import '../services/commands/track_se_layer_commands.dart';
@@ -453,7 +454,19 @@ class EditorSessionManager extends ChangeNotifier {
           frameRateDenominator: projectFrameRate.denominator,
         ),
     resolveSoloedLayerIds: () => soloedSeLayerIds.value,
+    resolveOutputDeviceName: () => audioSyncSettings.value.outputDeviceName,
   );
+
+  /// The output/input device lists for the Preferences pickers (AUDIO-PRO
+  /// R4); empty without a native binary (widget tests, engine-less runs).
+  List<({String name, bool isDefault})> audioDevicesOf({
+    required bool capture,
+  }) {
+    if (Platform.environment['FLUTTER_TEST'] == 'true') {
+      return const [];
+    }
+    return QaAudioDevice.instance?.devicesOf(capture: capture) ?? const [];
+  }
 
   /// Scrubbing the playhead plays each crossed frame's slice of the mix
   /// (2D): one `play(frame, frame+1)` per crossed frame on the same
@@ -469,6 +482,7 @@ class EditorSessionManager extends ChangeNotifier {
         ? () => null
         : null,
     resolveSoloedLayerIds: () => soloedSeLayerIds.value,
+    resolveOutputDeviceName: () => audioSyncSettings.value.outputDeviceName,
   );
 
   /// Frame-synced SE audio riding [playback]'s frame signals; clip lengths

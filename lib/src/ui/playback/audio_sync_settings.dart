@@ -30,7 +30,12 @@ enum AvOffsetUnit { milliseconds, frames }
 /// Positive = the picture is shown LATER (used when sound arrives late,
 /// the common case with wireless output). Negative pulls it earlier.
 class AudioSyncSettings {
-  const AudioSyncSettings({this.offset = 0, this.unit = AvOffsetUnit.milliseconds});
+  const AudioSyncSettings({
+    this.offset = 0,
+    this.unit = AvOffsetUnit.milliseconds,
+    this.outputDeviceName,
+    this.inputDeviceName,
+  });
 
   static const AudioSyncSettings defaults = AudioSyncSettings();
 
@@ -43,8 +48,30 @@ class AudioSyncSettings {
   final int offset;
   final AvOffsetUnit unit;
 
-  AudioSyncSettings copyWith({int? offset, AvOffsetUnit? unit}) =>
-      AudioSyncSettings(offset: offset ?? this.offset, unit: unit ?? this.unit);
+  /// The chosen output/input device, by NAME (AUDIO-PRO R4); null = the
+  /// system default. Names, not indexes: indexes shuffle when hardware
+  /// replugs, and a missing name falls back to the default at open time
+  /// rather than opening the wrong speaker.
+  final String? outputDeviceName;
+  final String? inputDeviceName;
+
+  static const Object _unset = Object();
+
+  AudioSyncSettings copyWith({
+    int? offset,
+    AvOffsetUnit? unit,
+    Object? outputDeviceName = _unset,
+    Object? inputDeviceName = _unset,
+  }) => AudioSyncSettings(
+    offset: offset ?? this.offset,
+    unit: unit ?? this.unit,
+    outputDeviceName: identical(outputDeviceName, _unset)
+        ? this.outputDeviceName
+        : outputDeviceName as String?,
+    inputDeviceName: identical(inputDeviceName, _unset)
+        ? this.inputDeviceName
+        : inputDeviceName as String?,
+  );
 
   /// The offset in samples at [sampleRate], which is what the clock adds.
   ///
@@ -99,7 +126,12 @@ class AudioSyncSettings {
     return value;
   }
 
-  Map<String, dynamic> toJson() => {'avOffset': offset, 'avOffsetUnit': unit.name};
+  Map<String, dynamic> toJson() => {
+    'avOffset': offset,
+    'avOffsetUnit': unit.name,
+    if (outputDeviceName != null) 'outputDevice': outputDeviceName,
+    if (inputDeviceName != null) 'inputDevice': inputDeviceName,
+  };
 
   factory AudioSyncSettings.fromJson(Map<String, dynamic> json) {
     final unit = AvOffsetUnit.values.firstWhere(
@@ -109,19 +141,28 @@ class AudioSyncSettings {
     return AudioSyncSettings(
       offset: clampOffset((json['avOffset'] as num?)?.toInt() ?? 0, unit),
       unit: unit,
+      outputDeviceName: json['outputDevice'] as String?,
+      inputDeviceName: json['inputDevice'] as String?,
     );
   }
 
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
-      other is AudioSyncSettings && other.offset == offset && other.unit == unit;
+      other is AudioSyncSettings &&
+          other.offset == offset &&
+          other.unit == unit &&
+          other.outputDeviceName == outputDeviceName &&
+          other.inputDeviceName == inputDeviceName;
 
   @override
-  int get hashCode => Object.hash(offset, unit);
+  int get hashCode =>
+      Object.hash(offset, unit, outputDeviceName, inputDeviceName);
 
   @override
-  String toString() => 'AudioSyncSettings(offset: $offset, unit: ${unit.name})';
+  String toString() =>
+      'AudioSyncSettings(offset: $offset, unit: ${unit.name}, '
+      'outputDevice: $outputDeviceName, inputDevice: $inputDeviceName)';
 }
 
 /// What the sync inspector shows (audio program 2D).

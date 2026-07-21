@@ -76,9 +76,18 @@ final class QaAudioDevice {
   }
 
   late final _open = _library
-      .lookupFunction<Int32 Function(Int32, Int32, Int32), int Function(int, int, int)>(
-        'qa_audio_device_open',
+      .lookupFunction<
+        Int32 Function(Int32, Int32, Int32, Int32),
+        int Function(int, int, int, int)
+      >('qa_audio_device_open');
+  late final _deviceCount = _library
+      .lookupFunction<Int32 Function(Int32, Int32), int Function(int, int)>(
+        'qa_audio_device_count',
       );
+  late final _deviceDescribe = _library.lookupFunction<
+    Int32 Function(Int32, Int32, Pointer<Utf8>, Int32, Pointer<Int32>),
+    int Function(int, int, Pointer<Utf8>, int, Pointer<Int32>)
+  >('qa_audio_device_describe');
   late final _close = _library
       .lookupFunction<Void Function(), void Function()>('qa_audio_device_close');
   late final _isOpen = _library
@@ -152,11 +161,57 @@ final class QaAudioDevice {
   /// [useNullBackend] runs miniaudio's null device: a real callback on a
   /// real thread with no hardware. That is how the transport is exercised
   /// on a CI runner with no sound card.
+  ///
+  /// [deviceIndex] picks from the last [devicesOf] enumeration (AUDIO-PRO
+  /// R4); -1 = the system default. A bad index fails rather than opening
+  /// something else — retry with -1 to fall back deliberately.
   int open({
     int sampleRate = 48000,
     int channels = 2,
     bool useNullBackend = false,
-  }) => _open(sampleRate, channels, useNullBackend ? 1 : 0);
+    int deviceIndex = -1,
+  }) => _open(sampleRate, channels, useNullBackend ? 1 : 0, deviceIndex);
+
+  /// Enumerates output ([capture] false) or input devices, in the index
+  /// order [open]'s `deviceIndex` refers to. Empty on any failure —
+  /// callers fall back to the system default, never crash a picker.
+  List<({String name, bool isDefault})> devicesOf({
+    required bool capture,
+    bool useNullBackend = false,
+  }) {
+    final kind = capture ? 1 : 0;
+    final count = _deviceCount(kind, useNullBackend ? 1 : 0);
+    if (count <= 0) {
+      return const [];
+    }
+    final nameBuffer = calloc<Uint8>(256);
+    final isDefaultOut = calloc<Int32>();
+    try {
+      final devices = <({String name, bool isDefault})>[];
+      for (var index = 0; index < count; index += 1) {
+        final length = _deviceDescribe(
+          kind,
+          index,
+          nameBuffer.cast<Utf8>(),
+          256,
+          isDefaultOut,
+        );
+        if (length < 0) {
+          continue;
+        }
+        devices.add(
+          (
+            name: nameBuffer.cast<Utf8>().toDartString(),
+            isDefault: isDefaultOut.value != 0,
+          ),
+        );
+      }
+      return devices;
+    } finally {
+      calloc.free(isDefaultOut);
+      calloc.free(nameBuffer);
+    }
+  }
 
   void close() => _close();
   bool get isOpen => _isOpen() != 0;
@@ -292,6 +347,23 @@ final class QaAudioDevice {
   /// 1.0 means the output stage is clipping, which is exactly what the
   /// meter exists to make visible.
   double peakFor(int channel) => _peak(channel);
+}
+
+/// The enumeration index for the output device named [name], or -1 (the
+/// system default) when [name] is null or no longer attached — a missing
+/// speaker falls back to the default rather than failing playback
+/// (AUDIO-PRO R4).
+int audioOutputDeviceIndexByName(QaAudioDevice device, String? name) {
+  if (name == null) {
+    return -1;
+  }
+  final devices = device.devicesOf(capture: false);
+  for (var index = 0; index < devices.length; index += 1) {
+    if (devices[index].name == name) {
+      return index;
+    }
+  }
+  return -1;
 }
 
 /// Reads the played position as a frame index, pulled forward by the
