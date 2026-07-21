@@ -31,6 +31,8 @@ import '../history_manager.dart';
 import '../project_lookup.dart';
 import '../project_repository.dart';
 import 'cut_command_input_planner.dart';
+import 'convert_to_linked_cut_command.dart';
+import 'convert_to_linked_cut_plan.dart';
 import 'create_cut_command.dart';
 import 'create_linked_cut_command.dart';
 import 'delete_cut_command.dart';
@@ -420,6 +422,60 @@ class CutCommandCoordinator {
         cutId: cutId,
         sourceLayerId: layerId,
       ),
+    );
+  }
+
+  /// 겸용 변경 (L2b): links [targetCutId] to [originCutId] after both
+  /// were drawn — name-matching, 원본 승리 conflicts, 완전 미러 union.
+  /// [plan] previews the effect for the confirmation dialog; the caller
+  /// shows it and only then invokes this. No-op when nothing would link.
+  /// One undo step. Needs the brush frame store.
+  void convertCutToLinked({
+    required CutId originCutId,
+    required CutId targetCutId,
+  }) {
+    final store = brushFrameStore;
+    if (store == null) {
+      throw StateError('convertCutToLinked needs the brush frame store.');
+    }
+    final project = repository.requireProject();
+    final originCut = requireCut(project, originCutId);
+    final targetCut = requireCut(project, targetCutId);
+    if (!convertToLinkedCutPreview(
+      originCutId: originCutId,
+      targetCutId: targetCutId,
+    ).linksAnything) {
+      return;
+    }
+    final plan = planConvertToLinkedCutCommandInput(
+      project: project,
+      originCut: originCut,
+      targetCut: targetCut,
+    );
+
+    historyManager.execute(
+      ConvertToLinkedCutCommand(
+        repository: repository,
+        brushFrameStore: store,
+        originCutId: originCutId,
+        targetCutId: targetCutId,
+        unionLayerIdMap: plan.unionLayerIdMap,
+        newGroupIdBySource: plan.newGroupIdBySource,
+      ),
+    );
+  }
+
+  /// The 겸용 변경 preview for the confirmation dialog (링크 목록·교체
+  /// 장수·합류 수·양측 고유 레이어) — pure, no mutation.
+  ConvertToLinkedCutPlan convertToLinkedCutPreview({
+    required CutId originCutId,
+    required CutId targetCutId,
+  }) {
+    final project = repository.requireProject();
+    return planConvertToLinkedCut(
+      project: project,
+      originCut: requireCut(project, originCutId),
+      targetCut: requireCut(project, targetCutId),
     );
   }
 

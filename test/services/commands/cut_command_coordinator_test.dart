@@ -557,6 +557,135 @@ void main() {
         );
       });
 
+      test('convertCutToLinked (겸용 변경): name-matches, links, 원본 승리 '
+          'retargets conflicts, unions one-side-only layers; one undo', () {
+        // Origin cel "cel" has frame "1" = f-o1; target's "cel" has
+        // frame "1" = f-t1 (CONFLICT → origin wins) and "2" = f-t2
+        // (JOINS). Origin also has "only-o"; target has "only-t".
+        Cut originCut() => _cut(
+          id: 'origin',
+          layers: [
+            _layer(id: 'o-cel', frames: [_frame(id: 'f-o1', name: '1')])
+                .copyWith(
+                  name: 'cel',
+                  timeline: {
+                    0: TimelineExposure.drawing(
+                      const FrameId('f-o1'),
+                      length: 1,
+                    ),
+                  },
+                ),
+            _layer(id: 'o-only').copyWith(name: 'only-o'),
+          ],
+        );
+        Cut targetCut() => _cut(
+          id: 'target',
+          layers: [
+            _layer(
+              id: 't-cel',
+              frames: [
+                _frame(id: 'f-t1', name: '1'),
+                _frame(id: 'f-t2', name: '2'),
+              ],
+            ).copyWith(
+              name: 'cel',
+              timeline: {
+                0: TimelineExposure.drawing(const FrameId('f-t1'), length: 1),
+                3: TimelineExposure.drawing(const FrameId('f-t2'), length: 1),
+              },
+            ),
+            _layer(id: 't-only').copyWith(name: 'only-t'),
+          ],
+        );
+        final fixture = _fixture(
+          _project(
+            tracks: [
+              _track(
+                id: 'track-1',
+                name: 'V',
+                cuts: [originCut(), targetCut()],
+              ),
+            ],
+          ),
+          activeCutId: const CutId('origin'),
+        );
+        final store = BrushFrameStore()
+          ..setLinkResolver(
+            (key) =>
+                fixture.repository.currentProject?.linkRegistry
+                    .canonicalCelKey(key) ??
+                key,
+          );
+        final coordinator = CutCommandCoordinator(
+          repository: fixture.repository,
+          editingSession: fixture.editingSession,
+          historyManager: fixture.historyManager,
+          brushFrameStore: store,
+        );
+
+        // Preview (dialog data) reports the effect before executing.
+        final preview = coordinator.convertToLinkedCutPreview(
+          originCutId: const CutId('origin'),
+          targetCutId: const CutId('target'),
+        );
+        expect(preview.replacedFrameCount, 1, reason: 'name "1" conflicts');
+        expect(preview.joiningFrameCount, 1, reason: 'name "2" joins');
+        expect(preview.originOnlyLayerIds, [const LayerId('o-only')]);
+        expect(preview.targetOnlyLayerIds, [const LayerId('t-only')]);
+
+        coordinator.convertCutToLinked(
+          originCutId: const CutId('origin'),
+          targetCutId: const CutId('target'),
+        );
+
+        // The target's "cel" now shares the origin's bank; its conflicting
+        // exposure retargets to the origin's frame, timing untouched.
+        final target = _cutById(fixture.project, const CutId('target'));
+        final targetCel = target.layers.firstWhere(
+          (layer) => layer.id == const LayerId('t-cel'),
+        );
+        expect(targetCel.frames.map((frame) => frame.id.value), [
+          'f-o1',
+          'f-t2',
+        ], reason: 'merged bank = origin frames + joiners');
+        expect(targetCel.timeline[0]!.frameId, const FrameId('f-o1'));
+        expect(targetCel.timeline[3]!.frameId, const FrameId('f-t2'));
+
+        // Union: the origin gained a linked copy of "only-t", the target a
+        // copy of "only-o" — both with empty timelines.
+        expect(
+          target.layers.any((layer) => layer.name == 'only-o'),
+          isTrue,
+        );
+        expect(
+          _cutById(fixture.project, const CutId('origin')).layers.any(
+            (layer) => layer.name == 'only-t',
+          ),
+          isTrue,
+        );
+
+        // The registry links every drawing layer.
+        expect(
+          fixture.project.linkRegistry.useCountOf(
+            cutId: const CutId('origin'),
+            layerId: const LayerId('o-cel'),
+          ),
+          2,
+        );
+
+        // One undo restores both cuts exactly.
+        fixture.historyManager.undo();
+        expect(fixture.project.linkRegistry.isEmpty, isTrue);
+        expect(
+          _cutById(fixture.project, const CutId('origin')).layers,
+          originCut().layers,
+        );
+        expect(
+          _cutById(fixture.project, const CutId('target')).layers,
+          targetCut().layers,
+        );
+      });
+
       test('link-duplicating an already-linked layer EXTENDS its group '
           'instead of nesting a new one', () {
         final fixture = _fixture(
@@ -2110,12 +2239,14 @@ Layer _layer({
 
 Frame _frame({
   required String id,
+  String? name,
   StoryboardFrameMetadata metadata = const StoryboardFrameMetadata.empty(),
 }) {
   return Frame(
     id: FrameId(id),
     duration: 1,
     strokes: const [],
+    name: name,
     storyboardMetadata: metadata,
   );
 }
