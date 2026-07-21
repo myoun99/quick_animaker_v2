@@ -14,12 +14,16 @@ class ExportQueueColumn extends StatelessWidget {
     required this.enabled,
     this.onRemove,
     this.onRestore,
+    this.onRenderAll,
   });
 
   final ExportQueueModel queue;
   final bool enabled;
   final ValueChanged<ExportJob>? onRemove;
   final ValueChanged<ExportJob>? onRestore;
+
+  /// The header's Render All (EX7); null renders it disabled.
+  final VoidCallback? onRenderAll;
 
   @override
   Widget build(BuildContext context) {
@@ -32,14 +36,50 @@ class ExportQueueColumn extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             Padding(
-              padding: const EdgeInsets.fromLTRB(8, 8, 8, 4),
-              child: Text(
-                'RENDER QUEUE',
-                style: theme.textTheme.labelSmall?.copyWith(
-                  fontSize: 9,
-                  letterSpacing: 1.1,
-                  color: theme.colorScheme.onSurfaceVariant,
-                ),
+              padding: const EdgeInsets.fromLTRB(8, 8, 6, 4),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      'RENDER QUEUE',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: theme.textTheme.labelSmall?.copyWith(
+                        fontSize: 9,
+                        letterSpacing: 1.1,
+                        color: theme.colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ),
+                  InkWell(
+                    key: const ValueKey<String>('export-queue-render-all'),
+                    onTap: onRenderAll,
+                    borderRadius: BorderRadius.circular(4),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 6,
+                        vertical: 1,
+                      ),
+                      decoration: BoxDecoration(
+                        border: Border.all(
+                          color: onRenderAll != null
+                              ? theme.dividerColor
+                              : Colors.transparent,
+                        ),
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                      child: Text(
+                        'Render All',
+                        style: theme.textTheme.labelSmall?.copyWith(
+                          fontSize: 9,
+                          color: onRenderAll != null
+                              ? theme.colorScheme.onSurface
+                              : theme.disabledColor.withValues(alpha: 0.4),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
               ),
             ),
             if (jobs.isEmpty)
