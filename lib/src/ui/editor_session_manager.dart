@@ -179,6 +179,12 @@ class EditorSessionManager extends ChangeNotifier {
     // brush strokes, which execute here straight from the canvas — marks
     // the project unsaved.
     _historyManager.addListener(_markProjectDirty);
+    // AUDIO-PRO R3: any history change while the device carries playback
+    // re-uploads the schedule, so edits (and their undo/redo) are heard
+    // within one mixed block. Gated on carrying — the reupload costs a
+    // PCM copy, and outside live playback the activation rebuild covers
+    // it.
+    _historyManager.addListener(_refreshLiveAudioSchedule);
   }
 
   static const FrameId _frameId = FrameId('default-frame');
@@ -796,6 +802,7 @@ class EditorSessionManager extends ChangeNotifier {
     cacheInvalidationHub.removeBrushFrameListener(_onBrushFrameInvalidated);
     playback.globalFrameIndexListenable.removeListener(_followPlaybackCut);
     _historyManager.removeListener(_markProjectDirty);
+    _historyManager.removeListener(_refreshLiveAudioSchedule);
     audioPlaybackSync.dispose();
     audioScrubber.dispose();
     audioDeviceTransport.dispose();
@@ -2539,11 +2546,21 @@ class EditorSessionManager extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// AUDIO-PRO R3: mid-run schedule refresh, fired by the history
+  /// listener and by the repo-direct mix edits (mute/fader/pan/solo,
+  /// which bypass history).
+  void _refreshLiveAudioSchedule() {
+    if (audioDeviceTransport.carryingPlayback) {
+      audioDeviceTransport.refreshSchedule();
+    }
+  }
+
   /// Silences/unsilences an SE row's sounds (the mute button — view state
   /// like visibility, not undoable): playback and export skip muted
   /// layers' clips, waveforms keep displaying.
   void toggleLayerMuted(LayerId layerId) {
     _layerController.toggleLayerMuted(layerId);
+    _refreshLiveAudioSchedule();
     notifyListeners();
   }
 
@@ -2561,12 +2578,14 @@ class EditorSessionManager extends ChangeNotifier {
       next.add(layerId);
     }
     soloedSeLayerIds.value = next;
+    _refreshLiveAudioSchedule();
     notifyListeners();
   }
 
   /// The SE row's track fader + pan (mix state like mute, repo-direct).
   void setLayerAudio({required LayerId layerId, double? gain, double? pan}) {
     _layerController.setLayerAudio(layerId: layerId, gain: gain, pan: pan);
+    _refreshLiveAudioSchedule();
     notifyListeners();
   }
 

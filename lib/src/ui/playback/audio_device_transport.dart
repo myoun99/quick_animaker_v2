@@ -111,6 +111,41 @@ class AudioDeviceTransport {
     _device = null;
   }
 
+  /// Rebuilds and re-uploads the schedule MID-RUN (AUDIO-PRO R3): an
+  /// audio edit during playback is heard within one mixed block. No-op
+  /// unless this transport carries the run. A clip whose PCM is not
+  /// resident yet (a just-imported file mid-conform) keeps the OLD
+  /// schedule playing rather than dropping sound — the conform was
+  /// kicked, and the next refresh or activation picks it up.
+  void refreshSchedule() {
+    final device = _device;
+    if (!_carrying || device == null) {
+      return;
+    }
+    final schedule = buildAudioPlaybackSchedule(
+      playlist: controller.playlist,
+      project: resolveProject(),
+      rate: _rate,
+      durationSecondsFor: conformStore.durationSecondsFor,
+      soloedLayerIds: resolveSoloedLayerIds?.call(),
+    );
+    final mix = audioMixScheduleFrom(
+      schedule: schedule,
+      rate: _rate,
+      sampleRate: _deviceRate,
+    );
+    final sources = <AudioMixSource>[];
+    for (final path in mix.sourcePaths) {
+      final samples = conformStore.samplesAtRate(path, _deviceRate);
+      final entry = conformStore.resultFor(path);
+      if (samples == null || entry == null || !entry.isUsable) {
+        return; // kicked by the lookups; the old schedule keeps playing
+      }
+      sources.add(AudioMixSource(samples: samples, channels: entry.channels));
+    }
+    device.setSchedule(clips: mix.clips, sources: sources);
+  }
+
   /// The level meter's read (AUDIO-PRO R2): the last mixed block's
   /// pre-clip bus peak per side. Zeros while the device does not carry
   /// playback — a silent meter, not a frozen one.
