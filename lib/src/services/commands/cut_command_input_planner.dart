@@ -9,6 +9,7 @@ import '../../models/layer_kind.dart';
 import '../../models/project.dart';
 import '../clipboard/layer_copy_payload.dart';
 import 'convert_to_linked_cut_plan.dart';
+import 'folder_mirror.dart';
 
 class CreateCutCommandInputPlan {
   const CreateCutCommandInputPlan({required this.cutId, required this.layerId});
@@ -401,6 +402,57 @@ LinkDuplicateLayerCommandInputPlan planLinkDuplicateLayerCommandInput({
     layerIdMap: layerIdMap,
     newGroupIdBySource: newGroupIdBySource,
   );
+}
+
+class CreateFolderCommandInputPlan {
+  const CreateFolderCommandInputPlan({required this.folderIdByCut});
+
+  /// Planned new folder id for the origin cut AND each 겸용 mirror cut
+  /// (folder ids are per-cut; planned up front so redo reuses them).
+  final Map<CutId, FolderId> folderIdByCut;
+}
+
+/// Plans a 폴더 생성 (L5): one fresh folder id per cut the command will
+/// touch (the origin plus every mirror cut of [memberLayerIds]).
+CreateFolderCommandInputPlan planCreateFolderCommandInput({
+  required Project project,
+  required CutId cutId,
+  required List<LayerId> memberLayerIds,
+}) {
+  final usedFolderIds = <String>{
+    for (final track in project.tracks)
+      for (final cut in track.cuts)
+        for (final folder in cut.folders) folder.id.value,
+  };
+  FolderId next() {
+    final id = FolderId(
+      _firstAvailableId(prefix: 'folder', usedIds: usedFolderIds),
+    );
+    usedFolderIds.add(id.value);
+    return id;
+  }
+
+  return CreateFolderCommandInputPlan(
+    folderIdByCut: {
+      cutId: next(),
+      for (final mirror in folderMirrorCuts(
+        project,
+        cutId: cutId,
+        memberLayerIds: memberLayerIds,
+      ))
+        mirror.cutId: next(),
+    },
+  );
+}
+
+/// "Folder N" with the first free N in [cut]'s folder table.
+String nextFolderName(Cut cut) {
+  final used = {for (final folder in cut.folders) folder.name};
+  var number = 1;
+  while (used.contains('Folder $number')) {
+    number += 1;
+  }
+  return 'Folder $number';
 }
 
 String _firstAvailableId({

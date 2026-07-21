@@ -3,7 +3,9 @@ import 'package:flutter/material.dart';
 
 import '../../models/audio_clip.dart' show AudioFadeCurve, AudioVolumeKey;
 import '../../models/camera_instruction.dart';
+import '../../models/folder_id.dart';
 import '../../models/layer.dart';
+import '../../models/layer_folder.dart';
 import '../../services/audio/audio_peaks_extractor.dart';
 import '../../models/layer_id.dart';
 import '../../models/layer_mark.dart';
@@ -66,6 +68,11 @@ class TimelinePanel extends StatefulWidget {
     required this.onLayerMarkSelected,
     this.layerFxEnabledOf,
     this.layerIsLinkedOf,
+    this.folders = const [],
+    this.onToggleFolderCollapsed,
+    this.onToggleFolderVisibility,
+    this.onRenameFolder,
+    this.onDissolveFolder,
     this.layerOnionSkinEnabledOf,
     this.onToggleLayerOnionSkin,
     this.displayedOnionSkinOn = false,
@@ -223,6 +230,15 @@ class TimelinePanel extends StatefulWidget {
 
   /// Link badge state (L4); null shows no badges.
   final bool Function(LayerId layerId)? layerIsLinkedOf;
+
+  /// The active cut's folder table (L5) + folder row callbacks —
+  /// horizontal grid only for now (the xsheet rail keeps its compact
+  /// control set, like the link badges).
+  final List<LayerFolder> folders;
+  final ValueChanged<FolderId>? onToggleFolderCollapsed;
+  final ValueChanged<FolderId>? onToggleFolderVisibility;
+  final ValueChanged<FolderId>? onRenameFolder;
+  final ValueChanged<FolderId>? onDissolveFolder;
 
   /// Per-layer onion skin (UI-R17 #5) — threaded to the horizontal grid's
   /// rail rows + legend (the xsheet rail keeps its compact control set).
@@ -435,6 +451,11 @@ class _TimelinePanelState extends State<TimelinePanel> {
                     onLayerMarkSelected: widget.onLayerMarkSelected,
                     layerFxEnabledOf: widget.layerFxEnabledOf,
                     layerIsLinkedOf: widget.layerIsLinkedOf,
+                    folders: widget.folders,
+                    onToggleFolderCollapsed: widget.onToggleFolderCollapsed,
+                    onToggleFolderVisibility: widget.onToggleFolderVisibility,
+                    onRenameFolder: widget.onRenameFolder,
+                    onDissolveFolder: widget.onDissolveFolder,
                     onToggleLayerFx: widget.onToggleLayerFx,
                     layerOnionSkinEnabledOf: widget.layerOnionSkinEnabledOf,
                     onToggleLayerOnionSkin: widget.onToggleLayerOnionSkin,

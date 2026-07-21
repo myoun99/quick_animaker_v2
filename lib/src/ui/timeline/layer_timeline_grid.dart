@@ -5,7 +5,9 @@ import 'package:flutter/material.dart';
 
 import '../../models/audio_clip.dart' show AudioFadeCurve, AudioVolumeKey;
 import '../../models/camera_instruction.dart';
+import '../../models/folder_id.dart';
 import '../../models/layer.dart';
+import '../../models/layer_folder.dart';
 import '../../models/layer_id.dart';
 import '../../models/layer_kind.dart';
 import '../../models/layer_mark.dart';
@@ -44,6 +46,7 @@ import 'timeline_layer_frame_body_layout.dart';
 import 'pen_friendly_scroll_controller.dart';
 import 'stylus_glide_stop.dart';
 import 'timeline_zoom_anchor_policy.dart';
+import 'timeline_folder_controls_row.dart';
 import 'timeline_layer_controls_row.dart';
 import 'timeline_row_filter.dart';
 import 'timeline_section_policy.dart';
@@ -91,6 +94,11 @@ class LayerTimelineGrid extends StatefulWidget {
     required this.onToggleLayerTimesheet,
     this.layerFxEnabledOf,
     this.layerIsLinkedOf,
+    this.folders = const [],
+    this.onToggleFolderCollapsed,
+    this.onToggleFolderVisibility,
+    this.onRenameFolder,
+    this.onDissolveFolder,
     this.layerOnionSkinEnabledOf,
     this.onToggleLayerOnionSkin,
     this.displayedOnionSkinOn = false,
@@ -243,6 +251,15 @@ class LayerTimelineGrid extends StatefulWidget {
   /// Link badge state (L4): whether a layer's pictures are shared with a
   /// link group. Null shows no badges.
   final bool Function(LayerId layerId)? layerIsLinkedOf;
+
+  /// The cut's folder table (L5): folder HEADER rows join the rail (tree
+  /// indent, twirl, eye) and their frame bands render the aggregate
+  /// block. Empty = no folder rows.
+  final List<LayerFolder> folders;
+  final ValueChanged<FolderId>? onToggleFolderCollapsed;
+  final ValueChanged<FolderId>? onToggleFolderVisibility;
+  final ValueChanged<FolderId>? onRenameFolder;
+  final ValueChanged<FolderId>? onDissolveFolder;
 
   /// Per-layer onion skin (UI-R17 #5): the row toggles + the legend cell's
   /// engaged state. Null hides the onion column entirely.
@@ -883,7 +900,9 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
   /// Lane label rows stay unmemoized: they subscribe to the frame cursor
   /// themselves and their lane models churn identity per build.
   Widget _railRowMemoized(TimelineDisplayRow row) {
-    if (row.isLane) {
+    if (row.isLane || row.isFolder) {
+      // Folder rows stay unmemoized like lanes: their inputs (folder
+      // value + depth) churn identity per build and the widget is tiny.
       return _railRow(row);
     }
     final inputs = (
@@ -1005,6 +1024,17 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
   /// windowed rail loop stays readable. Rows reserve an empty leading
   /// section slot — the section ZONES overlay whole runs (UI-R7 #2).
   Widget _railRow(TimelineDisplayRow row) {
+    if (row.isFolder) {
+      return TimelineFolderControlsRow(
+        folder: row.folder!,
+        depth: row.depth,
+        metrics: _metrics,
+        onToggleCollapsed: widget.onToggleFolderCollapsed,
+        onToggleVisibility: widget.onToggleFolderVisibility,
+        onRename: widget.onRenameFolder,
+        onDissolve: widget.onDissolveFolder,
+      );
+    }
     if (row.isLane) {
       // Lane labels show the value AT the cursor: subscribe here so a
       // tick rebuilds only these small cells.
@@ -1104,6 +1134,7 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
       layers: widget.layers,
       expandedLayerIds: widget.expandedLaneLayerIds,
       lanesForLayer: _lanesFor,
+      folders: widget.folders,
       hiddenSections: widget.hiddenSections,
       rowFilter: widget.rowFilter,
       collapsedAttachBaseIds: widget.collapsedAttachBaseIds,
@@ -1488,7 +1519,7 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                                                             key: ValueKey<String>(
                                                               'timeline-rail-row-'
                                                               '${row.layer.id}-'
-                                                              '${row.lane?.laneId ?? 'row'}',
+                                                              '${row.folder != null ? 'folder-${row.folder!.id}' : row.lane?.laneId ?? 'row'}',
                                                             ),
                                                             child:
                                                                 _railRowMemoized(
