@@ -51,7 +51,16 @@ class CanvasSelectionLayer extends StatefulWidget {
     this.onLiftReverted,
     this.onMoveSessionPendingChanged,
     this.alwaysShowTransformBox = false,
+    this.contentBoundsProvider,
   });
+
+  /// R26 #13 follow-up: the active cel's tight ink bounds (canvas
+  /// coordinates, exclusive right/bottom) — the implicit whole-picture
+  /// box frames exactly the picture, PS-style, instead of the canvas
+  /// rect. Null (or a null result) falls back to the canvas rect.
+  final ({int left, int top, int rightExclusive, int bottomExclusive})?
+  Function()?
+  contentBoundsProvider;
 
   /// R17-U (이동+Ctrl+T 통합, 핸들 상시): with the MOVE tool a selection
   /// shows its transform box immediately — grabbing a scale/rotate handle
@@ -186,17 +195,35 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
   /// selection history entry (the user never selected anything).
   bool _shapeIsImplicitWholePicture = false;
 
-  /// The full canvas rect as a selection polygon — lifting it lifts the
-  /// whole picture (the tool guard upstream already refuses the MOVE
-  /// tool when the cel has no picture at all).
+  /// The implicit whole-picture shape: the cel's tight INK bounds when
+  /// the host provides them (PS-style — the box frames the picture),
+  /// clamped to the canvas; the full canvas rect otherwise. Lifting it
+  /// lifts the whole picture (the tool guard upstream already refuses
+  /// the MOVE tool when the cel has no picture at all).
   CanvasSelectionShape _wholeCanvasShape() {
     final width = widget.canvasSize.width.toDouble();
     final height = widget.canvasSize.height.toDouble();
+    var left = 0.0, top = 0.0, right = width, bottom = height;
+    final content = widget.contentBoundsProvider?.call();
+    if (content != null) {
+      // Clamp to the canvas: off-canvas ink stays outside the lift, the
+      // same coverage the canvas-rect box had.
+      left = content.left.toDouble().clamp(0.0, width);
+      top = content.top.toDouble().clamp(0.0, height);
+      right = content.rightExclusive.toDouble().clamp(0.0, width);
+      bottom = content.bottomExclusive.toDouble().clamp(0.0, height);
+      if (right <= left || bottom <= top) {
+        left = 0;
+        top = 0;
+        right = width;
+        bottom = height;
+      }
+    }
     return CanvasSelectionShape([
-      CanvasPoint(x: 0, y: 0),
-      CanvasPoint(x: width, y: 0),
-      CanvasPoint(x: width, y: height),
-      CanvasPoint(x: 0, y: height),
+      CanvasPoint(x: left, y: top),
+      CanvasPoint(x: right, y: top),
+      CanvasPoint(x: right, y: bottom),
+      CanvasPoint(x: left, y: bottom),
     ]);
   }
 
@@ -1151,13 +1178,19 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
       // WHOLE picture through the implicit whole-canvas shape.
       var targetShape = shape;
       if (targetShape == null) {
-        final implicit = _wholeCanvasShape();
-        if (widget.onLiftRequested == null ||
-            !implicit.containsPoint(canvasPoint)) {
+        // A press anywhere ON CANVAS grabs the whole picture (PS move
+        // grammar) — the implicit shape itself may be the tighter ink
+        // bounds, which would make small drawings fiddly to grab.
+        final onCanvas =
+            canvasPoint.x >= 0 &&
+            canvasPoint.y >= 0 &&
+            canvasPoint.x <= widget.canvasSize.width &&
+            canvasPoint.y <= widget.canvasSize.height;
+        if (widget.onLiftRequested == null || !onCanvas) {
           return;
         }
         setState(() {
-          targetShape = _adoptImplicitWholePictureShape(implicit);
+          targetShape = _adoptImplicitWholePictureShape(_wholeCanvasShape());
         });
       } else if (!targetShape.containsPoint(canvasPoint)) {
         return;

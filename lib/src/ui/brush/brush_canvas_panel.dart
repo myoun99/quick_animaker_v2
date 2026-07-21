@@ -5,6 +5,8 @@ import 'package:flutter/gestures.dart' show kPrimaryButton;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show HardwareKeyboard, KeyEvent;
 
+import '../../services/bitmap_surface_geometry.dart'
+    show bitmapSurfaceContentBounds;
 import '../../services/brush_stroke_commit_data.dart';
 import '../../models/bitmap_surface.dart';
 import '../../models/brush_dab.dart';
@@ -822,6 +824,11 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel> {
                                         onLiftLanded: _handleLiftLanded,
                                         onLiftConfirmed: _handleLiftConfirmed,
                                         onLiftReverted: _handleLiftReverted,
+                                        // R26 #13 follow-up: the implicit
+                                        // whole-picture box frames the
+                                        // cel's tight ink bounds.
+                                        contentBoundsProvider:
+                                            _activeCelContentBounds,
                                         // Pending move sessions hold the
                                         // session's edit lock (seeks
                                         // refused) WITHOUT locking
@@ -1112,6 +1119,21 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel> {
   /// history (the origin must vanish instantly, but nothing is undoable
   /// until the session CONFIRMS) — and returns a session token plus the
   /// lifted stamp dab, which floats until the confirm. Null when the
+  /// R26 #13 follow-up: the active cel's tight ink bounds — the implicit
+  /// whole-picture transform box frames exactly the picture, PS-style.
+  /// Null (no coordinator, or a blank cel) falls back to the canvas rect
+  /// inside the selection layer.
+  ({int left, int top, int rightExclusive, int bottomExclusive})?
+  _activeCelContentBounds() {
+    final coordinator = widget.coordinator;
+    if (coordinator == null) {
+      return null;
+    }
+    return bitmapSurfaceContentBounds(
+      coordinator.currentSurfaceOf(coordinator.activeFrameKey),
+    );
+  }
+
   /// shape covers no pixels.
   ({int liftToken, BrushDab stampDab})? _handleSelectionLift(
     CanvasSelectionShape shape,
