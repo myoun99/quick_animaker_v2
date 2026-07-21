@@ -10,7 +10,12 @@ void main() {
   Future<void> makeDirty(WidgetTester tester) async {
     // Any command marks the session dirty (the history manager raises the
     // flag) — creating a drawing is the cheapest one from the toolbar.
-    await tester.tap(find.byKey(const ValueKey<String>('new-frame-button')));
+    // The toolbar scrolls horizontally and grew a blend dropdown (R26
+    // #30-1), so the button must scroll into view at the test width.
+    final button = find.byKey(const ValueKey<String>('new-frame-button'));
+    await tester.ensureVisible(button);
+    await tester.pumpAndSettle();
+    await tester.tap(button);
     await tester.pumpAndSettle();
   }
 

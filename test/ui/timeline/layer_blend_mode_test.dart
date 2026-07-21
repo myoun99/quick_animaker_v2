@@ -1,19 +1,21 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:quick_animaker_v2/src/controllers/default_project_helpers.dart';
+import 'package:quick_animaker_v2/src/models/app_language.dart';
 import 'package:quick_animaker_v2/src/models/frame_id.dart';
 import 'package:quick_animaker_v2/src/models/layer.dart';
 import 'package:quick_animaker_v2/src/models/layer_blend_mode.dart';
 import 'package:quick_animaker_v2/src/models/layer_id.dart';
+import 'package:quick_animaker_v2/src/models/layer_kind.dart';
 import 'package:quick_animaker_v2/src/services/cut_frame_composite_plan.dart';
 import 'package:quick_animaker_v2/src/services/playback/cut_frame_composite_signature.dart';
 import 'package:quick_animaker_v2/src/ui/editor_session_manager.dart';
-import 'package:quick_animaker_v2/src/ui/timeline/timeline_grid_metrics.dart';
-import 'package:quick_animaker_v2/src/ui/timeline/timeline_layer_controls_row.dart';
+import 'package:quick_animaker_v2/src/ui/timeline/timeline_action_toolbar.dart';
 
-/// R26 #30: the layer's composite blend mode — model round-trip, the
-/// shared composite visit, cache identity, the session commit and the
-/// type button's flyout entrance.
+/// R26 #30/#30-1: the layer's composite blend mode — model round-trip,
+/// the shared composite visit, cache identity, the session commit and
+/// the toolbar's PS/CSP-style blend dropdown (user rule 07-22: the type
+/// button went back to function-TBD).
 void main() {
   test('JSON: normal is omitted (pre-blend files read back unchanged); a '
       'non-normal blend round-trips', () {
@@ -74,60 +76,53 @@ void main() {
     );
   });
 
-  testWidgets('the type button opens the blend flyout on ACTION rows; '
-      'picking Multiply commits and the kind icon tints accent', (
-    tester,
-  ) async {
-    var layer = Layer(id: const LayerId('a'), name: 'A', frames: const []);
-    LayerBlendMode? committed;
+  testWidgets('R26 #30-1: the toolbar\'s PS-style blend dropdown shows '
+      'the ACTIVE layer\'s mode, commits a pick, reads CSP Japanese in '
+      'ja, and hides for non-ACTION rows', (tester) async {
+    final s = EditorSessionManager(initialProject: createDefaultProject());
+    addTearDown(s.dispose);
+    const buttonKey = ValueKey<String>('timeline-layer-blend-menu-button');
     Widget host() => MaterialApp(
       home: Material(
-        child: Align(
-          alignment: Alignment.topLeft,
-          child: SizedBox(
-            width: 400,
-            height: 28,
-            child: TimelineLayerControlsRow(
-              layer: layer,
-              active: false,
-              metrics: const TimelineGridMetrics(),
-              onSelectLayer: (_) {},
-              onToggleLayerVisibility: (_) {},
-              onLayerOpacityChanged: (_, _) {},
-              onToggleLayerTimesheet: (_) {},
-              onLayerMarkSelected: (_, _) {},
-              onSetLayerBlendMode: (id, mode) => committed = mode,
-            ),
+        child: ListenableBuilder(
+          listenable: s,
+          builder: (context, _) => TimelineActionToolbar(
+            session: s,
+            onAddLayer: () {},
+            onRenameLayer: () {},
+            onDeleteLayer: () {},
+            onEditInstance: () {},
+            onCreateInstance: () {},
           ),
         ),
       ),
     );
 
     await tester.pumpWidget(host());
-    await tester.tap(
-      find.byKey(const ValueKey<String>('timeline-layer-type-button-a')),
-    );
-    await tester.pumpAndSettle();
-    await tester.tap(
-      find.byKey(const ValueKey<String>('timeline-layer-blend-multiply-a')),
-    );
-    await tester.pumpAndSettle();
-    expect(committed, LayerBlendMode.multiply);
+    expect(find.byKey(buttonKey), findsOneWidget);
+    expect(find.text('Normal'), findsOneWidget);
 
-    // The committed blend tints the kind icon accent (color-only
-    // indicator, the selection-style rule).
-    layer = layer.copyWith(blendMode: LayerBlendMode.multiply);
+    await tester.tap(find.byKey(buttonKey));
+    await tester.pumpAndSettle();
+    await tester.tap(
+      find.byKey(const ValueKey<String>('timeline-layer-blend-multiply')),
+    );
+    await tester.pumpAndSettle();
+    expect(s.activeLayer!.blendMode, LayerBlendMode.multiply);
+    expect(find.text('Multiply'), findsOneWidget);
+
+    // ja: Clip Studio's terms (user rule 07-22 — ja localized first).
+    s.languageSettings.value = const AppLanguageSettings(
+      programLanguage: AppLanguage.ja,
+    );
     await tester.pumpWidget(host());
-    final context = tester.element(
-      find.byKey(const ValueKey<String>('timeline-layer-kind-icon-a')),
-    );
-    expect(
-      tester
-          .widget<Icon>(
-            find.byKey(const ValueKey<String>('timeline-layer-kind-icon-a')),
-          )
-          .color,
-      Theme.of(context).colorScheme.primary,
-    );
+    await tester.pump();
+    expect(find.text('乗算'), findsOneWidget);
+
+    // A non-ACTION active row (CAM) hides the dropdown entirely.
+    final camera = s.layers.firstWhere((l) => l.kind == LayerKind.camera);
+    s.selectLayer(camera.id);
+    await tester.pumpAndSettle();
+    expect(find.byKey(buttonKey), findsNothing);
   });
 }

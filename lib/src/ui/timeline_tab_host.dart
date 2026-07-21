@@ -1050,8 +1050,6 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
             }
           }),
           onToggleLayerFx: _session.toggleLayerFx,
-          // R26 #30: the type button's blend flyout.
-          onSetLayerBlendMode: _session.setLayerBlendMode,
           // Per-layer onion skin (UI-R17 #5, TVPaint style).
           layerOnionSkinEnabledOf: _session.isLayerOnionSkinEnabled,
           onToggleLayerOnionSkin: _session.toggleLayerOnionSkin,

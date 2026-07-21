@@ -1,5 +1,7 @@
 import 'dart:ui' show BlendMode;
 
+import 'app_language.dart';
+
 /// The layer's compositing blend against everything below it (R26 #30).
 ///
 /// Applied at COMPOSITE time on every route (playback cache, editing
@@ -55,6 +57,28 @@ enum LayerBlendMode {
     hardLight => 'Hard Light',
     difference => 'Difference',
     exclusion => 'Exclusion',
+  };
+
+  /// The label in the program language. Japanese follows Clip Studio's
+  /// terms (user rule 07-22: ja localized first; every other language
+  /// keeps the shared English vocabulary artists already read).
+  String labelFor(AppLanguage language) => switch (language) {
+    AppLanguage.ja => switch (this) {
+      normal => '通常',
+      darken => '比較（暗）',
+      multiply => '乗算',
+      colorBurn => '焼き込みカラー',
+      lighten => '比較（明）',
+      screen => 'スクリーン',
+      colorDodge => '覆い焼きカラー',
+      add => '加算',
+      overlay => 'オーバーレイ',
+      softLight => 'ソフトライト',
+      hardLight => 'ハードライト',
+      difference => '差の絶対値',
+      exclusion => '除外',
+    },
+    _ => label,
   };
 
   String toJson() => name;

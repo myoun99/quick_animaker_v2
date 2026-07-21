@@ -4,16 +4,13 @@ import 'package:flutter/material.dart';
 import '../../models/app_language.dart' show AppLanguage;
 import '../../models/attached_placement.dart';
 import '../../models/layer.dart';
-import '../../models/layer_blend_mode.dart';
 import '../../models/layer_kind.dart';
 import '../../models/layer_id.dart';
 import '../../models/layer_mark.dart';
 import '../text/app_strings.dart';
 import '../widgets/field_slider.dart';
-import '../widgets/panel_flyout.dart';
 import 'layer_label_controls.dart';
 import 'timeline_grid_metrics.dart';
-import 'timeline_section_policy.dart';
 
 class TimelineLayerControlsRow extends StatelessWidget {
   Future<void> _showMixMenu(BuildContext context, Offset globalPosition) async {
@@ -79,7 +76,6 @@ class TimelineLayerControlsRow extends StatelessWidget {
     this.onToggleLayerOnionSkin,
     this.opacityDragPreview,
     this.isLinked = false,
-    this.onSetLayerBlendMode,
   });
 
   final Layer layer;
@@ -154,13 +150,6 @@ class TimelineLayerControlsRow extends StatelessWidget {
   /// Link badge (L4): this layer's pictures are shared with a link group
   /// ("이름이 같으면 같은 그림") — a small chain icon after the name.
   final bool isLinked;
-
-  /// R26 #30: commits the layer's composite blend. With it set, the TYPE
-  /// button (whose function was TBD since UI-R24 #7) opens the blend
-  /// flyout on ACTION-section rows; a non-normal blend tints the kind
-  /// icon accent (color-only indicator, the selection-style rule).
-  final void Function(LayerId layerId, LayerBlendMode blendMode)?
-  onSetLayerBlendMode;
 
   @override
   Widget build(BuildContext context) {
@@ -246,106 +235,63 @@ class TimelineLayerControlsRow extends StatelessWidget {
                 onMarkSelected: onLayerMarkSelected,
               ),
               const SizedBox(width: layerControlChipGap),
-              // The TYPE BUTTON (UI-R24 #7 — function assigned by R26
-              // #30): on ACTION-section rows the kind icon (or the attach
-              // placement arrow) opens the layer BLEND flyout; a
-              // non-normal blend tints the icon accent (color-only
-              // indicator). Other kinds keep the plain select tap. One
-              // slot for every row kind, so attach rows align with the
-              // rest (UI-R24 #8 — the old arrow indent is gone).
-              Builder(
-                builder: (anchorContext) {
-                  final blendEligible =
-                      onSetLayerBlendMode != null &&
-                      timelineSectionForLayerKind(layer.kind) ==
-                          TimelineSection.drawing;
-                  final blended = layer.blendMode != LayerBlendMode.normal;
-                  final blendInk = blendEligible && blended
-                      ? colorScheme.primary
-                      : null;
-                  final button = InkWell(
-                    key: ValueKey<String>(
-                      'timeline-layer-type-button-${layer.id}',
-                    ),
-                    onTap: blendEligible
-                        ? () => showPanelFlyout(
-                            anchorContext,
-                            entries: [
-                              const PanelFlyoutHeader('Blend mode'),
-                              for (final mode in LayerBlendMode.values)
-                                PanelFlyoutItem(
-                                  keyValue:
-                                      'timeline-layer-blend-${mode.name}-'
-                                      '${layer.id}',
-                                  label: mode.label,
-                                  checked: layer.blendMode == mode
-                                      ? true
-                                      : null,
-                                  onSelected: () =>
-                                      onSetLayerBlendMode!(layer.id, mode),
-                                ),
-                            ],
-                          )
-                        : () => onSelectLayer(layer.id),
-                    customBorder: const CircleBorder(), // R26 #28
-                    child: SizedBox(
-                      width: 22,
-                      height: 24,
-                      child: Center(
-                        child: layer.attachedToLayerId != null
-                            // Attach rows (UI-R20 #10): the placement
-                            // arrow IS the type mark — bending up-right
-                            // when the row attaches above, down-right
-                            // below. No kind icon (the base carries the
-                            // kind).
-                            ? Semantics(
-                                label:
+              // The TYPE BUTTON (UI-R24 #7): the kind icon — or the attach
+              // placement arrow — in its OWN fixed slot, a control
+              // separate from the name (function TBD again — R26 #30-1
+              // moved the blend flyout to the toolbar's PS-style
+              // dropdown, user rule 07-22; tap selects for now). One slot
+              // for every row kind, so attach rows align with the rest
+              // (UI-R24 #8 — the old arrow indent is gone).
+              InkWell(
+                key: ValueKey<String>('timeline-layer-type-button-${layer.id}'),
+                onTap: () => onSelectLayer(layer.id),
+                customBorder: const CircleBorder(), // R26 #28
+                child: SizedBox(
+                  width: 22,
+                  height: 24,
+                  child: Center(
+                    child: layer.attachedToLayerId != null
+                        // Attach rows (UI-R20 #10): the placement arrow IS
+                        // the type mark — bending up-right when the row
+                        // attaches above, down-right below. No kind icon
+                        // (the base carries the kind).
+                        ? Semantics(
+                            label:
+                                layer.attachedPlacement ==
+                                    AttachedPlacement.above
+                                ? 'Attach layer (above)'
+                                : 'Attach layer (below)',
+                            container: true,
+                            child: ExcludeSemantics(
+                              child: Transform.flip(
+                                flipY:
                                     layer.attachedPlacement ==
-                                        AttachedPlacement.above
-                                    ? 'Attach layer (above)'
-                                    : 'Attach layer (below)',
-                                container: true,
-                                child: ExcludeSemantics(
-                                  child: Transform.flip(
-                                    flipY:
-                                        layer.attachedPlacement ==
-                                        AttachedPlacement.above,
-                                    child: Icon(
-                                      Icons.subdirectory_arrow_right,
-                                      key: ValueKey<String>(
-                                        'timeline-layer-attach-arrow-'
-                                        '${layer.id}',
-                                      ),
-                                      size: 16,
-                                      color: blendInk,
-                                    ),
+                                    AttachedPlacement.above,
+                                child: Icon(
+                                  Icons.subdirectory_arrow_right,
+                                  key: ValueKey<String>(
+                                    'timeline-layer-attach-arrow-${layer.id}',
                                   ),
-                                ),
-                              )
-                            : Semantics(
-                                label: _semanticLabelForLayerKind(layer.kind),
-                                container: true,
-                                child: ExcludeSemantics(
-                                  child: Icon(
-                                    layerKindIcon(layer.kind),
-                                    key: ValueKey<String>(
-                                      'timeline-layer-kind-icon-${layer.id}',
-                                    ),
-                                    size: 18,
-                                    color: blendInk,
-                                  ),
+                                  size: 16,
                                 ),
                               ),
-                      ),
-                    ),
-                  );
-                  return blendEligible
-                      ? Tooltip(
-                          message: 'Blend mode: ${layer.blendMode.label}',
-                          child: button,
-                        )
-                      : button;
-                },
+                            ),
+                          )
+                        : Semantics(
+                            label: _semanticLabelForLayerKind(layer.kind),
+                            container: true,
+                            child: ExcludeSemantics(
+                              child: Icon(
+                                layerKindIcon(layer.kind),
+                                key: ValueKey<String>(
+                                  'timeline-layer-kind-icon-${layer.id}',
+                                ),
+                                size: 18,
+                              ),
+                            ),
+                          ),
+                  ),
+                ),
               ),
               const SizedBox(width: 4),
               Expanded(

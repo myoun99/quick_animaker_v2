@@ -8,7 +8,6 @@ import '../../models/camera_instruction.dart';
 import '../text/app_strings.dart';
 import '../../models/folder_id.dart';
 import '../../models/layer.dart';
-import '../../models/layer_blend_mode.dart';
 import '../../models/layer_folder.dart';
 import '../../models/layer_id.dart';
 import '../../models/layer_kind.dart';
@@ -111,7 +110,6 @@ class LayerTimelineGrid extends StatefulWidget {
     this.onToggleLayerOnionSkin,
     this.displayedOnionSkinOn = false,
     this.onToggleLayerFx,
-    this.onSetLayerBlendMode,
     required this.onLayerMarkSelected,
     this.onToggleLayerFillReference,
     this.onToggleLayerMuted,
@@ -289,11 +287,6 @@ class LayerTimelineGrid extends StatefulWidget {
   final ValueChanged<LayerId>? onToggleLayerOnionSkin;
   final bool displayedOnionSkinOn;
   final ValueChanged<LayerId>? onToggleLayerFx;
-
-  /// R26 #30: commits a layer's composite blend (the type button's
-  /// flyout); null hides the entrance.
-  final void Function(LayerId layerId, LayerBlendMode blendMode)?
-  onSetLayerBlendMode;
   final void Function(LayerId layerId, LayerMark mark) onLayerMarkSelected;
 
   /// Drawing rows' fill-reference toggle (R20-C2); null hides it.
@@ -1092,7 +1085,6 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
       onToggleLayerTimesheet: widget.onToggleLayerTimesheet,
       fxEnabled: widget.layerFxEnabledOf?.call(row.layer.id) ?? true,
       onToggleLayerFx: widget.onToggleLayerFx,
-      onSetLayerBlendMode: widget.onSetLayerBlendMode,
       onionSkinEnabled:
           widget.layerOnionSkinEnabledOf?.call(row.layer.id) ?? false,
       onToggleLayerOnionSkin: widget.onToggleLayerOnionSkin,

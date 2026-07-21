@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 
 import '../../models/attached_mode.dart';
 import '../../models/attached_placement.dart';
+import '../../models/layer_blend_mode.dart';
 import '../../models/layer_kind.dart';
 import '../../models/project_frame_rate.dart';
 import '../cut_command_group.dart';
@@ -331,6 +332,34 @@ class TimelineActionToolbar extends StatelessWidget {
     ];
   }
 
+  /// R26 #30-1: whether the ACTIVE layer takes a blend mode (drawing
+  /// section rows — attach rows included, their pixels blend on their
+  /// own).
+  bool get _blendCapableActiveLayer {
+    final layer = session.activeLayer;
+    return layer != null &&
+        timelineSectionForLayerKind(layer.kind) == TimelineSection.drawing;
+  }
+
+  /// The PS/CSP blend dropdown's entries — commits through the same
+  /// repo-direct, link-mirrored path as the eye/opacity.
+  List<PanelFlyoutEntry> _blendEntries() {
+    final layer = session.activeLayer;
+    if (layer == null) {
+      return const [];
+    }
+    final language = session.languageSettings.value.programLanguage;
+    return [
+      for (final mode in LayerBlendMode.values)
+        PanelFlyoutItem(
+          keyValue: 'timeline-layer-blend-${mode.name}',
+          label: mode.labelFor(language),
+          checked: layer.blendMode == mode,
+          onSelected: () => session.setLayerBlendMode(layer.id, mode),
+        ),
+    ];
+  }
+
   /// R26 #32: the frame-rate presets. RT made the project rate an exact
   /// rational, so the NTSC pulldown rates are here alongside the whole
   /// ones — 23.976 is stored and played as 24000/1001, never as a
@@ -537,6 +566,23 @@ class TimelineActionToolbar extends StatelessWidget {
                     tooltip: 'Layer commands',
                     entriesBuilder: _layerEntries,
                   ),
+                  // R26 #30-1 (user rule 07-22): the layer BLEND dropdown,
+                  // PS/CSP style — the ACTIVE layer's mode name as a
+                  // flyout button, ACTION-section rows only (the type
+                  // button went back to function-TBD).
+                  if (_blendCapableActiveLayer) ...[
+                    const SizedBox(width: 4),
+                    PanelFlyoutButton(
+                      key: const ValueKey<String>(
+                        'timeline-layer-blend-menu-button',
+                      ),
+                      label: session.activeLayer!.blendMode.labelFor(
+                        session.languageSettings.value.programLanguage,
+                      ),
+                      tooltip: 'Layer blend mode',
+                      entriesBuilder: _blendEntries,
+                    ),
+                  ],
                 ],
               ),
               _groupDivider(context),

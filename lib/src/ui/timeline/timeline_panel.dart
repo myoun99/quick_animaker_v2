@@ -5,7 +5,6 @@ import '../../models/audio_clip.dart' show AudioFadeCurve, AudioVolumeKey;
 import '../../models/camera_instruction.dart';
 import '../../models/folder_id.dart';
 import '../../models/layer.dart';
-import '../../models/layer_blend_mode.dart';
 import '../../models/layer_folder.dart';
 import '../../services/audio/audio_peaks_extractor.dart';
 import '../text/app_strings.dart';
@@ -84,7 +83,6 @@ class TimelinePanel extends StatefulWidget {
     this.onToggleLayerOnionSkin,
     this.displayedOnionSkinOn = false,
     this.onToggleLayerFx,
-    this.onSetLayerBlendMode,
     this.onToggleLayerMuted,
     this.commaDrag,
     this.rangeHooks,
@@ -265,11 +263,6 @@ class TimelinePanel extends StatefulWidget {
   final ValueChanged<LayerId>? onToggleLayerOnionSkin;
   final bool displayedOnionSkinOn;
   final ValueChanged<LayerId>? onToggleLayerFx;
-
-  /// R26 #30: commits a layer's composite blend (the type button's
-  /// flyout); null hides the entrance.
-  final void Function(LayerId layerId, LayerBlendMode blendMode)?
-  onSetLayerBlendMode;
 
   /// SE rows' speaker button (mute), both orientations; null hides it.
   final ValueChanged<LayerId>? onToggleLayerMuted;
@@ -486,7 +479,6 @@ class _TimelinePanelState extends State<TimelinePanel> {
                     expandedFolderLaneIds: widget.expandedFolderLaneIds,
                     onToggleFolderLanes: widget.onToggleFolderLanes,
                     onToggleLayerFx: widget.onToggleLayerFx,
-                    onSetLayerBlendMode: widget.onSetLayerBlendMode,
                     layerOnionSkinEnabledOf: widget.layerOnionSkinEnabledOf,
                     onToggleLayerOnionSkin: widget.onToggleLayerOnionSkin,
                     displayedOnionSkinOn: widget.displayedOnionSkinOn,

@@ -1,3 +1,4 @@
+import 'dart:ffi' show Uint8Pointer;
 import 'dart:typed_data';
 
 import '../core/floor_math.dart';
@@ -14,6 +15,64 @@ import '../models/tile_coord.dart';
 /// semantics — the pasteboard shrinks with the canvas). The resize
 /// COMMAND keeps a reference snapshot of the pre-resize baked surfaces,
 /// so its undo restores cropped pixels exactly.
+/// The tight pixel bounding box of the surface's INK (any pixel with a
+/// non-zero alpha), in canvas coordinates — or null when no visible
+/// pixel exists. R26 #13 follow-up (user rule 07-22): the whole-picture
+/// transform box frames exactly the picture, PS-style, not the canvas.
+///
+/// One full scan per call — callers open a session with it, never a
+/// per-frame path. The word loop fast-skips fully transparent pixels
+/// (most of an animation cel), so the common cost is memory bandwidth.
+({int left, int top, int rightExclusive, int bottomExclusive})?
+bitmapSurfaceContentBounds(BitmapSurface surface) {
+  final tileSize = surface.tileSize;
+  var minX = 0x7fffffff, minY = 0x7fffffff;
+  var maxX = -0x7fffffff, maxY = -0x7fffffff;
+  for (final entry in surface.tiles.entries) {
+    // RGBA little-endian: alpha is the word's top byte. The native view
+    // reads in place — the [BitmapTile.pixels] getter would copy every
+    // tile just to scan it.
+    final bytes = entry.value.nativePixels.asTypedList(
+      tileSize * tileSize * 4,
+    );
+    final words = bytes.buffer.asUint32List(0, tileSize * tileSize);
+    final originX = entry.key.x * tileSize;
+    final originY = entry.key.y * tileSize;
+    for (var y = 0; y < tileSize; y += 1) {
+      final rowStart = y * tileSize;
+      for (var x = 0; x < tileSize; x += 1) {
+        final word = words[rowStart + x];
+        if (word == 0 || (word & 0xff000000) == 0) {
+          continue;
+        }
+        final worldX = originX + x;
+        final worldY = originY + y;
+        if (worldX < minX) {
+          minX = worldX;
+        }
+        if (worldX > maxX) {
+          maxX = worldX;
+        }
+        if (worldY < minY) {
+          minY = worldY;
+        }
+        if (worldY > maxY) {
+          maxY = worldY;
+        }
+      }
+    }
+  }
+  if (maxX < minX) {
+    return null;
+  }
+  return (
+    left: minX,
+    top: minY,
+    rightExclusive: maxX + 1,
+    bottomExclusive: maxY + 1,
+  );
+}
+
 BitmapSurface resizeBitmapSurfaceCanvas(
   BitmapSurface surface,
   CanvasSize canvasSize,
