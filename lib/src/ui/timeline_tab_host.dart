@@ -23,7 +23,9 @@ import 'dialogs/se_instance_dialog.dart';
 import 'editor_session_manager.dart';
 import 'playback/canvas_playback_controller.dart';
 import 'playback/playback_transport_controls.dart';
+import '../models/canvas_point.dart';
 import '../models/transform_track.dart';
+import '../services/cut_frame_composite_plan.dart' show layerIdentityPose;
 import '../services/camera_pose_resolver.dart';
 import 'text/app_strings.dart';
 import '../models/timeline_coverage.dart' show TimelineBlockEdge;
@@ -140,6 +142,10 @@ class TimelineTabHost extends StatefulWidget {
 
 class _TimelineTabHostState extends State<TimelineTabHost> {
   EditorSessionManager get _session => widget.session;
+
+  /// Folder FX lane twirl state (L5c) — host-local like the storyboard's
+  /// rail twirls; lost on tab switch for now.
+  final Set<FolderId> _expandedFolderLanes = {};
 
   /// The frame cursor the panel's cursor-driven widgets subscribe to
   /// (playhead, rulers, lane values, frame counter). Playback ticks and
@@ -306,8 +312,58 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
     );
   }
 
+  /// Folder FX lanes (L5c) route through the lane id's folder ADDRESS —
+  /// the carrier layer on those rows is only a representative. Returns
+  /// true when the lane was a folder lane (handled or swallowed-stale).
+  bool _routeFolderLaneEdit(
+    PropertyLaneRow lane,
+    TransformTrack? Function(TransformTrack track, String baseLaneId) edit,
+    String description,
+  ) {
+    final address = parseFolderLaneId(lane.laneId);
+    if (address == null) {
+      return false;
+    }
+    final folder = _session.activeCutOrNull?.folders.byId(address.folderId);
+    if (folder == null) {
+      return true;
+    }
+    final next = edit(folder.transformTrack, address.baseLaneId);
+    if (next != null) {
+      _session.updateFolderTransformTrack(
+        address.folderId,
+        next,
+        description: description,
+      );
+    }
+    return true;
+  }
+
   PropertyLaneEditCallbacks get _laneEdit => PropertyLaneEditCallbacks(
     onToggleKeyAt: (layer, lane, frameIndex) {
+      if (_routeFolderLaneEdit(lane, (track, base) {
+        final canvasSize = _session.requireActiveCut.canvasSize;
+        return transformTrackWithLaneKeyToggled(
+          track,
+          laneId: base,
+          frameIndex: frameIndex,
+          // Freeze the folder track's CURRENT resolved value (identity
+          // when unkeyed — the folder starts unmoved).
+          resolvedPose: track.resolveAt(
+            frameIndex: frameIndex,
+            orElse: () => layerIdentityPose(canvasSize),
+          ),
+          resolvedAnchorPoint:
+              resolveAnchorTrackAt(track.anchorPoint, frameIndex) ??
+              CanvasPoint(
+                x: canvasSize.width / 2,
+                y: canvasSize.height / 2,
+              ),
+          resolvedOpacity: resolveOpacityTrackAt(track.opacity, frameIndex),
+        );
+      }, '${lane.label} keyframe at frame ${frameIndex + 1}')) {
+        return;
+      }
       final isCamera = layer.kind == LayerKind.camera;
       _commitLaneEdit(
         layer,
@@ -331,6 +387,19 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
       );
     },
     onMoveKey: (layer, lane, fromFrame, toFrame) {
+      final description = 'Move ${lane.label} keyframe to frame ${toFrame + 1}';
+      if (_routeFolderLaneEdit(
+        lane,
+        (track, base) => transformTrackWithLaneKeyMoved(
+          track,
+          laneId: base,
+          fromFrame: fromFrame,
+          toFrame: toFrame,
+        ),
+        description,
+      )) {
+        return;
+      }
       _commitLaneEdit(
         layer,
         transformTrackWithLaneKeyMoved(
@@ -339,10 +408,22 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
           fromFrame: fromFrame,
           toFrame: toFrame,
         ),
-        'Move ${lane.label} keyframe to frame ${toFrame + 1}',
+        description,
       );
     },
     onRemoveKey: (layer, lane, frameIndex) {
+      final description = 'Delete ${lane.label} keyframe';
+      if (_routeFolderLaneEdit(
+        lane,
+        (track, base) => transformTrackWithLaneKeyRemoved(
+          track,
+          laneId: base,
+          frameIndex: frameIndex,
+        ),
+        description,
+      )) {
+        return;
+      }
       _commitLaneEdit(
         layer,
         transformTrackWithLaneKeyRemoved(
@@ -350,10 +431,22 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
           laneId: lane.laneId,
           frameIndex: frameIndex,
         ),
-        'Delete ${lane.label} keyframe',
+        description,
       );
     },
     onToggleHold: (layer, lane, frameIndex) {
+      final description = 'Toggle hold on ${lane.label} keyframe';
+      if (_routeFolderLaneEdit(
+        lane,
+        (track, base) => transformTrackWithLaneHoldToggled(
+          track,
+          laneId: base,
+          frameIndex: frameIndex,
+        ),
+        description,
+      )) {
+        return;
+      }
       _commitLaneEdit(
         layer,
         transformTrackWithLaneHoldToggled(
@@ -361,7 +454,7 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
           laneId: lane.laneId,
           frameIndex: frameIndex,
         ),
-        'Toggle hold on ${lane.label} keyframe',
+        description,
       );
     },
     onSetValue: (layer, lane, frameIndex, input) {
@@ -376,6 +469,19 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
         _session.setAudioClipOffset(layer.id, span.clipIndex, offset);
         return;
       }
+      final description = 'Set ${lane.label} at frame ${frameIndex + 1}';
+      if (_routeFolderLaneEdit(
+        lane,
+        (track, base) => transformTrackWithLaneValueEdited(
+          track,
+          laneId: base,
+          frameIndex: frameIndex,
+          input: input,
+        ),
+        description,
+      )) {
+        return;
+      }
       _commitLaneEdit(
         layer,
         transformTrackWithLaneValueEdited(
@@ -384,7 +490,7 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
           frameIndex: frameIndex,
           input: input,
         ),
-        'Set ${lane.label} at frame ${frameIndex + 1}',
+        description,
       );
     },
   );
@@ -931,6 +1037,12 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
           onToggleFolderVisibility: _session.toggleFolderVisibility,
           onRenameFolder: (folderId) => unawaited(_renameFolder(folderId)),
           onDissolveFolder: _session.dissolveFolder,
+          expandedFolderLaneIds: _expandedFolderLanes,
+          onToggleFolderLanes: (folderId) => setState(() {
+            if (!_expandedFolderLanes.add(folderId)) {
+              _expandedFolderLanes.remove(folderId);
+            }
+          }),
           onToggleLayerFx: _session.toggleLayerFx,
           // Per-layer onion skin (UI-R17 #5, TVPaint style).
           layerOnionSkinEnabledOf: _session.isLayerOnionSkinEnabled,

@@ -2615,6 +2615,27 @@ class EditorSessionManager extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Replaces a folder's FX transform track (L5c) — one undo step;
+  /// per-use lanes, never mirrored.
+  void updateFolderTransformTrack(
+    FolderId folderId,
+    TransformTrack transformTrack, {
+    String description = 'Edit folder transform',
+  }) {
+    final cutId = _editingSession.activeCutId;
+    if (cutId == null) {
+      return;
+    }
+    _cutCommandCoordinator.updateFolderTransformTrack(
+      cutId: cutId,
+      folderId: folderId,
+      transformTrack: transformTrack,
+      description: description,
+    );
+    _refreshAfterCutCommand();
+    notifyListeners();
+  }
+
   /// Silences/unsilences an SE row's sounds (the mute button — view state
   /// like visibility, not undoable): playback and export skip muted
   /// layers' clips, waveforms keep displaying.

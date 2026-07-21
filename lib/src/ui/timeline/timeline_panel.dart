@@ -73,6 +73,8 @@ class TimelinePanel extends StatefulWidget {
     this.onToggleFolderVisibility,
     this.onRenameFolder,
     this.onDissolveFolder,
+    this.expandedFolderLaneIds = const {},
+    this.onToggleFolderLanes,
     this.layerOnionSkinEnabledOf,
     this.onToggleLayerOnionSkin,
     this.displayedOnionSkinOn = false,
@@ -239,6 +241,8 @@ class TimelinePanel extends StatefulWidget {
   final ValueChanged<FolderId>? onToggleFolderVisibility;
   final ValueChanged<FolderId>? onRenameFolder;
   final ValueChanged<FolderId>? onDissolveFolder;
+  final Set<FolderId> expandedFolderLaneIds;
+  final ValueChanged<FolderId>? onToggleFolderLanes;
 
   /// Per-layer onion skin (UI-R17 #5) — threaded to the horizontal grid's
   /// rail rows + legend (the xsheet rail keeps its compact control set).
@@ -456,6 +460,8 @@ class _TimelinePanelState extends State<TimelinePanel> {
                     onToggleFolderVisibility: widget.onToggleFolderVisibility,
                     onRenameFolder: widget.onRenameFolder,
                     onDissolveFolder: widget.onDissolveFolder,
+                    expandedFolderLaneIds: widget.expandedFolderLaneIds,
+                    onToggleFolderLanes: widget.onToggleFolderLanes,
                     onToggleLayerFx: widget.onToggleLayerFx,
                     layerOnionSkinEnabledOf: widget.layerOnionSkinEnabledOf,
                     onToggleLayerOnionSkin: widget.onToggleLayerOnionSkin,

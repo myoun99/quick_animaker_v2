@@ -1,6 +1,7 @@
 import 'dart:ui' show Offset;
 
 import '../../models/canvas_point.dart';
+import '../../models/folder_id.dart';
 import '../../models/property_track.dart';
 import '../../models/transform_track.dart';
 import 'property_lane_model.dart';
@@ -111,6 +112,52 @@ List<PropertyLaneRow> transformPropertyLanes(
         scrubValue: (label, delta) =>
             scrubTransformLaneValue('opacity', label, delta),
       ),
+  ];
+}
+
+/// Folder FX lanes (L5c): lane ids carry the folder ADDRESS so the
+/// single laneEdit callback set can route commits into the folder's own
+/// track — `folder-fx:<folderId>:<base>`. The composite already consumes
+/// the track (L3); these lanes are the editing surface.
+const String folderLanePrefix = 'folder-fx:';
+
+String folderLaneId(FolderId folderId, String base) =>
+    '$folderLanePrefix${folderId.value}:$base';
+
+/// Splits a folder lane id back into its address; null for ordinary
+/// layer/camera lanes.
+({FolderId folderId, String baseLaneId})? parseFolderLaneId(String laneId) {
+  if (!laneId.startsWith(folderLanePrefix)) {
+    return null;
+  }
+  final rest = laneId.substring(folderLanePrefix.length);
+  final split = rest.indexOf(':');
+  if (split <= 0 || split == rest.length - 1) {
+    return null;
+  }
+  return (
+    folderId: FolderId(rest.substring(0, split)),
+    baseLaneId: rest.substring(split + 1),
+  );
+}
+
+/// The folder's Transform lanes under its header row (no group header —
+/// the folder row itself is the group). Value columns arrive later;
+/// the key diamonds and hold squares are the editing surface.
+List<PropertyLaneRow> folderTransformPropertyLanes(
+  FolderId folderId,
+  TransformTrack track,
+) {
+  return [
+    _lane(
+      folderLaneId(folderId, 'anchor-point'),
+      'Anchor Point',
+      track.anchorPoint,
+    ),
+    _lane(folderLaneId(folderId, 'position'), 'Position', track.position),
+    _lane(folderLaneId(folderId, 'scale'), 'Scale', track.scale),
+    _lane(folderLaneId(folderId, 'rotation'), 'Rotation', track.rotation),
+    _lane(folderLaneId(folderId, 'opacity'), 'Opacity', track.opacity),
   ];
 }
 
