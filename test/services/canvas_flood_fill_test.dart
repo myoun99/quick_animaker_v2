@@ -296,6 +296,112 @@ void main() {
       expect(Layer.fromJson(inkLayer().toJson()).isFillReference, isFalse);
     });
 
+    group('Fill Beyond Canvas (pasteboard)', () {
+      /// An outline surface whose ink may sit at NEGATIVE world coords.
+      BitmapSurface outlineSurfaceAt(Set<(int, int)> ink) {
+        final tiles = <TileCoord, Uint8List>{};
+        for (final (x, y) in ink) {
+          final coord = TileCoord.fromPixel(pixelX: x, pixelY: y, tileSize: 4);
+          final buffer = tiles.putIfAbsent(coord, () => Uint8List(4 * 4 * 4));
+          final index = ((y % 4) * 4 + (x % 4)) * 4;
+          buffer[index + 3] = 255;
+        }
+        return BitmapSurface(
+          canvasSize: canvasSize,
+          tileSize: 4,
+          tiles: {
+            for (final entry in tiles.entries)
+              entry.key: BitmapTile(
+                coord: entry.key,
+                size: 4,
+                pixels: entry.value,
+              ),
+          },
+        );
+      }
+
+      /// A closed box from (-3,2) to (4,5): walls cross the canvas's left
+      /// edge; interior = x in [-2, 3], y in [3, 4].
+      Set<(int, int)> boxAcrossLeftEdge() => {
+        for (var x = -3; x <= 4; x += 1) ...{(x, 2), (x, 5)},
+        for (var y = 3; y <= 4; y += 1) ...{(-3, y), (4, y)},
+      };
+
+      test('a closed region crossing the canvas edge fills whole, off-canvas '
+          'pixels included', () {
+        final surface = outlineSurfaceAt(boxAcrossLeftEdge());
+        final dab = buildFillDab(
+          cut: cutWith([inkLayer()]),
+          frameIndex: 0,
+          surfaceResolver: (_, _) => surface,
+          point: CanvasPoint(x: 0, y: 3),
+          color: 0xFF3366CC,
+          options: const FloodFillOptions(
+            expandPx: 0,
+            antiAlias: false,
+            extendBeyondCanvas: true,
+          ),
+        )!;
+
+        // Interior 6×2 at world (-2, 3) → center (1, 4).
+        final stamp = dab.stamp!;
+        expect((stamp.width, stamp.height), (6, 2));
+        expect(dab.center, CanvasPoint(x: 1, y: 4));
+        expect(dab.size, 6);
+      });
+
+      test('the same region WITHOUT the option clips at the canvas edge '
+          '(default boundary unchanged)', () {
+        final surface = outlineSurfaceAt(boxAcrossLeftEdge());
+        final dab = buildFillDab(
+          cut: cutWith([inkLayer()]),
+          frameIndex: 0,
+          surfaceResolver: (_, _) => surface,
+          point: CanvasPoint(x: 0, y: 3),
+          color: 0xFF3366CC,
+          options: const FloodFillOptions(expandPx: 0, antiAlias: false),
+        )!;
+
+        // Canvas boundary is the wall: interior x in [0, 3] only.
+        expect((dab.stamp!.width, dab.stamp!.height), (4, 2));
+        expect(dab.center, CanvasPoint(x: 2, y: 4));
+      });
+
+      test('an OPEN region refuses to fill and reports the leak', () {
+        var leaked = false;
+        final dab = buildFillDab(
+          cut: cutWith([inkLayer()]),
+          frameIndex: 0,
+          surfaceResolver: (_, _) => outlineSurfaceAt(const {}),
+          point: CanvasPoint(x: 3, y: 3),
+          color: 0xFF3366CC,
+          options: const FloodFillOptions(
+            expandPx: 0,
+            antiAlias: false,
+            extendBeyondCanvas: true,
+          ),
+          onOpenRegion: () => leaked = true,
+        );
+
+        expect(dab, isNull);
+        expect(leaked, isTrue);
+      });
+
+      test('the same open tap WITHOUT the option floods to the canvas wall '
+          'as before', () {
+        final dab = buildFillDab(
+          cut: cutWith([inkLayer()]),
+          frameIndex: 0,
+          surfaceResolver: (_, _) => outlineSurfaceAt(const {}),
+          point: CanvasPoint(x: 3, y: 3),
+          color: 0xFF3366CC,
+          options: const FloodFillOptions(expandPx: 0, antiAlias: false),
+        )!;
+
+        expect((dab.stamp!.width, dab.stamp!.height), (8, 8));
+      });
+    });
+
     test(
       'committed through the stroke funnel the mask lands 1:1 unattenuated',
       () {

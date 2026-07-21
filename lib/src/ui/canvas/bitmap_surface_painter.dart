@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../models/bitmap_surface.dart';
 import '../../models/bitmap_tile.dart';
 import '../../models/canvas_viewport.dart';
+import '../../models/pasteboard_bounds.dart';
 import 'active_stroke_overlay.dart';
 import 'bitmap_tile_image_cache.dart';
 import 'viewport_canvas_transform.dart';
@@ -53,17 +54,31 @@ class BitmapSurfacePainter extends CustomPainter {
 
   final BitmapTileImageCache tileImageCache;
 
+  /// Scrim drawn over pasteboard content OUTSIDE the canvas rect — keeps
+  /// off-stage artwork visible but clearly receded (Flash's gray
+  /// surround, dimmed instead of hidden).
+  static const Color pasteboardDimColor = Color(0x8C000000);
+
   @override
   void paint(Canvas canvas, Size size) {
     final canvasWidth = surface.canvasSize.width.toDouble();
     final canvasHeight = surface.canvasSize.height.toDouble();
+    final pasteboardRect = Rect.fromLTRB(
+      surface.canvasSize.pasteboardLeft.toDouble(),
+      surface.canvasSize.pasteboardTop.toDouble(),
+      surface.canvasSize.pasteboardRightExclusive.toDouble(),
+      surface.canvasSize.pasteboardBottomExclusive.toDouble(),
+    );
 
     canvas.save();
     final resolvedViewport = viewport;
     if (resolvedViewport != null) {
       applyViewportTransform(canvas, resolvedViewport);
     }
-    canvas.clipRect(Rect.fromLTWH(0, 0, canvasWidth, canvasHeight));
+    // The clip is the PASTEBOARD: artwork past the canvas edge stays
+    // visible while editing (dimmed below); composite/export raster at
+    // canvas size, so output still crops to the stage.
+    canvas.clipRect(pasteboardRect);
 
     if (showTransparentBackground) {
       final backgroundPaint = Paint()..color = const Color(0xFFEDEDED);
@@ -86,7 +101,7 @@ class BitmapSurfacePainter extends CustomPainter {
         overlayModel!.erase &&
         overlayModel!.hasStrokeContent;
     if (eraseOverlayLayer) {
-      canvas.saveLayer(Rect.fromLTWH(0, 0, canvasWidth, canvasHeight), Paint());
+      canvas.saveLayer(pasteboardRect, Paint());
     }
 
     final tileImagePaint = Paint()
@@ -202,6 +217,15 @@ class BitmapSurfacePainter extends CustomPainter {
     if (eraseOverlayLayer) {
       canvas.restore();
     }
+
+    // Dim everything OUTSIDE the canvas rect (even-odd ring): off-stage
+    // artwork reads as parked, not part of the shot.
+    final dimPath = Path()
+      ..fillType = PathFillType.evenOdd
+      ..addRect(pasteboardRect)
+      ..addRect(Rect.fromLTWH(0, 0, canvasWidth, canvasHeight));
+    canvas.drawPath(dimPath, Paint()..color = pasteboardDimColor);
+
     canvas.restore();
   }
 
@@ -262,13 +286,15 @@ class BitmapSurfacePainter extends CustomPainter {
 
     for (var localY = 0; localY < tile.size; localY += 1) {
       final globalY = tileOriginY + localY;
-      if (globalY < 0 || globalY >= surface.canvasSize.height) {
+      if (globalY < surface.canvasSize.pasteboardTop ||
+          globalY >= surface.canvasSize.pasteboardBottomExclusive) {
         continue;
       }
 
       for (var localX = 0; localX < tile.size; localX += 1) {
         final globalX = tileOriginX + localX;
-        if (globalX < 0 || globalX >= surface.canvasSize.width) {
+        if (globalX < surface.canvasSize.pasteboardLeft ||
+            globalX >= surface.canvasSize.pasteboardRightExclusive) {
           continue;
         }
 

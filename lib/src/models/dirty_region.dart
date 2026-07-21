@@ -1,5 +1,8 @@
+import '../core/floor_math.dart';
 import 'tile_coord.dart';
 
+/// A pixel-space rectangle. Coordinates may be NEGATIVE (pasteboard
+/// space) — only the right > left / bottom > top ordering is enforced.
 class DirtyRegion {
   DirtyRegion({
     required this.left,
@@ -35,8 +38,6 @@ class DirtyRegion {
     required int width,
     required int height,
   }) {
-    _validateNonNegative(x, 'x');
-    _validateNonNegative(y, 'y');
     _validatePositive(width, 'width');
     _validatePositive(height, 'height');
     return DirtyRegion(
@@ -93,10 +94,10 @@ class DirtyRegion {
   Set<TileCoord> toTileCoords({required int tileSize}) {
     _validatePositive(tileSize, 'tileSize');
 
-    final startTileX = left ~/ tileSize;
-    final endTileX = (rightExclusive - 1) ~/ tileSize;
-    final startTileY = top ~/ tileSize;
-    final endTileY = (bottomExclusive - 1) ~/ tileSize;
+    final startTileX = floorDiv(left, tileSize);
+    final endTileX = floorDiv(rightExclusive - 1, tileSize);
+    final startTileY = floorDiv(top, tileSize);
+    final endTileY = floorDiv(bottomExclusive - 1, tileSize);
 
     return {
       for (var y = startTileY; y <= endTileY; y++)
@@ -144,8 +145,6 @@ void _validateBounds({
   required int rightExclusive,
   required int bottomExclusive,
 }) {
-  _validateNonNegative(left, 'left');
-  _validateNonNegative(top, 'top');
   if (rightExclusive <= left) {
     throw ArgumentError.value(
       rightExclusive,
@@ -158,16 +157,6 @@ void _validateBounds({
       bottomExclusive,
       'bottomExclusive',
       'DirtyRegion.bottomExclusive must be greater than top.',
-    );
-  }
-}
-
-void _validateNonNegative(int value, String fieldName) {
-  if (value < 0) {
-    throw ArgumentError.value(
-      value,
-      fieldName,
-      'DirtyRegion.$fieldName must be greater than or equal to 0.',
     );
   }
 }

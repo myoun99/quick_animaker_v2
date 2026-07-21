@@ -1,5 +1,7 @@
 import 'rgba_color.dart';
 
+/// One pixel's blend result. Coordinates may be NEGATIVE — pasteboard
+/// painting reaches left/above the canvas origin.
 class BrushPixelBlendOperation {
   BrushPixelBlendOperation({
     required this.x,
@@ -7,8 +9,6 @@ class BrushPixelBlendOperation {
     required this.before,
     required this.after,
   }) {
-    _validateNonNegative(x, 'x');
-    _validateNonNegative(y, 'y');
     _validateColorChange(before: before, after: after);
   }
 
@@ -62,16 +62,6 @@ class BrushPixelBlendOperation {
   @override
   String toString() =>
       'BrushPixelBlendOperation(x: $x, y: $y, before: $before, after: $after)';
-}
-
-void _validateNonNegative(int value, String fieldName) {
-  if (value < 0) {
-    throw ArgumentError.value(
-      value,
-      fieldName,
-      'BrushPixelBlendOperation.$fieldName must be greater than or equal to 0.',
-    );
-  }
 }
 
 void _validateColorChange({

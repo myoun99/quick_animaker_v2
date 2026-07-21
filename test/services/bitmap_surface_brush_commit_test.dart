@@ -140,14 +140,34 @@ void main() {
       ]);
     });
 
-    test('ignores pixels outside canvas bounds', () {
+    test('paints pasteboard pixels beyond the canvas edge', () {
+      // Canvas 1×1 → pasteboard [-1, 2)². A square dab over [-1, 1)²
+      // paints all four pasteboard pixels; nothing clips at the canvas.
       final original = surface(width: 1, height: 1, tileSize: 1);
       final result = materializeBrushDabSequenceOnBitmapSurface(
         surface: original,
         sequence: BrushDabSequence([squareDab(centerX: 0, centerY: 0)]),
       );
 
-      expect(result.dirtyTiles.coords, {TileCoord(x: 0, y: 0)});
+      expect(result.dirtyTiles.coords, {
+        TileCoord(x: -1, y: -1),
+        TileCoord(x: 0, y: -1),
+        TileCoord(x: -1, y: 0),
+        TileCoord(x: 0, y: 0),
+      });
+      expect(result.surface.tiles.length, 4);
+    });
+
+    test('ignores pixels outside the pasteboard', () {
+      // Canvas 1×1 → pasteboard [-1, 2)². A square dab over [-2, 0)²
+      // clips to the pasteboard: only the [-1, 0)² pixel survives.
+      final original = surface(width: 1, height: 1, tileSize: 1);
+      final result = materializeBrushDabSequenceOnBitmapSurface(
+        surface: original,
+        sequence: BrushDabSequence([squareDab(centerX: -1, centerY: -1)]),
+      );
+
+      expect(result.dirtyTiles.coords, {TileCoord(x: -1, y: -1)});
       expect(result.surface.tiles.length, 1);
     });
 

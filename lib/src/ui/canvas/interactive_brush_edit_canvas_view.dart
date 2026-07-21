@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:flutter/services.dart';
 
+import '../../core/floor_math.dart';
 import '../../models/bitmap_surface.dart';
 import '../../services/input/pen_sidecars.dart';
 import '../brush/brush_tool_state.dart' show CanvasTool;
@@ -49,10 +50,11 @@ List<BitmapTile> settlingTilesForBounds({
     return surface.tiles.values.toList();
   }
   final tileSize = surface.tileSize;
-  final minX = bounds.left ~/ tileSize;
-  final maxX = (bounds.rightExclusive - 1) ~/ tileSize;
-  final minY = bounds.top ~/ tileSize;
-  final maxY = (bounds.bottomExclusive - 1) ~/ tileSize;
+  // floorDiv: stroke bounds reach negative (pasteboard) space.
+  final minX = floorDiv(bounds.left, tileSize);
+  final maxX = floorDiv(bounds.rightExclusive - 1, tileSize);
+  final minY = floorDiv(bounds.top, tileSize);
+  final maxY = floorDiv(bounds.bottomExclusive - 1, tileSize);
   return [
     for (final tile in surface.tiles.values)
       if (tile.coord.x >= minX &&
@@ -77,10 +79,11 @@ Map<TileCoord, BitmapTile?> preStrokeHoldTiles({
     return {for (final tile in surface.tiles.values) tile.coord: tile};
   }
   final tileSize = surface.tileSize;
-  final minX = bounds.left ~/ tileSize;
-  final maxX = (bounds.rightExclusive - 1) ~/ tileSize;
-  final minY = bounds.top ~/ tileSize;
-  final maxY = (bounds.bottomExclusive - 1) ~/ tileSize;
+  // floorDiv: stroke bounds reach negative (pasteboard) space.
+  final minX = floorDiv(bounds.left, tileSize);
+  final maxX = floorDiv(bounds.rightExclusive - 1, tileSize);
+  final minY = floorDiv(bounds.top, tileSize);
+  final maxY = floorDiv(bounds.bottomExclusive - 1, tileSize);
   final tiles = surface.tiles;
   return {
     for (var y = minY; y <= maxY; y += 1)

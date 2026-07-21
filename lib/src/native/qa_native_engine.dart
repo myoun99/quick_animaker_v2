@@ -1030,6 +1030,35 @@ class QaNativeEngine {
     );
   }
 
+  /// Frees the fill arenas when the rgb arena exceeds [keepBytes] — an
+  /// extended (pasteboard) fill grows them ~9× and they are high-water
+  /// pinned otherwise; the next canvas fill re-allocs at canvas size.
+  void trimFloodRasterArena({required int keepBytes}) {
+    if (_floodRgbLength <= keepBytes) {
+      return;
+    }
+    if (_floodRgb != nullptr) {
+      calloc.free(_floodRgb);
+      _floodRgb = nullptr;
+    }
+    _floodRgbLength = 0;
+    if (_floodFilled != nullptr) {
+      calloc.free(_floodFilled);
+      _floodFilled = nullptr;
+    }
+    _floodFilledLength = 0;
+    if (_gapFillable != nullptr) {
+      calloc.free(_gapFillable);
+      _gapFillable = nullptr;
+    }
+    _gapFillableLength = 0;
+    if (_floodComposed != nullptr) {
+      calloc.free(_floodComposed);
+      _floodComposed = nullptr;
+    }
+    _floodComposedLength = 0;
+  }
+
   /// Fills a rect of the native fill raster with the paper color
   /// (A-2c) — identical to the Dart paper loop.
   void fillPaperRect({

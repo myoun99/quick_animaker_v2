@@ -2,12 +2,12 @@ import 'dart:ffi' show Pointer, Uint8;
 import 'dart:math' as math;
 import 'dart:typed_data';
 
+import '../core/floor_math.dart';
 import '../models/bitmap_surface.dart';
 import '../models/brush_dab.dart';
 import '../models/brush_stamp_image.dart';
 import '../models/brush_tip_shape.dart';
 import '../models/canvas_point.dart';
-import '../models/canvas_size.dart';
 import '../models/cut.dart';
 import '../models/layer_id.dart';
 import '../models/tile_coord.dart';
@@ -23,6 +23,7 @@ class FloodFillOptions {
     this.expandPx = 1,
     this.antiAlias = true,
     this.gapClosePx = 0,
+    this.extendBeyondCanvas = false,
   });
 
   /// Max per-channel distance from the seed color that still fills.
@@ -42,17 +43,27 @@ class FloodFillOptions {
   /// needs the whole picture), so it costs more than a plain fill.
   final int gapClosePx;
 
+  /// Pasteboard fill: the fill boundary moves from the canvas rect to a
+  /// finite apron around it (see [pasteboardFillMargin]) so regions
+  /// crossing the canvas edge fill too. A flood that reaches the apron's
+  /// outer wall means the region is NOT closed — the fill aborts and the
+  /// caller reports the leak instead of flooding the surround
+  /// (the raster equivalent of Flash's closed-shape rule).
+  final bool extendBeyondCanvas;
+
   FloodFillOptions copyWith({
     int? tolerance,
     int? expandPx,
     bool? antiAlias,
     int? gapClosePx,
+    bool? extendBeyondCanvas,
   }) {
     return FloodFillOptions(
       tolerance: tolerance ?? this.tolerance,
       expandPx: expandPx ?? this.expandPx,
       antiAlias: antiAlias ?? this.antiAlias,
       gapClosePx: gapClosePx ?? this.gapClosePx,
+      extendBeyondCanvas: extendBeyondCanvas ?? this.extendBeyondCanvas,
     );
   }
 
@@ -62,11 +73,24 @@ class FloodFillOptions {
       other.tolerance == tolerance &&
       other.expandPx == expandPx &&
       other.antiAlias == antiAlias &&
-      other.gapClosePx == gapClosePx;
+      other.gapClosePx == gapClosePx &&
+      other.extendBeyondCanvas == extendBeyondCanvas;
 
   @override
-  int get hashCode => Object.hash(tolerance, expandPx, antiAlias, gapClosePx);
+  int get hashCode =>
+      Object.hash(tolerance, expandPx, antiAlias, gapClosePx, extendBeyondCanvas);
 }
+
+/// The extended fill's apron width per side: one canvas size, capped so
+/// the fill raster stays allocatable (a full 3×3 pasteboard raster of an
+/// 8K canvas would be gigabytes). Canvases at or under the cap get the
+/// exact pasteboard as their fill wall; larger ones get a generous apron
+/// — either way the wall is FINITE, which is what makes leak detection
+/// and "no infinite flood" structural.
+const int pasteboardFillMarginCap = 1024;
+
+int _pasteboardFillMargin(int canvasDimension) =>
+    math.min(canvasDimension, pasteboardFillMarginCap);
 
 /// The filled region as a coverage mask in canvas coordinates.
 class FloodFillRegion {
@@ -104,10 +128,22 @@ class LazyCanvasRasterRgb {
     required LayerFrameSurfaceResolver surfaceResolver,
     Set<LayerId> fxBypassedLayerIds = const {},
     int paperColor = canvasPaperColor,
+    bool extendBeyondCanvas = false,
   }) {
+    // Extended (pasteboard) fills widen the raster by a finite apron and
+    // shift its origin into negative world space; the default raster IS
+    // the canvas at origin (0, 0), byte-identical to before.
+    final marginX = extendBeyondCanvas
+        ? _pasteboardFillMargin(cut.canvasSize.width)
+        : 0;
+    final marginY = extendBeyondCanvas
+        ? _pasteboardFillMargin(cut.canvasSize.height)
+        : 0;
+    final rasterWidth = cut.canvasSize.width + marginX * 2;
+    final rasterHeight = cut.canvasSize.height + marginY * 2;
     final handles = QaNativeEngine.instance?.acquireFloodRaster(
-      width: cut.canvasSize.width,
-      height: cut.canvasSize.height,
+      width: rasterWidth,
+      height: rasterHeight,
       composeTileSize: _tileSize,
     );
     return LazyCanvasRasterRgb._(
@@ -117,6 +153,10 @@ class LazyCanvasRasterRgb {
       fxBypassedLayerIds: fxBypassedLayerIds,
       paperColor: paperColor,
       handles: handles,
+      originX: -marginX,
+      originY: -marginY,
+      rasterWidth: rasterWidth,
+      rasterHeight: rasterHeight,
     );
   }
 
@@ -127,21 +167,23 @@ class LazyCanvasRasterRgb {
     required Set<LayerId> fxBypassedLayerIds,
     required int paperColor,
     required QaFloodNativeHandles? handles,
+    required this.originX,
+    required this.originY,
+    required int rasterWidth,
+    required int rasterHeight,
   }) : nativeHandles = handles,
-       width = cut.canvasSize.width,
-       height = cut.canvasSize.height,
-       rgb =
-           handles?.rgbView ??
-           Uint8List(cut.canvasSize.width * cut.canvasSize.height * 4),
+       width = rasterWidth,
+       height = rasterHeight,
+       rgb = handles?.rgbView ?? Uint8List(rasterWidth * rasterHeight * 4),
        _paperR = (paperColor >> 16) & 0xFF,
        _paperG = (paperColor >> 8) & 0xFF,
        _paperB = paperColor & 0xFF,
-       _tilesX = (cut.canvasSize.width + _tileSize - 1) ~/ _tileSize,
+       _tilesX = (rasterWidth + _tileSize - 1) ~/ _tileSize,
        _composed =
            handles?.composedView ??
            Uint8List(
-             ((cut.canvasSize.width + _tileSize - 1) ~/ _tileSize) *
-                 ((cut.canvasSize.height + _tileSize - 1) ~/ _tileSize),
+             ((rasterWidth + _tileSize - 1) ~/ _tileSize) *
+                 ((rasterHeight + _tileSize - 1) ~/ _tileSize),
            ) {
     // Surfaces resolve ONCE (a cold resolve may replay paint commands).
     final entries = [
@@ -174,8 +216,14 @@ class LazyCanvasRasterRgb {
   /// [floodFillRegion] so the C stepper floods the same memory.
   final QaFloodNativeHandles? nativeHandles;
 
+  /// Raster dimensions (canvas + apron when extended).
   final int width;
   final int height;
+
+  /// World coordinate of raster (0, 0): (0, 0) for canvas fills,
+  /// negative for extended (pasteboard) fills. World = raster + origin.
+  final int originX;
+  final int originY;
 
   /// `width*height*4` RGBX bytes (X always 0 — R22-D SIMD contract);
   /// only composed tiles hold real pixels — read through
@@ -253,26 +301,32 @@ class LazyCanvasRasterRgb {
       final right = math.min(left + _tileSize, width);
       final bottom = math.min(top + _tileSize, height);
       final firstBlend = blends.length;
+      // Surface tiles live in WORLD space (raster + origin); bases pass
+      // back in raster space, so tile-local offsets stay (world - base).
+      final worldLeft = left + originX;
+      final worldTop = top + originY;
+      final worldRight = right + originX;
+      final worldBottom = bottom + originY;
       for (final layer in _layers) {
         final surface = layer.surface;
         final opacityInt = (layer.opacity * 255).round();
         final surfaceTileSize = surface.tileSize;
         for (
-          var ty = top ~/ surfaceTileSize;
-          ty <= (bottom - 1) ~/ surfaceTileSize;
+          var ty = floorDiv(worldTop, surfaceTileSize);
+          ty <= floorDiv(worldBottom - 1, surfaceTileSize);
           ty += 1
         ) {
           for (
-            var tx = left ~/ surfaceTileSize;
-            tx <= (right - 1) ~/ surfaceTileSize;
+            var tx = floorDiv(worldLeft, surfaceTileSize);
+            tx <= floorDiv(worldRight - 1, surfaceTileSize);
             tx += 1
           ) {
             final tile = surface.tiles[TileCoord(x: tx, y: ty)];
             if (tile == null) {
               continue;
             }
-            final baseX = tx * surfaceTileSize;
-            final baseY = ty * surfaceTileSize;
+            final baseX = tx * surfaceTileSize - originX;
+            final baseY = ty * surfaceTileSize - originY;
             blends.add((
               pixels: tile.nativePixels,
               tileSize: tile.size,
@@ -334,21 +388,21 @@ class LazyCanvasRasterRgb {
         final opacityInt = (layer.opacity * 255).round();
         final surfaceTileSize = surface.tileSize;
         for (
-          var ty = top ~/ surfaceTileSize;
-          ty <= (bottom - 1) ~/ surfaceTileSize;
+          var ty = floorDiv(top + originY, surfaceTileSize);
+          ty <= floorDiv(bottom + originY - 1, surfaceTileSize);
           ty += 1
         ) {
           for (
-            var tx = left ~/ surfaceTileSize;
-            tx <= (right - 1) ~/ surfaceTileSize;
+            var tx = floorDiv(left + originX, surfaceTileSize);
+            tx <= floorDiv(right + originX - 1, surfaceTileSize);
             tx += 1
           ) {
             final tile = surface.tiles[TileCoord(x: tx, y: ty)];
             if (tile == null) {
               continue;
             }
-            final baseX = tx * surfaceTileSize;
-            final baseY = ty * surfaceTileSize;
+            final baseX = tx * surfaceTileSize - originX;
+            final baseY = ty * surfaceTileSize - originY;
             native.fillComposeTile(
               handles: handles,
               tilePixels: tile.nativePixels,
@@ -388,13 +442,13 @@ class LazyCanvasRasterRgb {
       final opacityInt = (layer.opacity * 255).round();
       final surfaceTileSize = surface.tileSize;
       for (
-        var ty = top ~/ surfaceTileSize;
-        ty <= (bottom - 1) ~/ surfaceTileSize;
+        var ty = floorDiv(top + originY, surfaceTileSize);
+        ty <= floorDiv(bottom + originY - 1, surfaceTileSize);
         ty += 1
       ) {
         for (
-          var tx = left ~/ surfaceTileSize;
-          tx <= (right - 1) ~/ surfaceTileSize;
+          var tx = floorDiv(left + originX, surfaceTileSize);
+          tx <= floorDiv(right + originX - 1, surfaceTileSize);
           tx += 1
         ) {
           final tile = surface.tiles[TileCoord(x: tx, y: ty)];
@@ -403,8 +457,8 @@ class LazyCanvasRasterRgb {
           }
           // Snapshot the tile's buffer ONCE (the getter copies).
           final pixels = tile.pixels;
-          final baseX = tx * surfaceTileSize;
-          final baseY = ty * surfaceTileSize;
+          final baseX = tx * surfaceTileSize - originX;
+          final baseY = ty * surfaceTileSize - originY;
           final clipLeft = math.max(left, baseX);
           final clipRight = math.min(right, baseX + surfaceTileSize);
           final clipTop = math.max(top, baseY);
@@ -981,7 +1035,10 @@ void _chamferDistance(
 /// The whole P6 tap: compose → fill from [point] → the region as ONE
 /// mask-tipped dab ("fill = one dab"), committed through the exact stroke
 /// funnel — three-route parity, undo and .qap serialization come free.
-/// Null when nothing fills (seed off canvas).
+/// Null when nothing fills (seed off the fill raster), or when an
+/// EXTENDED fill's flood reaches the apron wall — the region is not
+/// closed; [onOpenRegion] fires so the UI can say so instead of silently
+/// flooding the surround.
 BrushDab? buildFillDab({
   required Cut cut,
   required int frameIndex,
@@ -991,8 +1048,8 @@ BrushDab? buildFillDab({
   Set<LayerId> fxBypassedLayerIds = const {},
   FloodFillOptions options = const FloodFillOptions(),
   int paperColor = canvasPaperColor,
+  void Function()? onOpenRegion,
 }) {
-  final CanvasSize canvasSize = cut.canvasSize;
   final raster = labProbe(
     'fill.raster-ctor',
     () => LazyCanvasRasterRgb(
@@ -1001,24 +1058,48 @@ BrushDab? buildFillDab({
       surfaceResolver: surfaceResolver,
       fxBypassedLayerIds: fxBypassedLayerIds,
       paperColor: paperColor,
+      extendBeyondCanvas: options.extendBeyondCanvas,
     ),
   );
   final region = labProbe(
     'fill.flood',
     () => floodFillRegion(
       rgb: raster.rgb,
-      width: canvasSize.width,
-      height: canvasSize.height,
-      seedX: point.x.floor(),
-      seedY: point.y.floor(),
+      width: raster.width,
+      height: raster.height,
+      seedX: point.x.floor() - raster.originX,
+      seedY: point.y.floor() - raster.originY,
       options: options,
       ensureComposed: raster.ensureComposedAt,
       ensureComposedBatch: raster.ensureComposedBatch,
       nativeHandles: raster.nativeHandles,
     ),
   );
+  if (options.extendBeyondCanvas) {
+    // The extended raster grew the engine's fill arenas ~9×; give the
+    // memory back once this tap's flood is done (the next canvas fill
+    // re-allocs canvas size).
+    QaNativeEngine.instance?.trimFloodRasterArena(
+      keepBytes: cut.canvasSize.width * cut.canvasSize.height * 4,
+    );
+  }
   if (region == null) {
     return null;
+  }
+  if (options.extendBeyondCanvas) {
+    // Leak detection: a flood that reached the apron's outer wall means
+    // the region is OPEN (nothing bounded it before the wall). Refuse
+    // the fill — the raster analogue of Flash refusing to fill an
+    // unclosed shape.
+    final reachedWall =
+        region.left <= 0 ||
+        region.top <= 0 ||
+        region.left + region.width >= raster.width ||
+        region.top + region.height >= raster.height;
+    if (reachedWall) {
+      onOpenRegion?.call();
+      return null;
+    }
   }
 
   // The fill lands as a COLOR STAMP (R15-⑥): rgba = fill color × mask
@@ -1061,9 +1142,10 @@ BrushDab? buildFillDab({
     return bytes;
   });
   return BrushDab(
+    // Region coords are raster-space; the dab lands in WORLD space.
     center: CanvasPoint(
-      x: region.left + region.width / 2,
-      y: region.top + region.height / 2,
+      x: region.left + raster.originX + region.width / 2,
+      y: region.top + raster.originY + region.height / 2,
     ),
     color: color,
     size: math.max(region.width, region.height).toDouble(),

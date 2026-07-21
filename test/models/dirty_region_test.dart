@@ -51,28 +51,39 @@ void main() {
       );
     });
 
-    test('negative left throws', () {
-      expect(
-        () => DirtyRegion(
-          left: -1,
-          top: 0,
-          rightExclusive: 1,
-          bottomExclusive: 1,
-        ),
-        throwsArgumentError,
+    test('negative left/top are allowed (pasteboard space)', () {
+      final region = DirtyRegion(
+        left: -300,
+        top: -10,
+        rightExclusive: 1,
+        bottomExclusive: 1,
       );
+      expect(region.left, -300);
+      expect(region.top, -10);
+      expect(region.width, 301);
+      expect(region.height, 11);
     });
 
-    test('negative top throws', () {
-      expect(
-        () => DirtyRegion(
-          left: 0,
-          top: -1,
-          rightExclusive: 1,
-          bottomExclusive: 1,
-        ),
-        throwsArgumentError,
+    test('toTileCoords floor-divides negative coordinates', () {
+      final region = DirtyRegion(
+        left: -1,
+        top: -257,
+        rightExclusive: 1,
+        bottomExclusive: 1,
       );
+      final coords = region.toTileCoords(tileSize: 256);
+      expect(
+        coords,
+        containsAll([
+          TileCoord(x: -1, y: -2),
+          TileCoord(x: -1, y: -1),
+          TileCoord(x: -1, y: 0),
+          TileCoord(x: 0, y: -2),
+          TileCoord(x: 0, y: -1),
+          TileCoord(x: 0, y: 0),
+        ]),
+      );
+      expect(coords.length, 6);
     });
 
     test('rightExclusive <= left throws', () {
@@ -101,18 +112,12 @@ void main() {
       );
     });
 
-    test('fromXYWH rejects negative x', () {
-      expect(
-        () => DirtyRegion.fromXYWH(x: -1, y: 0, width: 1, height: 1),
-        throwsArgumentError,
-      );
-    });
-
-    test('fromXYWH rejects negative y', () {
-      expect(
-        () => DirtyRegion.fromXYWH(x: 0, y: -1, width: 1, height: 1),
-        throwsArgumentError,
-      );
+    test('fromXYWH accepts negative x/y (pasteboard space)', () {
+      final region = DirtyRegion.fromXYWH(x: -5, y: -7, width: 2, height: 3);
+      expect(region.left, -5);
+      expect(region.top, -7);
+      expect(region.rightExclusive, -3);
+      expect(region.bottomExclusive, -4);
     });
 
     test('fromXYWH rejects zero width', () {

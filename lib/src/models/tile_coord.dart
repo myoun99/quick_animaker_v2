@@ -1,18 +1,24 @@
+import '../core/floor_math.dart';
+
+/// A tile grid coordinate. Coordinates may be NEGATIVE: the pasteboard
+/// extends one canvas size beyond every canvas edge, so tiles left/above
+/// the canvas origin live at negative coords. The canvas itself always
+/// starts at tile (0, 0).
 class TileCoord {
-  TileCoord({required this.x, required this.y}) {
-    _validateNonNegative(x, 'x');
-    _validateNonNegative(y, 'y');
-  }
+  TileCoord({required this.x, required this.y});
 
   factory TileCoord.fromPixel({
     required int pixelX,
     required int pixelY,
     required int tileSize,
   }) {
-    _validateNonNegative(pixelX, 'pixelX');
-    _validateNonNegative(pixelY, 'pixelY');
     _validatePositive(tileSize, 'tileSize');
-    return TileCoord(x: pixelX ~/ tileSize, y: pixelY ~/ tileSize);
+    // Floor division, NOT `~/`: truncation would map pixel -1 to tile 0
+    // instead of tile -1.
+    return TileCoord(
+      x: floorDiv(pixelX, tileSize),
+      y: floorDiv(pixelY, tileSize),
+    );
   }
 
   final int x;
@@ -38,16 +44,6 @@ class TileCoord {
 
   @override
   String toString() => 'TileCoord(x: $x, y: $y)';
-}
-
-void _validateNonNegative(int value, String fieldName) {
-  if (value < 0) {
-    throw ArgumentError.value(
-      value,
-      fieldName,
-      'TileCoord.$fieldName must be greater than or equal to 0.',
-    );
-  }
 }
 
 void _validatePositive(int value, String fieldName) {

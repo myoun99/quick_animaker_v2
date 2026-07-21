@@ -398,6 +398,16 @@ class _FillSettings extends StatelessWidget {
           value: options.antiAlias,
           onChanged: (value) => onChanged(options.copyWith(antiAlias: value)),
         ),
+        SwitchListTile(
+          key: const ValueKey<String>('fill-extend-beyond-canvas-switch'),
+          dense: true,
+          contentPadding: EdgeInsets.zero,
+          title: const Text('Fill Beyond Canvas'),
+          subtitle: const Text('Open regions refuse to fill'),
+          value: options.extendBeyondCanvas,
+          onChanged: (value) =>
+              onChanged(options.copyWith(extendBeyondCanvas: value)),
+        ),
       ],
     );
   }

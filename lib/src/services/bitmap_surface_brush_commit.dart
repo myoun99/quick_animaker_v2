@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 import 'dart:typed_data';
 
+import '../core/floor_math.dart';
 import '../models/bitmap_surface.dart';
 import '../models/bitmap_tile.dart';
 import '../models/brush_dab.dart';
@@ -8,8 +9,10 @@ import '../models/brush_dab_sequence.dart';
 import '../models/brush_stamp_image.dart';
 import '../models/brush_tip_shape.dart';
 import '../models/canvas_point.dart';
+import '../models/canvas_size.dart';
 import '../models/dirty_region.dart';
 import '../models/dirty_tile_set.dart';
+import '../models/pasteboard_bounds.dart';
 import '../models/tile_coord.dart';
 import '../native/qa_native_engine.dart';
 import '../ui/dev_profile.dart';
@@ -41,8 +44,14 @@ BrushSurfaceMaterialization materializeBrushDabSequenceOnBitmapSurface({
   required BitmapSurface surface,
   required BrushDabSequence sequence,
 }) {
-  final canvasWidth = surface.canvasSize.width;
-  final canvasHeight = surface.canvasSize.height;
+  // Strokes clip at the PASTEBOARD (canvas + one canvas size in every
+  // direction), not the canvas — drawing off the stage is the point.
+  // Composite/export raster at canvas size, which crops for free.
+  final canvasSize = surface.canvasSize;
+  final pasteboardLeft = canvasSize.pasteboardLeft;
+  final pasteboardTop = canvasSize.pasteboardTop;
+  final pasteboardRight = canvasSize.pasteboardRightExclusive;
+  final pasteboardBottom = canvasSize.pasteboardBottomExclusive;
   final tileSize = surface.tileSize;
   final tileByteLength = tileSize * tileSize * BitmapTile.bytesPerPixel;
 
@@ -101,8 +110,7 @@ BrushSurfaceMaterialization materializeBrushDabSequenceOnBitmapSurface({
       _blendStampDab(
         dab: dab,
         stamp: stamp,
-        canvasWidth: canvasWidth,
-        canvasHeight: canvasHeight,
+        canvasSize: canvasSize,
         tileSize: tileSize,
         scratchBufferFor: scratchBufferFor,
         nativeTileFor: nativeTiles == null
@@ -162,10 +170,10 @@ BrushSurfaceMaterialization materializeBrushDabSequenceOnBitmapSurface({
     final dabOpacity = dab.opacity;
     final dabFlow = dab.flow;
 
-    final top = region.top;
-    final bottomExclusive = math.min(region.bottomExclusive, canvasHeight);
-    final left = region.left;
-    final rightExclusive = math.min(region.rightExclusive, canvasWidth);
+    final top = math.max(region.top, pasteboardTop);
+    final bottomExclusive = math.min(region.bottomExclusive, pasteboardBottom);
+    final left = math.max(region.left, pasteboardLeft);
+    final rightExclusive = math.min(region.rightExclusive, pasteboardRight);
     if (rightExclusive <= left || bottomExclusive <= top) {
       continue;
     }
@@ -247,8 +255,8 @@ BrushSurfaceMaterialization materializeBrushDabSequenceOnBitmapSurface({
             offset: 0.0,
           );
 
-    final tileXStart = left ~/ tileSize;
-    final tileXEnd = (rightExclusive - 1) ~/ tileSize;
+    final tileXStart = floorDiv(left, tileSize);
+    final tileXEnd = floorDiv(rightExclusive - 1, tileSize);
 
     // Native kernel (R18 A-1): identical pixel visits and float math, one
     // call per (dab, tile) straight into the native-backed scratch. The
@@ -315,8 +323,8 @@ BrushSurfaceMaterialization materializeBrushDabSequenceOnBitmapSurface({
       // One BATCH call per dab (R18 A-3a): the spans fan out across the
       // C worker pool — tiles are disjoint, so the result is
       // byte-identical to the sequential per-tile loop.
-      final tileYStart = top ~/ tileSize;
-      final tileYEnd = (bottomExclusive - 1) ~/ tileSize;
+      final tileYStart = floorDiv(top, tileSize);
+      final tileYEnd = floorDiv(bottomExclusive - 1, tileSize);
       final batchCoords = <TileCoord>[];
       native.ensureTileSpanBatch(
         (tileYEnd - tileYStart + 1) * (tileXEnd - tileXStart + 1),
@@ -359,7 +367,7 @@ BrushSurfaceMaterialization materializeBrushDabSequenceOnBitmapSurface({
     }
 
     for (var y = top; y < bottomExclusive; y += 1) {
-      final tileY = y ~/ tileSize;
+      final tileY = floorDiv(y, tileSize);
       final localRowOffset = (y - tileY * tileSize) * tileSize;
       final dy = y + 0.5 - centerY;
       final dySquared = dy * dy;
@@ -626,8 +634,7 @@ BrushSurfaceMaterialization materializeBrushDabSequenceOnBitmapSurface({
 void _blendStampDab({
   required BrushDab dab,
   required BrushStampImage stamp,
-  required int canvasWidth,
-  required int canvasHeight,
+  required CanvasSize canvasSize,
   required int tileSize,
   required Uint8List Function(TileCoord) scratchBufferFor,
   required QaNativeTileBuffer Function(TileCoord)? nativeTileFor,
@@ -639,10 +646,18 @@ void _blendStampDab({
   }
   final stampLeft = (dab.center.x - stamp.width / 2).round();
   final stampTop = (dab.center.y - stamp.height / 2).round();
-  final left = math.max(0, stampLeft);
-  final top = math.max(0, stampTop);
-  final rightExclusive = math.min(canvasWidth, stampLeft + stamp.width);
-  final bottomExclusive = math.min(canvasHeight, stampTop + stamp.height);
+  // Pasteboard clip, NOT canvas: a selection dropped past the stage edge
+  // keeps its pixels (they land on the pasteboard instead of vanishing).
+  final left = math.max(canvasSize.pasteboardLeft, stampLeft);
+  final top = math.max(canvasSize.pasteboardTop, stampTop);
+  final rightExclusive = math.min(
+    canvasSize.pasteboardRightExclusive,
+    stampLeft + stamp.width,
+  );
+  final bottomExclusive = math.min(
+    canvasSize.pasteboardBottomExclusive,
+    stampTop + stamp.height,
+  );
   if (rightExclusive <= left || bottomExclusive <= top) {
     return;
   }
@@ -663,10 +678,10 @@ void _blendStampDab({
     // One BATCH call for the whole stamp (R18 A-3a): spans fan out
     // across the C worker pool; disjoint tiles keep it byte-identical
     // to the sequential loop.
-    final tileXStart = left ~/ tileSize;
-    final tileXEnd = (rightExclusive - 1) ~/ tileSize;
-    final tileYStart = top ~/ tileSize;
-    final tileYEnd = (bottomExclusive - 1) ~/ tileSize;
+    final tileXStart = floorDiv(left, tileSize);
+    final tileXEnd = floorDiv(rightExclusive - 1, tileSize);
+    final tileYStart = floorDiv(top, tileSize);
+    final tileYEnd = floorDiv(bottomExclusive - 1, tileSize);
     final batchCoords = <TileCoord>[];
     labProbe('stamp.stage', () {
       native!.ensureTileSpanBatch(
@@ -713,11 +728,11 @@ void _blendStampDab({
   }
 
   for (var y = top; y < bottomExclusive; y += 1) {
-    final tileY = y ~/ tileSize;
+    final tileY = floorDiv(y, tileSize);
     final localRowOffset = (y - tileY * tileSize) * tileSize;
     final stampRowOffset = (y - stampTop) * stamp.width;
-    final tileXStart = left ~/ tileSize;
-    final tileXEnd = (rightExclusive - 1) ~/ tileSize;
+    final tileXStart = floorDiv(left, tileSize);
+    final tileXEnd = floorDiv(rightExclusive - 1, tileSize);
 
     for (var tileX = tileXStart; tileX <= tileXEnd; tileX += 1) {
       final coord = TileCoord(x: tileX, y: tileY);

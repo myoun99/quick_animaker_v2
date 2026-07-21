@@ -1,11 +1,11 @@
+/// One covered pixel of a dab. Coordinates may be NEGATIVE — pasteboard
+/// painting reaches left/above the canvas origin.
 class BrushPixelCoverage {
   BrushPixelCoverage({
     required this.x,
     required this.y,
     required this.coverage,
   }) {
-    _validateNonNegative(x, 'x');
-    _validateNonNegative(y, 'y');
     _validateCoverage(coverage);
   }
 
@@ -44,16 +44,6 @@ class BrushPixelCoverage {
 
   @override
   String toString() => 'BrushPixelCoverage(x: $x, y: $y, coverage: $coverage)';
-}
-
-void _validateNonNegative(int value, String fieldName) {
-  if (value < 0) {
-    throw ArgumentError.value(
-      value,
-      fieldName,
-      'BrushPixelCoverage.$fieldName must be greater than or equal to 0.',
-    );
-  }
 }
 
 void _validateCoverage(double value) {
