@@ -65,6 +65,8 @@ class ConformAudio {
     required this.channels,
     required this.sampleRate,
     this.fingerprint,
+    this.speedNumerator = 1,
+    this.speedDenominator = 1,
   });
 
   /// Interleaved by channel, normalized to [-1, 1].
@@ -81,6 +83,13 @@ class ConformAudio {
   /// Null when the file carries no `qacf` chunk (hand-made WAV, or one
   /// written by another tool).
   final ConformSourceFingerprint? fingerprint;
+
+  /// The audio speed this conform was rendered at (EXPORT-AUDIO ④): 1001/
+  /// 1000 is the NTSC pull that keeps frame alignment across a 23.976↔24
+  /// change. Unity on every conform written before the field existed —
+  /// absent keys read as 1/1.
+  final int speedNumerator;
+  final int speedDenominator;
 
   /// Samples per channel.
   int get length => channels <= 0 ? 0 : samples.length ~/ channels;
@@ -119,6 +128,8 @@ Uint8List encodeConformWav({
   required int channels,
   required int sampleRate,
   ConformSourceFingerprint? fingerprint,
+  int speedNumerator = 1,
+  int speedDenominator = 1,
 }) {
   if (channels <= 0) {
     throw const ConformFormatException('channels must be positive');
@@ -134,6 +145,13 @@ Uint8List encodeConformWav({
             jsonEncode({
               'sourceLength': fingerprint.sourceLength,
               'sourceModifiedMicros': fingerprint.sourceModifiedMicros,
+              // Unity speed stays out of the JSON: pre-④ conforms carry
+              // no keys, and byte-identical output for the common case is
+              // worth keeping.
+              if (speedNumerator != speedDenominator) ...{
+                'speedNumerator': speedNumerator,
+                'speedDenominator': speedDenominator,
+              },
             }),
           ),
         );
@@ -219,6 +237,8 @@ ConformAudio decodeConformWav(Uint8List bytes) {
   int? dataStart;
   int? dataLength;
   ConformSourceFingerprint? fingerprint;
+  var speedNumerator = 1;
+  var speedDenominator = 1;
 
   var offset = 12;
   while (offset + 8 <= bytes.length) {
@@ -250,6 +270,8 @@ ConformAudio decodeConformWav(Uint8List bytes) {
             sourceLength: decoded['sourceLength'] as int,
             sourceModifiedMicros: decoded['sourceModifiedMicros'] as int,
           );
+          speedNumerator = (decoded['speedNumerator'] as int?) ?? 1;
+          speedDenominator = (decoded['speedDenominator'] as int?) ?? 1;
         } on Object {
           // An unreadable provenance chunk means "unknown", never a
           // failed open: the audio is still perfectly good.
@@ -298,6 +320,8 @@ ConformAudio decodeConformWav(Uint8List bytes) {
     channels: channels,
     sampleRate: sampleRate,
     fingerprint: fingerprint,
+    speedNumerator: speedNumerator,
+    speedDenominator: speedDenominator,
   );
 }
 

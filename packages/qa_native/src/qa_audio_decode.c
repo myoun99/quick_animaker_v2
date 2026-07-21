@@ -25,6 +25,23 @@
 #define QA_EXPORT __attribute__((visibility("default")))
 #endif
 
+// System headers come BEFORE the vendored decoders: stb_vorbis defines
+// short helper macros that must not be in scope when winnt.h/mfapi.h
+// parse (the Media Foundation implementation itself sits further down).
+#if defined(_WIN32)
+#define COBJMACROS
+#define WIN32_LEAN_AND_MEAN
+#include <windows.h>
+#include <shlwapi.h>
+#include <mfapi.h>
+#include <mfidl.h>
+#include <mfreadwrite.h>
+#elif defined(__APPLE__)
+#include <AudioToolbox/AudioToolbox.h>
+#elif defined(__ANDROID__)
+#include <dlfcn.h>
+#endif
+
 // One implementation of each, here and nowhere else.
 #define DR_WAV_IMPLEMENTATION
 #define DR_FLAC_IMPLEMENTATION
@@ -41,6 +58,12 @@
 #include "third_party/dr_libs/dr_mp3.h"
 #include "third_party/dr_libs/dr_wav.h"
 
+// ogg/vorbis — the one container the dr_libs family does not read. Same
+// vendoring rules (see third_party/stb/PROVENANCE.md): unmodified, pinned,
+// public domain.
+#define STB_VORBIS_NO_STDIO
+#include "third_party/stb/stb_vorbis.c"
+
 // Which decoder produced the samples — reported back so the caller can say
 // so in a log, and so a test can prove the right one was chosen.
 #define QA_AUDIO_FORMAT_UNKNOWN 0
@@ -52,6 +75,9 @@
 // dr_libs deliberately does not (the decided format table: dr_libs is the
 // single realtime path, AAC rides the OS).
 #define QA_AUDIO_FORMAT_OS 4
+// ogg/vorbis through the vendored stb_vorbis (EXPORT-AUDIO round — the
+// last format that used to lean on ffmpeg).
+#define QA_AUDIO_FORMAT_VORBIS 5
 
 // A growing PCM accumulator for the OS decoders: they hand back audio in
 // codec-sized chunks, and none of them says the total up front.
@@ -97,18 +123,11 @@ static int qa_pcm_append(qa_pcm_accumulator* accumulator,
 
 #if defined(_WIN32)
 
-// Media Foundation source reader over an in-memory stream. MF inserts the
-// AAC (or WMA, ...) decoder and its float converter for us; the output
-// media type asks for float PCM and leaves rate/channels at the source's
-// own, which is exactly the conform contract.
-#define COBJMACROS
-#define WIN32_LEAN_AND_MEAN
-#include <windows.h>
-#include <shlwapi.h>
-#include <mfapi.h>
-#include <mfidl.h>
-#include <mfreadwrite.h>
-
+// Media Foundation source reader over an in-memory stream (headers at the
+// top of the file). MF inserts the AAC (or WMA, ...) decoder and its
+// float converter for us; the output media type asks for float PCM and
+// leaves rate/channels at the source's own, which is exactly the conform
+// contract.
 static int32_t qa_audio_decode_os_memory(const uint8_t* data,
                                          int64_t size,
                                          float** out_samples,
@@ -250,11 +269,10 @@ done:
 
 #elif defined(__APPLE__)
 
-// AudioToolbox over memory callbacks. ExtAudioFile fronts the OS codec
-// (AAC, ALAC, ...) and converts to the client format we ask for: float32
-// interleaved at the file's own rate and channel count.
-#include <AudioToolbox/AudioToolbox.h>
-
+// AudioToolbox over memory callbacks (header at the top of the file).
+// ExtAudioFile fronts the OS codec (AAC, ALAC, ...) and converts to the
+// client format we ask for: float32 interleaved at the file's own rate
+// and channel count.
 typedef struct {
   const uint8_t* data;
   int64_t size;
@@ -374,13 +392,11 @@ done:
 
 #elif defined(__ANDROID__)
 
-// NDK MediaCodec + MediaExtractor, resolved with dlsym rather than linked:
-// the in-memory AMediaDataSource entry points are API 23+, and dlsym
-// returning NULL on an older device IS the graceful capability check — no
-// weak-symbol machinery, no crash, the file just reports undecodable and
-// rides the fallback.
-#include <dlfcn.h>
-
+// NDK MediaCodec + MediaExtractor, resolved with dlsym rather than linked
+// (dlfcn.h at the top of the file): the in-memory AMediaDataSource entry
+// points are API 23+, and dlsym returning NULL on an older device IS the
+// graceful capability check — no weak-symbol machinery, no crash, the
+// file just reports undecodable and rides the fallback.
 typedef struct AMediaExtractor AMediaExtractor;
 typedef struct AMediaDataSource AMediaDataSource;
 typedef struct AMediaFormat AMediaFormat;
@@ -765,6 +781,50 @@ QA_EXPORT int32_t qa_audio_decode_memory(
       return QA_AUDIO_FORMAT_FLAC;
     }
   }
+  // Vorbis sits BEFORE mp3 on purpose: the OggS magic makes stb_vorbis a
+  // strict recognizer, while dr_mp3's frame-sync scan is the most
+  // permissive of the bunch — it must always try LAST of the bundled
+  // decoders or it will happily "decode" someone else's container.
+  if (size <= 0x7FFFFFFF) {
+    int vorbis_error = 0;
+    stb_vorbis* vorbis =
+        stb_vorbis_open_memory(data, (int)size, &vorbis_error, NULL);
+    if (vorbis != NULL) {
+      const stb_vorbis_info info = stb_vorbis_get_info(vorbis);
+      if (info.channels > 0 && info.sample_rate > 0) {
+        qa_pcm_accumulator pcm = {NULL, 0, 0};
+        enum { kVorbisChunkFrames = 4096 };
+        float* chunk = (float*)malloc(
+            (size_t)kVorbisChunkFrames * info.channels * sizeof(float));
+        int healthy = chunk != NULL;
+        while (healthy) {
+          const int frames = stb_vorbis_get_samples_float_interleaved(
+              vorbis, info.channels, chunk,
+              kVorbisChunkFrames * info.channels);
+          if (frames <= 0) {
+            break;
+          }
+          if (!qa_pcm_append(&pcm, chunk,
+                             (size_t)frames * info.channels * sizeof(float))) {
+            healthy = 0;
+          }
+        }
+        free(chunk);
+        stb_vorbis_close(vorbis);
+        if (healthy && pcm.size >= sizeof(float) * (size_t)info.channels) {
+          *out_samples = (float*)pcm.bytes;
+          *out_frame_count =
+              (int64_t)(pcm.size / (sizeof(float) * (size_t)info.channels));
+          *out_channels = info.channels;
+          *out_sample_rate = (int32_t)info.sample_rate;
+          return QA_AUDIO_FORMAT_VORBIS;
+        }
+        free(pcm.bytes);
+      } else {
+        stb_vorbis_close(vorbis);
+      }
+    }
+  }
   {
     drmp3_config config;
     memset(&config, 0, sizeof(config));
@@ -801,7 +861,7 @@ QA_EXPORT void qa_audio_decode_free(float* samples) {
 // was compiled out.
 QA_EXPORT int32_t qa_audio_decode_formats(void) {
   int32_t formats = (1 << QA_AUDIO_FORMAT_WAV) | (1 << QA_AUDIO_FORMAT_FLAC) |
-                    (1 << QA_AUDIO_FORMAT_MP3);
+                    (1 << QA_AUDIO_FORMAT_MP3) | (1 << QA_AUDIO_FORMAT_VORBIS);
 #if defined(_WIN32) || defined(__APPLE__) || defined(__ANDROID__)
   formats |= 1 << QA_AUDIO_FORMAT_OS;
 #endif

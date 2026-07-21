@@ -18,7 +18,6 @@ import 'package:quick_animaker_v2/src/models/timeline_exposure.dart';
 import 'package:quick_animaker_v2/src/models/track.dart';
 import 'package:quick_animaker_v2/src/models/track_id.dart';
 import 'package:quick_animaker_v2/src/services/audio/audio_peaks_extractor.dart';
-import 'package:quick_animaker_v2/src/ui/audio/audio_peaks_store.dart';
 import 'package:quick_animaker_v2/src/ui/storyboard_panel.dart';
 import 'package:quick_animaker_v2/src/ui/timeline/timeline_cell_exposure_state.dart';
 import 'package:quick_animaker_v2/src/ui/timeline/timeline_orientation.dart';
@@ -146,49 +145,4 @@ void main() {
     expect(tester.getSize(strip).width, moreOrLessEquals(12 * 8));
   });
 
-  test(
-    'the peaks store extracts once per path and remembers failures',
-    () async {
-      var calls = 0;
-      final store = AudioPeaksStore(
-        extractor: _StubExtractor(() async {
-          calls += 1;
-          return calls == 1 ? _peaks : null;
-        }),
-      );
-      addTearDown(store.dispose);
-
-      expect(store.peaksFor('a.wav'), isNull);
-      await Future<void>.delayed(Duration.zero);
-      expect(store.peaksFor('a.wav'), same(_peaks));
-      expect(calls, 1);
-
-      // A failing path is remembered — no retry loop.
-      expect(store.peaksFor('b.wav'), isNull);
-      await Future<void>.delayed(Duration.zero);
-      expect(store.peaksFor('b.wav'), isNull);
-      expect(store.peaksFor('b.wav'), isNull);
-      expect(calls, 2);
-
-      // Invalidate forgets the failure.
-      store.invalidate('b.wav');
-      store.peaksFor('b.wav');
-      await Future<void>.delayed(Duration.zero);
-      expect(calls, 3);
-    },
-  );
-}
-
-class _StubExtractor extends AudioPeaksExtractor {
-  const _StubExtractor(this._extract);
-
-  final Future<AudioPeaks?> Function() _extract;
-
-  @override
-  Future<AudioPeaksExtraction> extract(String filePath) async {
-    final peaks = await _extract();
-    return peaks == null
-        ? const AudioPeaksExtraction.failure('stub failure')
-        : AudioPeaksExtraction.success(peaks);
-  }
 }

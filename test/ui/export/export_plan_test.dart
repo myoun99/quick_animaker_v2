@@ -8,7 +8,6 @@ import 'package:quick_animaker_v2/src/models/frame_id.dart';
 import 'package:quick_animaker_v2/src/models/layer.dart';
 import 'package:quick_animaker_v2/src/models/layer_id.dart';
 import 'package:quick_animaker_v2/src/models/project.dart';
-import 'package:quick_animaker_v2/src/models/project_frame_rate.dart';
 import 'package:quick_animaker_v2/src/models/project_id.dart';
 import 'package:quick_animaker_v2/src/models/track.dart';
 import 'package:quick_animaker_v2/src/models/track_id.dart';
@@ -16,11 +15,9 @@ import 'package:quick_animaker_v2/src/models/audio_clip.dart';
 import 'package:quick_animaker_v2/src/models/layer_kind.dart';
 import 'package:quick_animaker_v2/src/models/timeline_exposure.dart';
 import 'package:quick_animaker_v2/src/ui/export/export_plan.dart';
-import 'package:quick_animaker_v2/src/ui/export/video_export_service.dart';
+import 'package:quick_animaker_v2/src/ui/playback/audio_playback_schedule.dart';
 
 void main() {
-  const rate10 = ProjectFrameRate.integer(10);
-
   Frame frame(String id) =>
       Frame(id: FrameId(id), duration: 1, strokes: const []);
 
@@ -407,9 +404,10 @@ void main() {
       audioClips: [AudioClip(filePath: file, frameId: FrameId('$id-frame'))],
     );
 
-    // fps 10 for readable seconds. Cut a: 10 frames, blocks at 0 (full cut)
-    // and 6..10. Cut b: 20 frames, block at local 3 (global 13 in all-cuts
-    // order) running to the cut end.
+    // The plan is pure frames now (the mix renderer does the one sample
+    // conversion). Cut a: 10 frames, blocks at 0 (full cut) and 6..10.
+    // Cut b: 20 frames, block at local 3 (global 13 in all-cuts order)
+    // running to the cut end.
     Cut cutA() => cut(
       'a',
       duration: 10,
@@ -451,7 +449,7 @@ void main() {
         range: ExportRange.activeCut,
       );
 
-      final clips = buildExportAudioPlan(plan: plan, frameRate: rate10);
+      final clips = buildExportAudioPlan(plan: plan);
 
       expect(clips.map((clip) => clip.filePath), ['b.wav']);
     });
@@ -469,24 +467,16 @@ void main() {
         range: ExportRange.allCuts,
       );
 
-      final clips = buildExportAudioPlan(plan: plan, frameRate: rate10);
+      final clips = buildExportAudioPlan(plan: plan);
 
       expect(clips, const [
         // a.wav fills its whole cut.
-        ExportAudioClip(filePath: 'a.wav', durationSeconds: 1.0),
+        ScheduledAudioClip(filePath: 'a.wav', startFrame: 0, endFrameExclusive: 10),
         // b.wav starts at frame 6 and caps at cut a's end (frame 10).
-        ExportAudioClip(
-          filePath: 'b.wav',
-          delaySeconds: 0.6,
-          durationSeconds: 0.4,
-        ),
+        ScheduledAudioClip(filePath: 'b.wav', startFrame: 6, endFrameExclusive: 10),
         // c.wav sits at global frame 13 (cut b local 3) and never bleeds
         // past cut b.
-        ExportAudioClip(
-          filePath: 'c.wav',
-          delaySeconds: 1.3,
-          durationSeconds: 1.7,
-        ),
+        ScheduledAudioClip(filePath: 'c.wav', startFrame: 13, endFrameExclusive: 30),
       ]);
     });
 
@@ -502,15 +492,17 @@ void main() {
         rangeEndFrame: 5,
       );
 
-      final clips = buildExportAudioPlan(plan: plan, frameRate: rate10);
+      final clips = buildExportAudioPlan(plan: plan);
 
       expect(clips, const [
-        // a.wav began 4 frames before the range: seek 0.4s in, play from
-        // the video's start, for the 2-frame range.
-        ExportAudioClip(
+        // a.wav began 4 frames before the range: the trim seeks 4 frames
+        // into the source; it plays from the export's frame 0 for the
+        // 2-frame range.
+        ScheduledAudioClip(
           filePath: 'a.wav',
-          seekSeconds: 0.4,
-          durationSeconds: 0.2,
+          startFrame: 0,
+          endFrameExclusive: 2,
+          offsetFrames: 4,
         ),
         // b.wav (frame 6) starts after the exported range ends → silent.
       ]);
@@ -541,14 +533,14 @@ void main() {
         range: ExportRange.allCuts,
       );
 
-      expect(buildExportAudioPlan(plan: fullPlan, frameRate: rate10), const [
+      expect(buildExportAudioPlan(plan: fullPlan), const [
         // The block starts at frame 2 with a 5-frame trim: the source is
-        // seeked 0.5 s in, the video delay stays the block's position.
-        ExportAudioClip(
+        // seeked 5 frames in, the placement stays the block's position.
+        ScheduledAudioClip(
           filePath: 'a.wav',
-          seekSeconds: 0.5,
-          delaySeconds: 0.2,
-          durationSeconds: 0.8,
+          startFrame: 2,
+          endFrameExclusive: 10,
+          offsetFrames: 5,
         ),
       ]);
 
@@ -563,12 +555,13 @@ void main() {
         rangeEndFrame: 7,
       );
 
-      expect(buildExportAudioPlan(plan: rangedPlan, frameRate: rate10), const [
-        // 2 frames of the block precede the range (0.2 s) + the 0.5 s trim.
-        ExportAudioClip(
+      expect(buildExportAudioPlan(plan: rangedPlan), const [
+        // 2 frames of the block precede the range + the 5-frame trim.
+        ScheduledAudioClip(
           filePath: 'a.wav',
-          seekSeconds: 0.7,
-          durationSeconds: 0.4,
+          startFrame: 0,
+          endFrameExclusive: 4,
+          offsetFrames: 7,
         ),
       ]);
     });
@@ -603,17 +596,17 @@ void main() {
         includeGaps: true,
       );
       expect(
-        buildExportAudioPlan(plan: videoPlan, frameRate: rate10, project: proj),
+        buildExportAudioPlan(plan: videoPlan, project: proj),
         const [
-          ExportAudioClip(
+          ScheduledAudioClip(
             filePath: 'g.wav',
-            delaySeconds: 0.8,
-            durationSeconds: 1.0,
+            startFrame: 8,
+            endFrameExclusive: 18,
           ),
-          ExportAudioClip(
+          ScheduledAudioClip(
             filePath: 'h.wav',
-            delaySeconds: 1.2,
-            durationSeconds: 0.5,
+            startFrame: 12,
+            endFrameExclusive: 17,
           ),
         ],
       );
@@ -627,28 +620,24 @@ void main() {
         range: ExportRange.allCuts,
       );
       expect(
-        buildExportAudioPlan(
-          plan: collapsedPlan,
-          frameRate: rate10,
-          project: proj,
-        ),
+        buildExportAudioPlan(plan: collapsedPlan, project: proj),
         const [
-          ExportAudioClip(
+          ScheduledAudioClip(
             filePath: 'g.wav',
-            delaySeconds: 0.8,
-            durationSeconds: 0.2,
+            startFrame: 8,
+            endFrameExclusive: 10,
           ),
-          ExportAudioClip(
+          ScheduledAudioClip(
             filePath: 'g.wav',
-            seekSeconds: 0.7,
-            delaySeconds: 1.0,
-            durationSeconds: 0.3,
+            startFrame: 10,
+            endFrameExclusive: 13,
+            offsetFrames: 7,
           ),
-          ExportAudioClip(
+          ScheduledAudioClip(
             filePath: 'h.wav',
-            seekSeconds: 0.3,
-            delaySeconds: 1.0,
-            durationSeconds: 0.2,
+            startFrame: 10,
+            endFrameExclusive: 12,
+            offsetFrames: 3,
           ),
         ],
       );
@@ -681,14 +670,14 @@ void main() {
         activeCutId: const CutId('a'),
         range: ExportRange.allCuts,
       );
-      expect(buildExportAudioPlan(plan: fullPlan, frameRate: rate10), const [
-        ExportAudioClip(
+      expect(buildExportAudioPlan(plan: fullPlan), const [
+        ScheduledAudioClip(
           filePath: 'a.wav',
-          delaySeconds: 0.2,
-          durationSeconds: 0.8,
+          startFrame: 2,
+          endFrameExclusive: 10,
           gain: 1.5,
-          fadeInSeconds: 0.4,
-          fadeOutSeconds: 0.2,
+          fadeInFrames: 4,
+          fadeOutFrames: 2,
         ),
       ]);
 
@@ -704,14 +693,15 @@ void main() {
         rangeStartFrame: 4,
         rangeEndFrame: 9,
       );
-      expect(buildExportAudioPlan(plan: rangedPlan, frameRate: rate10), const [
-        ExportAudioClip(
+      expect(buildExportAudioPlan(plan: rangedPlan), const [
+        ScheduledAudioClip(
           filePath: 'a.wav',
-          seekSeconds: 0.2,
-          durationSeconds: 0.6,
+          startFrame: 0,
+          endFrameExclusive: 6,
+          offsetFrames: 2,
           gain: 1.5,
-          fadeInSeconds: 0.2,
-          fadeOutSeconds: 0.2,
+          fadeInFrames: 2,
+          fadeOutFrames: 2,
         ),
       ]);
     });

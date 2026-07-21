@@ -6,6 +6,7 @@ import '../../models/attached_placement.dart';
 import '../../models/layer_kind.dart';
 import '../../models/project_frame_rate.dart';
 import '../cut_command_group.dart';
+import '../dialogs/fps_audio_choice_dialog.dart';
 import '../editor_session_manager.dart';
 import '../widgets/panel_flyout.dart';
 import '../widgets/split_icon_button.dart';
@@ -349,7 +350,7 @@ class TimelineActionToolbar extends StatelessWidget {
               : 'timeline-fps-${rate.numerator}-${rate.denominator}',
           label: rate.label,
           checked: rate == current,
-          onSelected: () => session.setProjectFrameRate(rate),
+          onSelected: () => unawaited(_selectFrameRate(context, rate)),
         ),
       const PanelFlyoutDivider(),
       PanelFlyoutItem(
@@ -358,6 +359,59 @@ class TimelineActionToolbar extends StatelessWidget {
         icon: Icons.edit_outlined,
         onSelected: () => unawaited(showTimelineFpsDialog(context, session)),
       ),
+    ];
+  }
+
+  /// EXPORT-AUDIO ④: a pulldown-pair change (23.976↔24 — 0.1% of real
+  /// speed) asks what happens to SOUND, because audio exists in real
+  /// seconds and cannot stay both frame-exact and time-exact. Any other
+  /// change, or a project with no sound, just changes the rate. (The
+  /// custom-rate dialog keeps the plain path — pulldown pairs live in
+  /// the presets.)
+  Future<void> _selectFrameRate(
+    BuildContext context,
+    ProjectFrameRate rate,
+  ) async {
+    final pull = audioPullBetween(session.projectFrameRate, rate);
+    if (pull == null || !session.projectHasAnyAudio) {
+      session.setProjectFrameRate(rate);
+      return;
+    }
+    final choice = await showFpsAudioChoiceDialog(
+      context,
+      from: session.projectFrameRate,
+      to: rate,
+    );
+    switch (choice) {
+      case null:
+        return; // cancelled — the rate stays too
+      case FpsAudioChoice.keep:
+        session.setProjectFrameRate(rate);
+      case FpsAudioChoice.pull:
+        session.setProjectFrameRateWithAudioPull(rate);
+    }
+  }
+
+  /// EXPORT-AUDIO ③: the audio-rate presets — 48k is the film standard,
+  /// 44.1k the music one, 96k for the rare high-rate delivery.
+  static const List<int> audioSampleRatePresets = [44100, 48000, 96000];
+
+  /// '48kHz' / '44.1kHz' — kilohertz reads at a glance; the raw hertz
+  /// number is a spec sheet.
+  static String audioSampleRateLabel(int rate) => rate % 1000 == 0
+      ? '${rate ~/ 1000}kHz'
+      : '${(rate / 1000).toStringAsFixed(1)}kHz';
+
+  List<PanelFlyoutEntry> _audioSampleRateEntries() {
+    final current = session.projectAudioSampleRate;
+    return [
+      for (final rate in audioSampleRatePresets)
+        PanelFlyoutItem(
+          keyValue: 'timeline-samplerate-$rate',
+          label: audioSampleRateLabel(rate),
+          checked: rate == current,
+          onSelected: () => session.setProjectAudioSampleRate(rate),
+        ),
     ];
   }
 
@@ -549,6 +603,19 @@ class TimelineActionToolbar extends StatelessWidget {
                     label: session.projectFrameRate.label,
                     tooltip: 'Project frame rate',
                     entriesBuilder: () => _fpsEntries(context),
+                  ),
+                  const SizedBox(width: 4),
+                  // EXPORT-AUDIO ③: the PROJECT audio rate — what every
+                  // sound conforms to and the mixer runs at.
+                  PanelFlyoutButton(
+                    key: const ValueKey<String>(
+                      'timeline-samplerate-menu-button',
+                    ),
+                    label: audioSampleRateLabel(
+                      session.projectAudioSampleRate,
+                    ),
+                    tooltip: 'Project audio sample rate',
+                    entriesBuilder: _audioSampleRateEntries,
                   ),
                 ],
               ),

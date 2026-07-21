@@ -226,6 +226,32 @@ void main() {
   });
 
   group('reuse and staleness', () {
+    test('a conform at another rate is stale even with a matching source '
+        '(the project rate is a SETTING now — EXPORT-AUDIO ③)', () {
+      final source = writeSource('ratechange.wav', rate: 44100);
+      final conform = '${temp.path}/Conformed/ratechange.wav.wav';
+
+      expect(
+        pipelineFor(projectSampleRate: 44100)
+            .ensureConform(sourcePath: source, conformPath: conform)
+            .outcome,
+        ConformOutcome.built,
+      );
+
+      // Same source, same fingerprint — but the project moved to 48k.
+      final rebuilt = pipelineFor().ensureConform(
+        sourcePath: source,
+        conformPath: conform,
+      );
+      expect(rebuilt.outcome, ConformOutcome.built,
+          reason: '44.1k PCM on a 48k schedule would shift every clip');
+      expect(rebuilt.sampleRate, 48000);
+      expect(
+        decodeConformWav(File(conform).readAsBytesSync()).sampleRate,
+        48000,
+      );
+    });
+
     test('a matching conform is reused instead of rebuilt', () {
       final log = <String>[];
       final source = writeSource('reuse.wav', rate: 44100);

@@ -5,20 +5,6 @@ import 'package:quick_animaker_v2/src/services/audio/audio_conform_pipeline.dart
 import 'package:quick_animaker_v2/src/services/audio/audio_conform_runner.dart';
 import 'package:quick_animaker_v2/src/services/audio/audio_peaks_extractor.dart';
 import 'package:quick_animaker_v2/src/ui/audio/audio_conform_store.dart';
-import 'package:quick_animaker_v2/src/ui/audio/audio_peaks_store.dart';
-
-class _StubFallbackExtractor extends AudioPeaksExtractor {
-  const _StubFallbackExtractor();
-
-  @override
-  Future<AudioPeaksExtraction> extract(String filePath) async =>
-      AudioPeaksExtraction.success(
-        AudioPeaks(
-          bucketsPerSecond: 80,
-          peaks: Float32List.fromList([0.5, 0.25]),
-        ),
-      );
-}
 
 ConformResult _usableResult() => ConformResult(
   outcome: ConformOutcome.built,
@@ -63,13 +49,9 @@ void main() {
     store.dispose();
   });
 
-  test('undecodable is a definitive answer: no retry, waveform and duration '
-      'delegate to the ffmpeg fallback', () async {
+  test('undecodable is a definitive answer: no retry, blank waveform, '
+      'no length — the platform players still carry playback', () async {
     var runs = 0;
-    final fallback = AudioPeaksStore(
-      extractor: const _StubFallbackExtractor(),
-      log: (_) {},
-    );
     final store = AudioConformStore(
       resolveConformPath: (_) => null,
       runner: (request) async {
@@ -79,23 +61,19 @@ void main() {
           error: 'no decoder recognized this file',
         );
       },
-      undecodableFallback: fallback,
       log: (_) {},
     );
 
-    store.resultFor('voice.m4a');
+    store.resultFor('voice.xyz');
     await pumpEventQueue();
     expect(runs, 1);
-    expect(store.resultFor('voice.m4a')?.outcome, ConformOutcome.undecodable);
-
-    // peaksFor routes to the fallback (which resolves async on its own).
-    expect(store.peaksFor('voice.m4a'), isNull);
+    expect(store.resultFor('voice.xyz')?.outcome, ConformOutcome.undecodable);
+    expect(store.peaksFor('voice.xyz'), isNull);
+    expect(store.durationSecondsFor('voice.xyz'), isNull);
+    store.resultFor('voice.xyz');
     await pumpEventQueue();
-    expect(store.peaksFor('voice.m4a')?.peaks, hasLength(2));
-    expect(store.durationSecondsFor('voice.m4a'), 2 / 80);
-    expect(runs, 1); // still no reconform
+    expect(runs, 1, reason: 'the same bytes will not decode differently');
     store.dispose();
-    fallback.dispose();
   });
 
   test('transient failures retry on a fresh lookup after the delay, up to '
@@ -172,6 +150,39 @@ void main() {
     await pumpEventQueue();
     expect(resampled, [(48000, 44100)]);
     expect(store.samplesAtRate('a.wav', 44100), hasLength(1));
+    store.dispose();
+  });
+
+  test('a project-rate change makes cached entries stale on their own — '
+      'undo and redo self-heal without hooks', () async {
+    var projectRate = 48000;
+    final requested = <int>[];
+    final store = AudioConformStore(
+      resolveConformPath: (_) => null,
+      resolveProjectSampleRate: () => projectRate,
+      runner: (request) async {
+        requested.add(request.projectSampleRate);
+        return ConformResult(
+          outcome: ConformOutcome.built,
+          samples: Float32List(4),
+          channels: 1,
+          sampleRate: request.projectSampleRate,
+          frames: 4,
+        );
+      },
+      log: (_) {},
+    );
+
+    store.resultFor('a.wav');
+    await pumpEventQueue();
+    expect(store.resultFor('a.wav')?.sampleRate, 48000);
+
+    projectRate = 44100; // the setting moved (or an undo moved it back)
+    expect(store.resultFor('a.wav'), isNull,
+        reason: 'the 48k entry is stale by definition — re-kicked');
+    await pumpEventQueue();
+    expect(store.resultFor('a.wav')?.sampleRate, 44100);
+    expect(requested, [48000, 44100]);
     store.dispose();
   });
 

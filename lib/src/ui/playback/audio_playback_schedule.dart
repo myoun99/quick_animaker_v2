@@ -45,6 +45,35 @@ class ScheduledAudioClip {
   final double gain;
   final int fadeInFrames;
   final int fadeOutFrames;
+
+  @override
+  bool operator ==(Object other) =>
+      other is ScheduledAudioClip &&
+      other.filePath == filePath &&
+      other.startFrame == startFrame &&
+      other.endFrameExclusive == endFrameExclusive &&
+      other.offsetFrames == offsetFrames &&
+      other.gain == gain &&
+      other.fadeInFrames == fadeInFrames &&
+      other.fadeOutFrames == fadeOutFrames;
+
+  @override
+  int get hashCode => Object.hash(
+    filePath,
+    startFrame,
+    endFrameExclusive,
+    offsetFrames,
+    gain,
+    fadeInFrames,
+    fadeOutFrames,
+  );
+
+  @override
+  String toString() =>
+      'ScheduledAudioClip(filePath: $filePath, startFrame: $startFrame, '
+      'endFrameExclusive: $endFrameExclusive, offsetFrames: $offsetFrames, '
+      'gain: $gain, fadeInFrames: $fadeInFrames, '
+      'fadeOutFrames: $fadeOutFrames)';
 }
 
 /// Clamps [endFrameExclusive] to the file's own audible length.

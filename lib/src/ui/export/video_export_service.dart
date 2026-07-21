@@ -1,6 +1,5 @@
 import 'dart:convert';
 import 'dart:io';
-import 'dart:math' as math;
 import 'dart:ui' as ui;
 
 import 'package:flutter/foundation.dart' show visibleForTesting;
@@ -14,67 +13,6 @@ typedef VideoProcessStarter =
 
 Future<Process> _startProcess(String executable, List<String> arguments) =>
     Process.start(executable, arguments);
-
-/// One SE audio clip laid on the exported video's timeline.
-///
-/// [seekSeconds] skips into the source (a clip that started before the
-/// exported range), [delaySeconds] places it on the output timeline and
-/// [durationSeconds] caps it at its cut's exported block — SE audio never
-/// bleeds into the next cut, matching canvas playback. A source shorter
-/// than the cap simply ends early.
-class ExportAudioClip {
-  const ExportAudioClip({
-    required this.filePath,
-    this.seekSeconds = 0,
-    this.delaySeconds = 0,
-    required this.durationSeconds,
-    this.gain = 1.0,
-    this.fadeInSeconds = 0,
-    this.fadeOutSeconds = 0,
-  });
-
-  final String filePath;
-  final double seekSeconds;
-  final double delaySeconds;
-  final double durationSeconds;
-
-  /// The clip's volume envelope in the trimmed clip's own time: [gain]
-  /// multiplies the whole clip (ffmpeg `volume`, exact — no platform
-  /// clamp), [fadeInSeconds] ramps up from the trimmed start and
-  /// [fadeOutSeconds] ramps down into the trimmed end (ffmpeg `afade`).
-  final double gain;
-  final double fadeInSeconds;
-  final double fadeOutSeconds;
-
-  @override
-  bool operator ==(Object other) =>
-      other is ExportAudioClip &&
-      other.filePath == filePath &&
-      other.seekSeconds == seekSeconds &&
-      other.delaySeconds == delaySeconds &&
-      other.durationSeconds == durationSeconds &&
-      other.gain == gain &&
-      other.fadeInSeconds == fadeInSeconds &&
-      other.fadeOutSeconds == fadeOutSeconds;
-
-  @override
-  int get hashCode => Object.hash(
-    filePath,
-    seekSeconds,
-    delaySeconds,
-    durationSeconds,
-    gain,
-    fadeInSeconds,
-    fadeOutSeconds,
-  );
-
-  @override
-  String toString() =>
-      'ExportAudioClip(filePath: $filePath, seekSeconds: $seekSeconds, '
-      'delaySeconds: $delaySeconds, durationSeconds: $durationSeconds, '
-      'gain: $gain, fadeInSeconds: $fadeInSeconds, '
-      'fadeOutSeconds: $fadeOutSeconds)';
-}
 
 /// A video export failure with a user-presentable [message] (missing ffmpeg,
 /// non-zero exit); the dialog shows it verbatim.
@@ -108,11 +46,12 @@ class VideoExportService {
   static const String _evenPadFilter =
       'pad=ceil(iw/2)*2:ceil(ih/2)*2:color=white';
 
-  /// Builds the full ffmpeg argument list. Without [audioClips] this is the
-  /// original video-only command; with clips, each file becomes an input
-  /// (seeked/trimmed at the input) and a filter graph delays each onto the
-  /// output timeline and mixes them (`normalize=0` keeps original volumes —
-  /// needs ffmpeg ≥ 5.1). `-shortest` pins the output to the video length.
+  /// Builds the full ffmpeg argument list.
+  ///
+  /// Audio, when present, arrives as ONE finished WAV ([audioMixPath]) —
+  /// already mixed by the same mixer that carries playback (EXPORT-AUDIO
+  /// round). ffmpeg's whole audio job is `-c:a aac`: no seeks, no filter
+  /// graph, no second mixer to disagree with the preview.
   ///
   /// The rate goes out as ffmpeg's own fraction (`24000/1001`), so a
   /// 23.976 project exports at exactly the rate it was authored at — not
@@ -121,10 +60,8 @@ class VideoExportService {
   static List<String> buildFfmpegArguments({
     required ProjectFrameRate frameRate,
     required String outputFilePath,
-    List<ExportAudioClip> audioClips = const [],
+    String? audioMixPath,
   }) {
-    String seconds(double value) => value.toStringAsFixed(3);
-
     final args = <String>[
       '-y',
       '-f',
@@ -134,7 +71,7 @@ class VideoExportService {
       '-i',
       '-',
     ];
-    if (audioClips.isEmpty) {
+    if (audioMixPath == null) {
       return args..addAll([
         '-c:v',
         'libx264',
@@ -147,60 +84,19 @@ class VideoExportService {
         outputFilePath,
       ]);
     }
-
-    for (final clip in audioClips) {
-      if (clip.seekSeconds > 0) {
-        args.addAll(['-ss', seconds(clip.seekSeconds)]);
-      }
-      args.addAll(['-t', seconds(clip.durationSeconds)]);
-      args.addAll(['-i', clip.filePath]);
-    }
-
-    // -vf cannot coexist with -filter_complex, so the pad filter moves into
-    // the graph alongside the audio chain.
-    final filters = <String>['[0:v]$_evenPadFilter[vout]'];
-    for (var index = 0; index < audioClips.length; index += 1) {
-      final clip = audioClips[index];
-      final delayMs = (clip.delaySeconds * 1000).round();
-      // The volume envelope runs in the trimmed clip's own time, BEFORE
-      // adelay shifts it onto the output timeline. A default envelope
-      // (gain 1, no fades) emits the exact legacy chain.
-      final chain = <String>[
-        if (clip.gain != 1.0) 'volume=${clip.gain.toStringAsFixed(3)}',
-        if (clip.fadeInSeconds > 0)
-          'afade=t=in:st=0:d=${seconds(clip.fadeInSeconds)}',
-        if (clip.fadeOutSeconds > 0)
-          'afade=t=out'
-              ':st=${seconds(math.max(0, clip.durationSeconds - clip.fadeOutSeconds))}'
-              ':d=${seconds(clip.fadeOutSeconds)}',
-        'adelay=$delayMs:all=1',
-      ];
-      filters.add('[${index + 1}:a]${chain.join(',')}[a$index]');
-    }
-    final String audioOut;
-    if (audioClips.length == 1) {
-      audioOut = '[a0]';
-    } else {
-      audioOut = '[aout]';
-      final labels = [
-        for (var index = 0; index < audioClips.length; index += 1) '[a$index]',
-      ].join();
-      filters.add(
-        '${labels}amix=inputs=${audioClips.length}:normalize=0$audioOut',
-      );
-    }
-
     return args..addAll([
-      '-filter_complex',
-      filters.join(';'),
+      '-i',
+      audioMixPath,
       '-map',
-      '[vout]',
+      '0:v',
       '-map',
-      audioOut,
+      '1:a',
       '-c:v',
       'libx264',
       '-pix_fmt',
       'yuv420p',
+      '-vf',
+      _evenPadFilter,
       '-crf',
       '18',
       '-c:a',
@@ -215,7 +111,7 @@ class VideoExportService {
     required Future<ui.Image?> Function(int index) renderImage,
     required String outputFilePath,
     required ProjectFrameRate frameRate,
-    List<ExportAudioClip> audioClips = const [],
+    String? audioMixPath,
     void Function(int completed, int total)? onProgress,
     bool Function()? isCancelled,
   }) async {
@@ -226,7 +122,7 @@ class VideoExportService {
         buildFfmpegArguments(
           frameRate: frameRate,
           outputFilePath: outputFilePath,
-          audioClips: audioClips,
+          audioMixPath: audioMixPath,
         ),
       );
     } on ProcessException {

@@ -5,7 +5,6 @@ import 'package:flutter/foundation.dart';
 import '../../services/audio/audio_conform_pipeline.dart';
 import '../../services/audio/audio_conform_runner.dart';
 import '../../services/audio/audio_peaks_extractor.dart';
-import 'audio_peaks_store.dart';
 
 class _ConformFailure {
   const _ConformFailure({
@@ -23,27 +22,25 @@ class _ConformFailure {
 /// peaks, the device transport's PCM, and the clip-length answer, all from
 /// the same decode.
 ///
-/// Shape mirrors [AudioPeaksStore]: [resultFor] resolves synchronously
-/// (null while absent) and kicks ONE async conform per path; listeners are
-/// notified when a result lands. Failures are remembered with the same
-/// retry budget — transient ones (a file still syncing down from a cloud
-/// folder) self-heal, and a hard one cannot spin the paint loop.
+/// [resultFor] resolves synchronously (null while absent) and kicks ONE
+/// async conform per path; listeners are notified when a result lands.
+/// Failures are remembered with a retry budget — transient ones (a file
+/// still syncing down from a cloud folder) self-heal, and a hard one
+/// cannot spin the paint loop.
 ///
-/// Formats the native decoder does not read are a DEFINITIVE answer, not
-/// a failure: the entry stays, and [peaksFor]/[durationSecondsFor] fall
-/// back to the ffmpeg extractor for the waveform. With the OS decoders in
-/// (Media Foundation / AudioToolbox / MediaCodec behind the same native
-/// entry point), that fallback now covers only ogg — and any format on a
-/// build without its OS stack. Playback of those files stays on the
-/// platform players; the routing is per FORMAT, so the same file never
-/// alternates between paths.
+/// A format the decoder chain does not read (dr_libs + stb_vorbis + the
+/// OS codec stack) is a DEFINITIVE `undecodable` answer, not a failure:
+/// the entry stays, the waveform stays blank, and playback of that file
+/// rides the platform players. There is no ffmpeg anywhere behind this —
+/// the EXPORT-AUDIO round removed it from every audio path.
 class AudioConformStore extends ChangeNotifier {
   AudioConformStore({
     required this.resolveConformPath,
     ConformRunner? runner,
     ResampleRunner? resampleRunner,
-    AudioPeaksStore? undecodableFallback,
-    this.projectSampleRate = 48000,
+    int Function()? resolveProjectSampleRate,
+    int projectSampleRate = 48000,
+    ({int numerator, int denominator}) Function()? resolveAudioSpeed,
     this.bucketsPerSecond = 80,
     DateTime Function()? now,
     this.maxAttempts = 3,
@@ -52,7 +49,10 @@ class AudioConformStore extends ChangeNotifier {
     this.libraryPathOverride,
   }) : _runner = runner ?? runConformInIsolate,
        _resampleRunner = resampleRunner ?? runResampleInIsolate,
-       _undecodableFallback = undecodableFallback,
+       _resolveProjectSampleRate =
+           resolveProjectSampleRate ?? (() => projectSampleRate),
+       _resolveAudioSpeed =
+           resolveAudioSpeed ?? (() => (numerator: 1, denominator: 1)),
        _now = now ?? DateTime.now,
        _log = log ?? debugPrint;
 
@@ -64,10 +64,15 @@ class AudioConformStore extends ChangeNotifier {
   final ConformRunner _runner;
   final ResampleRunner _resampleRunner;
 
-  /// Carries the waveform for formats the native decoder cannot read.
-  final AudioPeaksStore? _undecodableFallback;
+  /// The PROJECT's audio rate, read live (EXPORT-AUDIO ③ made it a
+  /// project setting; a fixed int remains as the test-friendly default).
+  final int Function() _resolveProjectSampleRate;
 
-  final int projectSampleRate;
+  int get projectSampleRate => _resolveProjectSampleRate();
+
+  /// The project's audio speed, read live (EXPORT-AUDIO ④'s NTSC pull).
+  final ({int numerator, int denominator}) Function() _resolveAudioSpeed;
+
   final int bucketsPerSecond;
   final DateTime Function() _now;
   final void Function(String message) _log;
@@ -89,7 +94,19 @@ class AudioConformStore extends ChangeNotifier {
   ConformResult? resultFor(String sourcePath) {
     final cached = _entries[sourcePath];
     if (cached != null) {
-      return cached;
+      final speed = _resolveAudioSpeed();
+      if (cached.isUsable &&
+          (cached.sampleRate != projectSampleRate ||
+              cached.speedNumerator != speed.numerator ||
+              cached.speedDenominator != speed.denominator)) {
+        // The project rate or speed moved under this entry (a setting
+        // change, or an undo of one): stale by definition, re-conform.
+        // Self-healing here rather than hooked into the history stack.
+        _entries.remove(sourcePath);
+        _resampledByRate.remove(sourcePath);
+      } else {
+        return cached;
+      }
     }
     if (_pending.contains(sourcePath)) {
       return null;
@@ -105,37 +122,18 @@ class AudioConformStore extends ChangeNotifier {
     return null;
   }
 
-  /// The waveform for [sourcePath] — conform-computed, or the ffmpeg
-  /// fallback for formats the native decoder does not read.
+  /// The waveform for [sourcePath], computed from the conformed PCM.
   AudioPeaks? peaksFor(String sourcePath) {
     final entry = resultFor(sourcePath);
-    if (entry == null) {
-      return null;
-    }
-    if (entry.isUsable) {
-      return entry.peaks;
-    }
-    if (entry.outcome == ConformOutcome.undecodable) {
-      return _undecodableFallback?.peaksFor(sourcePath);
-    }
-    return null;
+    return entry != null && entry.isUsable ? entry.peaks : null;
   }
 
-  /// The clip length in seconds — an EXACT sample count over the rate for
-  /// conformed files (the peaks-bucket approximation only for the ffmpeg
-  /// fallback).
+  /// The clip length in seconds — an EXACT sample count over the rate.
   double? durationSecondsFor(String sourcePath) {
     final entry = resultFor(sourcePath);
-    if (entry == null) {
-      return null;
-    }
-    if (entry.isUsable && entry.sampleRate > 0) {
-      return entry.frames / entry.sampleRate;
-    }
-    if (entry.outcome == ConformOutcome.undecodable) {
-      return _undecodableFallback?.peaksFor(sourcePath)?.durationSeconds;
-    }
-    return null;
+    return entry != null && entry.isUsable && entry.sampleRate > 0
+        ? entry.frames / entry.sampleRate
+        : null;
   }
 
   /// The conformed PCM (interleaved float32 at [projectSampleRate]), or
@@ -213,15 +211,55 @@ class AudioConformStore extends ChangeNotifier {
   /// The last failure reason, or null while unknown/pending/usable.
   String? failureFor(String sourcePath) => _failures[sourcePath]?.reason;
 
+  /// Awaits [sourcePath]'s conform: the cached result, or the in-flight
+  /// one when it lands. Null once the attempt budget is spent — the export
+  /// path uses this to render what it can instead of hanging on a file
+  /// that will never decode.
+  Future<ConformResult?> ensureFor(String sourcePath) async {
+    while (true) {
+      final entry = resultFor(sourcePath);
+      if (entry != null) {
+        return entry;
+      }
+      final failure = _failures[sourcePath];
+      if (failure != null && failure.attempts >= maxAttempts) {
+        return null;
+      }
+      if (!_pending.contains(sourcePath) && failure != null) {
+        // Inside the retry delay: the budget remains but nothing is in
+        // flight and resultFor will not kick until the delay passes.
+        // Waiting out a wall-clock delay is playback's concern, not an
+        // export render's — give the answer we have.
+        return null;
+      }
+      final landed = Completer<void>();
+      void onChanged() {
+        if (!landed.isCompleted) {
+          landed.complete();
+        }
+      }
+
+      addListener(onChanged);
+      try {
+        await landed.future;
+      } finally {
+        removeListener(onChanged);
+      }
+    }
+  }
+
   Future<void> _ensure(String sourcePath) async {
     ConformResult result;
     try {
+      final speed = _resolveAudioSpeed();
       result = await _runner(
         ConformRequest(
           sourcePath: sourcePath,
           conformPath: resolveConformPath(sourcePath),
           projectSampleRate: projectSampleRate,
           bucketsPerSecond: bucketsPerSecond,
+          speedNumerator: speed.numerator,
+          speedDenominator: speed.denominator,
           libraryPathOverride: libraryPathOverride,
         ),
       );
@@ -262,7 +300,6 @@ class AudioConformStore extends ChangeNotifier {
     _entries.remove(sourcePath);
     _failures.remove(sourcePath);
     _resampledByRate.remove(sourcePath);
-    _undecodableFallback?.invalidate(sourcePath);
   }
 
   /// Kicks a conform for every path that has none yet — called on project

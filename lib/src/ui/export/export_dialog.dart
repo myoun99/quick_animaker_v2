@@ -7,9 +7,11 @@ import 'package:flutter/services.dart';
 
 import '../../models/canvas_size.dart';
 import '../../models/cut.dart';
+import '../../services/audio/audio_mixer_reference.dart' show AudioMixSource;
 import '../../services/export/xdts_builder.dart';
 import '../camera/camera_frame_render_service.dart';
 import '../editor_session_manager.dart';
+import 'export_audio_mix.dart';
 import 'export_frame_renderer.dart';
 import 'export_plan.dart';
 import 'png_sequence_export_service.dart';
@@ -400,24 +402,31 @@ class ExportDialogState extends State<ExportDialog> {
       final ExportWriteSummary summary;
       if (isVideo) {
         final videoPlan = framePlan!;
-        summary = await widget.videoExportService.exportVideo(
-          count: count,
-          // Video frames bake the cut fade (MP4 has no alpha channel).
-          renderImage: (index) =>
-              renderer.renderCompositeForVideo(videoPlan[index], sizeMode),
-          outputFilePath: videoPath!,
-          frameRate: widget.session.projectFrameRate,
-          // SE audio clips muxed onto the video timeline (silent export
-          // when none are attached).
-          audioClips: buildExportAudioPlan(
-            plan: videoPlan,
+        // The audio mix renders FIRST, through the same mixer playback
+        // uses (EXPORT-AUDIO): what the preview played is what the file
+        // holds. ffmpeg only encodes the finished PCM.
+        final audioMixPath = await _renderAudioMix(videoPlan);
+        try {
+          summary = await widget.videoExportService.exportVideo(
+            count: count,
+            // Video frames bake the cut fade (MP4 has no alpha channel).
+            renderImage: (index) =>
+                renderer.renderCompositeForVideo(videoPlan[index], sizeMode),
+            outputFilePath: videoPath!,
             frameRate: widget.session.projectFrameRate,
-            // Track-owned SE rows lay in from the tracks' global axes.
-            project: widget.session.repository.requireProject(),
-          ),
-          isCancelled: () => _cancelRequested,
-          onProgress: reportProgress,
-        );
+            audioMixPath: audioMixPath,
+            isCancelled: () => _cancelRequested,
+            onProgress: reportProgress,
+          );
+        } finally {
+          if (audioMixPath != null) {
+            try {
+              File(audioMixPath).deleteSync();
+            } on Object {
+              // A leftover temp mix is untidy, not an export failure.
+            }
+          }
+        }
       } else {
         summary = await _exportService.exportImages(
           count: count,
@@ -451,6 +460,42 @@ class ExportDialogState extends State<ExportDialog> {
         });
       }
     }
+  }
+
+  /// Renders the SE mix for [videoPlan] to a temp WAV through the same
+  /// mixer playback uses; null = nothing audible (video-only encode).
+  /// Sources come from the conform store — awaited, so an export right
+  /// after an import waits for the conform instead of dropping the sound.
+  Future<String?> _renderAudioMix(List<ExportFrameTask> videoPlan) async {
+    final schedule = buildExportAudioPlan(
+      plan: videoPlan,
+      // Track-owned SE rows lay in from the tracks' global axes.
+      project: widget.session.repository.requireProject(),
+    );
+    if (schedule.isEmpty) {
+      return null;
+    }
+    final store = widget.session.audioConformStore;
+    final path =
+        '${Directory.systemTemp.path}${Platform.pathSeparator}'
+        'qa_export_mix_${DateTime.now().microsecondsSinceEpoch}.wav';
+    final written = await writeExportAudioMixWav(
+      schedule: schedule,
+      rate: widget.session.projectFrameRate,
+      totalFrames: videoPlan.length,
+      sampleRate: store.projectSampleRate,
+      resolveSource: (filePath) async {
+        final entry = await store.ensureFor(filePath);
+        final samples = entry != null && entry.isUsable ? entry.samples : null;
+        if (samples == null) {
+          return null;
+        }
+        return AudioMixSource(samples: samples, channels: entry!.channels);
+      },
+      outputPath: path,
+      log: debugPrint,
+    );
+    return written ? path : null;
   }
 
   String _videoSummaryMessage(ExportWriteSummary summary, int planned) {

@@ -103,6 +103,28 @@ void main() {
     expect(peak, inInclusiveRange(0.35, 0.65));
   }, skip: skip);
 
+  test('ogg decodes through the BUNDLED stb_vorbis on every platform — '
+      'the last format that used to lean on ffmpeg', () {
+    final decoder = QaAudioDecoder.instance;
+    expect(decoder, isNotNull);
+    final decoded = decoder!.decode(
+      File('test/fixtures/tone.ogg').readAsBytesSync(),
+    );
+    expect(decoded, isNotNull,
+        reason: 'stb_vorbis is vendored — no platform stack involved');
+    expect(decoded!.format, QaAudioFormat.vorbis);
+    expect(decoded.sampleRate, 44100);
+    expect(decoded.channels, 2);
+    expect(decoded.length, inInclusiveRange(20000, 24500));
+    var peak = 0.0;
+    final start = (decoded.length ~/ 4) * decoded.channels;
+    final end = (3 * decoded.length ~/ 4) * decoded.channels;
+    for (var index = start; index < end; index += 1) {
+      peak = math.max(peak, decoded.samples[index].abs());
+    }
+    expect(peak, inInclusiveRange(0.35, 0.65));
+  }, skip: skip);
+
   test('dr_libs formats never route to the OS path (wav stays byte-pinned '
       'on its single decoder)', () {
     final decoder = QaAudioDecoder.instance;
