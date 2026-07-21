@@ -149,10 +149,10 @@ resolveFolderChainAt({
             .clamp(0.0, 1.0);
     final track = folder.transformTrack;
     final hasGeometry =
-        !track.anchorPoint.isEmpty ||
-        !track.position.isEmpty ||
-        !track.scale.isEmpty ||
-        !track.rotation.isEmpty;
+        track.anchorPoint.isNotEmpty ||
+        track.position.isNotEmpty ||
+        track.scale.isNotEmpty ||
+        track.rotation.isNotEmpty;
     if (hasGeometry) {
       poses.add((
         pose: track.resolveAt(
