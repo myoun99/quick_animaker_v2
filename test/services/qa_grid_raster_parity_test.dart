@@ -1,4 +1,4 @@
-import 'dart:math';
+﻿import 'dart:math';
 import 'dart:typed_data';
 import 'dart:ui' show Color;
 
@@ -9,7 +9,7 @@ import 'package:quick_animaker_v2/src/native/qa_native_engine.dart';
 import 'package:quick_animaker_v2/src/ui/timeline/timeline_grid_tile_ops.dart';
 
 /// UI-R18 O7 T1: the native grid-tile rasterizer must be BYTE-IDENTICAL
-/// to the Dart reference — randomized op streams (rects, lines, atlas
+/// to the Dart reference 窶・randomized op streams (rects, lines, atlas
 /// glyph blits; off-tile coordinates, edge alphas) rasterized through
 /// both paths and compared per pixel. Skips (loudly) when no locally
 /// built binary is found.
@@ -48,7 +48,7 @@ void main() {
       '(randomized op streams)', () {
     if (!available) {
       markTestSkipped(
-        'qa_engine.dll not built — run: cmake -S native -B '
+        'qa_engine.dll not built 窶・run: cmake -S packages/qa_native/src -B '
         'build/native_standalone && cmake --build build/native_standalone '
         '--config Release',
       );

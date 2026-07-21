@@ -1,7 +1,7 @@
 # The native core's ONE build description, shared by every consumer:
-# the plugin's per-platform build files include this, and the app's
-# Windows runner still reaches it through native/CMakeLists.txt while
-# that migration finishes.
+# the plugin's per-platform build files include this (Windows included —
+# the 2A migration is complete), and CI builds it standalone for the
+# parity suites.
 #
 # Nothing platform-specific lives here except the compiler flags, because
 # qa_engine.c is one portable C99 source by design.
