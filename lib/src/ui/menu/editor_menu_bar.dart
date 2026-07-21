@@ -563,6 +563,15 @@ class EditorMenuBar extends StatelessWidget {
           ? session.unlinkActiveLayer
           : null,
     ),
+    // 폴더 (L5): folds the active layer's whole attach group; rename/
+    // dissolve live on the folder row's context menu.
+    _item(
+      id: 'layer-group-into-folder',
+      label: 'Group into Folder',
+      onPressed: session.canGroupActiveLayerIntoFolder
+          ? session.groupActiveLayerIntoFolder
+          : null,
+    ),
     _item(
       id: 'layer-rename',
       label: 'Rename Layer…',

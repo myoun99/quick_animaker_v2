@@ -14,6 +14,7 @@ import 'timeline_run_end_handles.dart';
 import 'timeline_cell_exposure_state.dart';
 import 'timeline_drag_preview.dart';
 import 'timeline_exposure_comma_drag_policy.dart';
+import 'timeline_folder_aggregate_row.dart';
 import 'timeline_frame_cells_row.dart';
 import 'timeline_grid_metrics.dart';
 import 'timeline_lane_rows.dart';
@@ -231,6 +232,12 @@ class _TimelineFrameRowsScrollBodyState
   /// waveform peaks that load asynchronously, and lane rows are few.
   final Map<Object, _RowMemoEntry> _rowMemo = {};
 
+  /// Folder rows key off their FOLDER id — the representative layer they
+  /// carry would collide with its own layer row otherwise.
+  String _rowKeySuffix(TimelineDisplayRow row) => row.folder != null
+      ? 'folder-${row.folder!.id}'
+      : row.lane?.laneId ?? 'cells';
+
   bool _rowIsMemoizable(TimelineDisplayRow row) {
     // Every non-lane row memoizes now (UI-R20 #4): the churny inputs the
     // sparse kinds depended on joined the memo token — the camera track
@@ -238,7 +245,9 @@ class _TimelineFrameRowsScrollBodyState
     // SE spill-in rides a per-layer flag, and the SE/camera display
     // clones themselves are identity-cached upstream. The audio WAVEFORM
     // stays safe because it lives on the (unmemoized) lane rows.
-    return !row.isLane;
+    // Folder rows stay unmemoized too: their aggregate runs churn
+    // identity per build and the painter is a handful of rects.
+    return !row.isLane && !row.isFolder;
   }
 
   bool _inputsMatch(_RowMemoInputs a, _RowMemoInputs b) {
@@ -366,7 +375,7 @@ class _TimelineFrameRowsScrollBodyState
 
   Widget _buildRow(TimelineDisplayRow row) {
     final rowKey = ValueKey<String>(
-      'timeline-row-${row.layer.id}-${row.lane?.laneId ?? 'cells'}',
+      'timeline-row-${row.layer.id}-${_rowKeySuffix(row)}',
     );
 
     // RepaintBoundary per row: one row's repaint (ink, hover, drags) never
@@ -378,7 +387,16 @@ class _TimelineFrameRowsScrollBodyState
       child: TimelineDragPreviewRowGate(
         dragPreview: widget.dragPreview,
         layer: row.layer,
-        rowBuilder: (context, layer) => row.isLane
+        rowBuilder: (context, layer) => row.isFolder
+            ? TimelineFolderAggregateRow(
+                aggregateRuns: row.aggregateRuns,
+                frameStartIndex: widget.frameStartIndex,
+                frameEndIndexExclusive: widget.frameEndIndexExclusive,
+                leadingFrameSpacerWidth: widget.leadingFrameSpacerWidth,
+                trailingFrameSpacerWidth: widget.trailingFrameSpacerWidth,
+                metrics: widget.metrics,
+              )
+            : row.isLane
             ? _buildLaneRow(row, layer)
             : _buildCellsRow(layer, baseLayer: row.layer),
       ),
@@ -441,7 +459,7 @@ class _TimelineFrameRowsScrollBodyState
     // rebuild when they come back).
     final liveKeys = <Object>{
       for (final row in widget.rows)
-        'timeline-row-${row.layer.id}-${row.lane?.laneId ?? 'cells'}',
+        'timeline-row-${row.layer.id}-${_rowKeySuffix(row)}',
     };
     _rowMemo.removeWhere((key, _) => !liveKeys.contains(key));
 
