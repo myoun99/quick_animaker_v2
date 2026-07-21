@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:quick_animaker_v2/src/models/audio_clip.dart';
 import 'package:quick_animaker_v2/src/models/canvas_size.dart';
 import 'package:quick_animaker_v2/src/models/cut.dart';
 import 'package:quick_animaker_v2/src/models/cut_id.dart';
@@ -404,6 +405,130 @@ void main() {
     expect(seLayer().audioClips.single.offsetFrames, 0);
     session.undo();
     expect(seLayer().audioClips.single.offsetFrames, 6);
+    await tester.pumpAndSettle();
+  });
+
+  testWidgets('REC1-A: deleting the carrier block prunes the audio link '
+      'and frees the media asset', (tester) async {
+    const foot = r'C:\snd\foot.wav';
+    final session = EditorSessionManager(
+      initialProject: Project(
+        id: const ProjectId('prune-project'),
+        name: 'Prune Project',
+        createdAt: DateTime.utc(2026, 7, 22),
+        tracks: [
+          Track(
+            id: const TrackId('prune-track'),
+            name: 'Video',
+            cuts: [
+              Cut(
+                id: const CutId('prune-cut'),
+                name: 'Prune Cut',
+                duration: 12,
+                canvasSize: const CanvasSize(width: 640, height: 360),
+                layers: [
+                  Layer(
+                    id: _seLayerId,
+                    name: 'S1',
+                    kind: LayerKind.se,
+                    frames: [
+                      Frame(
+                        id: const FrameId('prune-f1'),
+                        duration: 1,
+                        strokes: const [],
+                      ),
+                    ],
+                    timeline: {
+                      0: const TimelineExposure.drawing(
+                        FrameId('prune-f1'),
+                        length: 3,
+                      ),
+                    },
+                    audioClips: const [
+                      AudioClip(
+                        filePath: foot,
+                        frameId: FrameId('prune-f1'),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+    await _pumpHost(tester, session);
+    session.addMediaAssets([foot]);
+    expect(session.isMediaAssetReferenced(foot), isTrue);
+    expect(session.removeMediaAsset(foot), isFalse);
+
+    Layer seLayer() =>
+        session.layers.firstWhere((layer) => layer.id == _seLayerId);
+    session.selectLayer(_seLayerId);
+    session.selectFrameIndex(0);
+    session.deleteCellAtCurrentFrame();
+    await tester.pumpAndSettle();
+
+    // The frame is gone AND the link went with it — the sound has no
+    // carrier anywhere, so the pool releases the asset.
+    expect(seLayer().audioClips, isEmpty);
+    expect(session.isMediaAssetReferenced(foot), isFalse);
+    expect(session.removeMediaAsset(foot), isTrue);
+    expect(session.mediaAssets, isEmpty);
+
+    // Undo is symmetric: the pool returns, then the block AND its link.
+    session.undo();
+    expect(session.mediaAssets.single.path, foot);
+    session.undo();
+    expect(seLayer().audioClips.single.frameId, const FrameId('prune-f1'));
+    expect(session.isMediaAssetReferenced(foot), isTrue);
+    await tester.pumpAndSettle();
+  });
+
+  testWidgets('REC1-A: a dangling audio link (frame already gone) does not '
+      'hold the media pool hostage', (tester) async {
+    const foot = r'C:\snd\foot.wav';
+    final session = EditorSessionManager(
+      initialProject: Project(
+        id: const ProjectId('dangle-project'),
+        name: 'Dangle Project',
+        createdAt: DateTime.utc(2026, 7, 22),
+        tracks: [
+          Track(
+            id: const TrackId('dangle-track'),
+            name: 'Video',
+            cuts: [
+              Cut(
+                id: const CutId('dangle-cut'),
+                name: 'Dangle Cut',
+                duration: 12,
+                canvasSize: const CanvasSize(width: 640, height: 360),
+                layers: [
+                  Layer(
+                    id: _seLayerId,
+                    name: 'S1',
+                    kind: LayerKind.se,
+                    frames: const [],
+                    timeline: const {},
+                    audioClips: const [
+                      AudioClip(filePath: foot, frameId: FrameId('gone')),
+                    ],
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+    await _pumpHost(tester, session);
+    session.addMediaAssets([foot]);
+    // The dangling link is inaudible everywhere — it must not count as a
+    // reference, and removal must succeed.
+    expect(session.isMediaAssetReferenced(foot), isFalse);
+    expect(session.removeMediaAsset(foot), isTrue);
+    expect(session.mediaAssets, isEmpty);
     await tester.pumpAndSettle();
   });
 }

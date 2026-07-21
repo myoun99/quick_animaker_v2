@@ -1,6 +1,7 @@
 import 'dart:collection';
 import 'dart:math' as math;
 
+import '../models/audio_clip.dart';
 import '../models/cut.dart';
 import '../models/cut_id.dart';
 import '../models/frame.dart';
@@ -490,7 +491,28 @@ class TimelineController {
           .where((frame) => !unreferenced.contains(frame.id))
           .toList(growable: false);
     }
-    return before.copyWith(frames: nextFrames, timeline: nextTimeline);
+    return before.copyWith(
+      frames: nextFrames,
+      timeline: nextTimeline,
+      audioClips: _audioClipsForFrames(before, nextFrames),
+    );
+  }
+
+  /// The layer's audio clips minus links to frames that are not in
+  /// [nextFrames] (REC1-A). A frame that leaves the layer takes its
+  /// linked sounds with it — the AudioClip contract: the sound belongs
+  /// to the instance. A kept dangling link plays nothing yet makes the
+  /// media pool's remove-guard refuse the asset forever.
+  List<AudioClip> _audioClipsForFrames(Layer before, List<Frame> nextFrames) {
+    if (before.audioClips.isEmpty || identical(nextFrames, before.frames)) {
+      return before.audioClips;
+    }
+    final liveIds = {for (final frame in nextFrames) frame.id};
+    final kept = [
+      for (final clip in before.audioClips)
+        if (liveIds.contains(clip.frameId)) clip,
+    ];
+    return kept.length == before.audioClips.length ? before.audioClips : kept;
   }
 
   // --- Bulk retime (UI-R17 #3/#7) --------------------------------------------
@@ -677,7 +699,11 @@ class TimelineController {
 
     _applyLayerEdit(
       before: before,
-      after: before.copyWith(frames: nextFrames, timeline: nextTimeline),
+      after: before.copyWith(
+        frames: nextFrames,
+        timeline: nextTimeline,
+        audioClips: _audioClipsForFrames(before, nextFrames),
+      ),
     );
   }
 
@@ -785,7 +811,11 @@ class TimelineController {
           .toList(growable: false);
     }
 
-    final after = before.copyWith(frames: nextFrames, timeline: nextTimeline);
+    final after = before.copyWith(
+      frames: nextFrames,
+      timeline: nextTimeline,
+      audioClips: _audioClipsForFrames(before, nextFrames),
+    );
     if (after == before) {
       return;
     }
