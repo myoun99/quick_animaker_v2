@@ -5,6 +5,7 @@ import 'package:quick_animaker_v2/src/services/persistence/app_save_settings.dar
 import 'package:quick_animaker_v2/src/ui/dialogs/preferences_dialog.dart';
 import 'package:quick_animaker_v2/src/ui/editor_session_manager.dart';
 import 'package:quick_animaker_v2/src/ui/input/app_input_settings.dart';
+import 'package:quick_animaker_v2/src/ui/playback/audio_sync_settings.dart';
 
 /// SAVE-1: the unified Preferences dialog — sections switch in place and
 /// the Autosave section drives the live save policy.
@@ -63,6 +64,15 @@ void main() {
     await tester.pumpAndSettle();
     expect(
       find.byKey(const ValueKey<String>('settings-autosave-enabled')),
+      findsOneWidget,
+    );
+
+    await tester.tap(
+      find.byKey(const ValueKey<String>('preferences-section-audio')),
+    );
+    await tester.pumpAndSettle();
+    expect(
+      find.byKey(const ValueKey<String>('settings-av-offset-value')),
       findsOneWidget,
     );
 
@@ -126,5 +136,50 @@ void main() {
     );
     await tester.pumpAndSettle();
     expect(AppSave.settings.value.sidecarDirectory, isNull);
+  });
+
+  testWidgets('the Audio section drives the live A/V offset: typed values '
+      'clamp, the unit switch keeps the number, and the inspector reports '
+      'the fallback while no device is open', (tester) async {
+    await pumpPreferences(tester, initialSection: PreferencesSection.audio);
+
+    final offset = find.byKey(
+      const ValueKey<String>('settings-av-offset-value'),
+    );
+    await tester.enterText(offset, '120');
+    await tester.testTextInput.receiveAction(TextInputAction.done);
+    await tester.pumpAndSettle();
+    expect(session.audioSyncSettings.value.offset, 120);
+    expect(session.audioSyncSettings.value.unit, AvOffsetUnit.milliseconds);
+
+    // A typo-sized value clamps instead of being accepted as a "setup"
+    // (5000 ms of shift would just look like a sync bug).
+    await tester.enterText(offset, '5000');
+    await tester.testTextInput.receiveAction(TextInputAction.done);
+    await tester.pumpAndSettle();
+    expect(
+      session.audioSyncSettings.value.offset,
+      AudioSyncSettings.maxMilliseconds,
+    );
+
+    // Switching units keeps the typed number, re-clamped for the unit.
+    await tester.tap(
+      find.byKey(const ValueKey<String>('settings-av-offset-unit')),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('frames').last);
+    await tester.pumpAndSettle();
+    expect(session.audioSyncSettings.value.unit, AvOffsetUnit.frames);
+    expect(
+      session.audioSyncSettings.value.offset,
+      AudioSyncSettings.maxFrames,
+    );
+
+    // No device in widget tests → the inspector says so rather than
+    // showing nothing.
+    expect(
+      find.textContaining('not open', findRichText: true),
+      findsOneWidget,
+    );
   });
 }
