@@ -190,6 +190,106 @@ class _AudioSettingsSectionState extends State<AudioSettingsSection> {
                 settings.copyWith(inputDeviceName: name),
               ),
             ),
+            const SizedBox(height: 4),
+            // The capture chain (REC1-D): software gain BAKED into takes
+            // (the meter and the file agree), the channel fold for
+            // one-sided interface mics, and the clipping-notice gate for
+            // the toast + block marker (the transport light stays on
+            // duty regardless).
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    strings.audioMicGainLabel,
+                    style: const TextStyle(fontSize: 12),
+                  ),
+                ),
+                SizedBox(
+                  width: 150,
+                  child: Slider(
+                    key: const ValueKey<String>('settings-mic-gain-slider'),
+                    value: settings.micGainDb.toDouble(),
+                    min: -AudioSyncSettings.maxMicGainDb.toDouble(),
+                    max: AudioSyncSettings.maxMicGainDb.toDouble(),
+                    divisions: AudioSyncSettings.maxMicGainDb * 2,
+                    onChanged: (value) => widget.session.setAudioSyncSettings(
+                      settings.copyWith(
+                        micGainDb: AudioSyncSettings.clampMicGainDb(
+                          value.round(),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+                SizedBox(
+                  width: 30,
+                  child: Text(
+                    '${settings.micGainDb > 0 ? '+' : ''}${settings.micGainDb}',
+                    key: const ValueKey<String>('settings-mic-gain-value'),
+                    textAlign: TextAlign.end,
+                    style: const TextStyle(fontSize: 12),
+                  ),
+                ),
+              ],
+            ),
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    strings.audioInputChannelLabel,
+                    style: const TextStyle(fontSize: 12),
+                  ),
+                ),
+                DropdownButton<VoiceInputChannelMode>(
+                  key: const ValueKey<String>('settings-input-channel-mode'),
+                  value: settings.inputChannelMode,
+                  isDense: true,
+                  style: const TextStyle(fontSize: 12),
+                  items: [
+                    DropdownMenuItem(
+                      value: VoiceInputChannelMode.device,
+                      child: Text(strings.audioInputChannelDevice),
+                    ),
+                    DropdownMenuItem(
+                      value: VoiceInputChannelMode.monoMix,
+                      child: Text(strings.audioInputChannelMonoMix),
+                    ),
+                    DropdownMenuItem(
+                      value: VoiceInputChannelMode.left,
+                      child: Text(strings.audioInputChannelLeft),
+                    ),
+                    DropdownMenuItem(
+                      value: VoiceInputChannelMode.right,
+                      child: Text(strings.audioInputChannelRight),
+                    ),
+                  ],
+                  onChanged: (mode) {
+                    if (mode != null && mode != settings.inputChannelMode) {
+                      widget.session.setAudioSyncSettings(
+                        settings.copyWith(inputChannelMode: mode),
+                      );
+                    }
+                  },
+                ),
+              ],
+            ),
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    strings.audioClippingNoticeLabel,
+                    style: const TextStyle(fontSize: 12),
+                  ),
+                ),
+                Switch(
+                  key: const ValueKey<String>('settings-clipping-notice'),
+                  value: settings.clippingNotice,
+                  onChanged: (value) => widget.session.setAudioSyncSettings(
+                    settings.copyWith(clippingNotice: value),
+                  ),
+                ),
+              ],
+            ),
             const Divider(height: 24),
             Row(
               children: [

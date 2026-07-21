@@ -997,6 +997,11 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
           // growing envelope (REC1-C), everything else to the conform
           // store's peaks.
           audioPeaksFor: _session.audioPeaksForDisplay,
+          // The tooltip string doubles as the marker switch (REC1-D):
+          // null while the clipping notice is off.
+          seClipMarkerTooltip: _session.audioSyncSettings.value.clippingNotice
+              ? _session.uiStrings.recordClipMarkerTooltip
+              : null,
           onRemoveAudioClip: _session.removeAudioClipAt,
           // Media-browser drops: link the dragged sound to the block.
           onDropMediaAsset: (layerId, blockStartFrame, path) =>
@@ -1295,6 +1300,7 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
             isVoiceRecording: _session.isVoiceRecording,
             onToggleVoiceRecording: () =>
                 toggleVoiceRecordingWithFeedback(context, _session),
+            voiceRecordClipLit: _session.voiceRecordClipLit,
             resolveStrings: () => _session.uiStrings,
           ),
           Expanded(

@@ -36,6 +36,15 @@ class AppStrings {
     required this.recordMicOpenFailed,
     required this.recordMicPermissionDenied,
     required this.recordSelectSeLane,
+    required this.recordTakeClipped,
+    required this.recordClipMarkerTooltip,
+    required this.audioMicGainLabel,
+    required this.audioInputChannelLabel,
+    required this.audioInputChannelDevice,
+    required this.audioInputChannelMonoMix,
+    required this.audioInputChannelLeft,
+    required this.audioInputChannelRight,
+    required this.audioClippingNoticeLabel,
     required this.recordNothingRecording,
     required this.recordTakeEmpty,
     required this.recordPlacementFailed,
@@ -117,6 +126,17 @@ class AppStrings {
 
   /// REC1-B: the armed-track refusal — recording needs an SE lane active.
   final String recordSelectSeLane;
+
+  // --- Capture chain (REC1-D) ---
+  final String recordTakeClipped;
+  final String recordClipMarkerTooltip;
+  final String audioMicGainLabel;
+  final String audioInputChannelLabel;
+  final String audioInputChannelDevice;
+  final String audioInputChannelMonoMix;
+  final String audioInputChannelLeft;
+  final String audioInputChannelRight;
+  final String audioClippingNoticeLabel;
   final String recordNothingRecording;
   final String recordTakeEmpty;
   final String recordPlacementFailed;
@@ -201,6 +221,16 @@ class AppStrings {
     recordMicPermissionDenied: 'Microphone permission was not granted.',
     recordSelectSeLane:
         'Recording lands on the selected SE track — select one first.',
+    recordTakeClipped:
+        'The take clipped — the red corner marks the block.',
+    recordClipMarkerTooltip: 'This take clipped (recorded too hot)',
+    audioMicGainLabel: 'Mic gain (dB)',
+    audioInputChannelLabel: 'Input channels',
+    audioInputChannelDevice: 'As device',
+    audioInputChannelMonoMix: 'Mono mix',
+    audioInputChannelLeft: 'Left only',
+    audioInputChannelRight: 'Right only',
+    audioClippingNoticeLabel: 'Clipping warnings (toast + block marker)',
     recordNothingRecording: 'Nothing was recording.',
     recordTakeEmpty: 'The take was empty — nothing to place.',
     recordPlacementFailed: 'The recording could not be placed.',
@@ -283,6 +313,15 @@ class AppStrings {
     recordMicPermissionDenied: 'マイクの権限が許可されませんでした。',
     recordSelectSeLane: '録音は選択中のSEトラックに配置されます — '
         '先にSEトラックを選択してください。',
+    recordTakeClipped: 'テイクがクリッピングしました — ブロックの赤い角が目印です。',
+    recordClipMarkerTooltip: 'このテイクはクリッピングしています（入力過大）',
+    audioMicGainLabel: 'マイクゲイン（dB）',
+    audioInputChannelLabel: '入力チャンネル',
+    audioInputChannelDevice: '装置のまま',
+    audioInputChannelMonoMix: 'モノラルミックス',
+    audioInputChannelLeft: '左のみ',
+    audioInputChannelRight: '右のみ',
+    audioClippingNoticeLabel: 'クリッピング警告（トースト＋ブロックマーカー）',
     recordNothingRecording: '録音中ではありません。',
     recordTakeEmpty: 'テイクが空でした — 配置するものがありません。',
     recordPlacementFailed: '録音を配置できませんでした。',
@@ -363,6 +402,15 @@ class AppStrings {
     recordMicPermissionDenied: '마이크 권한이 허용되지 않았습니다.',
     recordSelectSeLane:
         '녹음은 선택된 SE 트랙에 배치됩니다 — 먼저 SE 트랙을 선택하세요.',
+    recordTakeClipped: '테이크에 클리핑이 감지되었습니다 — 블록의 빨간 모서리가 표시입니다.',
+    recordClipMarkerTooltip: '이 테이크는 클리핑되었습니다(입력 과대)',
+    audioMicGainLabel: '마이크 게인(dB)',
+    audioInputChannelLabel: '입력 채널',
+    audioInputChannelDevice: '장치 그대로',
+    audioInputChannelMonoMix: '모노 믹스',
+    audioInputChannelLeft: '왼쪽만',
+    audioInputChannelRight: '오른쪽만',
+    audioClippingNoticeLabel: '클리핑 주의 안내(토스트+블록 마커)',
     recordNothingRecording: '녹음 중이 아닙니다.',
     recordTakeEmpty: '테이크가 비어 있어 배치할 것이 없습니다.',
     recordPlacementFailed: '녹음을 배치하지 못했습니다.',
@@ -448,6 +496,16 @@ class AppStrings {
     recordSelectSeLane:
         'L\'enregistrement se place sur la piste SE sélectionnée — '
         'sélectionnez-en une d\'abord.',
+    recordTakeClipped:
+        'La prise a saturé — le coin rouge marque le bloc.',
+    recordClipMarkerTooltip: 'Prise saturée (niveau trop fort)',
+    audioMicGainLabel: 'Gain micro (dB)',
+    audioInputChannelLabel: 'Canaux d\'entrée',
+    audioInputChannelDevice: 'Tel quel',
+    audioInputChannelMonoMix: 'Mixage mono',
+    audioInputChannelLeft: 'Gauche seul',
+    audioInputChannelRight: 'Droit seul',
+    audioClippingNoticeLabel: 'Alertes de saturation (toast + marqueur)',
     recordNothingRecording: 'Aucun enregistrement en cours.',
     recordTakeEmpty: 'La prise était vide — rien à placer.',
     recordPlacementFailed: 'La prise n\'a pas pu être placée.',
@@ -531,6 +589,15 @@ class AppStrings {
         '无法打开麦克风 — 请检查首选项▸音频以及系统麦克风权限。',
     recordMicPermissionDenied: '麦克风权限未被授予。',
     recordSelectSeLane: '录音将放置到所选SE轨道 — 请先选择一个SE轨道。',
+    recordTakeClipped: '录音发生削波 — 块上的红角为标记。',
+    recordClipMarkerTooltip: '该录音已削波（电平过高）',
+    audioMicGainLabel: '麦克风增益（dB）',
+    audioInputChannelLabel: '输入声道',
+    audioInputChannelDevice: '按设备',
+    audioInputChannelMonoMix: '单声道混合',
+    audioInputChannelLeft: '仅左声道',
+    audioInputChannelRight: '仅右声道',
+    audioClippingNoticeLabel: '削波警告（提示+块标记）',
     recordNothingRecording: '当前没有在录音。',
     recordTakeEmpty: '录音为空 — 没有可放置的内容。',
     recordPlacementFailed: '录音未能放置。',

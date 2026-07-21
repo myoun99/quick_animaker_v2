@@ -49,6 +49,7 @@ SeTakePlacement? planSeTakePlacement({
   required FrameId takeFrameId,
   required FrameId Function() newFrameId,
   String takeName = '',
+  bool takeClipped = false,
 }) {
   if (lengthFrames < 1 || startFrame < 0) {
     return null;
@@ -189,7 +190,7 @@ SeTakePlacement? planSeTakePlacement({
               )
             : clip,
     ...clonedClips,
-    AudioClip(filePath: filePath, frameId: takeFrameId),
+    AudioClip(filePath: filePath, frameId: takeFrameId, clipped: takeClipped),
   ];
 
   return SeTakePlacement(

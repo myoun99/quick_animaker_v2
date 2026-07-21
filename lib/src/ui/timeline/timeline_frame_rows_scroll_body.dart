@@ -57,6 +57,7 @@ class TimelineFrameRowsScrollBody extends StatefulWidget {
     this.onActivateCell,
     this.instructionDefById,
     this.audioPeaksFor,
+    this.seClipMarkerTooltip,
     this.projectFrameRate = ProjectFrameRate.fps24,
     this.onRemoveAudioClip,
     this.onDropMediaAsset,
@@ -131,6 +132,10 @@ class TimelineFrameRowsScrollBody extends StatefulWidget {
   final CameraInstructionDef? Function(String instructionId)?
   instructionDefById;
   final AudioPeaks? Function(String filePath)? audioPeaksFor;
+
+  /// Clipped-take marker tooltip (REC1-D); null = markers off. A display
+  /// fact, so it joins the row memo token below.
+  final String? seClipMarkerTooltip;
   final ProjectFrameRate projectFrameRate;
   final void Function(LayerId layerId, int clipIndex)? onRemoveAudioClip;
   final void Function(LayerId layerId, int blockStartFrame, String path)?
@@ -237,6 +242,9 @@ typedef _RowMemoInputs = ({
   // the camera track / instruction registry, and the SE spill-in flag.
   Object? auxiliaryIdentity,
   bool seSpillsIn,
+  // REC1-D: the clip-marker switch is a display fact — toggling it must
+  // invalidate SE rows (the memo-token discipline).
+  String? seClipMarkerTooltip,
 });
 
 class _RowMemoEntry {
@@ -293,7 +301,8 @@ class _TimelineFrameRowsScrollBodyState
         a.hasActivateCell == b.hasActivateCell &&
         identical(a.dragPreview, b.dragPreview) &&
         identical(a.auxiliaryIdentity, b.auxiliaryIdentity) &&
-        a.seSpillsIn == b.seSpillsIn;
+        a.seSpillsIn == b.seSpillsIn &&
+        a.seClipMarkerTooltip == b.seClipMarkerTooltip;
   }
 
   /// The row kind's external-input identity for the memo token.
@@ -324,6 +333,7 @@ class _TimelineFrameRowsScrollBodyState
       onActivateCell: widget.onActivateCell,
       instructionDefById: widget.instructionDefById,
       audioPeaksFor: widget.audioPeaksFor,
+      seClipMarkerTooltip: widget.seClipMarkerTooltip,
       projectFrameRate: widget.projectFrameRate,
       showSeconds: widget.showSeconds,
       onRemoveAudioClip: widget.onRemoveAudioClip,
@@ -454,6 +464,7 @@ class _TimelineFrameRowsScrollBodyState
       dragPreview: widget.dragPreview,
       auxiliaryIdentity: _auxiliaryIdentityFor(row.layer),
       seSpillsIn: widget.seSpillInLayerIds.contains(row.layer.id),
+      seClipMarkerTooltip: widget.seClipMarkerTooltip,
     );
     final cached = _rowMemo[rowKey.value];
     if (cached != null && _inputsMatch(cached.inputs, inputs)) {

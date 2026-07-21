@@ -51,6 +51,7 @@ class TimelinePanel extends StatefulWidget {
     this.onActivateCell,
     this.instructionDefById,
     this.audioPeaksFor,
+    this.seClipMarkerTooltip,
     this.onRemoveAudioClip,
     this.onDropMediaAsset,
     this.onSetAudioClipOffset,
@@ -176,6 +177,10 @@ class TimelinePanel extends StatefulWidget {
   /// Waveform peaks for SE rows' audio clips + the removal hook (both
   /// orientations; frames↔seconds via [projectFrameRate]).
   final AudioPeaks? Function(String filePath)? audioPeaksFor;
+
+  /// Clipped-take marker tooltip (REC1-D); null = markers off. Horizontal
+  /// rows only for now — the xsheet's marker joins with its page work.
+  final String? seClipMarkerTooltip;
   final void Function(LayerId layerId, int clipIndex)? onRemoveAudioClip;
 
   /// Links a media-browser asset to an SE block (drag-drop), both
@@ -446,6 +451,7 @@ class _TimelinePanelState extends State<TimelinePanel> {
                     onActivateCell: widget.onActivateCell,
                     instructionDefById: widget.instructionDefById,
                     audioPeaksFor: widget.audioPeaksFor,
+                    seClipMarkerTooltip: widget.seClipMarkerTooltip,
                     projectFrameRate: widget.projectFrameRate,
                     showSeconds: widget.showSeconds,
                     onRemoveAudioClip: widget.onRemoveAudioClip,

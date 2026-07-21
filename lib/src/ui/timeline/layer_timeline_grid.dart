@@ -78,6 +78,7 @@ class LayerTimelineGrid extends StatefulWidget {
     this.onActivateCell,
     this.instructionDefById,
     this.audioPeaksFor,
+    this.seClipMarkerTooltip,
     this.projectFrameRate = ProjectFrameRate.fps24,
     this.showSeconds = false,
     this.onRemoveAudioClip,
@@ -200,6 +201,9 @@ class LayerTimelineGrid extends StatefulWidget {
 
   /// Waveform peaks for SE rows' audio clips + the removal hook.
   final AudioPeaks? Function(String filePath)? audioPeaksFor;
+
+  /// Clipped-take marker tooltip (REC1-D); null = markers off.
+  final String? seClipMarkerTooltip;
   final ProjectFrameRate projectFrameRate;
 
   /// The ruler's bottom-line mode (UI-R10 #27): seconds display repeats
@@ -1704,6 +1708,9 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                                                             .instructionDefById,
                                                         audioPeaksFor: widget
                                                             .audioPeaksFor,
+                                                        seClipMarkerTooltip:
+                                                            widget
+                                                                .seClipMarkerTooltip,
                                                         projectFrameRate:
                                                             widget.projectFrameRate,
                                                         onRemoveAudioClip: widget

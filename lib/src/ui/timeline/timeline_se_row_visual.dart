@@ -241,6 +241,100 @@ List<Widget> timelineRowAudioOverlays({
   return overlays;
 }
 
+/// Red corner markers for takes that CLIPPED (REC1-D): the carrying
+/// block's trailing-top corner, tooltip-explained. Callers mount these
+/// only while the clipping notice is enabled — the quiet default stays
+/// quiet (user decision: an animator who does not care must not see red
+/// corners all day).
+List<Widget> timelineRowClipMarkerOverlays({
+  required Layer layer,
+  required int frameStartIndex,
+  required int frameEndIndexExclusive,
+  required double leadingFrameSpacerWidth,
+  required double frameCellExtent,
+  required double crossAxisExtent,
+  required Axis axis,
+  required String tooltip,
+  required Color color,
+  String keyPrefix = 'timeline',
+}) {
+  const markerSize = 11.0;
+  final overlays = <Widget>[];
+  for (final span in seAudioSpans(layer)) {
+    if (!span.clip.clipped) {
+      continue;
+    }
+    final blockEnd = span.startFrame + span.lengthFrames;
+    if (blockEnd <= frameStartIndex ||
+        span.startFrame >= frameEndIndexExclusive) {
+      continue;
+    }
+    final startOffset = frameVisibleX(
+      frameIndex: span.startFrame,
+      frameStartIndex: frameStartIndex,
+      frameCellWidth: frameCellExtent,
+      leadingFrameSpacerWidth: leadingFrameSpacerWidth,
+    );
+    final endOffset = frameVisibleX(
+      frameIndex: blockEnd,
+      frameStartIndex: frameStartIndex,
+      frameCellWidth: frameCellExtent,
+      leadingFrameSpacerWidth: leadingFrameSpacerWidth,
+    );
+    final marker = Tooltip(
+      message: tooltip,
+      child: CustomPaint(
+        size: const Size(markerSize, markerSize),
+        painter: _ClipCornerPainter(color),
+      ),
+    );
+    final key = ValueKey<String>(
+      '$keyPrefix-clip-marker-${layer.id}-b${span.startFrame}',
+    );
+    overlays.add(switch (axis) {
+      // The block's top-right corner — beside, never over, the
+      // bottom-right duration label (R26 #7).
+      Axis.horizontal => Positioned(
+        key: key,
+        left: endOffset - markerSize,
+        top: 0,
+        width: markerSize,
+        height: markerSize,
+        child: marker,
+      ),
+      Axis.vertical => Positioned(
+        key: key,
+        top: startOffset,
+        left: crossAxisExtent - markerSize,
+        width: markerSize,
+        height: markerSize,
+        child: marker,
+      ),
+    });
+  }
+  return overlays;
+}
+
+class _ClipCornerPainter extends CustomPainter {
+  const _ClipCornerPainter(this.color);
+
+  final Color color;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final path = Path()
+      ..moveTo(0, 0)
+      ..lineTo(size.width, 0)
+      ..lineTo(size.width, size.height)
+      ..close();
+    canvas.drawPath(path, Paint()..color = color);
+  }
+
+  @override
+  bool shouldRepaint(covariant _ClipCornerPainter oldDelegate) =>
+      oldDelegate.color != color;
+}
+
 /// Media-browser drop targets over an SE row's blocks: dropping an asset
 /// onto a block links the sound to the block's frame (footsteps reuse —
 /// the browser's drag-out counterpart to importing at the playhead).
