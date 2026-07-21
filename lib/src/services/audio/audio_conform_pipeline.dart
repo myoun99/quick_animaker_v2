@@ -224,7 +224,12 @@ class AudioConformPipeline {
     }
 
     final existing = conformPath == null ? null : _readConform(conformPath);
-    if (existing != null && conformMatchesSource(existing, fingerprint)) {
+    if (existing != null &&
+        conformMatchesSource(existing, fingerprint) &&
+        // A conform at another rate is stale even with a matching source:
+        // the project's audio rate is a setting now (EXPORT-AUDIO ③), and
+        // playing 44.1k PCM on a 48k schedule would shift every clip.
+        existing.sampleRate == projectSampleRate) {
       return ConformResult(
         outcome: ConformOutcome.reused,
         conformPath: conformPath,

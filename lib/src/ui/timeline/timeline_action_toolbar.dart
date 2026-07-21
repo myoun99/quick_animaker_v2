@@ -361,6 +361,29 @@ class TimelineActionToolbar extends StatelessWidget {
     ];
   }
 
+  /// EXPORT-AUDIO ③: the audio-rate presets — 48k is the film standard,
+  /// 44.1k the music one, 96k for the rare high-rate delivery.
+  static const List<int> audioSampleRatePresets = [44100, 48000, 96000];
+
+  /// '48kHz' / '44.1kHz' — kilohertz reads at a glance; the raw hertz
+  /// number is a spec sheet.
+  static String audioSampleRateLabel(int rate) => rate % 1000 == 0
+      ? '${rate ~/ 1000}kHz'
+      : '${(rate / 1000).toStringAsFixed(1)}kHz';
+
+  List<PanelFlyoutEntry> _audioSampleRateEntries() {
+    final current = session.projectAudioSampleRate;
+    return [
+      for (final rate in audioSampleRatePresets)
+        PanelFlyoutItem(
+          keyValue: 'timeline-samplerate-$rate',
+          label: audioSampleRateLabel(rate),
+          checked: rate == current,
+          onSelected: () => session.setProjectAudioSampleRate(rate),
+        ),
+    ];
+  }
+
   List<PanelFlyoutEntry> _frameEntries() {
     return [
       PanelFlyoutItem(
@@ -549,6 +572,19 @@ class TimelineActionToolbar extends StatelessWidget {
                     label: session.projectFrameRate.label,
                     tooltip: 'Project frame rate',
                     entriesBuilder: () => _fpsEntries(context),
+                  ),
+                  const SizedBox(width: 4),
+                  // EXPORT-AUDIO ③: the PROJECT audio rate — what every
+                  // sound conforms to and the mixer runs at.
+                  PanelFlyoutButton(
+                    key: const ValueKey<String>(
+                      'timeline-samplerate-menu-button',
+                    ),
+                    label: audioSampleRateLabel(
+                      session.projectAudioSampleRate,
+                    ),
+                    tooltip: 'Project audio sample rate',
+                    entriesBuilder: _audioSampleRateEntries,
                   ),
                 ],
               ),

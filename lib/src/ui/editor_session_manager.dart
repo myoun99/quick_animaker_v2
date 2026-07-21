@@ -92,6 +92,7 @@ import '../services/commands/update_layer_instructions_command.dart';
 import '../services/commands/update_layer_mark_command.dart';
 import '../services/commands/update_layer_timeline_command.dart';
 import '../services/commands/update_layer_timesheet_command.dart';
+import '../services/commands/update_project_audio_sample_rate_command.dart';
 import '../services/commands/update_project_frame_rate_command.dart';
 import '../services/commands/update_project_trailing_frames_command.dart';
 import '../services/onion_skin_plan.dart';
@@ -830,6 +831,8 @@ class EditorSessionManager extends ChangeNotifier {
       (_injectedAudioConformStore ??
           AudioConformStore(
             resolveConformPath: _conformPathFor,
+            resolveProjectSampleRate: () =>
+                _repository.requireProject().audioSampleRate,
             // Widget tests: run conforms inline — a worker isolate started
             // under fake async outlives the test (the prerender scheduler's
             // FLUTTER_TEST branch, same reason). Missing fixture paths
@@ -1140,6 +1143,31 @@ class EditorSessionManager extends ChangeNotifier {
       return;
     }
     setProjectFrameRate(ProjectFrameRate.integer(fps));
+  }
+
+  /// The project's audio rate — what every conform lands at (EXPORT-AUDIO
+  /// ③).
+  int get projectAudioSampleRate =>
+      _repository.requireProject().audioSampleRate;
+
+  /// Sets the project's audio rate (one undo step, no-op when unchanged).
+  /// Existing conforms re-build at the new rate in the background — the
+  /// store treats a rate-mismatched entry as stale on its own, so undo
+  /// and redo self-heal too.
+  void setProjectAudioSampleRate(int sampleRate) {
+    if (sampleRate < 8000 ||
+        sampleRate > 192000 ||
+        sampleRate == projectAudioSampleRate) {
+      return;
+    }
+    _historyManager.execute(
+      UpdateProjectAudioSampleRateCommand(
+        repository: _repository,
+        audioSampleRate: sampleRate,
+      ),
+    );
+    _warmAudioConforms();
+    notifyListeners();
   }
 
   /// Resolved camera pose at an arbitrary playback frame (for rendering).

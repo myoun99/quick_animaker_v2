@@ -98,6 +98,14 @@ class ProjectRepository {
     updateProject((project) => project.copyWith(frameRate: frameRate));
   }
 
+  /// EXPORT-AUDIO ③: the project's audio rate — what every conform lands
+  /// at and the mixer runs at.
+  void updateProjectAudioSampleRate(int audioSampleRate) {
+    updateProject(
+      (project) => project.copyWith(audioSampleRate: audioSampleRate),
+    );
+  }
+
   void updateTrailingFrames(int trailingFrames) {
     updateProject(
       (project) => project.copyWith(trailingFrames: trailingFrames),

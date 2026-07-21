@@ -12,6 +12,11 @@ import 'track.dart';
 
 const defaultProjectCameraSize = CanvasSize(width: 1920, height: 1080);
 
+/// The default audio rate (EXPORT-AUDIO ③): 48 kHz is the film/video
+/// production standard (44.1k is the CD/music one) and what the conform
+/// pipeline has targeted since 2B.
+const defaultProjectAudioSampleRate = 48000;
+
 class Project {
   Project({
     required this.id,
@@ -26,11 +31,14 @@ class Project {
     List<MediaAsset> mediaAssets = const [],
     int trailingFrames = 0,
     LayerLinkRegistry? linkRegistry,
+    int audioSampleRate = defaultProjectAudioSampleRate,
   }) : tracks = List.unmodifiable(tracks),
        cameraInstructions = cameraInstructions ?? CameraInstructionSet.standard,
        mediaAssets = immutableMediaAssetList(mediaAssets),
        trailingFrames = trailingFrames < 0 ? 0 : trailingFrames,
-       linkRegistry = linkRegistry ?? LayerLinkRegistry.empty;
+       linkRegistry = linkRegistry ?? LayerLinkRegistry.empty,
+       audioSampleRate =
+           audioSampleRate < 1 ? defaultProjectAudioSampleRate : audioSampleRate;
 
   final ProjectId id;
   final String name;
@@ -74,6 +82,12 @@ class Project {
   /// layers sharing one cel bank. Empty on projects that never link.
   final LayerLinkRegistry linkRegistry;
 
+  /// The project's audio rate: what every sound conforms to at import and
+  /// what the mixer runs at (EXPORT-AUDIO ③). PROJECT state — unlike the
+  /// A/V offset (a property of one machine's output path), the rate is a
+  /// property of the film.
+  final int audioSampleRate;
+
   MediaAsset? mediaAssetByPath(String path) {
     for (final asset in mediaAssets) {
       if (asset.path == path) {
@@ -96,6 +110,7 @@ class Project {
     List<MediaAsset>? mediaAssets,
     int? trailingFrames,
     LayerLinkRegistry? linkRegistry,
+    int? audioSampleRate,
   }) {
     return Project(
       id: id ?? this.id,
@@ -110,6 +125,7 @@ class Project {
       mediaAssets: mediaAssets ?? this.mediaAssets,
       trailingFrames: trailingFrames ?? this.trailingFrames,
       linkRegistry: linkRegistry ?? this.linkRegistry,
+      audioSampleRate: audioSampleRate ?? this.audioSampleRate,
     );
   }
 
@@ -132,6 +148,9 @@ class Project {
     if (trailingFrames != 0) 'trailingFrames': trailingFrames,
     // Omitted when empty: unlinked projects keep their exact legacy JSON.
     if (linkRegistry.isNotEmpty) 'linkRegistry': linkRegistry.toJson(),
+    // Omitted at the default: 48k projects keep their exact legacy JSON.
+    if (audioSampleRate != defaultProjectAudioSampleRate)
+      'audioSampleRate': audioSampleRate,
   };
 
   factory Project.fromJson(Map<String, dynamic> json) {
@@ -180,6 +199,8 @@ class Project {
           : LayerLinkRegistry.fromJson(
               json['linkRegistry'] as Map<String, dynamic>,
             ),
+      audioSampleRate:
+          (json['audioSampleRate'] as int?) ?? defaultProjectAudioSampleRate,
     );
   }
 
@@ -198,7 +219,8 @@ class Project {
           other.cameraInstructions == cameraInstructions &&
           listEquals(other.mediaAssets, mediaAssets) &&
           other.trailingFrames == trailingFrames &&
-          other.linkRegistry == linkRegistry;
+          other.linkRegistry == linkRegistry &&
+          other.audioSampleRate == audioSampleRate;
 
   @override
   int get hashCode => Object.hash(
@@ -214,6 +236,7 @@ class Project {
     Object.hashAll(mediaAssets),
     trailingFrames,
     linkRegistry,
+    audioSampleRate,
   );
 
   @override

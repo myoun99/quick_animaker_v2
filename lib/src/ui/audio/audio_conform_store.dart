@@ -38,7 +38,8 @@ class AudioConformStore extends ChangeNotifier {
     required this.resolveConformPath,
     ConformRunner? runner,
     ResampleRunner? resampleRunner,
-    this.projectSampleRate = 48000,
+    int Function()? resolveProjectSampleRate,
+    int projectSampleRate = 48000,
     this.bucketsPerSecond = 80,
     DateTime Function()? now,
     this.maxAttempts = 3,
@@ -47,6 +48,8 @@ class AudioConformStore extends ChangeNotifier {
     this.libraryPathOverride,
   }) : _runner = runner ?? runConformInIsolate,
        _resampleRunner = resampleRunner ?? runResampleInIsolate,
+       _resolveProjectSampleRate =
+           resolveProjectSampleRate ?? (() => projectSampleRate),
        _now = now ?? DateTime.now,
        _log = log ?? debugPrint;
 
@@ -58,7 +61,12 @@ class AudioConformStore extends ChangeNotifier {
   final ConformRunner _runner;
   final ResampleRunner _resampleRunner;
 
-  final int projectSampleRate;
+  /// The PROJECT's audio rate, read live (EXPORT-AUDIO ③ made it a
+  /// project setting; a fixed int remains as the test-friendly default).
+  final int Function() _resolveProjectSampleRate;
+
+  int get projectSampleRate => _resolveProjectSampleRate();
+
   final int bucketsPerSecond;
   final DateTime Function() _now;
   final void Function(String message) _log;
@@ -80,7 +88,15 @@ class AudioConformStore extends ChangeNotifier {
   ConformResult? resultFor(String sourcePath) {
     final cached = _entries[sourcePath];
     if (cached != null) {
-      return cached;
+      if (cached.isUsable && cached.sampleRate != projectSampleRate) {
+        // The project rate moved under this entry (setting change, or an
+        // undo of one): stale by definition, re-conform. Self-healing
+        // here rather than hooked into the history stack.
+        _entries.remove(sourcePath);
+        _resampledByRate.remove(sourcePath);
+      } else {
+        return cached;
+      }
     }
     if (_pending.contains(sourcePath)) {
       return null;

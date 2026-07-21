@@ -153,6 +153,39 @@ void main() {
     store.dispose();
   });
 
+  test('a project-rate change makes cached entries stale on their own — '
+      'undo and redo self-heal without hooks', () async {
+    var projectRate = 48000;
+    final requested = <int>[];
+    final store = AudioConformStore(
+      resolveConformPath: (_) => null,
+      resolveProjectSampleRate: () => projectRate,
+      runner: (request) async {
+        requested.add(request.projectSampleRate);
+        return ConformResult(
+          outcome: ConformOutcome.built,
+          samples: Float32List(4),
+          channels: 1,
+          sampleRate: request.projectSampleRate,
+          frames: 4,
+        );
+      },
+      log: (_) {},
+    );
+
+    store.resultFor('a.wav');
+    await pumpEventQueue();
+    expect(store.resultFor('a.wav')?.sampleRate, 48000);
+
+    projectRate = 44100; // the setting moved (or an undo moved it back)
+    expect(store.resultFor('a.wav'), isNull,
+        reason: 'the 48k entry is stale by definition — re-kicked');
+    await pumpEventQueue();
+    expect(store.resultFor('a.wav')?.sampleRate, 44100);
+    expect(requested, [48000, 44100]);
+    store.dispose();
+  });
+
   test('warmPaths kicks every unknown path once', () async {
     final seen = <String>[];
     final store = AudioConformStore(
