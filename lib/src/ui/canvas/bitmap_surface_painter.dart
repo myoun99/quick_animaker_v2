@@ -54,11 +54,6 @@ class BitmapSurfacePainter extends CustomPainter {
 
   final BitmapTileImageCache tileImageCache;
 
-  /// Scrim drawn over pasteboard content OUTSIDE the canvas rect — keeps
-  /// off-stage artwork visible but clearly receded (Flash's gray
-  /// surround, dimmed instead of hidden).
-  static const Color pasteboardDimColor = Color(0x8C000000);
-
   @override
   void paint(Canvas canvas, Size size) {
     final canvasWidth = surface.canvasSize.width.toDouble();
@@ -218,13 +213,9 @@ class BitmapSurfacePainter extends CustomPainter {
       canvas.restore();
     }
 
-    // Dim everything OUTSIDE the canvas rect (even-odd ring): off-stage
-    // artwork reads as parked, not part of the shot.
-    final dimPath = Path()
-      ..fillType = PathFillType.evenOdd
-      ..addRect(pasteboardRect)
-      ..addRect(Rect.fromLTWH(0, 0, canvasWidth, canvasHeight));
-    canvas.drawPath(dimPath, Paint()..color = pasteboardDimColor);
+    // No dim ring here: the pasteboard dim is ONE overlay above the whole
+    // layer stack (PasteboardDimOverlay) — below/above layers show
+    // off-canvas content too, and per-painter rings would stack alpha.
 
     canvas.restore();
   }

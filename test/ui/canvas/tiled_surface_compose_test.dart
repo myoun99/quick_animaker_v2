@@ -85,6 +85,85 @@ void main() {
     });
   });
 
+  group('positioned compose (pasteboard extent)', () {
+    test('surfaceContentWorldRect is the canvas rect without pasteboard '
+        'tiles and grows to cover them when present', () {
+      // Tile-multiple canvas: the stored grid matches the canvas exactly.
+      const canvasSize = CanvasSize(width: 512, height: 256);
+      final plain = patternedSurface(canvasSize);
+      expect(
+        surfaceContentWorldRect(plain),
+        const ui.Rect.fromLTRB(0, 0, 512, 256),
+      );
+
+      final withPasteboard = plain.putTile(
+        BitmapTile.blank(coord: TileCoord(x: -1, y: -1), size: 256),
+      );
+      expect(
+        surfaceContentWorldRect(withPasteboard),
+        const ui.Rect.fromLTRB(-256, -256, 512, 256),
+      );
+
+      // A non-multiple canvas keeps its edge tiles' overhang in the
+      // extent — those pixels are drawable pasteboard space now.
+      expect(
+        surfaceContentWorldRect(
+          patternedSurface(const CanvasSize(width: 300, height: 200)),
+        ),
+        const ui.Rect.fromLTRB(0, 0, 512, 256),
+      );
+    });
+
+    testWidgets('a canvas-only surface composes byte-identical to the '
+        'canvas-extent route, worldRect = canvas', (tester) async {
+      await tester.runAsync(() async {
+        // Tile-multiple canvas so the extent equals the canvas exactly.
+        final surface = patternedSurface(
+          const CanvasSize(width: 512, height: 256),
+        );
+        debugUploadOffloadPixelThreshold = 1 << 62;
+        final reference = await bytesOf(await bitmapSurfaceToImage(surface));
+
+        final positioned = (await composePositionedSurfaceImage(surface))!;
+        expect(positioned.worldRect, const ui.Rect.fromLTRB(0, 0, 512, 256));
+        expect(await bytesOf(positioned.image), reference);
+      });
+    });
+
+    testWidgets('pasteboard tiles land at their world position in the '
+        'grown image', (tester) async {
+      await tester.runAsync(() async {
+        // One opaque red pixel at world (-256, -256) — the pasteboard
+        // tile's own (0, 0).
+        final pixels = Uint8List(256 * 256 * 4);
+        pixels[0] = 255;
+        pixels[3] = 255;
+        final surface = BitmapSurface(
+          canvasSize: const CanvasSize(width: 300, height: 200),
+          tiles: {
+            TileCoord(x: -1, y: -1): BitmapTile(
+              coord: TileCoord(x: -1, y: -1),
+              size: 256,
+              pixels: pixels,
+            ),
+          },
+        );
+
+        final positioned = (await composePositionedSurfaceImage(surface))!;
+        expect(positioned.worldRect, const ui.Rect.fromLTRB(-256, -256, 300, 200));
+        expect(positioned.image.width, 556);
+        expect(positioned.image.height, 456);
+
+        final bytes = await bytesOf(positioned.image);
+        // World (-256, -256) → image (0, 0).
+        expect(bytes.sublist(0, 4), [255, 0, 0, 255]);
+        // World (0, 0) (canvas origin) → image (256, 256): empty here.
+        final canvasOrigin = (256 * 556 + 256) * 4;
+        expect(bytes.sublist(canvasOrigin, canvasOrigin + 4), [0, 0, 0, 0]);
+      });
+    });
+  });
+
   testWidgets('shouldAbort stops the compose at tile granularity and '
       'before the final raster (R13-4)', (tester) async {
     await tester.runAsync(() async {

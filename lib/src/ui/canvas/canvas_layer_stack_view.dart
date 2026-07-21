@@ -82,10 +82,12 @@ class CanvasLayerStackView extends StatefulWidget {
 }
 
 class _CanvasLayerStackViewState extends State<CanvasLayerStackView> {
-  /// Cache image identity → our clone. Clones survive cache eviction (the
-  /// cache may dispose its image at any time; a clone shares pixels with an
-  /// independent lifetime).
-  final Map<BrushFrameKey, ({ui.Image source, ui.Image clone})> _images = {};
+  /// Cache image identity → our clone (+ the canvas-space rect the image
+  /// covers — grown past the canvas when the cel has pasteboard tiles).
+  /// Clones survive cache eviction (the cache may dispose its image at any
+  /// time; a clone shares pixels with an independent lifetime).
+  final Map<BrushFrameKey, ({ui.Image source, ui.Image clone, Rect worldRect})>
+  _images = {};
   bool _preparing = false;
   bool _rerunRequested = false;
 
@@ -149,9 +151,13 @@ class _CanvasLayerStackViewState extends State<CanvasLayerStackView> {
         continue;
       }
       final held = _images[layer.frameKey];
-      if (held == null || !identical(held.source, image)) {
+      if (held == null || !identical(held.source, image.image)) {
         held?.clone.dispose();
-        _images[layer.frameKey] = (source: image, clone: image.clone());
+        _images[layer.frameKey] = (
+          source: image.image,
+          clone: image.image.clone(),
+          worldRect: image.worldRect,
+        );
       }
     }
   }
@@ -188,9 +194,13 @@ class _CanvasLayerStackViewState extends State<CanvasLayerStackView> {
             }
             continue;
           }
-          if (held == null || !identical(held.source, image)) {
+          if (held == null || !identical(held.source, image.image)) {
             held?.clone.dispose();
-            _images[layer.frameKey] = (source: image, clone: image.clone());
+            _images[layer.frameKey] = (
+              source: image.image,
+              clone: image.image.clone(),
+              worldRect: image.worldRect,
+            );
             changed = true;
           }
         }
@@ -219,6 +229,7 @@ class _CanvasLayerStackViewState extends State<CanvasLayerStackView> {
               if (_images[layer.frameKey] != null)
                 (
                   image: _images[layer.frameKey]!.clone,
+                  worldRect: _images[layer.frameKey]!.worldRect,
                   opacity: layer.opacity,
                   pose: layer.pose,
                   anchorPoint: layer.anchorPoint,
@@ -248,6 +259,7 @@ class _LayerStackPainter extends CustomPainter {
   final List<
     ({
       ui.Image image,
+      Rect worldRect,
       double opacity,
       TransformPose? pose,
       CanvasPoint? anchorPoint,
@@ -299,6 +311,9 @@ class _LayerStackPainter extends CustomPainter {
       if (tint != null) {
         paint.colorFilter = ColorFilter.mode(Color(tint), BlendMode.srcIn);
       }
+      // Dest = the image's WORLD rect: the canvas rect for plain cels
+      // (legacy path, unchanged bytes), grown for pasteboard content so
+      // off-canvas artwork of non-active layers shows at its position.
       canvas.drawImageRect(
         layer.image,
         Rect.fromLTWH(
@@ -307,7 +322,7 @@ class _LayerStackPainter extends CustomPainter {
           layer.image.width.toDouble(),
           layer.image.height.toDouble(),
         ),
-        canvasRect,
+        layer.worldRect,
         paint,
       );
       if (layerPose != null) {
@@ -327,6 +342,7 @@ class _LayerStackPainter extends CustomPainter {
     }
     for (var index = 0; index < images.length; index += 1) {
       if (!identical(oldDelegate.images[index].image, images[index].image) ||
+          oldDelegate.images[index].worldRect != images[index].worldRect ||
           oldDelegate.images[index].opacity != images[index].opacity ||
           oldDelegate.images[index].pose != images[index].pose ||
           oldDelegate.images[index].anchorPoint != images[index].anchorPoint ||

@@ -6,6 +6,54 @@ import '../../models/bitmap_tile.dart';
 import '../dev_profile.dart';
 import 'bitmap_tile_image_cache.dart';
 
+/// A composed surface image plus the CANVAS-SPACE rect it covers.
+///
+/// For a surface whose tiles all sit inside the canvas, [worldRect] is
+/// exactly the canvas rect and the image is canvas-sized — byte-identical
+/// to [composeTiledSurfaceImage]. Pasteboard content grows the rect (and
+/// the image) only as far as the stored tiles reach, so layers without
+/// off-canvas artwork pay nothing.
+class PositionedSurfaceImage {
+  const PositionedSurfaceImage({required this.image, required this.worldRect});
+
+  final ui.Image image;
+  final ui.Rect worldRect;
+
+  /// Whether this is the plain canvas-extent case (consumers keep their
+  /// exact legacy draw path for it — byte parity).
+  bool isCanvasExtent(BitmapSurface surface) =>
+      worldRect ==
+      ui.Rect.fromLTWH(
+        0,
+        0,
+        surface.canvasSize.width.toDouble(),
+        surface.canvasSize.height.toDouble(),
+      );
+}
+
+/// The canvas rect UNIONED with every stored tile's rect — the extent a
+/// positioned compose rasters. Integer-aligned by construction.
+ui.Rect surfaceContentWorldRect(BitmapSurface surface) {
+  var left = 0;
+  var top = 0;
+  var right = surface.canvasSize.width;
+  var bottom = surface.canvasSize.height;
+  for (final coord in surface.tiles.keys) {
+    final tileLeft = coord.x * surface.tileSize;
+    final tileTop = coord.y * surface.tileSize;
+    if (tileLeft < left) left = tileLeft;
+    if (tileTop < top) top = tileTop;
+    if (tileLeft + surface.tileSize > right) right = tileLeft + surface.tileSize;
+    if (tileTop + surface.tileSize > bottom) bottom = tileTop + surface.tileSize;
+  }
+  return ui.Rect.fromLTRB(
+    left.toDouble(),
+    top.toDouble(),
+    right.toDouble(),
+    bottom.toDouble(),
+  );
+}
+
 /// Composes a tiled [BitmapSurface] into one full-resolution [ui.Image] by
 /// drawing per-tile GPU images — the editing canvas's display route, reused
 /// for playback/preview rendering.
@@ -134,6 +182,115 @@ ui.Image? _composeTiledSurfaceImageSyncOrNull(
     return picture.toImageSync(
       surface.canvasSize.width,
       surface.canvasSize.height,
+    );
+  } finally {
+    picture.dispose();
+  }
+}
+
+/// The pasteboard-aware sibling of [composeTiledSurfaceImage]: rasters the
+/// surface over [surfaceContentWorldRect] and returns the image WITH that
+/// rect, so the editing layer stack can show off-canvas artwork at its
+/// true position. Same tile pipeline, same premultiply, same 1:1 integer
+/// offsets — only the raster origin/extent differ (and only when
+/// pasteboard tiles exist).
+Future<PositionedSurfaceImage?> composePositionedSurfaceImage(
+  BitmapSurface surface, {
+  BitmapTileImageCache? reuse,
+  bool Function()? shouldAbort,
+}) async {
+  final worldRect = surfaceContentWorldRect(surface);
+  final recorder = ui.PictureRecorder();
+  final canvas = ui.Canvas(recorder);
+  canvas.translate(-worldRect.left, -worldRect.top);
+  final paint = ui.Paint()..filterQuality = ui.FilterQuality.none;
+  final transient = <ui.Image>[];
+  var recorderClosed = false;
+
+  try {
+    for (final tile in surface.tiles.values) {
+      var image = reuse?.imageFor(tile);
+      if (image == null) {
+        if (shouldAbort?.call() ?? false) {
+          recorder.endRecording().dispose();
+          recorderClosed = true;
+          return null;
+        }
+        image = await _decodeTile(tile);
+        transient.add(image);
+      }
+      canvas.drawImage(
+        image,
+        ui.Offset(
+          (tile.coord.x * tile.size).toDouble(),
+          (tile.coord.y * tile.size).toDouble(),
+        ),
+        paint,
+      );
+    }
+
+    final picture = recorder.endRecording();
+    recorderClosed = true;
+    try {
+      if (shouldAbort?.call() ?? false) {
+        return null;
+      }
+      return PositionedSurfaceImage(
+        image: await picture.toImage(
+          worldRect.width.round(),
+          worldRect.height.round(),
+        ),
+        worldRect: worldRect,
+      );
+    } finally {
+      picture.dispose();
+    }
+  } finally {
+    if (!recorderClosed) {
+      recorder.endRecording().dispose();
+    }
+    for (final image in transient) {
+      image.dispose();
+    }
+  }
+}
+
+/// Synchronous positioned variant (the layer-switch handoff): composes
+/// ONLY when every tile is already decoded in [reuse]; null otherwise.
+PositionedSurfaceImage? composePositionedSurfaceImageSyncOrNull(
+  BitmapSurface surface, {
+  required BitmapTileImageCache reuse,
+}) {
+  final worldRect = surfaceContentWorldRect(surface);
+  final recorder = ui.PictureRecorder();
+  final canvas = ui.Canvas(recorder);
+  canvas.translate(-worldRect.left, -worldRect.top);
+  final paint = ui.Paint()..filterQuality = ui.FilterQuality.none;
+
+  for (final tile in surface.tiles.values) {
+    final image = reuse.imageFor(tile);
+    if (image == null) {
+      recorder.endRecording().dispose();
+      return null;
+    }
+    canvas.drawImage(
+      image,
+      ui.Offset(
+        (tile.coord.x * tile.size).toDouble(),
+        (tile.coord.y * tile.size).toDouble(),
+      ),
+      paint,
+    );
+  }
+
+  final picture = recorder.endRecording();
+  try {
+    return PositionedSurfaceImage(
+      image: picture.toImageSync(
+        worldRect.width.round(),
+        worldRect.height.round(),
+      ),
+      worldRect: worldRect,
     );
   } finally {
     picture.dispose();
