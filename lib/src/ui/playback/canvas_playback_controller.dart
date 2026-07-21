@@ -312,6 +312,12 @@ class CanvasPlaybackController extends ChangeNotifier {
         : _currentGlobalFrame;
   }
 
+  /// The playlist [play] would run for [scope] — the audio scrubber builds
+  /// its schedule from the same shape, so scrubbed sound and played sound
+  /// can never disagree about what sits where.
+  List<StoryboardTimelineLayoutEntry> playlistForScope(PlaybackScope scope) =>
+      _buildPlaylist(scope);
+
   List<StoryboardTimelineLayoutEntry> _buildPlaylist(PlaybackScope scope) {
     switch (scope) {
       case PlaybackScope.activeCut:

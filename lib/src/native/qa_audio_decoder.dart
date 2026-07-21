@@ -5,8 +5,11 @@ import 'dart:typed_data';
 import 'package:ffi/ffi.dart';
 
 /// Which decoder read a file — reported so a log can say what happened
-/// instead of just "it worked".
-enum QaAudioFormat { unknown, wav, flac, mp3 }
+/// instead of just "it worked". [os] is the platform's own codec stack
+/// (Media Foundation / AudioToolbox / MediaCodec), reached only for
+/// containers dr_libs does not read — AAC/m4a per the decided format
+/// table.
+enum QaAudioFormat { unknown, wav, flac, mp3, os }
 
 /// A decoded audio file, at the file's OWN sample rate.
 ///
@@ -180,7 +183,7 @@ final class QaAudioDecoder {
           samples: copied,
           channels: channels,
           sampleRate: sampleRateOut.value,
-          format: format >= 1 && format <= 3
+          format: format >= 1 && format <= 4
               ? QaAudioFormat.values[format]
               : QaAudioFormat.unknown,
         );

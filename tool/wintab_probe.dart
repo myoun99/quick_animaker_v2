@@ -1,11 +1,11 @@
-// Wintab bridge probe (pen program, PEN-2).
+﻿// Wintab bridge probe (pen program, PEN-2).
 //
 // Plain-VM FFI smoke against a REAL tablet driver:
 //   dart run tool/wintab_probe.dart [path/to/qa_tablet.dll]
 //
 // Prints the bridge ABI, whether wintab32 + a driver answer, and the
 // driver's device name. qat_open needs a visible window of this process,
-// so a console run only exercises the query surface — the packet path is
+// so a console run only exercises the query surface 窶・the packet path is
 // verified in-app (the input inspector's wintab line).
 import 'dart:ffi';
 import 'dart:io';
@@ -17,8 +17,8 @@ void main(List<String> args) {
       ? args.first
       : 'build/native_standalone/Release/qa_tablet.dll';
   if (!File(path).existsSync()) {
-    stderr.writeln('no DLL at $path — build it first:');
-    stderr.writeln('  cmake -S native -B build/native_standalone');
+    stderr.writeln('no DLL at $path 窶・build it first:');
+    stderr.writeln('  cmake -S packages/qa_native/src -B build/native_standalone');
     stderr.writeln(
       '  cmake --build build/native_standalone --config Release '
       '--target qa_tablet',
@@ -36,7 +36,7 @@ void main(List<String> args) {
   if (available == 0) {
     stdout.writeln(
       'no wintab driver answered (wintab32.dll missing or no '
-      'tablet installed) — the graceful-absence path.',
+      'tablet installed) 窶・the graceful-absence path.',
     );
     return;
   }

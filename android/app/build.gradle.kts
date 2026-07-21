@@ -31,15 +31,12 @@ android {
         }
     }
 
-    // B1: the native brush engine rides the SAME portable C source every
-    // desktop build uses; libqa_engine.so lands in the APK and the Dart
-    // loader picks it up (engine-less devices keep the Dart fallback).
-    externalNativeBuild {
-        cmake {
-            path = file("../../native/CMakeLists.txt")
-        }
-    }
-
+    // B1/2A: the native engine rides in through the qa_native FFI plugin
+    // (its Gradle drives the same packages/qa_native/src CMake every
+    // platform uses); libqa_engine.so lands in the APK from there and the
+    // Dart loader picks it up (engine-less devices keep the Dart
+    // fallback). The app-level externalNativeBuild that predated the
+    // plugin retired with the native/ shim.
     buildTypes {
         release {
             // TODO: Add your own signing config for the release build.

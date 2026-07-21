@@ -1,4 +1,4 @@
-import 'dart:io';
+﻿import 'dart:io';
 import 'dart:math';
 import 'dart:typed_data';
 
@@ -6,7 +6,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:quick_animaker_v2/src/native/qa_native_engine.dart';
 import 'package:quick_animaker_v2/src/services/canvas_flood_fill.dart';
 
-/// R20-C1 close-gap fill: line-art gaps narrower than ~2× the gap radius
+/// R20-C1 close-gap fill: line-art gaps narrower than ~2ﾃ・the gap radius
 /// stop leaks; the region still grows back to the REAL barriers. The C
 /// kernel must reproduce the Dart reference pipeline exactly.
 void main() {
@@ -95,7 +95,7 @@ void main() {
     return false;
   }
 
-  test('gap close BLOCKS a leak through a hole narrower than ~2×radius; '
+  test('gap close BLOCKS a leak through a hole narrower than ~2ﾃ羊adius; '
       'plain fill leaks', () {
     const width = 64, height = 64;
     final rgb = boxWithGap(width: width, height: height, gap: 5);
@@ -162,7 +162,7 @@ void main() {
   test('C kernel == Dart reference, mask for mask (randomized walls)', () {
     if (!dllAvailable) {
       markTestSkipped(
-        'qa_engine.dll not built — run: cmake -S native -B '
+        'qa_engine.dll not built 窶・run: cmake -S packages/qa_native/src -B '
         'build/native_standalone && cmake --build build/native_standalone '
         '--config Release',
       );
