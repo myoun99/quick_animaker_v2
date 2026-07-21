@@ -11,6 +11,7 @@ import '../../models/cut.dart';
 import '../../models/cut_camera.dart';
 import '../../models/cut_id.dart';
 import '../../models/cut_metadata.dart';
+import '../../models/folder_id.dart';
 import '../../models/frame.dart';
 import '../../models/frame_id.dart';
 import '../../models/layer.dart';
@@ -34,7 +35,10 @@ import 'cut_command_input_planner.dart';
 import 'convert_to_linked_cut_command.dart';
 import 'convert_to_linked_cut_plan.dart';
 import 'create_cut_command.dart';
+import 'create_folder_command.dart';
 import 'create_linked_cut_command.dart';
+import 'dissolve_folder_command.dart';
+import 'rename_folder_command.dart';
 import 'delete_cut_command.dart';
 import 'delete_layer_command.dart';
 import 'duplicate_cut_command.dart';
@@ -476,6 +480,77 @@ class CutCommandCoordinator {
       project: project,
       originCut: requireCut(project, originCutId),
       targetCut: requireCut(project, targetCutId),
+    );
+  }
+
+  /// 폴더 생성 (L5): folds [layerId]'s whole attach group into a new
+  /// folder (attach groups never split across a folder boundary; the
+  /// group is already a contiguous stack run). Mirrors into 겸용 cuts.
+  /// Returns the new folder's id in [cutId], null when the layer can't
+  /// fold (non-drawing kinds).
+  FolderId? createFolderFromLayer({
+    required CutId cutId,
+    required LayerId layerId,
+    String? name,
+  }) {
+    final project = repository.requireProject();
+    final cut = requireCut(project, cutId);
+    final source = requireLayer(project, cutId: cutId, layerId: layerId);
+    if (source.kind != LayerKind.animation) {
+      return null;
+    }
+    final baseId = source.attachedToLayerId ?? source.id;
+    final baseIndex = cut.layers.indexWhere((layer) => layer.id == baseId);
+    final memberIds = [
+      for (final layer in cut.layers.sublist(
+        baseIndex,
+        attachedGroupEndIndex(baseId, cut.layers),
+      ))
+        layer.id,
+    ];
+    final plan = planCreateFolderCommandInput(
+      project: project,
+      cutId: cutId,
+      memberLayerIds: memberIds,
+    );
+
+    historyManager.execute(
+      CreateFolderCommand(
+        repository: repository,
+        cutId: cutId,
+        name: name ?? nextFolderName(cut),
+        memberLayerIds: memberIds,
+        folderIdByCut: plan.folderIdByCut,
+      ),
+    );
+    return plan.folderIdByCut[cutId];
+  }
+
+  /// 폴더 해산 (L5): releases members to the parent and removes the
+  /// folder (layers stay). Mirrors into 겸용 cuts.
+  void dissolveFolder({required CutId cutId, required FolderId folderId}) {
+    historyManager.execute(
+      DissolveFolderCommand(
+        repository: repository,
+        cutId: cutId,
+        folderId: folderId,
+      ),
+    );
+  }
+
+  /// 폴더 이름 변경 (L5): mirrors into 겸용 cuts (shared structure).
+  void renameFolder({
+    required CutId cutId,
+    required FolderId folderId,
+    required String name,
+  }) {
+    historyManager.execute(
+      RenameFolderCommand(
+        repository: repository,
+        cutId: cutId,
+        folderId: folderId,
+        name: name,
+      ),
     );
   }
 
