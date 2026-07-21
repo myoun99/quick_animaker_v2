@@ -278,8 +278,12 @@ void main() {
     expect(fresh, isNotNull);
     expect(identical(fresh, image), isFalse, reason: 'the re-raster landed');
 
-    // A CONTENT change (new layer instance) must NOT reuse the stale
-    // tile — edits show correct cells immediately via the classic pass.
+    // A CONTENT change (new layer instance) ALSO holds the stale tile
+    // while the fresh raster lands (R26 #27): dropping to the classic
+    // pass swapped text rendering for a frame and read as every glyph
+    // thinning/thickening. The re-raster still happens — the fresh
+    // image must land and replace the held one.
+    final beforeEdit = landings;
     final editedPainter = painterFor(blockLayer(), store: store);
     expect(
       store.tileFor(
@@ -288,8 +292,50 @@ void main() {
         spanEndIndexExclusive: 4,
         devicePixelRatio: 2.0,
       ),
+      same(fresh),
+      reason: 'R26 #27: stale-while-revalidate covers content edits too',
+    );
+    while (landings == beforeEdit) {
+      await Future<void>.delayed(const Duration(milliseconds: 5));
+    }
+    final reRastered = store.tileFor(
+      painter: editedPainter,
+      spanStartIndex: 0,
+      spanEndIndexExclusive: 4,
+      devicePixelRatio: 2.0,
+    );
+    expect(reRastered, isNotNull);
+    expect(
+      identical(reRastered, fresh),
+      isFalse,
+      reason: 'the content re-raster landed',
+    );
+
+    // GEOMETRY staleness must NOT hold the old tile — a mis-sized tile
+    // would stretch. A changed cell extent goes back to the classic
+    // pass until its raster lands.
+    final zoomedPainter = TimelineRowCellsPainter(
+      layer: editedPainter.layer,
+      playbackFrameCount: 24,
+      frameStartIndex: 0,
+      frameEndIndexExclusive: 40,
+      leadingFrameSpacerWidth: 0,
+      frameCellExtent: 12,
+      crossAxisExtent: 28,
+      exposureStateForLayer: stateFor,
+      colorScheme: const ColorScheme.dark(),
+      baseTextStyle: const TextStyle(fontSize: 11),
+      tileStore: store,
+    );
+    expect(
+      store.tileFor(
+        painter: zoomedPainter,
+        spanStartIndex: 0,
+        spanEndIndexExclusive: 4,
+        devicePixelRatio: 2.0,
+      ),
       isNull,
-      reason: 'content staleness falls back to the classic paint',
+      reason: 'geometry staleness falls back to the classic paint',
     );
   });
 }

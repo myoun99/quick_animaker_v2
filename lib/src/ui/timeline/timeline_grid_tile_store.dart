@@ -110,20 +110,20 @@ class TimelineGridTileStore {
       // tile can land within a frame or two.
       scheduleMicrotask(_drain);
     }
-    // LOOK-only staleness (UI-R20 #6): the CONTENT is the same layer at
-    // the same geometry — only the scheme/text style flipped (the active
-    // flag left the raster entirely in UI-R21 #2: the wash is a row
-    // underlay now). Keep showing the stale tile until the fresh raster
-    // lands instead of dropping to the classic pass, whose per-frame
-    // text rendering swap reads as glyphs thinning/thickening. Content
-    // changes (a NEW layer instance) still return null so edits show
-    // correct cells immediately.
+    // Stale-while-revalidate (UI-R20 #6, widened for R26 #27): WHATEVER
+    // went stale — a look flip or a content edit (new layer instance,
+    // new resolver closures) — keep showing the stale tile while the
+    // fresh raster lands, as long as the GEOMETRY still matches (a
+    // mis-sized tile would stretch). Dropping to the classic pass
+    // instead swaps text rendering technologies for a frame (baked A8
+    // glyphs ↔ TextPainter), which reads as every glyph momentarily
+    // thinning/thickening — and since the resolver closures are method
+    // tear-offs recreated on every host rebuild, ANY edit staled EVERY
+    // visible tile at once. The drain rasters the NEWEST look within a
+    // frame or two, so content lags one beat at most.
     if (entry != null &&
-        identical(entry.layer, painter.layer) &&
         entry.frameCellExtent == painter.frameCellExtent &&
         entry.crossAxisExtent == painter.crossAxisExtent &&
-        entry.playbackFrameCount == painter.playbackFrameCount &&
-        identical(entry.frameNameForLayer, painter.frameNameForLayer) &&
         entry.spanEndIndexExclusive == spanEndIndexExclusive &&
         entry.devicePixelRatio == devicePixelRatio) {
       return entry.image;
@@ -154,6 +154,7 @@ class TimelineGridTileStore {
         colorScheme: request.painter.colorScheme,
         exposureStateForLayer: request.painter.exposureStateForLayer,
         frameNameForLayer: request.painter.frameNameForLayer,
+        celHasContentForLayer: request.painter.celHasContentForLayer,
         baseTextStyle: request.painter.baseTextStyle,
         spanEndIndexExclusive: request.spanEndIndexExclusive,
         devicePixelRatio: request.devicePixelRatio,
@@ -473,6 +474,7 @@ class _TileEntry {
     required this.colorScheme,
     required this.exposureStateForLayer,
     required this.frameNameForLayer,
+    required this.celHasContentForLayer,
     required this.baseTextStyle,
     required this.spanEndIndexExclusive,
     required this.devicePixelRatio,
@@ -486,6 +488,7 @@ class _TileEntry {
   final Object colorScheme;
   final Object exposureStateForLayer;
   final Object? frameNameForLayer;
+  final Object? celHasContentForLayer;
   final TextStyle baseTextStyle;
   final int spanEndIndexExclusive;
   final double devicePixelRatio;
@@ -506,6 +509,7 @@ class _TileEntry {
         identical(colorScheme, painter.colorScheme) &&
         identical(exposureStateForLayer, painter.exposureStateForLayer) &&
         identical(frameNameForLayer, painter.frameNameForLayer) &&
+        identical(celHasContentForLayer, painter.celHasContentForLayer) &&
         baseTextStyle == painter.baseTextStyle &&
         this.spanEndIndexExclusive == spanEndIndexExclusive &&
         this.devicePixelRatio == devicePixelRatio;

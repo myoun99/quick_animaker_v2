@@ -79,6 +79,7 @@ class XSheetTimelineGrid extends StatefulWidget {
     required this.frameCount,
     required this.exposureStateForLayer,
     this.frameNameForLayer,
+    this.celHasContentForLayer,
     required this.onSelectLayer,
     required this.onSelectFrame,
     this.onScrubFrame,
@@ -157,6 +158,10 @@ class XSheetTimelineGrid extends StatefulWidget {
   final TimelineCellExposureState Function(Layer layer, int frameIndex)
   exposureStateForLayer;
   final String? Function(Layer layer, int frameIndex)? frameNameForLayer;
+
+  /// R26 #44: the unworked-block tint's fact source (null = no tint).
+  /// No memo token here — the X-sheet builds its columns per pass.
+  final bool Function(Layer layer, int frameIndex)? celHasContentForLayer;
   final ValueChanged<LayerId> onSelectLayer;
   final ValueChanged<int> onSelectFrame;
 
@@ -743,6 +748,7 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
       metrics: _metrics,
       exposureStateForLayer: widget.exposureStateForLayer,
       frameNameForLayer: widget.frameNameForLayer,
+      celHasContentForLayer: widget.celHasContentForLayer,
       onSelectLayer: widget.onSelectLayer,
       onSelectFrame: widget.onSelectFrame,
       commaDrag: widget.commaDrag,
@@ -1777,6 +1783,7 @@ class _XSheetFrameCellsColumn extends StatelessWidget {
     required this.metrics,
     required this.exposureStateForLayer,
     this.frameNameForLayer,
+    this.celHasContentForLayer,
     required this.onSelectLayer,
     required this.onSelectFrame,
     this.onActivateCell,
@@ -1810,6 +1817,7 @@ class _XSheetFrameCellsColumn extends StatelessWidget {
   final TimelineCellExposureState Function(Layer layer, int frameIndex)
   exposureStateForLayer;
   final String? Function(Layer layer, int frameIndex)? frameNameForLayer;
+  final bool Function(Layer layer, int frameIndex)? celHasContentForLayer;
   final ValueChanged<LayerId> onSelectLayer;
   final ValueChanged<int> onSelectFrame;
   final void Function(LayerId layerId, int frameIndex)? onActivateCell;
@@ -1898,6 +1906,7 @@ class _XSheetFrameCellsColumn extends StatelessWidget {
               viewportMainExtent: viewportMainExtent,
               exposureStateForLayer: exposureStateForLayer,
               frameNameForLayer: frameNameForLayer,
+              celHasContentForLayer: celHasContentForLayer,
               onSelectLayer: onSelectLayer,
               onSelectFrame: onSelectFrame,
               onActivateCell: onActivateCell,

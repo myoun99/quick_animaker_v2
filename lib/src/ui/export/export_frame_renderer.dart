@@ -226,6 +226,9 @@ class ExportFrameRenderer {
         CutFrameCompositeLayer(
           surface: surface,
           opacity: task.members[i].opacity,
+          // R26 #30: the delivery cel is the stack as composited — the
+          // members' blends apply.
+          blendMode: task.members[i].blendMode,
         ),
       );
     }

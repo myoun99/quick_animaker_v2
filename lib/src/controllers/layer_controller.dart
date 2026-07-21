@@ -5,6 +5,7 @@ import '../models/folder_id.dart';
 import '../models/frame.dart';
 import '../models/frame_id.dart';
 import '../models/layer.dart';
+import '../models/layer_blend_mode.dart';
 import '../models/layer_folder.dart';
 import '../models/layer_id.dart';
 import '../models/layer_kind.dart';
@@ -270,6 +271,24 @@ class LayerController {
         audioPan: pan?.clamp(-1.0, 1.0),
       ),
     );
+  }
+
+  /// R26 #30: the layer's composite blend — display state written the
+  /// repo-direct way (like the eye and static opacity), mirrored across
+  /// the link group.
+  void setLayerBlendMode({
+    required LayerId layerId,
+    required LayerBlendMode blendMode,
+  }) {
+    final project = _repository.requireProject();
+    for (final member in _mirrorTargetsOf(project, layerId)) {
+      _repository.updateLayer(
+        layerId: member,
+        update: (layer) => layer.blendMode == blendMode
+            ? layer
+            : layer.copyWith(blendMode: blendMode),
+      );
+    }
   }
 
   void setLayerOpacity({required LayerId layerId, required double opacity}) {

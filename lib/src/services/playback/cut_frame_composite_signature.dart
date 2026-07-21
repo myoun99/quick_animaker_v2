@@ -3,6 +3,7 @@ import '../../models/canvas_point.dart';
 import '../../models/canvas_size.dart';
 import '../../models/cut.dart';
 import '../../models/frame_id.dart';
+import '../../models/layer_blend_mode.dart';
 import '../../models/layer_id.dart';
 import '../../models/playback_quality.dart';
 import '../../models/transform_track.dart';
@@ -21,12 +22,17 @@ class CompositeLayerSignature {
     required this.frameId,
     required this.opacity,
     required this.sourceRevision,
+    this.blendMode = LayerBlendMode.normal,
     this.pose,
     this.anchorPoint,
   });
 
   final LayerId layerId;
   final FrameId frameId;
+
+  /// The layer's composite blend (R26 #30) — a blend change must change
+  /// the composite's identity, and the cache paints with exactly this.
+  final LayerBlendMode blendMode;
 
   /// The layer's EFFECTIVE opacity (static × animated Opacity sample ×
   /// enclosing folders' opacity, L3) — an opacity-lane edit must change
@@ -54,12 +60,20 @@ class CompositeLayerSignature {
           other.frameId == frameId &&
           other.opacity == opacity &&
           other.sourceRevision == sourceRevision &&
+          other.blendMode == blendMode &&
           other.pose == pose &&
           other.anchorPoint == anchorPoint;
 
   @override
-  int get hashCode =>
-      Object.hash(layerId, frameId, opacity, sourceRevision, pose, anchorPoint);
+  int get hashCode => Object.hash(
+    layerId,
+    frameId,
+    opacity,
+    sourceRevision,
+    blendMode,
+    pose,
+    anchorPoint,
+  );
 
   @override
   String toString() =>
@@ -133,6 +147,7 @@ CutFrameCompositeSignature computeCutFrameCompositeSignature({
           frameId: entry.frame.id,
           opacity: entry.opacity,
           sourceRevision: revisionOf(entry.layer.id, entry.frame.id),
+          blendMode: entry.blendMode,
           pose: entry.pose,
           anchorPoint: entry.anchorPoint,
         ),
