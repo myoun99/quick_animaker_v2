@@ -150,6 +150,34 @@ final class QaAudioDevice {
       .lookupFunction<Double Function(Int32), double Function(int)>(
         'qa_audio_device_peak',
       );
+  late final _captureStart = _library
+      .lookupFunction<
+        Int32 Function(Int32, Int32, Int32),
+        int Function(int, int, int)
+      >('qa_audio_capture_start');
+  late final _captureRead = _library
+      .lookupFunction<
+        Int32 Function(Pointer<Float>, Int32),
+        int Function(Pointer<Float>, int)
+      >('qa_audio_capture_read');
+  late final _captureStop = _library
+      .lookupFunction<Void Function(), void Function()>('qa_audio_capture_stop');
+  late final _captureIsOpen = _library
+      .lookupFunction<Int32 Function(), int Function()>(
+        'qa_audio_capture_is_open',
+      );
+  late final _captureChannels = _library
+      .lookupFunction<Int32 Function(), int Function()>(
+        'qa_audio_capture_channels',
+      );
+  late final _captureDroppedFrames = _library
+      .lookupFunction<Int64 Function(), int Function()>(
+        'qa_audio_capture_dropped_frames',
+      );
+  late final _captureLatency = _library
+      .lookupFunction<Int64 Function(), int Function()>(
+        'qa_audio_capture_latency_samples',
+      );
 
   /// Opens the output device, returning its ACTUAL sample rate (0 = the
   /// device could not be opened).
@@ -347,6 +375,36 @@ final class QaAudioDevice {
   /// 1.0 means the output stage is clipping, which is exactly what the
   /// meter exists to make visible.
   double peakFor(int channel) => _peak(channel);
+
+  /// Opens the capture device and starts delivering into the C-side ring
+  /// (AUDIO-PRO R5). Returns the delivered sample rate ([sampleRate] — the
+  /// C converts from the device's native rate) or 0 on failure, which on
+  /// mobile/macOS includes "no microphone permission". Channels are the
+  /// device's own — read [captureChannels] after a successful start.
+  ///
+  /// Independent of the playback device: recording runs DURING playback.
+  int captureStart({
+    required int sampleRate,
+    bool useNullBackend = false,
+    int deviceIndex = -1,
+  }) => _captureStart(sampleRate, useNullBackend ? 1 : 0, deviceIndex);
+
+  /// Drains up to [maxFloats] captured floats into [out], returning how
+  /// many were copied. Call from a timer while recording, and once more
+  /// before [captureStop] for the tail.
+  int captureRead(Pointer<Float> out, int maxFloats) =>
+      _captureRead(out, maxFloats);
+
+  void captureStop() => _captureStop();
+  bool get captureIsOpen => _captureIsOpen() != 0;
+  int get captureChannels => _captureChannels();
+
+  /// Frames the ring dropped because the drain fell behind. Nonzero means
+  /// the take is damaged — say so, never save a silently shortened file.
+  int get captureDroppedFrames => _captureDroppedFrames();
+
+  /// The capture path's own buffering in samples (typically 10-30 ms).
+  int get captureLatencySamples => _captureLatency();
 }
 
 /// The enumeration index for the output device named [name], or -1 (the
@@ -358,6 +416,21 @@ int audioOutputDeviceIndexByName(QaAudioDevice device, String? name) {
     return -1;
   }
   final devices = device.devicesOf(capture: false);
+  for (var index = 0; index < devices.length; index += 1) {
+    if (devices[index].name == name) {
+      return index;
+    }
+  }
+  return -1;
+}
+
+/// The capture-side twin: the input device named [name], or -1 (the system
+/// default microphone) when [name] is null or unplugged (AUDIO-PRO R5).
+int audioInputDeviceIndexByName(QaAudioDevice device, String? name) {
+  if (name == null) {
+    return -1;
+  }
+  final devices = device.devicesOf(capture: true);
   for (var index = 0; index < devices.length; index += 1) {
     if (devices[index].name == name) {
       return index;

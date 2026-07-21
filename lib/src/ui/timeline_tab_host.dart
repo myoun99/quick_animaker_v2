@@ -1277,6 +1277,9 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
             onQualityChanged: _session.setPlaybackQuality,
             playbackStartFrame: () => _session.currentFrameIndex,
             resolveMeterPeaks: () => _session.audioDeviceTransport.meterPeaks,
+            isVoiceRecording: _session.isVoiceRecording,
+            onToggleVoiceRecording: () =>
+                toggleVoiceRecordingWithFeedback(context, _session),
           ),
           Expanded(
             child: TimelineActionToolbar(

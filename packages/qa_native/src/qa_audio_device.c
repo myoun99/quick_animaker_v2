@@ -29,9 +29,10 @@
 #define QA_EXPORT __attribute__((visibility("default")))
 #endif
 
-// Playback only: no capture, no decoding (conforms are already PCM), no
-// resampling (imports already landed at the project rate), no generation.
-// Each of those is code we would ship and never run.
+// No decoding (conforms are already PCM), no generation, no engine graph.
+// Each of those is code we would ship and never run. Capture is NOT
+// compiled out: recording (AUDIO-PRO R5) opens a second, independent
+// capture device on the same context.
 #define MA_NO_ENCODING
 #define MA_NO_DECODING
 #define MA_NO_GENERATION
@@ -650,4 +651,209 @@ QA_EXPORT int64_t qa_audio_device_position(void) {
 // out torn values.
 QA_EXPORT void qa_audio_device_seek(int64_t sample) {
   qa_transport_store_64(&g_audio.position, sample);
+}
+
+// ---------------------------------------------------------------------------
+// Capture (AUDIO-PRO R5): the guide-voice recorder's device side.
+//
+// A second, independent device on the same context — playback is never
+// touched, which is what lets recording run DURING playback (the guide
+// voice use case: watch the cut, speak the line).
+//
+// The realtime rule holds on this side too: the capture callback only
+// copies into a preallocated ring. Dart drains the ring from a control-
+// thread timer; if it ever falls behind the ring absorbs seconds of it,
+// and a true overflow is COUNTED rather than hidden — a recording with
+// dropped frames must say so, not play back subtly shorter.
+
+// Seconds of audio the ring holds. Dart drains every few tens of ms; this
+// is three orders of magnitude of slack, sized in samples at open.
+#define QA_CAPTURE_RING_SECONDS 8
+
+typedef struct {
+  ma_device device;
+  int32_t open;
+  int32_t channels;
+  int32_t sample_rate;
+  float* ring;             // ring_capacity floats, written by the callback
+  int64_t ring_capacity;   // in floats; always a whole number of frames
+  // Monotonic totals in floats — never wrapped, so available space and
+  // data are plain subtractions. Written on one side each (SPSC).
+  volatile ma_uint64 write_total;
+  volatile ma_uint64 read_total;
+  volatile ma_uint64 dropped_frames;
+} qa_capture_state;
+
+static qa_capture_state g_capture;
+
+static void qa_audio_capture_callback(ma_device* device,
+                                      void* output,
+                                      const void* input,
+                                      ma_uint32 frame_count) {
+  (void)device;
+  (void)output;
+  if (input == NULL || g_capture.ring == NULL) {
+    return;
+  }
+  const float* in = (const float*)input;
+  const int64_t channels = (int64_t)g_capture.channels;
+  int64_t floats = (int64_t)frame_count * channels;
+
+  const int64_t written = (int64_t)ma_atomic_load_64(&g_capture.write_total);
+  const int64_t read = (int64_t)ma_atomic_load_64(&g_capture.read_total);
+  const int64_t space = g_capture.ring_capacity - (written - read);
+  if (floats > space) {
+    // Whole frames only: a partial frame in the ring would shift every
+    // later sample by a channel and turn the take into garbage.
+    const int64_t keep_frames = space / channels;
+    const int64_t drop = frame_count - keep_frames;
+    ma_atomic_store_64(&g_capture.dropped_frames,
+                       (ma_uint64)((int64_t)ma_atomic_load_64(
+                                       &g_capture.dropped_frames) +
+                                   drop));
+    floats = keep_frames * channels;
+  }
+  int64_t offset = written % g_capture.ring_capacity;
+  int64_t first = g_capture.ring_capacity - offset;
+  if (first > floats) {
+    first = floats;
+  }
+  memcpy(g_capture.ring + offset, in, (size_t)first * sizeof(float));
+  if (floats > first) {
+    memcpy(g_capture.ring, in + first,
+           (size_t)(floats - first) * sizeof(float));
+  }
+  // Publish AFTER the copy: the reader must never see an index that
+  // covers bytes still being written.
+  ma_atomic_store_64(&g_capture.write_total, (ma_uint64)(written + floats));
+}
+
+// Opens the capture device and starts delivering into the ring.
+// [sample_rate] is the project rate — miniaudio converts from the device's
+// native rate, so what lands in the ring needs no conform. Channels are
+// whatever the device natively has (a mono mic records mono; a stereo
+// interface records stereo) — read qa_audio_capture_channels after open.
+// [device_index] follows the R4 contract: -1 = system default, a bad index
+// FAILS rather than opening something else.
+//
+// Returns the delivered sample rate (== sample_rate) or 0 on failure —
+// which on macOS/iOS/Android includes "no microphone permission".
+QA_EXPORT int32_t qa_audio_capture_start(int32_t sample_rate,
+                                         int32_t backend,
+                                         int32_t device_index) {
+  if (g_capture.open || sample_rate <= 0) {
+    return 0;
+  }
+  if (!qa_audio_ensure_context(backend)) {
+    return 0;
+  }
+
+  ma_device_config config = ma_device_config_init(ma_device_type_capture);
+  config.capture.format = ma_format_f32;
+  config.capture.channels = 0;  // 0 = the device's native channel count
+  config.sampleRate = (ma_uint32)sample_rate;
+  config.dataCallback = qa_audio_capture_callback;
+  if (device_index >= 0) {
+    if (!qa_audio_refresh_devices() ||
+        (ma_uint32)device_index >= g_capture_count) {
+      return 0;
+    }
+    config.capture.pDeviceID = &g_capture_infos[device_index].id;
+  }
+
+  if (ma_device_init(&g_context, &config, &g_capture.device) != MA_SUCCESS) {
+    return 0;
+  }
+  g_capture.channels = (int32_t)g_capture.device.capture.channels;
+  g_capture.sample_rate = (int32_t)g_capture.device.sampleRate;
+  g_capture.ring_capacity = (int64_t)g_capture.sample_rate *
+                            (int64_t)g_capture.channels *
+                            QA_CAPTURE_RING_SECONDS;
+  g_capture.ring =
+      (float*)malloc((size_t)g_capture.ring_capacity * sizeof(float));
+  if (g_capture.ring == NULL) {
+    ma_device_uninit(&g_capture.device);
+    return 0;
+  }
+  ma_atomic_store_64(&g_capture.write_total, 0);
+  ma_atomic_store_64(&g_capture.read_total, 0);
+  ma_atomic_store_64(&g_capture.dropped_frames, 0);
+  // Open BEFORE start: the callback checks ring != NULL, and start makes
+  // it live immediately.
+  g_capture.open = 1;
+  if (ma_device_start(&g_capture.device) != MA_SUCCESS) {
+    g_capture.open = 0;
+    ma_device_uninit(&g_capture.device);
+    free(g_capture.ring);
+    g_capture.ring = NULL;
+    return 0;
+  }
+  return g_capture.sample_rate;
+}
+
+// Drains up to [max_floats] from the ring into [out]; returns how many
+// floats were copied. Control thread only — this is the far end of the
+// SPSC ring, never the callback's.
+QA_EXPORT int32_t qa_audio_capture_read(float* out, int32_t max_floats) {
+  if (!g_capture.open || out == NULL || max_floats <= 0) {
+    return 0;
+  }
+  const int64_t written = (int64_t)ma_atomic_load_64(&g_capture.write_total);
+  const int64_t read = (int64_t)ma_atomic_load_64(&g_capture.read_total);
+  int64_t available = written - read;
+  if (available > max_floats) {
+    available = max_floats;
+  }
+  if (available <= 0) {
+    return 0;
+  }
+  int64_t offset = read % g_capture.ring_capacity;
+  int64_t first = g_capture.ring_capacity - offset;
+  if (first > available) {
+    first = available;
+  }
+  memcpy(out, g_capture.ring + offset, (size_t)first * sizeof(float));
+  if (available > first) {
+    memcpy(out + first, g_capture.ring,
+           (size_t)(available - first) * sizeof(float));
+  }
+  ma_atomic_store_64(&g_capture.read_total, (ma_uint64)(read + available));
+  return (int32_t)available;
+}
+
+// Stops the device. ma_device_uninit joins the device thread, so after it
+// returns the callback cannot be running — freeing the ring is safe.
+// Call qa_audio_capture_read for the tail BEFORE stopping.
+QA_EXPORT void qa_audio_capture_stop(void) {
+  if (!g_capture.open) {
+    return;
+  }
+  ma_device_uninit(&g_capture.device);
+  free(g_capture.ring);
+  g_capture.ring = NULL;
+  g_capture.open = 0;
+}
+
+QA_EXPORT int32_t qa_audio_capture_is_open(void) { return g_capture.open; }
+QA_EXPORT int32_t qa_audio_capture_channels(void) { return g_capture.channels; }
+QA_EXPORT int32_t qa_audio_capture_sample_rate(void) {
+  return g_capture.sample_rate;
+}
+
+// Frames the ring had to drop because the reader fell behind. Nonzero
+// means the take is DAMAGED — the recorder must tell the user, not save
+// a silently shortened file.
+QA_EXPORT int64_t qa_audio_capture_dropped_frames(void) {
+  return (int64_t)ma_atomic_load_64(&g_capture.dropped_frames);
+}
+
+// The capture path's own buffering, in samples — how far behind "now" the
+// newest delivered sample is. Small (typically 10-30 ms) and NOT applied
+// automatically; the recorder decides what alignment means.
+QA_EXPORT int64_t qa_audio_capture_latency_samples(void) {
+  if (!g_capture.open) {
+    return 0;
+  }
+  return (int64_t)g_capture.device.capture.internalPeriodSizeInFrames *
+         (int64_t)g_capture.device.capture.internalPeriods;
 }
