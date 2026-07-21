@@ -686,6 +686,117 @@ void main() {
         );
       });
 
+      test('convertCutToLinked RE-RUN is a no-op: already-linked pairs are '
+          'neither pairs nor one-side-only (no duplicate copies)', () {
+        final fixture = _fixture(
+          _project(
+            tracks: [
+              _track(
+                id: 'track-1',
+                name: 'V',
+                cuts: [
+                  _cut(
+                    id: 'origin',
+                    layers: [
+                      _layer(
+                        id: 'o-cel',
+                        frames: [_frame(id: 'f-o1', name: '1')],
+                      ).copyWith(name: 'cel'),
+                    ],
+                  ),
+                  _cut(
+                    id: 'target',
+                    layers: [
+                      _layer(
+                        id: 't-cel',
+                        frames: [_frame(id: 'f-t1', name: '1')],
+                      ).copyWith(name: 'cel'),
+                    ],
+                  ),
+                ],
+              ),
+            ],
+          ),
+          activeCutId: const CutId('origin'),
+        );
+        final store = BrushFrameStore()
+          ..setLinkResolver(
+            (key) =>
+                fixture.repository.currentProject?.linkRegistry
+                    .canonicalCelKey(key) ??
+                key,
+          );
+        final coordinator = CutCommandCoordinator(
+          repository: fixture.repository,
+          editingSession: fixture.editingSession,
+          historyManager: fixture.historyManager,
+          brushFrameStore: store,
+        );
+        coordinator.convertCutToLinked(
+          originCutId: const CutId('origin'),
+          targetCutId: const CutId('target'),
+        );
+        final layerCountAfterFirst = _cutById(
+          fixture.project,
+          const CutId('target'),
+        ).layers.length;
+
+        final rerunPreview = coordinator.convertToLinkedCutPreview(
+          originCutId: const CutId('origin'),
+          targetCutId: const CutId('target'),
+        );
+        expect(rerunPreview.linksAnything, isFalse);
+        expect(rerunPreview.originOnlyLayerIds, isEmpty,
+            reason: 'already-linked layers must not leak into "only"');
+
+        coordinator.convertCutToLinked(
+          originCutId: const CutId('origin'),
+          targetCutId: const CutId('target'),
+        );
+        expect(
+          _cutById(fixture.project, const CutId('target')).layers.length,
+          layerCountAfterFirst,
+          reason: 're-running must not insert duplicate linked copies',
+        );
+      });
+
+      test('updateLayerKind MIRRORS over the link group (shared property '
+          'like name/mark); one undo restores every member', () {
+        final fixture = _fixture(
+          _project(
+            tracks: [
+              _track(id: 'track-1', name: 'V', cuts: [linkFixtureCut()]),
+            ],
+          ),
+          activeCutId: const CutId('cut-1'),
+        );
+        fixture.coordinator.linkDuplicateLayer(
+          cutId: const CutId('cut-1'),
+          layerId: const LayerId('base'),
+        );
+        final cut = _cutById(fixture.project, const CutId('cut-1'));
+        final baseCopyId = cut.layers[2].id;
+
+        fixture.coordinator.updateLayerKind(
+          cutId: const CutId('cut-1'),
+          layerId: const LayerId('base'),
+          kind: LayerKind.art,
+        );
+
+        Layer layerOf(LayerId id) => _cutById(
+          fixture.project,
+          const CutId('cut-1'),
+        ).layers.firstWhere((layer) => layer.id == id);
+        expect(layerOf(const LayerId('base')).kind, LayerKind.art);
+        expect(layerOf(baseCopyId).kind, LayerKind.art,
+            reason: 'kind mirrors to every link member');
+        expect(layerOf(const LayerId('unrelated')).kind, LayerKind.animation);
+
+        fixture.historyManager.undo();
+        expect(layerOf(const LayerId('base')).kind, LayerKind.animation);
+        expect(layerOf(baseCopyId).kind, LayerKind.animation);
+      });
+
       test('deleting the CANONICAL cut promotes the survivor: registry '
           'sweeps, cels re-key onto it, and undo restores everything', () {
         final fixture = _fixture(

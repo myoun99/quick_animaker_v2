@@ -906,6 +906,7 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
           // The AE-style fx switch: bypasses the layer's transform/FX on
           // every composite route (session view state).
           layerFxEnabledOf: _session.isLayerFxEnabled,
+          layerIsLinkedOf: _session.isLayerLinked,
           onToggleLayerFx: _session.toggleLayerFx,
           // Per-layer onion skin (UI-R17 #5, TVPaint style).
           layerOnionSkinEnabledOf: _session.isLayerOnionSkinEnabled,

@@ -60,6 +60,7 @@ import '../models/track_se_window.dart';
 import '../services/brush_frame_store.dart';
 import '../services/camera_pose_resolver.dart';
 import '../services/clipboard/layer_copy_payload.dart';
+import '../services/commands/convert_to_linked_cut_plan.dart';
 import '../models/brush_frame_cache_invalidation.dart';
 import '../models/playback_quality.dart';
 import '../services/cut_frame_composite_plan.dart';
@@ -2134,6 +2135,174 @@ class EditorSessionManager extends ChangeNotifier {
       sourceLayerId: activeLayer.id,
     );
     _refreshAfterCutCommand(preferredActiveLayerId: duplicatedLayerId);
+    notifyListeners();
+  }
+
+  /// Whether the layer is a member of a link group in the ACTIVE cut
+  /// (drives the link badge on its label).
+  bool isLayerLinked(LayerId layerId) {
+    final cut = activeCutOrNull;
+    if (cut == null) {
+      return false;
+    }
+    return _repository.requireProject().linkRegistry.useCountOf(
+          cutId: cut.id,
+          layerId: layerId,
+        ) >
+        1;
+  }
+
+  bool get canLinkDuplicateActiveLayer {
+    final activeLayer = this.activeLayer;
+    // Same stand-downs as plain duplication; an attach row's LINK
+    // duplicate is reached through its base (the group goes whole).
+    return activeLayer != null &&
+        activeLayer.kind != LayerKind.camera &&
+        activeLayer.kind != LayerKind.se &&
+        !isAttachedLayer(activeLayer);
+  }
+
+  /// 링크 복제: duplicates the active layer's whole attach group SHARING
+  /// the originals' pictures (the store routes both to one cel bank).
+  void linkDuplicateActiveLayer() {
+    if (!canLinkDuplicateActiveLayer) {
+      return;
+    }
+    final activeLayer = this.activeLayer!;
+    _cutCommandCoordinator.linkDuplicateLayer(
+      cutId: requireActiveCut.id,
+      layerId: activeLayer.id,
+    );
+    _refreshAfterCutCommand(preferredActiveLayerId: activeLayer.id);
+    notifyListeners();
+  }
+
+  bool get canUnlinkActiveLayer {
+    final activeLayer = this.activeLayer;
+    final cut = activeCutOrNull;
+    if (activeLayer == null || cut == null) {
+      return false;
+    }
+    // The verb unlinks the whole attach group; it is offered when ANY
+    // member is linked (mirrors the coordinator's own guard).
+    final baseId = activeLayer.attachedToLayerId ?? activeLayer.id;
+    final registry = _repository.requireProject().linkRegistry;
+    return cut.layers.any(
+      (layer) =>
+          (layer.id == baseId || layer.attachedToLayerId == baseId) &&
+          registry.useCountOf(cutId: cut.id, layerId: layer.id) > 1,
+    );
+  }
+
+  /// 독립시키기: forks the active layer's group out of its links — the
+  /// pictures stay identical but stop being shared from here on.
+  void unlinkActiveLayer() {
+    if (!canUnlinkActiveLayer) {
+      return;
+    }
+    final activeLayer = this.activeLayer!;
+    _cutCommandCoordinator.unlinkLayer(
+      cutId: requireActiveCut.id,
+      layerId: activeLayer.id,
+    );
+    _refreshAfterCutCommand(preferredActiveLayerId: activeLayer.id);
+    notifyListeners();
+  }
+
+  /// 겸용컷 생성: a new cut whose drawing layers are all LINKED to the
+  /// active cut's (empty timelines — same pictures, own timing).
+  void createLinkedCutFromActiveCut() {
+    final cutId = _editingSession.activeCutId;
+    if (cutId == null) {
+      return;
+    }
+    _cutCommandCoordinator.createLinkedCut(sourceCutId: cutId);
+    _refreshAfterCutCommand();
+    notifyListeners();
+  }
+
+  /// 겸용 변경 preview: what linking the active cut with [targetCutId]
+  /// would do (drives the confirmation dialog's 안내문). Null when there
+  /// is no active cut or the target is the active cut itself.
+  ConvertToLinkedCutPlan? convertToLinkedCutPreview(CutId targetCutId) {
+    final originCutId = _editingSession.activeCutId;
+    if (originCutId == null || originCutId == targetCutId) {
+      return null;
+    }
+    return _cutCommandCoordinator.convertToLinkedCutPreview(
+      originCutId: originCutId,
+      targetCutId: targetCutId,
+    );
+  }
+
+  /// Cuts the active cut can 겸용-convert WITH (every other cut, all
+  /// tracks — dialog picker data).
+  List<({CutId id, String name})> get convertToLinkedCutCandidates {
+    final activeCutId = _editingSession.activeCutId;
+    if (activeCutId == null) {
+      return const [];
+    }
+    return [
+      for (final track in _repository.requireProject().tracks)
+        for (final cut in track.cuts)
+          if (cut.id != activeCutId) (id: cut.id, name: cut.name),
+    ];
+  }
+
+  /// [convertToLinkedCutPreview] resolved to display strings for the
+  /// 안내문 dialog. Null under the preview's own null conditions.
+  ConvertToLinkedCutPreviewData? convertToLinkedCutPreviewData(
+    CutId targetCutId,
+  ) {
+    final plan = convertToLinkedCutPreview(targetCutId);
+    final originCut = activeCutOrNull;
+    if (plan == null || originCut == null) {
+      return null;
+    }
+    final project = _repository.requireProject();
+    Cut? targetCut;
+    for (final track in project.tracks) {
+      for (final cut in track.cuts) {
+        if (cut.id == targetCutId) {
+          targetCut = cut;
+        }
+      }
+    }
+    if (targetCut == null) {
+      return null;
+    }
+    String layerName(Cut cut, LayerId layerId) =>
+        cut.layers.firstWhere((layer) => layer.id == layerId).name;
+    return ConvertToLinkedCutPreviewData(
+      targetCutName: targetCut.name,
+      linkingLayerNames: [
+        for (final pair in plan.layerPairs)
+          layerName(originCut, pair.originLayerId),
+      ],
+      layerNamesAppearingInTarget: [
+        for (final id in plan.originOnlyLayerIds) layerName(originCut, id),
+      ],
+      layerNamesAppearingInOrigin: [
+        for (final id in plan.targetOnlyLayerIds) layerName(targetCut, id),
+      ],
+      replacedFrameCount: plan.replacedFrameCount,
+      joiningFrameCount: plan.joiningFrameCount,
+      linksAnything: plan.linksAnything,
+    );
+  }
+
+  /// 겸용 변경: links the active cut (origin — 원본 승리) with
+  /// [targetCutId]. Callers confirm through the preview dialog first.
+  void convertActiveCutToLinked(CutId targetCutId) {
+    final originCutId = _editingSession.activeCutId;
+    if (originCutId == null || originCutId == targetCutId) {
+      return;
+    }
+    _cutCommandCoordinator.convertCutToLinked(
+      originCutId: originCutId,
+      targetCutId: targetCutId,
+    );
+    _refreshAfterCutCommand();
     notifyListeners();
   }
 

@@ -65,6 +65,7 @@ class TimelinePanel extends StatefulWidget {
     this.onToggleLayerFillReference,
     required this.onLayerMarkSelected,
     this.layerFxEnabledOf,
+    this.layerIsLinkedOf,
     this.layerOnionSkinEnabledOf,
     this.onToggleLayerOnionSkin,
     this.displayedOnionSkinOn = false,
@@ -219,6 +220,9 @@ class TimelinePanel extends StatefulWidget {
   /// The AE-style layer fx switch (session view state), both orientations;
   /// null hides it.
   final bool Function(LayerId layerId)? layerFxEnabledOf;
+
+  /// Link badge state (L4); null shows no badges.
+  final bool Function(LayerId layerId)? layerIsLinkedOf;
 
   /// Per-layer onion skin (UI-R17 #5) — threaded to the horizontal grid's
   /// rail rows + legend (the xsheet rail keeps its compact control set).
@@ -430,6 +434,7 @@ class _TimelinePanelState extends State<TimelinePanel> {
                     onToggleLayerTimesheet: widget.onToggleLayerTimesheet,
                     onLayerMarkSelected: widget.onLayerMarkSelected,
                     layerFxEnabledOf: widget.layerFxEnabledOf,
+                    layerIsLinkedOf: widget.layerIsLinkedOf,
                     onToggleLayerFx: widget.onToggleLayerFx,
                     layerOnionSkinEnabledOf: widget.layerOnionSkinEnabledOf,
                     onToggleLayerOnionSkin: widget.onToggleLayerOnionSkin,

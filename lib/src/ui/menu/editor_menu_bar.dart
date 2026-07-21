@@ -7,10 +7,12 @@ import 'package:flutter/services.dart' show Clipboard, ClipboardData;
 
 import '../../models/attached_mode.dart';
 import '../../models/attached_placement.dart';
+import '../../models/cut_id.dart';
 import '../../services/persistence/app_documents.dart';
 import '../../services/persistence/app_save_settings.dart';
 import '../../services/persistence/project_autosave_service.dart';
 import '../dialogs/canvas_size_dialog.dart';
+import '../dialogs/convert_to_linked_cut_dialog.dart';
 import '../dialogs/delete_layer_dialog.dart';
 import '../dialogs/file_browser_dialog.dart';
 import '../dialogs/preferences_dialog.dart';
@@ -366,6 +368,23 @@ class EditorMenuBar extends StatelessWidget {
       label: 'Duplicate Cut',
       onPressed: session.duplicateActiveCut,
     ),
+    // 겸용컷 (the link system, L4): same pictures, own timing.
+    _item(
+      id: 'cut-create-linked',
+      label: 'Create Linked Cut',
+      onPressed: session.activeCutOrNull != null
+          ? session.createLinkedCutFromActiveCut
+          : null,
+    ),
+    _item(
+      id: 'cut-convert-linked',
+      label: 'Convert to Linked Cut…',
+      onPressed:
+          session.activeCutOrNull != null &&
+              session.convertToLinkedCutCandidates.isNotEmpty
+          ? () => unawaited(_convertActiveCutToLinked(context))
+          : null,
+    ),
     _item(
       id: 'cut-rename',
       label: 'Rename Cut…',
@@ -406,6 +425,25 @@ class EditorMenuBar extends StatelessWidget {
       onPressed: session.deleteActiveCut,
     ),
   ];
+
+  Future<void> _convertActiveCutToLinked(BuildContext context) async {
+    final activeCut = session.activeCutOrNull;
+    if (activeCut == null) {
+      return;
+    }
+    final targetCutId = await showDialog<CutId>(
+      context: context,
+      builder: (context) => ConvertToLinkedCutDialog(
+        activeCutName: activeCut.name,
+        candidates: session.convertToLinkedCutCandidates,
+        previewOf: session.convertToLinkedCutPreviewData,
+      ),
+    );
+    if (!context.mounted || targetCutId == null) {
+      return;
+    }
+    session.convertActiveCutToLinked(targetCutId);
+  }
 
   /// Bakes per frame; paste onto the canvas-sequence layer in a
   /// camera-frame-sized comp.
@@ -508,6 +546,22 @@ class EditorMenuBar extends StatelessWidget {
       id: 'layer-duplicate',
       label: 'Duplicate Layer',
       onPressed: session.duplicateActiveLayer,
+    ),
+    // 링크 복제 / 독립시키기 (L4): the duplicate SHARES its pictures
+    // ("이름이 같으면 같은 그림"); unlink forks them back out.
+    _item(
+      id: 'layer-link-duplicate',
+      label: 'Link Duplicate Layer',
+      onPressed: session.canLinkDuplicateActiveLayer
+          ? session.linkDuplicateActiveLayer
+          : null,
+    ),
+    _item(
+      id: 'layer-unlink',
+      label: 'Unlink Layer',
+      onPressed: session.canUnlinkActiveLayer
+          ? session.unlinkActiveLayer
+          : null,
     ),
     _item(
       id: 'layer-rename',
