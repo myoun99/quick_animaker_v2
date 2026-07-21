@@ -354,6 +354,58 @@ void main() {
         );
       });
 
+      test('renaming a linked layer PROPAGATES to every member — the link '
+          'survives and "linked means same name" stays true', () {
+        final fixture = _fixture(
+          _project(
+            tracks: [
+              _track(id: 'track-1', name: 'V', cuts: [linkFixtureCut()]),
+            ],
+          ),
+          activeCutId: const CutId('cut-1'),
+        );
+
+        fixture.coordinator.linkDuplicateLayer(
+          cutId: const CutId('cut-1'),
+          layerId: const LayerId('base'),
+        );
+        fixture.coordinator.renameLayer(
+          cutId: const CutId('cut-1'),
+          layerId: const LayerId('base'),
+          name: 'flower',
+        );
+
+        final cut = _cutById(fixture.project, const CutId('cut-1'));
+        final baseNames = [
+          for (final layer in cut.layers)
+            if (layer.id == const LayerId('base') ||
+                layer.id == const LayerId('layer-1'))
+              layer.name,
+        ];
+        expect(baseNames, ['flower', 'flower']);
+        expect(
+          fixture.project.linkRegistry.useCountOf(
+            cutId: const CutId('cut-1'),
+            layerId: const LayerId('base'),
+          ),
+          2,
+          reason: 'renaming never breaks the link',
+        );
+
+        fixture.historyManager.undo();
+        final reverted = _cutById(fixture.project, const CutId('cut-1'));
+        expect(
+          [
+            for (final layer in reverted.layers)
+              if (layer.id == const LayerId('base') ||
+                  layer.id == const LayerId('layer-1'))
+                layer.name,
+          ],
+          ['base', 'base'],
+          reason: 'one undo restores every member',
+        );
+      });
+
       test('link-duplicating an already-linked layer EXTENDS its group '
           'instead of nesting a new one', () {
         final fixture = _fixture(
