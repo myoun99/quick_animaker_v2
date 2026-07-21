@@ -1,5 +1,7 @@
+import '../../models/attached_layer_resolve.dart';
 import '../../models/cut.dart';
 import '../../models/cut_id.dart';
+import '../../models/folder_id.dart';
 import '../../models/frame_id.dart';
 import '../../models/layer.dart';
 import '../../models/layer_id.dart';
@@ -205,6 +207,134 @@ PasteLayerCommandInputPlan planPasteLayerCommandInput({
     frameIdMap: frameIdMap,
     layer: layer,
     insertionIndex: insertionIndex,
+  );
+}
+
+class CreateLinkedCutCommandInputPlan {
+  const CreateLinkedCutCommandInputPlan({
+    required this.newCutId,
+    required this.layerIdMap,
+    required this.folderIdMap,
+    required this.newGroupIdBySource,
+  });
+
+  final CutId newCutId;
+  final Map<LayerId, LayerId> layerIdMap;
+  final Map<FolderId, FolderId> folderIdMap;
+  final Map<LayerId, String> newGroupIdBySource;
+}
+
+/// Plans a 겸용컷 생성 (L2): a new cut id, one linked-copy id per DRAWING
+/// layer of [sourceCut], copied folder ids, and registry group ids.
+/// FrameIds are NOT mapped — identity is the link.
+CreateLinkedCutCommandInputPlan planCreateLinkedCutCommandInput({
+  required Project project,
+  required Cut sourceCut,
+}) {
+  final ids = _ProjectIdSnapshot.fromProject(project);
+  final newCutId = CutId(_firstAvailableId(prefix: 'cut', usedIds: ids.cutIds));
+  ids.cutIds.add(newCutId.value);
+
+  final layerIdMap = <LayerId, LayerId>{};
+  for (final layer in sourceCut.layers) {
+    if (layer.kind != LayerKind.animation) {
+      continue;
+    }
+    final copyId = LayerId(
+      _firstAvailableId(prefix: 'layer', usedIds: ids.layerIds),
+    );
+    ids.layerIds.add(copyId.value);
+    layerIdMap[layer.id] = copyId;
+  }
+
+  final usedFolderIds = <String>{
+    for (final track in project.tracks)
+      for (final cut in track.cuts)
+        for (final folder in cut.folders) folder.id.value,
+  };
+  final folderIdMap = <FolderId, FolderId>{};
+  for (final folder in sourceCut.folders) {
+    final copyId = FolderId(
+      _firstAvailableId(prefix: 'folder', usedIds: usedFolderIds),
+    );
+    usedFolderIds.add(copyId.value);
+    folderIdMap[folder.id] = copyId;
+  }
+
+  final usedGroupIds = <String>{
+    for (final group in project.linkRegistry.groups) group.id,
+  };
+  final newGroupIdBySource = <LayerId, String>{};
+  for (final layer in sourceCut.layers) {
+    if (layer.kind != LayerKind.animation) {
+      continue;
+    }
+    final groupId = _firstAvailableId(prefix: 'link', usedIds: usedGroupIds);
+    usedGroupIds.add(groupId);
+    newGroupIdBySource[layer.id] = groupId;
+  }
+
+  return CreateLinkedCutCommandInputPlan(
+    newCutId: newCutId,
+    layerIdMap: layerIdMap,
+    folderIdMap: folderIdMap,
+    newGroupIdBySource: newGroupIdBySource,
+  );
+}
+
+class LinkDuplicateLayerCommandInputPlan {
+  const LinkDuplicateLayerCommandInputPlan({
+    required this.layerIdMap,
+    required this.newGroupIdBySource,
+  });
+
+  /// Source member id → its copy's id, over the whole attach group.
+  final Map<LayerId, LayerId> layerIdMap;
+
+  /// Planned registry group id per source member (used only for members
+  /// that are not in a link group yet).
+  final Map<LayerId, String> newGroupIdBySource;
+}
+
+/// Plans a 링크 복제 (L2): one copy id per member of [sourceLayerId]'s
+/// attach group, plus fresh registry group ids. FrameIds are NOT mapped —
+/// keeping them identical IS the link.
+LinkDuplicateLayerCommandInputPlan planLinkDuplicateLayerCommandInput({
+  required Project project,
+  required Cut cut,
+  required LayerId sourceLayerId,
+}) {
+  final ids = _ProjectIdSnapshot.fromProject(project);
+  final source = cut.layers.firstWhere((layer) => layer.id == sourceLayerId);
+  final baseId = source.attachedToLayerId ?? source.id;
+  final baseIndex = cut.layers.indexWhere((layer) => layer.id == baseId);
+  final members = cut.layers.sublist(
+    baseIndex,
+    attachedGroupEndIndex(baseId, cut.layers),
+  );
+
+  final layerIdMap = <LayerId, LayerId>{};
+  for (final member in members) {
+    final copyId = LayerId(
+      _firstAvailableId(prefix: 'layer', usedIds: ids.layerIds),
+    );
+    ids.layerIds.add(copyId.value);
+    layerIdMap[member.id] = copyId;
+  }
+
+  final usedGroupIds = <String>{
+    for (final group in project.linkRegistry.groups) group.id,
+  };
+  final newGroupIdBySource = <LayerId, String>{};
+  for (final member in members) {
+    final groupId = _firstAvailableId(prefix: 'link', usedIds: usedGroupIds);
+    usedGroupIds.add(groupId);
+    newGroupIdBySource[member.id] = groupId;
+  }
+
+  return LinkDuplicateLayerCommandInputPlan(
+    layerIdMap: layerIdMap,
+    newGroupIdBySource: newGroupIdBySource,
   );
 }
 

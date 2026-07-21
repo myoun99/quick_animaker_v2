@@ -3,6 +3,7 @@ import '../models/cut_id.dart';
 import '../models/layer.dart';
 import '../models/layer_id.dart';
 import '../models/project.dart';
+import '../models/track.dart';
 
 /// Read-only lookups into the `Project` -> `Track` -> `Cut` -> `Layer`
 /// hierarchy, shared by the edit commands and coordinator that previously each
@@ -20,6 +21,20 @@ Cut requireCut(Project project, CutId cutId) {
   }
 
   throw StateError('Cut not found: $cutId');
+}
+
+/// Returns the track containing the cut matching [cutId]. Throws a
+/// [StateError] if no track holds it.
+Track requireTrackOfCut(Project project, CutId cutId) {
+  for (final track in project.tracks) {
+    for (final cut in track.cuts) {
+      if (cut.id == cutId) {
+        return track;
+      }
+    }
+  }
+
+  throw StateError('No track holds cut: $cutId');
 }
 
 /// Returns the layer matching [layerId] within the cut matching [cutId]. Throws
