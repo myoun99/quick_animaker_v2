@@ -30,6 +30,8 @@ import 'export/export_dialog.dart';
 import 'menu/editor_menu_bar.dart';
 import 'panels/workspace_panels_menu.dart';
 import 'playback/canvas_playback_controller.dart';
+import 'playback/playback_transport_controls.dart'
+    show toggleVoiceRecordingWithFeedback;
 import 'shortcuts/editor_action_registry.dart';
 import 'shortcuts/editor_shortcut_bindings.dart';
 import 'shortcuts/shortcut_settings_store.dart';
@@ -162,6 +164,10 @@ class _HomePageState extends State<HomePage> {
     _syncAutosaveService();
     AppSave.settings.addListener(_syncAutosaveService);
     _lifecycle = AppLifecycleListener(onExitRequested: _handleExitRequested);
+    // REC1-B: takes the TRANSPORT finishes (stop pressed mid-take) report
+    // through this channel — the toggle button was not the caller, so its
+    // snackbar path never runs.
+    _session.voiceRecordingNotice.addListener(_showVoiceRecordingNotice);
     // R26 #13: the transform tool refuses to engage with nothing to
     // transform — announced through the shared cursor notice, never a
     // dialog, and the tool simply stays where it was. Installed on the
@@ -173,6 +179,16 @@ class _HomePageState extends State<HomePage> {
         ..switchGuard = _refusalForTool
         ..onSwitchRefused = cursorNotices.show;
     }
+  }
+
+  void _showVoiceRecordingNotice() {
+    final message = _session.voiceRecordingNotice.value;
+    if (message == null || !mounted) {
+      return;
+    }
+    ScaffoldMessenger.maybeOf(
+      context,
+    )?.showSnackBar(SnackBar(content: Text(message)));
   }
 
   /// The refusal message for switching to [tool], or null to allow it.
@@ -221,6 +237,7 @@ class _HomePageState extends State<HomePage> {
   @override
   void dispose() {
     PencilInteractionService.instance.onPencilTap = null;
+    _session.voiceRecordingNotice.removeListener(_showVoiceRecordingNotice);
     AppSave.settings.removeListener(_syncAutosaveService);
     _lifecycle?.dispose();
     _autosave?.dispose();
@@ -273,6 +290,8 @@ class _HomePageState extends State<HomePage> {
             startGlobalFrame: _session.currentFrameIndex,
           );
         }
+      case EditorActionIds.voiceRecordToggle:
+        toggleVoiceRecordingWithFeedback(context, _session);
       case EditorActionIds.undo:
         if (_session.canUndo) {
           _session.undo();

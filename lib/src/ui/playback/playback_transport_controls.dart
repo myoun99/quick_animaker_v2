@@ -8,6 +8,7 @@ import '../editor_session_manager.dart';
 import '../text/app_strings.dart';
 import '../theme/app_theme.dart' show instantMenuAnimation;
 import 'audio_level_meter.dart';
+import 'audio_recorder.dart' show VoiceRecordStartResult;
 import 'canvas_playback_controller.dart';
 
 /// The mic button's shared handler (AUDIO-PRO R5): arm or finish a take
@@ -26,9 +27,12 @@ Future<void> toggleVoiceRecordingWithFeedback(
     // Android's runtime grant; the Future waits out the system dialog.
     message = strings.recordMicPermissionDenied;
   } else {
-    message = session.startVoiceRecording()
-        ? null
-        : strings.recordMicOpenFailed;
+    message = switch (session.startVoiceRecording()) {
+      VoiceRecordStartResult.started ||
+      VoiceRecordStartResult.alreadyRecording => null,
+      VoiceRecordStartResult.needsSeLane => strings.recordSelectSeLane,
+      VoiceRecordStartResult.deviceFailed => strings.recordMicOpenFailed,
+    };
   }
   if (message != null) {
     messenger?.showSnackBar(SnackBar(content: Text(message)));
@@ -48,6 +52,7 @@ class PlaybackTransportControls extends StatelessWidget {
     required this.quality,
     required this.onQualityChanged,
     this.playbackStartFrame,
+    this.onSkipToStart,
     this.resolveMeterPeaks,
     this.isVoiceRecording,
     this.onToggleVoiceRecording,
@@ -76,6 +81,10 @@ class PlaybackTransportControls extends StatelessWidget {
   /// defaults to frame 0.
   final int Function()? playbackStartFrame;
 
+  /// "To start" while the transport is NOT active here (REC1-B): the host
+  /// moves its editing playhead to index 0. Active playback seeks itself.
+  final VoidCallback? onSkipToStart;
+
   static String qualityLabel(PlaybackQuality quality) {
     return switch (quality) {
       PlaybackQuality.full => 'Full',
@@ -97,6 +106,20 @@ class PlaybackTransportControls extends StatelessWidget {
           key: ValueKey<String>('playback-transport-${scope.name}'),
           mainAxisSize: MainAxisSize.min,
           children: [
+            IconButton(
+              key: const ValueKey<String>('playback-skip-to-start-button'),
+              tooltip: 'To start',
+              iconSize: 18,
+              visualDensity: VisualDensity.compact,
+              icon: const Icon(Icons.skip_previous),
+              onPressed: () {
+                if (controlsThisScope) {
+                  controller.seekToGlobalFrame(0);
+                } else {
+                  onSkipToStart?.call();
+                }
+              },
+            ),
             IconButton(
               key: const ValueKey<String>('playback-play-button'),
               tooltip: isPlayingHere ? 'Pause' : 'Play',

@@ -1282,6 +1282,7 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
             quality: _session.playbackQuality,
             onQualityChanged: _session.setPlaybackQuality,
             playbackStartFrame: () => _session.currentFrameIndex,
+            onSkipToStart: () => _session.selectFrameIndex(0),
             resolveMeterPeaks: () => _session.audioDeviceTransport.meterPeaks,
             isVoiceRecording: _session.isVoiceRecording,
             onToggleVoiceRecording: () =>

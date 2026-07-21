@@ -72,11 +72,16 @@ class AudioPlaybackSync {
     this.resolveProject,
     this.deviceCarriesPlayback,
     this.resolveSoloedLayerIds,
+    this.resolveRecordingMutedLayerIds,
   });
 
   /// The session's solo set (monitoring state); null/empty = everything
   /// unmuted plays.
   final Set<LayerId> Function()? resolveSoloedLayerIds;
+
+  /// The armed lane while a take rolls (REC1-B) — muted on top of the
+  /// layers' own flags, never written into them.
+  final Set<LayerId> Function()? resolveRecordingMutedLayerIds;
 
   /// Consulted ONCE at activation: true means the native device transport
   /// carries this run's audio, so no platform players are built — playing
@@ -146,6 +151,7 @@ class AudioPlaybackSync {
               rate: resolveFrameRate(),
               durationSecondsFor: durationSecondsFor,
               soloedLayerIds: resolveSoloedLayerIds?.call(),
+              mutedLayerIds: resolveRecordingMutedLayerIds?.call(),
             );
       _players = [for (final _ in _schedule) playerFactory()];
       for (var index = 0; index < _schedule.length; index += 1) {

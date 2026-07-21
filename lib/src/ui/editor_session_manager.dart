@@ -107,6 +107,8 @@ import '../native/qa_audio_device.dart'
     show QaAudioDevice, audioInputDeviceIndexByName;
 import '../services/audio/audio_conform_pipeline.dart' show ProjectAssetLayout;
 import '../services/audio/conform_wav_codec.dart' show encodeConformWav;
+import '../services/commands/update_media_assets_command.dart';
+import '../models/se_take_placement.dart';
 import 'playback/audio_recorder.dart';
 import '../services/audio/audio_conform_runner.dart' show runConformHere;
 import '../services/commands/track_se_layer_commands.dart';
@@ -465,6 +467,7 @@ class EditorSessionManager extends ChangeNotifier {
           frameRateDenominator: projectFrameRate.denominator,
         ),
     resolveSoloedLayerIds: () => soloedSeLayerIds.value,
+    resolveRecordingMutedLayerIds: () => recordingMutedLayerIds,
     resolveOutputDeviceName: () => audioSyncSettings.value.outputDeviceName,
   );
 
@@ -493,6 +496,7 @@ class EditorSessionManager extends ChangeNotifier {
         ? () => null
         : null,
     resolveSoloedLayerIds: () => soloedSeLayerIds.value,
+    resolveRecordingMutedLayerIds: () => recordingMutedLayerIds,
     resolveOutputDeviceName: () => audioSyncSettings.value.outputDeviceName,
   );
 
@@ -509,9 +513,16 @@ class EditorSessionManager extends ChangeNotifier {
     resolveProject: () => _repository.currentProject,
     deviceCarriesPlayback: () => audioDeviceTransport.carryingPlayback,
     resolveSoloedLayerIds: () => soloedSeLayerIds.value,
+    resolveRecordingMutedLayerIds: () => recordingMutedLayerIds,
   );
 
   void _onPlaybackStopped(PlaybackPosition lastPosition) {
+    // Transport stop finishes a rolling take (REC1-B): record = play +
+    // capture, so ending one ends the other. The result message goes out
+    // on the notice channel — this path has no button to return through.
+    if (isVoiceRecording.value) {
+      voiceRecordingNotice.value = stopVoiceRecordingAndPlace();
+    }
     if (lastPosition.cutId != _editingSession.activeCutId) {
       selectCut(lastPosition.cutId);
     }
@@ -525,6 +536,11 @@ class EditorSessionManager extends ChangeNotifier {
   /// Stop landed on a playlist GAP frame (UI-R9 #3): match the editing
   /// gap semantics — park there with NO active cut.
   void _onPlaybackStoppedInGap(int globalFrame) {
+    // The gap-stop twin of _onPlaybackStopped's take finish: a lane is
+    // cut-independent, so a take may legitimately end over a gap.
+    if (isVoiceRecording.value) {
+      voiceRecordingNotice.value = stopVoiceRecordingAndPlace();
+    }
     _gapGlobalFrame = globalFrame;
     _deselectActiveCutForGap();
     frameSeekCommitted.value += 1;
@@ -831,6 +847,7 @@ class EditorSessionManager extends ChangeNotifier {
     _historyManager.removeListener(_refreshLiveAudioSchedule);
     _voiceRecorder?.dispose();
     isVoiceRecording.dispose();
+    voiceRecordingNotice.dispose();
     audioPlaybackSync.dispose();
     audioScrubber.dispose();
     audioDeviceTransport.dispose();
@@ -3266,32 +3283,66 @@ class EditorSessionManager extends ChangeNotifier {
   /// True while the microphone is live — the record button's state.
   final ValueNotifier<bool> isVoiceRecording = ValueNotifier<bool>(false);
 
+  /// A take the TRANSPORT finished (stop pressed mid-take): the message
+  /// the toggle path would have returned, for whoever hosts the snackbar.
+  /// Null = finished clean (or nothing to say).
+  final ValueNotifier<String?> voiceRecordingNotice =
+      ValueNotifier<String?>(null);
+
   AudioRecorder? _voiceRecorder;
-  CutId? _voiceRecordCutId;
-  int _voiceRecordFrameIndex = 0;
+  LayerId? _voiceRecordLaneId;
+  int _voiceRecordAnchorFrame = 0;
+  int? _voiceRecordPunchEndFrame;
   int _voiceRecordHeadTrimSamples = 0;
+  bool _voiceRecordStartedRoll = false;
+  String? _voiceRecordTempDirectory;
+
+  /// The SE lane whose playback yields to the microphone while a take
+  /// rolls (the DAW armed-track rule); null when not recording.
+  LayerId? get voiceRecordingMutedLaneId =>
+      isVoiceRecording.value ? _voiceRecordLaneId : null;
+
+  /// [voiceRecordingMutedLaneId] as the set the schedule builders take.
+  Set<LayerId> get recordingMutedLayerIds {
+    final lane = voiceRecordingMutedLaneId;
+    return lane == null ? const <LayerId>{} : <LayerId>{lane};
+  }
 
   /// Test hook: stand in for the microphone.
   @visibleForTesting
   AudioRecorder Function()? debugVoiceRecorderFactory;
 
-  /// Opens the microphone and starts a take. Returns false when there is
-  /// no device to open (no binary, no microphone, no OS permission) —
-  /// the button reports that instead of arming silently.
-  ///
-  /// The take is ANCHORED here, at start: to the playing position when
-  /// the transport is rolling (record-along — watch the cut, speak the
-  /// line), otherwise to the editing playhead. Recording does not touch
-  /// playback in either direction; the existing SE keeps monitoring and
-  /// echo management (mute, earphones) stays the user's call.
-  bool startVoiceRecording() {
-    if (isVoiceRecording.value) {
-      return false;
+  /// The playing position on the TRACK-global axis, or null while
+  /// playback is inactive. The all-cuts playlist IS the track axis
+  /// (gaps included); the active-cut playlist is that cut alone, so its
+  /// frames shift by the cut's global start.
+  int? _playbackTrackGlobalFrame() {
+    final global = playback.globalFrameIndexListenable.value;
+    if (global == null) {
+      return null;
     }
-    final position = playback.isPlaying ? playback.position : null;
-    final anchorCutId = position?.cutId ?? activeCutOrNull?.id;
-    if (anchorCutId == null) {
-      return false; // A gap has no cut to land the take in.
+    return playback.scope == PlaybackScope.allCuts
+        ? global
+        : activeCutGlobalStartFrame + global;
+  }
+
+  /// Opens the microphone and ROLLS the transport (REC1-B): record =
+  /// play + capture, the DAW rule — the playhead moves, every other row
+  /// is audible, and the take lands where the roll started.
+  ///
+  /// The take lands on the ACTIVE track SE lane; any other active layer
+  /// refuses (the armed-track contract — nothing records without an
+  /// armed destination). A range selection on that lane is the PUNCH
+  /// window: capture begins when playback enters it and ends at its far
+  /// edge, however long the transport keeps rolling.
+  VoiceRecordStartResult startVoiceRecording() {
+    if (isVoiceRecording.value) {
+      return VoiceRecordStartResult.alreadyRecording;
+    }
+    final laneId = activeLayerId;
+    final lane = laneId == null ? null : trackSeGlobalLayerById(laneId);
+    if (lane == null || laneId == null) {
+      return VoiceRecordStartResult.needsSeLane;
     }
     final device = Platform.environment['FLUTTER_TEST'] == 'true'
         ? null
@@ -3309,36 +3360,84 @@ class EditorSessionManager extends ChangeNotifier {
       deviceIndex: deviceIndex,
     );
     if (rate == 0) {
-      return false;
+      return VoiceRecordStartResult.deviceFailed;
     }
+
+    // Where the roll starts, on the track-global axis: the playing (or
+    // paused) position when the transport is active, otherwise the
+    // editing playhead — gap parking included (a gap is a place on the
+    // track; the lane is cut-independent).
+    final rollStart = playback.isActive
+        ? (_playbackTrackGlobalFrame() ??
+              (gapParkedGlobalFrame ?? editingGlobalFrame))
+        : (gapParkedGlobalFrame ?? editingGlobalFrame);
+
+    // The punch window: a range selection on the armed lane, mapped from
+    // its cut-local display axis onto the track axis.
+    var anchor = rollStart;
+    int? punchEnd;
+    final selection = frameRangeSelection.value;
+    if (selection != null && selection.coversLayer(laneId)) {
+      final offset = activeCutGlobalStartFrame;
+      final punchStart = selection.startIndex + offset;
+      final windowEnd = selection.endIndexExclusive + offset;
+      if (rollStart < windowEnd) {
+        anchor = math.max(rollStart, punchStart);
+        punchEnd = windowEnd;
+      }
+    }
+
     _voiceRecorder = recorder;
-    _voiceRecordCutId = anchorCutId;
-    _voiceRecordFrameIndex = position?.localFrameIndex
-        ?? math.max(0, _timelineController.currentFrameIndex);
-    // Recording along to playback: the performer speaks against what they
-    // HEAR, which runs the output latency behind the mix clock — so that
-    // much comes off the head of the take (the DAW recording-compensation
-    // rule). A cold-start take has nothing to be late against.
-    _voiceRecordHeadTrimSamples = position == null
-        ? 0
-        : audioDeviceTransport.report.reportedLatencySamples;
+    _voiceRecordLaneId = laneId;
+    _voiceRecordAnchorFrame = anchor;
+    _voiceRecordPunchEndFrame = punchEnd;
+    // The performer speaks against what they HEAR, which runs the output
+    // latency behind the mix clock — that much comes off the take's head
+    // (the DAW recording-compensation rule) — plus the run-up between
+    // the roll start and the punch-in.
+    _voiceRecordHeadTrimSamples =
+        audioDeviceTransport.report.reportedLatencySamples +
+        projectFrameRate.frameToSample(anchor - rollStart, rate);
     isVoiceRecording.value = true;
-    return true;
+    if (playback.isActive && playback.isPlaying) {
+      _voiceRecordStartedRoll = false;
+    } else {
+      _voiceRecordStartedRoll = true;
+      if (playback.isActive) {
+        playback.resume();
+      } else {
+        playback.play(
+          scope: PlaybackScope.allCuts,
+          startGlobalFrame: rollStart,
+        );
+      }
+    }
+    notifyListeners(); // The armed lane mutes: schedules rebuild on this.
+    return VoiceRecordStartResult.started;
   }
 
-  /// Stops the take and lands it on the timeline: WAV into `Media/`, into
-  /// the media pool, a carrier SE block at the anchor frame, and the clip
-  /// linked to it — the whole "재생하면서 녹음해서 프레임블록 만들어서
-  /// 링크" flow in one stop.
+  /// Stops the take and lands it on the armed lane: WAV to disk, pool
+  /// entry, and the lane's tape-style swap (trims, erasures, the new
+  /// block and its link) — ONE undo for the whole landing.
   ///
-  /// Returns null on clean success, otherwise a message for the user —
-  /// including the case where the take was PLACED but the capture ring
-  /// dropped frames (a damaged take must say so).
+  /// A roll this take started stops with it (record = play + capture,
+  /// both directions). Returns null on clean success, otherwise a
+  /// message for the user — including the case where the take was PLACED
+  /// but the capture ring dropped frames (a damaged take must say so).
   String? stopVoiceRecordingAndPlace() {
     final recorder = _voiceRecorder;
     _voiceRecorder = null;
+    final laneId = _voiceRecordLaneId;
+    _voiceRecordLaneId = null;
+    final startedRoll = _voiceRecordStartedRoll;
+    _voiceRecordStartedRoll = false;
     isVoiceRecording.value = false;
     final recording = recorder?.stop();
+    if (startedRoll && playback.isActive) {
+      // Re-enters _onPlaybackStopped; the recorder is already detached.
+      playback.stop();
+    }
+    notifyListeners(); // The armed lane unmutes.
     if (recording == null) {
       return uiStrings.recordNothingRecording;
     }
@@ -3347,8 +3446,9 @@ class EditorSessionManager extends ChangeNotifier {
     }
     final placed = placeVoiceRecording(
       recording,
-      cutId: _voiceRecordCutId,
-      frameIndex: _voiceRecordFrameIndex,
+      laneId: laneId,
+      anchorFrame: _voiceRecordAnchorFrame,
+      punchEndFrame: _voiceRecordPunchEndFrame,
       headTrimSamples: _voiceRecordHeadTrimSamples,
     );
     if (!placed) {
@@ -3364,120 +3464,134 @@ class EditorSessionManager extends ChangeNotifier {
   }
 
   /// Lands a finished take (split out so tests can drive it with a made
-  /// recording): trims the head, writes the WAV, registers it in the pool,
-  /// creates the carrier SE block at [frameIndex] and links the clip.
-  ///
-  /// The carrier row is the active SE row when its anchor cell is free;
-  /// otherwise a NEW SE row — an existing sound is never overwritten by a
-  /// take.
+  /// recording): trims the head (latency + punch run-up), clamps to the
+  /// punch window, writes the WAV, and swaps the lane through the
+  /// tape-style planner — pool entry and lane swap in ONE undo step.
   @visibleForTesting
   bool placeVoiceRecording(
     AudioRecording recording, {
-    required CutId? cutId,
-    required int frameIndex,
+    required LayerId? laneId,
+    required int anchorFrame,
+    int? punchEndFrame,
     int headTrimSamples = 0,
   }) {
-    if (cutId == null || recording.channels <= 0 || recording.sampleRate <= 0) {
+    final lane = laneId == null ? null : trackSeGlobalLayerById(laneId);
+    if (lane == null ||
+        anchorFrame < 0 ||
+        recording.channels <= 0 ||
+        recording.sampleRate <= 0) {
       return false;
     }
     var samples = recording.samples;
     if (headTrimSamples > 0) {
       final trimFloats = headTrimSamples * recording.channels;
       if (trimFloats >= samples.length) {
-        return false; // Shorter than the latency it rode on: nothing real.
+        return false; // Shorter than the run-up it rode on: nothing real.
       }
       samples = Float32List.sublistView(samples, trimFloats);
     }
-    final wav = encodeConformWav(
-      samples: samples,
-      channels: recording.channels,
-      sampleRate: recording.sampleRate,
-    );
-    final path = _writeRecordingWav(wav);
-    if (path == null) {
-      return false;
-    }
-
-    // Land the editing context on the anchor — the same place a playback
-    // stop there would have left it, and where the user expects to find
-    // (and immediately replay) the take.
-    if (_editingSession.activeCutId != cutId) {
-      selectCut(cutId);
-    }
-    if (activeCutOrNull?.id != cutId) {
-      return false; // The cut was deleted mid-take.
-    }
-    selectFrameIndex(_clampedFrameIndex(frameIndex));
-    final anchorFrame = _timelineController.currentFrameIndex < 0
-        ? 0
-        : _timelineController.currentFrameIndex;
-
-    var carrier = activeLayer;
-    final carrierFree = carrier != null &&
-        carrier.kind == LayerKind.se &&
-        resolveExposedFrameAt(carrier, anchorFrame) == null;
-    if (!carrierFree) {
-      addLayerOfKind(LayerKind.se);
-      carrier = activeLayer;
-    }
-    if (carrier == null || carrier.kind != LayerKind.se) {
-      return false;
-    }
-
     // Whole frames covering the take, so the block window matches what
     // was actually said (min 1 — a sub-frame take still needs a cell).
-    final lengthFrames = math.max(
+    var lengthFrames = math.max(
       1,
       projectFrameRate.framesCoveringExactSeconds(
         samples.length ~/ recording.channels,
         recording.sampleRate,
       ),
     );
-    createSeEntryAtCurrentFrame(name: '', lengthFrames: lengthFrames);
-    final placedLayer = activeLayer;
-    final frame = placedLayer == null
-        ? null
-        : resolveExposedFrameAt(placedLayer, anchorFrame);
-    if (placedLayer == null || frame == null) {
+    final window = punchEndFrame == null ? null : punchEndFrame - anchorFrame;
+    if (window != null) {
+      if (window < 1) {
+        return false;
+      }
+      if (lengthFrames > window) {
+        lengthFrames = window;
+        // The file carries the window alone — capture past the punch-out
+        // is context the performer heard, not part of the take.
+        final windowFloats =
+            projectFrameRate.frameToSample(window, recording.sampleRate) *
+            recording.channels;
+        if (windowFloats > 0 && windowFloats < samples.length) {
+          samples = Float32List.sublistView(samples, 0, windowFloats);
+        }
+      }
+    }
+    final wav = encodeConformWav(
+      samples: samples,
+      channels: recording.channels,
+      sampleRate: recording.sampleRate,
+    );
+    final path = _writeRecordingWav(wav, laneName: lane.name);
+    if (path == null) {
       return false;
     }
-    // Pool + conform first (same order as an import), then the link.
-    addMediaAssets([path]);
+
+    final plan = planSeTakePlacement(
+      layer: lane,
+      startFrame: anchorFrame,
+      lengthFrames: lengthFrames,
+      filePath: path,
+      takeFrameId: _mintFrameId(lane.id),
+      newFrameId: () => _mintFrameId(lane.id),
+    );
+    if (plan == null) {
+      return false;
+    }
+    // Conform first (same order as an import), then the ONE undo step:
+    // pool entry + the lane's whole swap.
     audioConformStore.invalidate(path);
     audioConformStore.warmPaths([path]);
-    _cutCommandCoordinator.updateLayerAudioClips(
-      cutId: requireActiveCut.id,
-      layerId: placedLayer.id,
-      audioClips: [
-        ...placedLayer.audioClips,
-        AudioClip(filePath: path, frameId: frame.id),
-      ],
-      description: 'Record voice',
+    final pool = mediaAssets;
+    _cutCommandCoordinator.historyManager.execute(
+      CompositeCommand(
+        description: 'Record voice',
+        commands: [
+          if (!pool.any((asset) => asset.path == path))
+            UpdateMediaAssetsCommand(
+              repository: _repository,
+              mediaAssets: [
+                ...pool,
+                MediaAsset(path: path, name: mediaAssetDefaultName(path)),
+              ],
+              description: 'Record voice',
+            ),
+          UpdateLayerTimelineCommand(
+            repository: _repository,
+            before: lane,
+            after: plan.layer,
+          ),
+        ],
+      ),
     );
     notifyListeners();
     return true;
   }
 
-  /// Writes a take's WAV under the project's `Media/` folder (temp when
-  /// the project was never saved — the same degrade as an import) and
-  /// returns its path, or null when even that failed.
-  String? _writeRecordingWav(Uint8List bytes) {
-    final now = DateTime.now();
-    String pad(int value) => value.toString().padLeft(2, '0');
-    final stamp =
-        '${now.year}${pad(now.month)}${pad(now.day)}-'
-        '${pad(now.hour)}${pad(now.minute)}${pad(now.second)}';
+  FrameId _mintFrameId(LayerId layerId) {
+    _frameSequence += 1;
+    return FrameId(_nextFrameId(layerId));
+  }
+
+  /// Writes a take's WAV under the project's `Media/` folder (a session
+  /// temp folder when the project was never saved — the same degrade as
+  /// an import) and returns its path, or null when even that failed.
+  ///
+  /// Named `<lane>_T<n>.wav` (REC1-B): the recording-session convention —
+  /// the pool line alone says whose take it is and which pass.
+  String? _writeRecordingWav(Uint8List bytes, {required String laneName}) {
+    final base = laneName.replaceAll(RegExp(r'[\\/:*?"<>|.\s]+'), '_');
+    final safeBase = base.isEmpty ? 'REC' : base;
     try {
       final projectPath = _projectFilePath;
       final directory = projectPath == null
-          ? Directory.systemTemp.createTempSync('qa_recording_').path
+          ? (_voiceRecordTempDirectory ??= Directory.systemTemp
+                .createTempSync('qa_recording_')
+                .path)
           : ProjectAssetLayout(projectPath).mediaDirectory;
       Directory(directory).createSync(recursive: true);
-      for (var index = 0; index < 10000; index += 1) {
+      for (var take = 1; take < 10000; take += 1) {
         final file = File(
-          index == 0
-              ? '$directory/recording-$stamp.wav'
-              : '$directory/recording-$stamp-$index.wav',
+          '$directory/${safeBase}_T${take.toString().padLeft(2, '0')}.wav',
         );
         if (!file.existsSync()) {
           file.writeAsBytesSync(bytes);
