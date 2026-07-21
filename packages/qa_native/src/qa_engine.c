@@ -3325,4 +3325,5 @@ QA_EXPORT int64_t qa_audio_resample_frames(int64_t input_frames,
 //      the clip struct + the shared envelope key array in qa_audio_mix.
 // v17: qa_audio_resample - the polyphase resampler (2B).
 // v19: AUDIO-PRO R5 - qa_audio_capture_* (the guide-voice recorder).
-QA_EXPORT int32_t qa_engine_abi_version(void) { return 19; }
+// v20: AUDIO-PRO R7 - qa_video_export_* (the OS video encoder).
+QA_EXPORT int32_t qa_engine_abi_version(void) { return 20; }

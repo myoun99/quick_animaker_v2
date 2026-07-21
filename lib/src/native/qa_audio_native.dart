@@ -29,7 +29,7 @@ final class QaAudioNative {
   );
 
   /// Must match `qa_engine_abi_version()` in the C.
-  static const int _abiVersion = 19;
+  static const int _abiVersion = 20;
 
   final void Function(
     Pointer<QaAudioClipStruct>,
