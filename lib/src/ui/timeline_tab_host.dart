@@ -857,7 +857,7 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
           onActivateCell: _activateCellEditor,
           instructionDefById: (instructionId) =>
               _session.cameraInstructionSet.defById(instructionId),
-          audioPeaksFor: _session.audioPeaksStore.peaksFor,
+          audioPeaksFor: _session.audioConformStore.peaksFor,
           onRemoveAudioClip: _session.removeAudioClipAt,
           // Media-browser drops: link the dragged sound to the block.
           onDropMediaAsset: (layerId, blockStartFrame, path) =>

@@ -75,6 +75,7 @@ class ConformResult {
     required this.outcome,
     this.conformPath,
     this.peaks,
+    this.samples,
     this.channels = 0,
     this.sampleRate = 0,
     this.frames = 0,
@@ -87,6 +88,12 @@ class ConformResult {
   /// Computed from the conformed PCM, so waveforms no longer need ffmpeg —
   /// which is why they have never appeared on a tablet.
   final AudioPeaks? peaks;
+
+  /// The conformed PCM itself, interleaved float32 at the project rate —
+  /// what the device transport uploads. Rides along because the pipeline
+  /// already holds it; re-reading the WAV it just wrote would only add a
+  /// second copy of the same bytes.
+  final Float32List? samples;
 
   final int channels;
   final int sampleRate;
@@ -198,9 +205,15 @@ class AudioConformPipeline {
   /// the source. A conform with NO fingerprint counts as stale on purpose:
   /// it was not written by us, nothing is known about where it came from,
   /// and guessing wrong plays the wrong sound against someone's drawing.
+  ///
+  /// A null [conformPath] runs MEMORY-ONLY: decode and resample without
+  /// touching the disk. That is the unsaved-project case — there is no
+  /// `.assets` directory to write beside a file that does not exist yet,
+  /// and a conform is derived data anyway: once the project is saved, the
+  /// next ensure writes it beside the `.qap` like any other.
   ConformResult ensureConform({
     required String sourcePath,
-    required String conformPath,
+    required String? conformPath,
   }) {
     final fingerprint = fingerprintOf(sourcePath);
     if (fingerprint == null) {
@@ -210,7 +223,7 @@ class AudioConformPipeline {
       );
     }
 
-    final existing = _readConform(conformPath);
+    final existing = conformPath == null ? null : _readConform(conformPath);
     if (existing != null && conformMatchesSource(existing, fingerprint)) {
       return ConformResult(
         outcome: ConformOutcome.reused,
@@ -221,6 +234,7 @@ class AudioConformPipeline {
           sampleRate: existing.sampleRate,
           bucketsPerSecond: bucketsPerSecond,
         ),
+        samples: existing.samples,
         channels: existing.channels,
         sampleRate: existing.sampleRate,
         frames: existing.length,
@@ -257,25 +271,27 @@ class AudioConformPipeline {
             outputRate: projectSampleRate,
           );
 
-    try {
-      final directory = conformPath.substring(
-        0,
-        conformPath.replaceAll('\\', '/').lastIndexOf('/'),
-      );
-      Directory(directory).createSync(recursive: true);
-      File(conformPath).writeAsBytesSync(
-        encodeConformWav(
-          samples: converted,
-          channels: decoded.channels,
-          sampleRate: projectSampleRate,
-          fingerprint: fingerprint,
-        ),
-      );
-    } on Object catch (error) {
-      return ConformResult(
-        outcome: ConformOutcome.writeFailed,
-        error: 'could not write the conform: $error',
-      );
+    if (conformPath != null) {
+      try {
+        final directory = conformPath.substring(
+          0,
+          conformPath.replaceAll('\\', '/').lastIndexOf('/'),
+        );
+        Directory(directory).createSync(recursive: true);
+        File(conformPath).writeAsBytesSync(
+          encodeConformWav(
+            samples: converted,
+            channels: decoded.channels,
+            sampleRate: projectSampleRate,
+            fingerprint: fingerprint,
+          ),
+        );
+      } on Object catch (error) {
+        return ConformResult(
+          outcome: ConformOutcome.writeFailed,
+          error: 'could not write the conform: $error',
+        );
+      }
     }
 
     return ConformResult(
@@ -287,6 +303,7 @@ class AudioConformPipeline {
         sampleRate: projectSampleRate,
         bucketsPerSecond: bucketsPerSecond,
       ),
+      samples: converted,
       channels: decoded.channels,
       sampleRate: projectSampleRate,
       frames: decoded.channels <= 0

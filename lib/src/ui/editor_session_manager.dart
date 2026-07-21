@@ -11,6 +11,7 @@ import '../services/persistence/app_accent_settings_store.dart';
 import '../services/persistence/app_input_settings_store.dart';
 import '../services/persistence/app_save_settings.dart';
 import '../services/persistence/app_save_settings_store.dart';
+import '../services/persistence/audio_sync_settings_store.dart';
 import 'input/app_input_settings.dart';
 import 'theme/app_accents.dart';
 import 'theme/app_theme.dart' show AppColors;
@@ -67,7 +68,9 @@ import '../services/playback/playback_frame_mapping.dart';
 import 'canvas/canvas_layer_stack_view.dart';
 import 'canvas/layer_pose_paint.dart';
 import 'dev_profile.dart';
+import 'playback/audio_device_transport.dart';
 import 'playback/audio_playback_sync.dart';
+import 'playback/audio_sync_settings.dart';
 import 'playback/audioplayers_clip_player.dart';
 import 'playback/canvas_playback_controller.dart';
 import 'playback/cut_frame_composite_cache.dart';
@@ -94,9 +97,12 @@ import '../services/onion_skin_plan.dart';
 import '../services/persistence/project_autosave_service.dart';
 import '../services/persistence/qap_file_service.dart';
 import '../services/commands/cut_reorder_planner.dart';
+import '../services/audio/audio_conform_pipeline.dart' show ProjectAssetLayout;
+import '../services/audio/audio_conform_runner.dart' show runConformHere;
 import '../services/commands/track_se_layer_commands.dart';
 import '../services/history_manager.dart';
 import '../services/project_repository.dart';
+import 'audio/audio_conform_store.dart';
 import 'audio/audio_peaks_store.dart';
 import 'brush/brush_canvas_panel.dart';
 import 'brush/brush_editor_selection.dart';
@@ -135,12 +141,16 @@ class EditorSessionManager extends ChangeNotifier {
   EditorSessionManager({
     required Project initialProject,
     AudioPeaksStore? audioPeaksStore,
+    AudioConformStore? audioConformStore,
     AppLanguageSettingsStore? languageSettingsStore,
     AppAccentSettingsStore? accentSettingsStore,
     AppInputSettingsStore? inputSettingsStore,
     AppSaveSettingsStore? saveSettingsStore,
+    AudioSyncSettingsStore? audioSyncSettingsStore,
   }) : _editingSession = EditingSessionState.forProject(initialProject),
        _injectedAudioPeaksStore = audioPeaksStore,
+       _injectedAudioConformStore = audioConformStore,
+       _audioSyncSettingsStore = audioSyncSettingsStore,
        _languageSettingsStore = languageSettingsStore,
        _accentSettingsStore = accentSettingsStore,
        _inputSettingsStore = inputSettingsStore,
@@ -150,6 +160,7 @@ class EditorSessionManager extends ChangeNotifier {
     unawaited(_restoreAccentSettings());
     unawaited(_restoreInputSettings());
     unawaited(_restoreSaveSettings());
+    unawaited(_restoreAudioSyncSettings());
     _historyManager = HistoryManager();
     _cutCommandCoordinator = CutCommandCoordinator(
       repository: _repository,
@@ -159,6 +170,9 @@ class EditorSessionManager extends ChangeNotifier {
     );
     _rebuildActiveCutControllers();
     cacheInvalidationHub.addBrushFrameListener(_onBrushFrameInvalidated);
+    // Transport FIRST: listener order is its contract with the fallback —
+    // carryingPlayback must be decided before the sync consults it.
+    audioDeviceTransport.attach();
     audioPlaybackSync.attach();
     playback.globalFrameIndexListenable.addListener(_followPlaybackCut);
     // Dirty tracking (P3): every history change — commands, undo/redo and
@@ -271,6 +285,35 @@ class EditorSessionManager extends ChangeNotifier {
     }
   }
 
+  // --- A/V offset (audio program 2D) ----------------------------------------
+
+  /// Injectable persistence; null (tests) keeps the in-memory defaults.
+  final AudioSyncSettingsStore? _audioSyncSettingsStore;
+
+  /// The user's A/V offset — the residual correction for THIS machine's
+  /// output path (screen pipeline, Bluetooth, an AV receiver). App state,
+  /// not project state: a rig's delay must not travel inside a `.qap`.
+  final ValueNotifier<AudioSyncSettings> audioSyncSettings =
+      ValueNotifier<AudioSyncSettings>(AudioSyncSettings.defaults);
+
+  Future<void> _restoreAudioSyncSettings() async {
+    final restored = await _audioSyncSettingsStore?.load();
+    if (restored != null) {
+      audioSyncSettings.value = restored;
+    }
+  }
+
+  void setAudioSyncSettings(AudioSyncSettings settings) {
+    if (settings == audioSyncSettings.value) {
+      return;
+    }
+    audioSyncSettings.value = settings;
+    final store = _audioSyncSettingsStore;
+    if (store != null) {
+      unawaited(store.save(settings));
+    }
+  }
+
   /// App-level brush stroke store shared with the canvas host, so commands
   /// (e.g. anchored canvas resize) can transform stroke data.
   final BrushFrameStore brushFrameStore = BrushFrameStore();
@@ -375,16 +418,40 @@ class EditorSessionManager extends ChangeNotifier {
     onPlaylistWarmRequested: _onPlaybackPlaylistWarmRequested,
   );
 
+  /// The native device transport (audio program wiring): when it carries a
+  /// run, playback rides the audio master clock — the picture follows the
+  /// samples handed to the device, and cumulative drift is structurally
+  /// zero. Stands down per run (no binary/device, PCM not resident) onto
+  /// [audioPlaybackSync].
+  late final AudioDeviceTransport audioDeviceTransport = AudioDeviceTransport(
+    controller: playback,
+    resolveFrameRate: () => projectFrameRate,
+    resolveProject: () => _repository.currentProject,
+    conformStore: audioConformStore,
+    // Widget tests must never open a real OS audio device.
+    resolveDevice: Platform.environment['FLUTTER_TEST'] == 'true'
+        ? () => null
+        : null,
+    resolveUserOffsetSamples: (sampleRate) => audioSyncSettings.value
+        .offsetSamples(
+          sampleRate: sampleRate,
+          frameRateNumerator: projectFrameRate.numerator,
+          frameRateDenominator: projectFrameRate.denominator,
+        ),
+  );
+
   /// Frame-synced SE audio riding [playback]'s frame signals; clip lengths
-  /// come from the waveform peaks store.
+  /// come from the conform store (exact sample counts, with the ffmpeg
+  /// peaks approximation as its own fallback). Fallback path — stands down
+  /// for runs the device transport carries.
   late final AudioPlaybackSync audioPlaybackSync = AudioPlaybackSync(
     controller: playback,
     resolveFrameRate: () => projectFrameRate,
-    durationSecondsFor: (filePath) =>
-        audioPeaksStore.peaksFor(filePath)?.durationSeconds,
+    durationSecondsFor: audioConformStore.durationSecondsFor,
     playerFactory: AudioplayersClipPlayer.new,
     // Track-owned SE rows schedule from the tracks' global axes.
     resolveProject: () => _repository.currentProject,
+    deviceCarriesPlayback: () => audioDeviceTransport.carryingPlayback,
   );
 
   void _onPlaybackStopped(PlaybackPosition lastPosition) {
@@ -705,12 +772,15 @@ class EditorSessionManager extends ChangeNotifier {
     playback.globalFrameIndexListenable.removeListener(_followPlaybackCut);
     _historyManager.removeListener(_markProjectDirty);
     audioPlaybackSync.dispose();
+    audioDeviceTransport.dispose();
     playback.dispose();
     prerenderScheduler.dispose();
     cutFrameCompositeCache.dispose();
     layerFrameImageCache.dispose();
+    audioConformStore.dispose();
     audioPeaksStore.dispose();
     languageSettings.dispose();
+    audioSyncSettings.dispose();
     editingFrameCursor.dispose();
     frameScrubActive.dispose();
     frameSeekCommitted.dispose();
@@ -731,12 +801,58 @@ class EditorSessionManager extends ChangeNotifier {
   /// rebuilds never spawn the real ffmpeg inside fake async.
   final AudioPeaksStore? _injectedAudioPeaksStore;
 
-  /// Waveform peaks per audio file (ffmpeg extraction, cached); its
-  /// notifications forward through the session so SE rows repaint when a
-  /// waveform lands.
+  /// ffmpeg-extracted peaks — the CONFORM store's fallback for formats the
+  /// native decoder does not read (m4a/aac/ogg until the OS decoders
+  /// land); its notifications forward through the session so SE rows
+  /// repaint when a waveform lands.
   late final AudioPeaksStore audioPeaksStore =
       (_injectedAudioPeaksStore ?? AudioPeaksStore())
         ..addListener(notifyListeners);
+
+  /// Test seam, like [_injectedAudioPeaksStore]: widget tests inject a
+  /// store with a fake runner so SE rows never decode real files.
+  final AudioConformStore? _injectedAudioConformStore;
+
+  /// Conformed audio per source path (audio program wiring): waveform
+  /// peaks, exact clip lengths and the device transport's PCM, decoded
+  /// ONCE per file off the UI isolate. Conforms live in
+  /// `<project>.assets/Conformed/`, derived by rule from the source path —
+  /// nothing recorded, nothing to fall out of sync.
+  late final AudioConformStore audioConformStore =
+      (_injectedAudioConformStore ??
+          AudioConformStore(
+            resolveConformPath: _conformPathFor,
+            undecodableFallback: audioPeaksStore,
+            // Widget tests: run conforms inline — a worker isolate started
+            // under fake async outlives the test (the prerender scheduler's
+            // FLUTTER_TEST branch, same reason). Missing fixture paths
+            // short-circuit before any decode, so this stays cheap.
+            runner: Platform.environment['FLUTTER_TEST'] == 'true'
+                ? (request) => Future.value(runConformHere(request))
+                : null,
+          ))
+        ..addListener(notifyListeners);
+
+  String? _conformPathFor(String sourcePath) {
+    final path = _projectFilePath;
+    return path == null
+        ? null
+        : ProjectAssetLayout(path).conformPathFor(sourcePath);
+  }
+
+  /// Every audio path the project references (SE clips + the media pool) —
+  /// what a project open warms so waveforms and playback PCM are ready
+  /// before the first play.
+  void _warmAudioConforms() {
+    final project = _repository.requireProject();
+    final paths = <String>{
+      for (final track in project.tracks)
+        for (final layer in track.seLayers)
+          for (final clip in layer.audioClips) clip.filePath,
+      for (final asset in project.mediaAssets) asset.path,
+    };
+    audioConformStore.warmPaths(paths);
+  }
 
   bool _activeCutHasLayer(LayerId? layerId) {
     if (layerId == null) {
@@ -2650,9 +2766,10 @@ class EditorSessionManager extends ChangeNotifier {
     if (layer == null || layer.kind != LayerKind.se) {
       return;
     }
-    // Re-importing a path restarts its waveform extraction from scratch
-    // (fresh attempt budget — the file may have changed on disk).
-    audioPeaksStore.invalidate(filePath);
+    // Copy-on-import into the project's Media/ folder (falls back to the
+    // original path while unsaved), then conform from scratch — the file
+    // may have changed on disk since a previous import.
+    final effectivePath = importAudioFile(filePath);
     final frameIndex = _timelineController.currentFrameIndex < 0
         ? 0
         : _timelineController.currentFrameIndex;
@@ -2670,17 +2787,108 @@ class EditorSessionManager extends ChangeNotifier {
     final carrier = activeLayer ?? layer;
     // The pool learns every imported file (its own undo step, like the
     // SE-instance creation above) so the browser can offer it for reuse.
-    addMediaAssets([filePath]);
+    addMediaAssets([effectivePath]);
     _cutCommandCoordinator.updateLayerAudioClips(
       cutId: requireActiveCut.id,
       layerId: carrier.id,
       audioClips: [
         ...carrier.audioClips,
-        AudioClip(filePath: filePath, frameId: frame.id),
+        AudioClip(filePath: effectivePath, frameId: frame.id),
       ],
       description: 'Import audio',
     );
     notifyListeners();
+  }
+
+  // --- Audio import: originals into the project's Media/ folder ------------
+
+  /// Brings [sourcePath] into the project: copies it into
+  /// `<project>.assets/Media/` (the Pro Tools/Logic copy-on-import
+  /// default — the project folder owns its sounds, so a Drive folder
+  /// opened on another machine has them) and kicks its conform. Returns
+  /// the path the project should reference from here on.
+  ///
+  /// Falls back to referencing [sourcePath] directly when there is nowhere
+  /// to copy yet (never-saved project) or the copy fails — an import must
+  /// degrade to Premiere-style referencing, never refuse.
+  String importAudioFile(String sourcePath) {
+    final effectivePath = _copyIntoProjectMedia(sourcePath);
+    // Fresh conform + waveform budget: on a re-import the file may have
+    // changed on disk. (A byte-identical reused copy re-fingerprints
+    // against the existing conform and lands as `reused` without a
+    // decode.)
+    audioConformStore.invalidate(effectivePath);
+    audioConformStore.warmPaths([effectivePath]);
+    return effectivePath;
+  }
+
+  /// The media browser's import: same copy-in as a timeline import, pool
+  /// only (no clip link).
+  void importMediaFiles(List<String> paths) {
+    addMediaAssets([for (final path in paths) importAudioFile(path)]);
+  }
+
+  String _copyIntoProjectMedia(String sourcePath) {
+    final projectPath = _projectFilePath;
+    if (projectPath == null) {
+      return sourcePath;
+    }
+    final mediaDirectory = ProjectAssetLayout(projectPath).mediaDirectory;
+    final normalized = sourcePath.replaceAll('\\', '/');
+    if (normalized.startsWith('$mediaDirectory/')) {
+      // Already ours — a pool path re-imported from the browser.
+      return sourcePath;
+    }
+    final name = normalized.substring(normalized.lastIndexOf('/') + 1);
+    final dot = name.lastIndexOf('.');
+    final stem = dot <= 0 ? name : name.substring(0, dot);
+    final extension = dot <= 0 ? '' : name.substring(dot);
+    try {
+      final source = File(sourcePath);
+      if (!source.existsSync()) {
+        return sourcePath;
+      }
+      Directory(mediaDirectory).createSync(recursive: true);
+      // Same name taken: REUSE it when the bytes match (re-importing the
+      // same sound must not stack x-1, x-2 copies), otherwise walk to a
+      // unique name (two different sounds sharing a name must never
+      // overwrite each other — Pro Tools' import rule).
+      for (var index = 0; index < 10000; index += 1) {
+        final candidate = File(
+          index == 0
+              ? '$mediaDirectory/$name'
+              : '$mediaDirectory/$stem-$index$extension',
+        );
+        if (!candidate.existsSync()) {
+          source.copySync(candidate.path);
+          return candidate.path;
+        }
+        if (_sameFileBytes(source, candidate)) {
+          return candidate.path;
+        }
+      }
+      return sourcePath;
+    } on Object {
+      // Cloud folder mid-sync, permissions, full disk: the reference
+      // still plays and the pool can be relinked later.
+      return sourcePath;
+    }
+  }
+
+  static bool _sameFileBytes(File a, File b) {
+    if (a.lengthSync() != b.lengthSync()) {
+      return false;
+    }
+    // Full compare, but only ever reached on a NAME collision — rare, and
+    // a wrong "same" here would silently play one sound for another.
+    final bytesA = a.readAsBytesSync();
+    final bytesB = b.readAsBytesSync();
+    for (var index = 0; index < bytesA.length; index += 1) {
+      if (bytesA[index] != bytesB[index]) {
+        return false;
+      }
+    }
+    return true;
   }
 
   /// Removes the [clipIndex]th clip of [layerId]; one undo step.
@@ -2971,7 +3179,7 @@ class EditorSessionManager extends ChangeNotifier {
   /// referencing clip, one undo step (Resolve-style relink for moved
   /// files). Waveforms re-extract from the new file.
   void relinkMediaAsset(String oldPath, String newPath) {
-    audioPeaksStore.invalidate(newPath);
+    audioConformStore.invalidate(newPath);
     _cutCommandCoordinator.relinkMediaAsset(oldPath: oldPath, newPath: newPath);
     notifyListeners();
   }
@@ -6957,6 +7165,7 @@ class EditorSessionManager extends ChangeNotifier {
     _editingSession.setActiveCutId(result.project.tracks.first.cuts.first.id);
     _rebuildActiveCutControllers();
     _projectFilePath = recoverAs ?? filePath;
+    _warmAudioConforms();
     // A recovered session stays dirty: its content differs from the real
     // file until the user saves.
     _hasUnsavedChanges = recoverAs != null;

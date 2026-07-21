@@ -16,6 +16,19 @@ enum PlaybackScope { activeCut, allCuts }
 
 enum PlaybackLoopMode { loop, once }
 
+/// One reading of the audio-master clock (audio program wiring).
+///
+/// [globalFrame] is the playlist frame containing what is being HEARD
+/// right now; [ended] reports that a non-looping transport ran out. The
+/// device transport produces these; the controller consumes them instead
+/// of its wall clock whenever they are available.
+class AudioClockStatus {
+  const AudioClockStatus({required this.globalFrame, this.ended = false});
+
+  final int globalFrame;
+  final bool ended;
+}
+
 /// Real-time canvas playback state machine.
 ///
 /// Frame indexes derive from the ticker's wall-clock elapsed time, so when
@@ -59,6 +72,21 @@ class CanvasPlaybackController extends ChangeNotifier {
     int startGlobalFrame,
   )?
   onPlaylistWarmRequested;
+
+  /// The audio-master clock, set by the owner when a device transport
+  /// carries playback. Read EVERY tick: non-null readings drive the
+  /// picture from samples handed to the audio device ("the picture
+  /// follows the sound"); null falls back to the wall-clock derivation.
+  /// The ticker keeps running either way — it is the polling cadence, the
+  /// clock is whose TIME gets shown.
+  AudioClockStatus? Function()? resolveAudioClock;
+
+  /// Fired on every explicit seek with the clamped target frame, so a
+  /// device transport can move without inferring the jump from frame
+  /// deltas. (With the audio clock driving the picture, an un-forwarded
+  /// seek would simply snap back to the device's position on the next
+  /// tick.)
+  void Function(int globalFrame)? onSeeked;
 
   TickerProvider? _vsync;
   Ticker? _ticker;
@@ -219,6 +247,7 @@ class CanvasPlaybackController extends ChangeNotifier {
       // Restart the ticker so its elapsed epoch rebases on the new frame.
       _startTicker();
     }
+    onSeeked?.call(_currentGlobalFrame);
     _syncFrameNotifiers();
     notifyListeners();
   }
@@ -334,6 +363,11 @@ class CanvasPlaybackController extends ChangeNotifier {
       return;
     }
     final total = _playbackTotalFrames(playlist);
+    final audio = resolveAudioClock?.call();
+    if (audio != null) {
+      _onAudioClockTick(audio, total);
+      return;
+    }
     var frame =
         _baseGlobalFrame + elapsedToGlobalFrame(elapsed, resolveFrameRate());
     // Dropped-frame accounting on the raw (pre-wrap) frame: any advance of
@@ -359,6 +393,34 @@ class CanvasPlaybackController extends ChangeNotifier {
         return;
       }
     }
+    _setFrame(frame);
+  }
+
+  /// The audio-master tick: the picture shows whatever frame the device
+  /// says is being heard. When rendering falls behind, frames are dropped
+  /// — the sound is never made to wait.
+  void _onAudioClockTick(AudioClockStatus audio, int total) {
+    if (audio.ended && _loopMode == PlaybackLoopMode.once) {
+      _setFrame(total - 1);
+      stop();
+      return;
+    }
+    var frame = audio.globalFrame;
+    if (frame >= total) {
+      frame = total - 1;
+    }
+    if (frame < 0) {
+      frame = 0;
+    }
+    // A backward step is the loop wrapping (the transport wraps the
+    // position itself): a fresh pass, like the wall clock's lap reset.
+    final lastRawFrame = _lastRawFrame;
+    if (lastRawFrame != null && frame < lastRawFrame) {
+      _droppedFrames = 0;
+    } else if (lastRawFrame != null && frame > lastRawFrame + 1) {
+      _droppedFrames += frame - lastRawFrame - 1;
+    }
+    _lastRawFrame = frame;
     _setFrame(frame);
   }
 
