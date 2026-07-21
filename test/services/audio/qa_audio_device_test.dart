@@ -1,9 +1,12 @@
+import 'dart:ffi' show Float, AllocatorAlloc;
 import 'dart:typed_data';
 
+import 'package:ffi/ffi.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:quick_animaker_v2/src/models/project_frame_rate.dart';
 import 'package:quick_animaker_v2/src/native/qa_audio_device.dart';
 import 'package:quick_animaker_v2/src/services/audio/audio_mixer_reference.dart';
+import 'package:quick_animaker_v2/src/ui/playback/audio_recorder.dart';
 
 import '../../helpers/native_engine_path.dart';
 
@@ -30,6 +33,7 @@ void main() {
   tearDown(() {
     try {
       QaAudioDevice.instance?.close();
+      QaAudioDevice.instance?.captureStop();
     } on Object {
       // A device that never opened is fine to "close".
     }
@@ -438,5 +442,119 @@ void main() {
         0,
       );
     });
+  });
+
+  group('capture (AUDIO-PRO R5)', () {
+    test('the null backend captures: open, deliver, drain, stop', () async {
+      final device = QaAudioDevice.instance!;
+      final rate = device.captureStart(
+        sampleRate: 48000,
+        useNullBackend: true,
+      );
+      expect(rate, 48000,
+          reason: 'the C converts to the asked rate; what lands in the '
+              'ring needs no conform');
+      expect(device.captureIsOpen, isTrue);
+      expect(device.captureChannels, greaterThanOrEqualTo(1));
+      expect(device.captureLatencySamples, greaterThan(0));
+
+      // A second start while open must refuse, not stack devices.
+      expect(
+        device.captureStart(sampleRate: 48000, useNullBackend: true),
+        0,
+      );
+
+      // The null backend delivers (silence) on its own thread; drain it.
+      final scratch = calloc<Float>(48000);
+      var drained = 0;
+      try {
+        final delivered = await waitFor(() {
+          drained += device.captureRead(scratch, 48000);
+          return drained > 4800; // >100 ms of mono audio
+        });
+        expect(delivered, isTrue,
+            reason: 'the capture callback never delivered into the ring');
+      } finally {
+        calloc.free(scratch);
+      }
+      expect(device.captureDroppedFrames, 0,
+          reason: 'a drained ring must not drop');
+
+      device.captureStop();
+      expect(device.captureIsOpen, isFalse);
+    }, skip: skip);
+
+    test('a bad device index fails rather than opening something else', () {
+      final device = QaAudioDevice.instance!;
+      // Refresh the enumeration so the index check has a live list.
+      device.devicesOf(capture: true, useNullBackend: true);
+      expect(
+        device.captureStart(
+          sampleRate: 48000,
+          useNullBackend: true,
+          deviceIndex: 9999,
+        ),
+        0,
+      );
+      expect(device.captureIsOpen, isFalse);
+    }, skip: skip);
+
+    test('capture runs BESIDE playback on one context '
+        '(record along to the cut)', () async {
+      final device = openNull();
+      expect(
+        device.captureStart(sampleRate: 48000, useNullBackend: true),
+        48000,
+        reason: 'a live playback device must not block the microphone',
+      );
+      expect(device.isOpen, isTrue);
+      expect(device.captureIsOpen, isTrue);
+      device.captureStop();
+      expect(device.isOpen, isTrue,
+          reason: 'closing the microphone must not stop playback');
+    }, skip: skip);
+  });
+
+  group('AudioRecorder (AUDIO-PRO R5)', () {
+    test('a take accumulates and stops clean', () async {
+      final recorder = AudioRecorder(device: QaAudioDevice.instance);
+      final rate = recorder.start(sampleRate: 48000, useNullBackend: true);
+      expect(rate, 48000);
+      expect(recorder.isRecording, isTrue);
+
+      // Real time: the drain timer needs the event loop.
+      await Future<void>.delayed(const Duration(milliseconds: 400));
+
+      final recording = recorder.stop();
+      expect(recorder.isRecording, isFalse);
+      expect(recording, isNotNull);
+      expect(recording!.sampleRate, 48000);
+      expect(recording.channels, greaterThanOrEqualTo(1));
+      expect(recording.length, greaterThan(0),
+          reason: 'the drain timer collected nothing');
+      expect(recording.droppedFrames, 0);
+      expect(QaAudioDevice.instance!.captureIsOpen, isFalse,
+          reason: 'stop() must release the microphone');
+    }, skip: skip);
+
+    test('stopping without starting reports null, not a crash', () {
+      final recorder = AudioRecorder(device: QaAudioDevice.instance);
+      expect(recorder.stop(), isNull);
+    }, skip: skip);
+
+    test('a vanished saved microphone falls back to the default', () {
+      final recorder = AudioRecorder(device: QaAudioDevice.instance);
+      // Index 9999 cannot exist; the recorder retries with the system
+      // default rather than failing the take (the R4 informed-fallback
+      // contract, applied by the caller).
+      QaAudioDevice.instance!.devicesOf(capture: true, useNullBackend: true);
+      final rate = recorder.start(
+        sampleRate: 48000,
+        useNullBackend: true,
+        deviceIndex: 9999,
+      );
+      expect(rate, 48000);
+      expect(recorder.stop(), isNotNull);
+    }, skip: skip);
   });
 }

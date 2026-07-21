@@ -87,6 +87,23 @@ abstract final class AppStorage {
     }
   }
 
+  /// Whether the microphone may be captured (AUDIO-PRO R5). Android asks
+  /// its runtime RECORD_AUDIO grant through the channel — the Future
+  /// completes AFTER the user answers the system dialog. Everywhere else
+  /// the OS gates the device open itself (macOS/iOS prompt on first use;
+  /// desktop Windows/Linux have no app-level grant), so the answer is yes
+  /// and a refusal surfaces as the capture failing to open.
+  static Future<bool> ensureMicrophoneAccess() async {
+    if (!Platform.isAndroid) {
+      return true;
+    }
+    try {
+      return await _channel.invokeMethod<bool>('requestMicrophone') ?? false;
+    } on Object {
+      return false;
+    }
+  }
+
   /// Opens the system grant surface (Android settings toggle).
   static Future<void> requestAllFilesAccess() async {
     if (!Platform.isAndroid) {

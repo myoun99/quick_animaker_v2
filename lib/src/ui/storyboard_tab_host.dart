@@ -292,6 +292,9 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
                     onQualityChanged: _session.setPlaybackQuality,
                     resolveMeterPeaks: () =>
                         _session.audioDeviceTransport.meterPeaks,
+                    isVoiceRecording: _session.isVoiceRecording,
+                    onToggleVoiceRecording: () =>
+                        toggleVoiceRecordingWithFeedback(context, _session),
                     // Play from the storyboard playhead, like the
                     // timeline's transport does.
                     playbackStartFrame: () =>

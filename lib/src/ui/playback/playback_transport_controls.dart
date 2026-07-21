@@ -1,9 +1,37 @@
+import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
 
 import '../../models/playback_quality.dart';
+import '../../services/persistence/app_documents.dart' show AppStorage;
+import '../editor_session_manager.dart';
 import '../theme/app_theme.dart' show instantMenuAnimation;
 import 'audio_level_meter.dart';
 import 'canvas_playback_controller.dart';
+
+/// The mic button's shared handler (AUDIO-PRO R5): arm or finish a take
+/// and put whatever the session has to say — a mic that would not open, a
+/// damaged take — in front of the user rather than in a log.
+Future<void> toggleVoiceRecordingWithFeedback(
+  BuildContext context,
+  EditorSessionManager session,
+) async {
+  final messenger = ScaffoldMessenger.maybeOf(context);
+  final String? message;
+  if (session.isVoiceRecording.value) {
+    message = session.stopVoiceRecordingAndPlace();
+  } else if (!await AppStorage.ensureMicrophoneAccess()) {
+    // Android's runtime grant; the Future waits out the system dialog.
+    message = 'Microphone permission was not granted.';
+  } else {
+    message = session.startVoiceRecording()
+        ? null
+        : 'Could not open the microphone — check Preferences ▸ Audio '
+              'and the OS microphone permission.';
+  }
+  if (message != null) {
+    messenger?.showSnackBar(SnackBar(content: Text(message)));
+  }
+}
 
 /// Play/stop, loop mode and quality transport row.
 ///
@@ -19,6 +47,8 @@ class PlaybackTransportControls extends StatelessWidget {
     required this.onQualityChanged,
     this.playbackStartFrame,
     this.resolveMeterPeaks,
+    this.isVoiceRecording,
+    this.onToggleVoiceRecording,
   });
 
   final CanvasPlaybackController controller;
@@ -29,6 +59,11 @@ class PlaybackTransportControls extends StatelessWidget {
   /// The device transport's pre-clip bus peaks (AUDIO-PRO R2); non-null
   /// mounts the level meter at the row's end.
   final ({double left, double right}) Function()? resolveMeterPeaks;
+
+  /// Guide-voice recording (AUDIO-PRO R5): non-null mounts the mic button.
+  /// Works stopped (record a line cold) AND while playing (record along).
+  final ValueListenable<bool>? isVoiceRecording;
+  final VoidCallback? onToggleVoiceRecording;
 
   /// Where playback begins in this scope (e.g. the timeline playhead);
   /// defaults to frame 0.
@@ -102,6 +137,25 @@ class PlaybackTransportControls extends StatelessWidget {
                     : PlaybackLoopMode.loop;
               },
             ),
+            if (isVoiceRecording != null && onToggleVoiceRecording != null)
+              ValueListenableBuilder<bool>(
+                valueListenable: isVoiceRecording!,
+                builder: (context, recording, _) => IconButton(
+                  key: const ValueKey<String>('playback-record-voice-button'),
+                  tooltip: recording
+                      ? 'Stop recording (places the take)'
+                      : 'Record voice at the playhead',
+                  iconSize: 18,
+                  visualDensity: VisualDensity.compact,
+                  icon: Icon(
+                    recording ? Icons.stop_circle : Icons.mic,
+                    color: recording
+                        ? Theme.of(context).colorScheme.error
+                        : null,
+                  ),
+                  onPressed: onToggleVoiceRecording,
+                ),
+              ),
             PopupMenuButton<PlaybackQuality>(
               key: const ValueKey<String>('playback-quality-selector'),
               tooltip: 'Playback quality',

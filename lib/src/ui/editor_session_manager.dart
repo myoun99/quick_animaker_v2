@@ -101,8 +101,11 @@ import '../services/onion_skin_plan.dart';
 import '../services/persistence/project_autosave_service.dart';
 import '../services/persistence/qap_file_service.dart';
 import '../services/commands/cut_reorder_planner.dart';
-import '../native/qa_audio_device.dart' show QaAudioDevice;
+import '../native/qa_audio_device.dart'
+    show QaAudioDevice, audioInputDeviceIndexByName;
 import '../services/audio/audio_conform_pipeline.dart' show ProjectAssetLayout;
+import '../services/audio/conform_wav_codec.dart' show encodeConformWav;
+import 'playback/audio_recorder.dart';
 import '../services/audio/audio_conform_runner.dart' show runConformHere;
 import '../services/commands/track_se_layer_commands.dart';
 import '../services/history_manager.dart';
@@ -818,6 +821,8 @@ class EditorSessionManager extends ChangeNotifier {
     playback.globalFrameIndexListenable.removeListener(_followPlaybackCut);
     _historyManager.removeListener(_markProjectDirty);
     _historyManager.removeListener(_refreshLiveAudioSchedule);
+    _voiceRecorder?.dispose();
+    isVoiceRecording.dispose();
     audioPlaybackSync.dispose();
     audioScrubber.dispose();
     audioDeviceTransport.dispose();
@@ -3238,6 +3243,233 @@ class EditorSessionManager extends ChangeNotifier {
   /// only (no clip link).
   void importMediaFiles(List<String> paths) {
     addMediaAssets([for (final path in paths) importAudioFile(path)]);
+  }
+
+  // --- Guide voice recording (AUDIO-PRO R5) --------------------------------
+
+  /// True while the microphone is live — the record button's state.
+  final ValueNotifier<bool> isVoiceRecording = ValueNotifier<bool>(false);
+
+  AudioRecorder? _voiceRecorder;
+  CutId? _voiceRecordCutId;
+  int _voiceRecordFrameIndex = 0;
+  int _voiceRecordHeadTrimSamples = 0;
+
+  /// Test hook: stand in for the microphone.
+  @visibleForTesting
+  AudioRecorder Function()? debugVoiceRecorderFactory;
+
+  /// Opens the microphone and starts a take. Returns false when there is
+  /// no device to open (no binary, no microphone, no OS permission) —
+  /// the button reports that instead of arming silently.
+  ///
+  /// The take is ANCHORED here, at start: to the playing position when
+  /// the transport is rolling (record-along — watch the cut, speak the
+  /// line), otherwise to the editing playhead. Recording does not touch
+  /// playback in either direction; the existing SE keeps monitoring and
+  /// echo management (mute, earphones) stays the user's call.
+  bool startVoiceRecording() {
+    if (isVoiceRecording.value) {
+      return false;
+    }
+    final position = playback.isPlaying ? playback.position : null;
+    final anchorCutId = position?.cutId ?? activeCutOrNull?.id;
+    if (anchorCutId == null) {
+      return false; // A gap has no cut to land the take in.
+    }
+    final device = Platform.environment['FLUTTER_TEST'] == 'true'
+        ? null
+        : QaAudioDevice.instance;
+    final recorder =
+        debugVoiceRecorderFactory?.call() ?? AudioRecorder(device: device);
+    final deviceIndex = device == null
+        ? -1
+        : audioInputDeviceIndexByName(
+            device,
+            audioSyncSettings.value.inputDeviceName,
+          );
+    final rate = recorder.start(
+      sampleRate: audioConformStore.projectSampleRate,
+      deviceIndex: deviceIndex,
+    );
+    if (rate == 0) {
+      return false;
+    }
+    _voiceRecorder = recorder;
+    _voiceRecordCutId = anchorCutId;
+    _voiceRecordFrameIndex = position?.localFrameIndex
+        ?? math.max(0, _timelineController.currentFrameIndex);
+    // Recording along to playback: the performer speaks against what they
+    // HEAR, which runs the output latency behind the mix clock — so that
+    // much comes off the head of the take (the DAW recording-compensation
+    // rule). A cold-start take has nothing to be late against.
+    _voiceRecordHeadTrimSamples = position == null
+        ? 0
+        : audioDeviceTransport.report.reportedLatencySamples;
+    isVoiceRecording.value = true;
+    return true;
+  }
+
+  /// Stops the take and lands it on the timeline: WAV into `Media/`, into
+  /// the media pool, a carrier SE block at the anchor frame, and the clip
+  /// linked to it — the whole "재생하면서 녹음해서 프레임블록 만들어서
+  /// 링크" flow in one stop.
+  ///
+  /// Returns null on clean success, otherwise a message for the user —
+  /// including the case where the take was PLACED but the capture ring
+  /// dropped frames (a damaged take must say so).
+  String? stopVoiceRecordingAndPlace() {
+    final recorder = _voiceRecorder;
+    _voiceRecorder = null;
+    isVoiceRecording.value = false;
+    final recording = recorder?.stop();
+    if (recording == null) {
+      return 'Nothing was recording.';
+    }
+    if (recording.length == 0) {
+      return 'The take was empty — nothing to place.';
+    }
+    final placed = placeVoiceRecording(
+      recording,
+      cutId: _voiceRecordCutId,
+      frameIndex: _voiceRecordFrameIndex,
+      headTrimSamples: _voiceRecordHeadTrimSamples,
+    );
+    if (!placed) {
+      return 'The recording could not be placed.';
+    }
+    if (recording.droppedFrames > 0) {
+      return 'Recorded, but ${recording.droppedFrames} frames were dropped '
+          '(the machine could not keep up) — check the take.';
+    }
+    return null;
+  }
+
+  /// Lands a finished take (split out so tests can drive it with a made
+  /// recording): trims the head, writes the WAV, registers it in the pool,
+  /// creates the carrier SE block at [frameIndex] and links the clip.
+  ///
+  /// The carrier row is the active SE row when its anchor cell is free;
+  /// otherwise a NEW SE row — an existing sound is never overwritten by a
+  /// take.
+  @visibleForTesting
+  bool placeVoiceRecording(
+    AudioRecording recording, {
+    required CutId? cutId,
+    required int frameIndex,
+    int headTrimSamples = 0,
+  }) {
+    if (cutId == null || recording.channels <= 0 || recording.sampleRate <= 0) {
+      return false;
+    }
+    var samples = recording.samples;
+    if (headTrimSamples > 0) {
+      final trimFloats = headTrimSamples * recording.channels;
+      if (trimFloats >= samples.length) {
+        return false; // Shorter than the latency it rode on: nothing real.
+      }
+      samples = Float32List.sublistView(samples, trimFloats);
+    }
+    final wav = encodeConformWav(
+      samples: samples,
+      channels: recording.channels,
+      sampleRate: recording.sampleRate,
+    );
+    final path = _writeRecordingWav(wav);
+    if (path == null) {
+      return false;
+    }
+
+    // Land the editing context on the anchor — the same place a playback
+    // stop there would have left it, and where the user expects to find
+    // (and immediately replay) the take.
+    if (_editingSession.activeCutId != cutId) {
+      selectCut(cutId);
+    }
+    if (activeCutOrNull?.id != cutId) {
+      return false; // The cut was deleted mid-take.
+    }
+    selectFrameIndex(_clampedFrameIndex(frameIndex));
+    final anchorFrame = _timelineController.currentFrameIndex < 0
+        ? 0
+        : _timelineController.currentFrameIndex;
+
+    var carrier = activeLayer;
+    final carrierFree = carrier != null &&
+        carrier.kind == LayerKind.se &&
+        resolveExposedFrameAt(carrier, anchorFrame) == null;
+    if (!carrierFree) {
+      addLayerOfKind(LayerKind.se);
+      carrier = activeLayer;
+    }
+    if (carrier == null || carrier.kind != LayerKind.se) {
+      return false;
+    }
+
+    // Whole frames covering the take, so the block window matches what
+    // was actually said (min 1 — a sub-frame take still needs a cell).
+    final lengthFrames = math.max(
+      1,
+      projectFrameRate.framesCoveringExactSeconds(
+        samples.length ~/ recording.channels,
+        recording.sampleRate,
+      ),
+    );
+    createSeEntryAtCurrentFrame(name: '', lengthFrames: lengthFrames);
+    final placedLayer = activeLayer;
+    final frame = placedLayer == null
+        ? null
+        : resolveExposedFrameAt(placedLayer, anchorFrame);
+    if (placedLayer == null || frame == null) {
+      return false;
+    }
+    // Pool + conform first (same order as an import), then the link.
+    addMediaAssets([path]);
+    audioConformStore.invalidate(path);
+    audioConformStore.warmPaths([path]);
+    _cutCommandCoordinator.updateLayerAudioClips(
+      cutId: requireActiveCut.id,
+      layerId: placedLayer.id,
+      audioClips: [
+        ...placedLayer.audioClips,
+        AudioClip(filePath: path, frameId: frame.id),
+      ],
+      description: 'Record voice',
+    );
+    notifyListeners();
+    return true;
+  }
+
+  /// Writes a take's WAV under the project's `Media/` folder (temp when
+  /// the project was never saved — the same degrade as an import) and
+  /// returns its path, or null when even that failed.
+  String? _writeRecordingWav(Uint8List bytes) {
+    final now = DateTime.now();
+    String pad(int value) => value.toString().padLeft(2, '0');
+    final stamp =
+        '${now.year}${pad(now.month)}${pad(now.day)}-'
+        '${pad(now.hour)}${pad(now.minute)}${pad(now.second)}';
+    try {
+      final projectPath = _projectFilePath;
+      final directory = projectPath == null
+          ? Directory.systemTemp.createTempSync('qa_recording_').path
+          : ProjectAssetLayout(projectPath).mediaDirectory;
+      Directory(directory).createSync(recursive: true);
+      for (var index = 0; index < 10000; index += 1) {
+        final file = File(
+          index == 0
+              ? '$directory/recording-$stamp.wav'
+              : '$directory/recording-$stamp-$index.wav',
+        );
+        if (!file.existsSync()) {
+          file.writeAsBytesSync(bytes);
+          return file.path;
+        }
+      }
+      return null;
+    } on Object {
+      return null; // Full disk, permissions: the take reports, not crashes.
+    }
   }
 
   String _copyIntoProjectMedia(String sourcePath) {

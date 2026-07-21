@@ -17,6 +17,10 @@ import io.flutter.plugin.common.MethodChannel
 // storage. Both need All-Files access, granted through the system
 // settings toggle this channel opens.
 class MainActivity : FlutterActivity() {
+    // AUDIO-PRO R5: the mic grant is a system dialog whose answer arrives
+    // in a callback; the channel result waits here for it.
+    private var pendingMicResult: MethodChannel.Result? = null
+
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
         MethodChannel(
@@ -30,8 +34,45 @@ class MainActivity : FlutterActivity() {
                     result.success(null)
                 }
                 "appDocumentsPath" -> result.success(appDocumentsPath())
+                "requestMicrophone" -> requestMicrophone(result)
                 else -> result.notImplemented()
             }
+        }
+    }
+
+    private fun isMicrophoneGranted(): Boolean {
+        return Build.VERSION.SDK_INT < Build.VERSION_CODES.M ||
+            checkSelfPermission(android.Manifest.permission.RECORD_AUDIO) ==
+                android.content.pm.PackageManager.PERMISSION_GRANTED
+    }
+
+    // Answers true/false AFTER the user has spoken - an already-granted
+    // (or pre-M) device answers immediately.
+    private fun requestMicrophone(result: MethodChannel.Result) {
+        if (isMicrophoneGranted()) {
+            result.success(true)
+            return
+        }
+        // A second tap while the dialog is up: answer the stale waiter
+        // rather than leaking it.
+        pendingMicResult?.success(false)
+        pendingMicResult = result
+        requestPermissions(arrayOf(android.Manifest.permission.RECORD_AUDIO), 4802)
+    }
+
+    override fun onRequestPermissionsResult(
+        requestCode: Int,
+        permissions: Array<out String>,
+        grantResults: IntArray,
+    ) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode == 4802) {
+            pendingMicResult?.success(
+                grantResults.isNotEmpty() &&
+                    grantResults[0] ==
+                        android.content.pm.PackageManager.PERMISSION_GRANTED
+            )
+            pendingMicResult = null
         }
     }
 
