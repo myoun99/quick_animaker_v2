@@ -2,7 +2,10 @@ import 'package:flutter/material.dart';
 
 import '../../models/app_language.dart';
 import '../editor_session_manager.dart';
+import '../playback/audio_input_monitor.dart';
 import '../playback/audio_sync_settings.dart';
+import '../playback/voice_take_processing.dart'
+    show micGainFactor, voiceClipThreshold;
 import '../text/app_strings.dart';
 
 /// Audio program 2D: the A/V offset and the sync inspector
@@ -22,6 +25,16 @@ class AudioSettingsSection extends StatefulWidget {
 }
 
 class _AudioSettingsSectionState extends State<AudioSettingsSection> {
+  /// The live input meter (REC1-D2): attached for this section's
+  /// lifetime; the session handles yielding to the recorder.
+  late final AudioInputMonitor _monitor = widget.session.attachInputMeter();
+
+  @override
+  void dispose() {
+    widget.session.detachInputMeter();
+    super.dispose();
+  }
+
   /// One device picker row: "System default" plus the live enumeration.
   /// A SAVED name that is no longer attached still shows (marked
   /// missing) so the choice is visible rather than silently reverted —
@@ -186,11 +199,93 @@ class _AudioSettingsSectionState extends State<AudioSettingsSection> {
               keyValue: 'settings-audio-input-device',
               capture: true,
               selected: settings.inputDeviceName,
-              onChanged: (name) => widget.session.setAudioSyncSettings(
-                settings.copyWith(inputDeviceName: name),
-              ),
+              onChanged: (name) {
+                widget.session.setAudioSyncSettings(
+                  settings.copyWith(inputDeviceName: name),
+                );
+                // The live meter follows the new microphone immediately.
+                widget.session.restartInputMeter();
+              },
             ),
             const SizedBox(height: 4),
+            // The live input meter (REC1-D2): raw device peak × the gain
+            // slider's factor — turning the slider moves this bar without
+            // reopening the microphone. The dot is the clip light.
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    strings.audioInputMeterLabel,
+                    style: const TextStyle(fontSize: 12),
+                  ),
+                ),
+                ValueListenableBuilder<double>(
+                  valueListenable: _monitor.peak,
+                  builder: (context, rawPeak, _) {
+                    final scheme = Theme.of(context).colorScheme;
+                    final scaled =
+                        rawPeak * micGainFactor(settings.micGainDb);
+                    final level = scaled.clamp(0.0, 1.0);
+                    return Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Container(
+                          key: const ValueKey<String>('settings-input-meter'),
+                          width: 140,
+                          height: 8,
+                          decoration: BoxDecoration(
+                            color: scheme.surfaceContainerHighest,
+                            borderRadius: BorderRadius.circular(2),
+                          ),
+                          alignment: Alignment.centerLeft,
+                          child: FractionallySizedBox(
+                            widthFactor: level,
+                            heightFactor: 1,
+                            child: DecoratedBox(
+                              decoration: BoxDecoration(
+                                color: scheme.primary,
+                                borderRadius: BorderRadius.circular(2),
+                              ),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 6),
+                        Container(
+                          key: const ValueKey<String>(
+                            'settings-input-meter-clip',
+                          ),
+                          width: 8,
+                          height: 8,
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            color: scaled >= voiceClipThreshold
+                                ? scheme.error
+                                : scheme.outlineVariant,
+                          ),
+                        ),
+                      ],
+                    );
+                  },
+                ),
+              ],
+            ),
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    strings.audioTestSoundLabel,
+                    style: const TextStyle(fontSize: 12),
+                  ),
+                ),
+                IconButton(
+                  key: const ValueKey<String>('settings-output-test-button'),
+                  tooltip: strings.audioTestSoundLabel,
+                  icon: const Icon(Icons.volume_up, size: 16),
+                  visualDensity: VisualDensity.compact,
+                  onPressed: widget.session.playOutputTestTone,
+                ),
+              ],
+            ),
             // The capture chain (REC1-D): software gain BAKED into takes
             // (the meter and the file agree), the channel fold for
             // one-sided interface mics, and the clipping-notice gate for

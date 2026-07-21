@@ -45,6 +45,8 @@ class AppStrings {
     required this.audioInputChannelLeft,
     required this.audioInputChannelRight,
     required this.audioClippingNoticeLabel,
+    required this.audioInputMeterLabel,
+    required this.audioTestSoundLabel,
     required this.recordNothingRecording,
     required this.recordTakeEmpty,
     required this.recordPlacementFailed,
@@ -137,6 +139,8 @@ class AppStrings {
   final String audioInputChannelLeft;
   final String audioInputChannelRight;
   final String audioClippingNoticeLabel;
+  final String audioInputMeterLabel;
+  final String audioTestSoundLabel;
   final String recordNothingRecording;
   final String recordTakeEmpty;
   final String recordPlacementFailed;
@@ -231,6 +235,8 @@ class AppStrings {
     audioInputChannelLeft: 'Left only',
     audioInputChannelRight: 'Right only',
     audioClippingNoticeLabel: 'Clipping warnings (toast + block marker)',
+    audioInputMeterLabel: 'Input level',
+    audioTestSoundLabel: 'Test sound',
     recordNothingRecording: 'Nothing was recording.',
     recordTakeEmpty: 'The take was empty — nothing to place.',
     recordPlacementFailed: 'The recording could not be placed.',
@@ -322,6 +328,8 @@ class AppStrings {
     audioInputChannelLeft: '左のみ',
     audioInputChannelRight: '右のみ',
     audioClippingNoticeLabel: 'クリッピング警告（トースト＋ブロックマーカー）',
+    audioInputMeterLabel: '入力レベル',
+    audioTestSoundLabel: 'テスト音を再生',
     recordNothingRecording: '録音中ではありません。',
     recordTakeEmpty: 'テイクが空でした — 配置するものがありません。',
     recordPlacementFailed: '録音を配置できませんでした。',
@@ -411,6 +419,8 @@ class AppStrings {
     audioInputChannelLeft: '왼쪽만',
     audioInputChannelRight: '오른쪽만',
     audioClippingNoticeLabel: '클리핑 주의 안내(토스트+블록 마커)',
+    audioInputMeterLabel: '입력 레벨',
+    audioTestSoundLabel: '테스트 사운드',
     recordNothingRecording: '녹음 중이 아닙니다.',
     recordTakeEmpty: '테이크가 비어 있어 배치할 것이 없습니다.',
     recordPlacementFailed: '녹음을 배치하지 못했습니다.',
@@ -506,6 +516,8 @@ class AppStrings {
     audioInputChannelLeft: 'Gauche seul',
     audioInputChannelRight: 'Droit seul',
     audioClippingNoticeLabel: 'Alertes de saturation (toast + marqueur)',
+    audioInputMeterLabel: 'Niveau d\'entrée',
+    audioTestSoundLabel: 'Son de test',
     recordNothingRecording: 'Aucun enregistrement en cours.',
     recordTakeEmpty: 'La prise était vide — rien à placer.',
     recordPlacementFailed: 'La prise n\'a pas pu être placée.',
@@ -598,6 +610,8 @@ class AppStrings {
     audioInputChannelLeft: '仅左声道',
     audioInputChannelRight: '仅右声道',
     audioClippingNoticeLabel: '削波警告（提示+块标记）',
+    audioInputMeterLabel: '输入电平',
+    audioTestSoundLabel: '测试声音',
     recordNothingRecording: '当前没有在录音。',
     recordTakeEmpty: '录音为空 — 没有可放置的内容。',
     recordPlacementFailed: '录音未能放置。',

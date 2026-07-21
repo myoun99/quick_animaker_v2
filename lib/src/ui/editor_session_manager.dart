@@ -1,4 +1,4 @@
-import 'dart:async' show unawaited;
+import 'dart:async' show Timer, unawaited;
 import 'dart:io';
 import 'dart:math' as math;
 
@@ -104,7 +104,13 @@ import '../services/persistence/project_autosave_service.dart';
 import '../services/persistence/qap_file_service.dart';
 import '../services/commands/cut_reorder_planner.dart';
 import '../native/qa_audio_device.dart'
-    show QaAudioDevice, audioInputDeviceIndexByName;
+    show
+        QaAudioDevice,
+        audioInputDeviceIndexByName,
+        audioOutputDeviceIndexByName;
+import '../services/audio/audio_mixer_reference.dart'
+    show AudioMixClip, AudioMixSource;
+import 'playback/audio_input_monitor.dart';
 import '../services/audio/audio_conform_pipeline.dart' show ProjectAssetLayout;
 import '../services/audio/conform_wav_codec.dart' show encodeConformWav;
 import '../services/commands/update_media_assets_command.dart';
@@ -860,6 +866,8 @@ class EditorSessionManager extends ChangeNotifier {
     voiceRecordingNotice.dispose();
     voiceRecordPreviewLane.dispose();
     voiceRecordClipLit.dispose();
+    _testToneTimer?.cancel();
+    detachInputMeter();
     audioPlaybackSync.dispose();
     audioScrubber.dispose();
     audioDeviceTransport.dispose();
@@ -3323,6 +3331,113 @@ class EditorSessionManager extends ChangeNotifier {
   /// this does not).
   final ValueNotifier<bool> voiceRecordClipLit = ValueNotifier<bool>(false);
 
+  // --- Settings input meter + test tone (REC1-D2) --------------------------
+
+  AudioInputMonitor? _inputMonitor;
+  Timer? _testToneTimer;
+
+  /// The settings dialog's live input meter: attach while the section is
+  /// mounted, detach when it goes. The monitor yields to the recorder
+  /// (capture is single-open) and resumes when the take finishes.
+  AudioInputMonitor attachInputMeter() {
+    final monitor = _inputMonitor ??= AudioInputMonitor(
+      device: Platform.environment['FLUTTER_TEST'] == 'true'
+          ? null
+          : QaAudioDevice.instance,
+    );
+    _resumeInputMeter();
+    return monitor;
+  }
+
+  void detachInputMeter() {
+    _inputMonitor?.dispose();
+    _inputMonitor = null;
+  }
+
+  /// The input device choice changed while the dialog is open: reopen on
+  /// the new microphone.
+  void restartInputMeter() {
+    _inputMonitor?.stop();
+    _resumeInputMeter();
+  }
+
+  void _resumeInputMeter() {
+    final monitor = _inputMonitor;
+    if (monitor == null || monitor.isRunning || isVoiceRecording.value) {
+      return;
+    }
+    final device = Platform.environment['FLUTTER_TEST'] == 'true'
+        ? null
+        : QaAudioDevice.instance;
+    monitor.start(
+      sampleRate: audioConformStore.projectSampleRate,
+      deviceIndex: device == null
+          ? -1
+          : audioInputDeviceIndexByName(
+              device,
+              audioSyncSettings.value.inputDeviceName,
+            ),
+    );
+  }
+
+  /// A short tone through the CHOSEN output device — the settings
+  /// dialog's "is this speaker alive" button. Refuses while a transport
+  /// run holds the device (it is busy making real sound). Returns false
+  /// when nothing could open; the button stays quiet then.
+  bool playOutputTestTone() {
+    if (Platform.environment['FLUTTER_TEST'] == 'true') {
+      return false;
+    }
+    final device = QaAudioDevice.instance;
+    if (device == null || playback.isActive || device.isOpen) {
+      return false;
+    }
+    final index = audioOutputDeviceIndexByName(
+      device,
+      audioSyncSettings.value.outputDeviceName,
+    );
+    var opened = device.open(sampleRate: 48000, channels: 2, deviceIndex: index);
+    if (opened == 0 && index >= 0) {
+      opened = device.open(sampleRate: 48000, channels: 2);
+    }
+    if (opened == 0) {
+      return false;
+    }
+    final sampleRate = device.sampleRate;
+    final channels = device.channels;
+    final toneSamples = sampleRate ~/ 2;
+    final pcm = Float32List(toneSamples * channels);
+    for (var sample = 0; sample < toneSamples; sample += 1) {
+      final value = 0.25 * math.sin(2 * math.pi * 440 * sample / sampleRate);
+      for (var channel = 0; channel < channels; channel += 1) {
+        pcm[sample * channels + channel] = value;
+      }
+    }
+    device.setSchedule(
+      clips: [
+        AudioMixClip(
+          sourceIndex: 0,
+          startSample: 0,
+          endSample: toneSamples,
+          // 10 ms ramps: a bare sine edge lands as a click.
+          fadeInSamples: sampleRate ~/ 100,
+          fadeOutSamples: sampleRate ~/ 100,
+        ),
+      ],
+      sources: [AudioMixSource(samples: pcm, channels: channels)],
+    );
+    device.play(startSample: 0, stopSample: toneSamples);
+    _testToneTimer?.cancel();
+    _testToneTimer = Timer(const Duration(milliseconds: 700), () {
+      // The transport may have started meanwhile — never yank ITS device.
+      if (!playback.isActive && device.isOpen) {
+        device.stop();
+        device.close();
+      }
+    });
+    return true;
+  }
+
   /// The SE lane whose playback yields to the microphone while a take
   /// rolls (the DAW armed-track rule); null when not recording.
   LayerId? get voiceRecordingMutedLaneId =>
@@ -3525,6 +3640,8 @@ class EditorSessionManager extends ChangeNotifier {
     if (lane == null || laneId == null) {
       return VoiceRecordStartResult.needsSeLane;
     }
+    // The settings meter yields the microphone to the take (REC1-D2).
+    _inputMonitor?.stop();
     final device = Platform.environment['FLUTTER_TEST'] == 'true'
         ? null
         : QaAudioDevice.instance;
@@ -3633,6 +3750,9 @@ class EditorSessionManager extends ChangeNotifier {
     // placement swaps the real take in within the same stop.
     _clearVoiceRecordPreview();
     final recording = recorder?.stop();
+    // The recorder released the microphone: the settings meter (if the
+    // dialog is still open) takes it back.
+    _resumeInputMeter();
     if (startedRoll && playback.isActive) {
       // Re-enters _onPlaybackStopped; the recorder is already detached.
       playback.stop();
