@@ -25,9 +25,11 @@ import 'export_plan.dart';
 class ExportFrameRenderer {
   ExportFrameRenderer({
     required this.session,
-    this.renderService = const CameraFrameRenderService(),
+    CameraFrameRenderService? renderService,
     this.applyLayerFx = true,
-  });
+    ui.Color background = const ui.Color(0xFFFFFFFF),
+  }) : renderService =
+           renderService ?? CameraFrameRenderService(background: background);
 
   final EditorSessionManager session;
   final CameraFrameRenderService renderService;
@@ -109,22 +111,34 @@ class ExportFrameRenderer {
   /// the old frame-at-fade-over-target draw. Untouched frames pass
   /// through. PNG sequences deliberately stay unposed and unfaded (they
   /// are compositing sources).
+  /// [preserveAlpha] (ProRes 4444 α): the gap frames and the pose ground
+  /// stay TRANSPARENT instead of baking an opaque backing — the fade
+  /// still paints toward its target color (a fade IS opaque paint).
   Future<ui.Image> renderCompositeForVideo(
     ExportFrameTask task,
-    ExportSizeMode mode,
-  ) async {
+    ExportSizeMode mode, {
+    bool preserveAlpha = false,
+  }) async {
     if (task.isGap) {
       // A leading-gap frame: nothing plays — the project background,
-      // exactly what playback shows in the gap (R10-⑥). Transparent
-      // backgrounds bake their opaque fallback (MP4 carries no alpha).
+      // exactly what playback shows in the gap (R10-⑥). Opaque codecs
+      // bake the fallback; an alpha master keeps the gap transparent.
       final size = mode == ExportSizeMode.camera
           ? session.cameraFrameSize
           : task.cut.canvasSize;
       final recorder = ui.PictureRecorder();
-      ui.Canvas(recorder).drawRect(
-        ui.Rect.fromLTWH(0, 0, size.width.toDouble(), size.height.toDouble()),
-        ui.Paint()..color = ui.Color(session.projectBackground.argb),
-      );
+      final canvas = ui.Canvas(recorder);
+      if (!preserveAlpha) {
+        canvas.drawRect(
+          ui.Rect.fromLTWH(
+            0,
+            0,
+            size.width.toDouble(),
+            size.height.toDouble(),
+          ),
+          ui.Paint()..color = ui.Color(session.projectBackground.argb),
+        );
+      }
       final picture = recorder.endRecording();
       try {
         return await picture.toImage(size.width, size.height);
@@ -147,8 +161,11 @@ class ExportFrameRenderer {
       image.height.toDouble(),
     );
     // Black ground: the pose can uncover the output edges; without a pose
-    // the frame covers everything and the ground never shows.
-    canvas.drawRect(bounds, ui.Paint()..color = const ui.Color(0xFF000000));
+    // the frame covers everything and the ground never shows. An alpha
+    // master leaves the uncovered edges transparent instead.
+    if (!preserveAlpha) {
+      canvas.drawRect(bounds, ui.Paint()..color = const ui.Color(0xFF000000));
+    }
     if (poseActive) {
       final space = CanvasSize(width: image.width, height: image.height);
       canvas.save();

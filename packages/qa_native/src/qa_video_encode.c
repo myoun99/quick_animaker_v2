@@ -16,8 +16,14 @@
 // The contract with Dart:
 //   - qa_video_export_supported() answers whether THIS build/OS can, so
 //     the caller picks the ffmpeg fallback deliberately, never crashes.
-//   - open() takes the frame geometry, the fps as an exact fraction, and
-//     the audio shape (channels 0 = silent video).
+//   - qa_video_export_probe(container, codec) answers one PAIR (ABI v21):
+//     whether this platform could take that job — the format picker grays
+//     what the machine cannot write instead of failing at Export.
+//   - open() takes the frame geometry, the fps as an exact fraction, the
+//     audio shape (channels 0 = silent video), and the container/codec
+//     pair plus alpha and bitrate knobs (ABI v21). The audio codec
+//     follows the video codec: ProRes carries PCM (the delivery
+//     convention), H.264/H.265 carry AAC.
 //   - write_frame() takes top-down RGBA (exactly what the renderer's
 //     rawRgba hands over); any BGRA/NV12 conversion happens HERE, beside
 //     the encoder that wants it.
@@ -39,6 +45,18 @@
 #else
 #define QA_EXPORT __attribute__((visibility("default")))
 #endif
+
+// The v10 lineup (ABI v21): MP4 = H.264/H.265, MOV = H.264 + ProRes.
+// The Dart enums map 1:1 onto these values.
+#define QA_VIDEO_CONTAINER_MP4 0
+#define QA_VIDEO_CONTAINER_MOV 1
+#define QA_VIDEO_CODEC_H264 0
+#define QA_VIDEO_CODEC_HEVC 1
+#define QA_VIDEO_CODEC_PRORES_PROXY 2
+#define QA_VIDEO_CODEC_PRORES_LT 3
+#define QA_VIDEO_CODEC_PRORES_422 4
+#define QA_VIDEO_CODEC_PRORES_HQ 5
+#define QA_VIDEO_CODEC_PRORES_4444 6
 
 static char g_video_error[256];
 
@@ -96,6 +114,7 @@ typedef struct {
   int32_t channels;
   int32_t open;
   int32_t mf_started;
+  int32_t codec;
 } qa_video_win_state;
 
 static qa_video_win_state g_win_video;
@@ -114,17 +133,65 @@ static void qa_video_win_teardown(void) {
 
 QA_EXPORT int32_t qa_video_export_supported(void) { return 1; }
 
+// Media Foundation writes MP4; H.264 always ships, HEVC only where an
+// encoder MFT exists (usually hardware). MOV/ProRes have no MF story —
+// the ffmpeg fallback carries those on desktop.
+QA_EXPORT int32_t qa_video_export_probe(int32_t container, int32_t codec) {
+  if (container != QA_VIDEO_CONTAINER_MP4) {
+    return 0;
+  }
+  if (codec == QA_VIDEO_CODEC_H264) {
+    return 1;
+  }
+  if (codec != QA_VIDEO_CODEC_HEVC) {
+    return 0;
+  }
+  if (FAILED(MFStartup(MF_VERSION, MFSTARTUP_LITE))) {
+    return 0;
+  }
+  MFT_REGISTER_TYPE_INFO out_type;
+  out_type.guidMajorType = MFMediaType_Video;
+  out_type.guidSubtype = MFVideoFormat_HEVC;
+  IMFActivate** activates = NULL;
+  UINT32 count = 0;
+  const HRESULT hr =
+      MFTEnumEx(MFT_CATEGORY_VIDEO_ENCODER,
+                MFT_ENUM_FLAG_HARDWARE | MFT_ENUM_FLAG_SYNCMFT |
+                    MFT_ENUM_FLAG_ASYNCMFT | MFT_ENUM_FLAG_SORTANDFILTER,
+                NULL, &out_type, &activates, &count);
+  if (activates != NULL) {
+    for (UINT32 i = 0; i < count; i += 1) {
+      IMFActivate_Release(activates[i]);
+    }
+    CoTaskMemFree(activates);
+  }
+  MFShutdown();
+  return SUCCEEDED(hr) && count > 0;
+}
+
 QA_EXPORT int32_t qa_video_export_open(const char* utf8_path,
                                        int32_t width,
                                        int32_t height,
                                        int32_t fps_num,
                                        int32_t fps_den,
                                        int32_t sample_rate,
-                                       int32_t channels) {
+                                       int32_t channels,
+                                       int32_t container,
+                                       int32_t codec,
+                                       int32_t alpha,
+                                       int32_t bitrate_bps) {
+  (void)alpha;  // MF H.26x is opaque; the pad/alpha byte stays 0xFF.
   if (g_win_video.open || utf8_path == NULL || width <= 0 || height <= 0 ||
       fps_num <= 0 || fps_den <= 0 || channels < 0 ||
       (channels > 0 && sample_rate <= 0)) {
     qa_video_set_error("video export: bad open parameters");
+    return 0;
+  }
+  if (container != QA_VIDEO_CONTAINER_MP4 ||
+      (codec != QA_VIDEO_CODEC_H264 && codec != QA_VIDEO_CODEC_HEVC)) {
+    qa_video_set_error(
+        "video export: Windows writes MP4 H.264/H.265 here - MOV/ProRes "
+        "go through FFmpeg");
     return 0;
   }
   memset(&g_win_video, 0, sizeof(g_win_video));
@@ -136,6 +203,7 @@ QA_EXPORT int32_t qa_video_export_open(const char* utf8_path,
   g_win_video.fps_den = fps_den;
   g_win_video.sample_rate = sample_rate;
   g_win_video.channels = channels;
+  g_win_video.codec = codec;
 
   if (FAILED(MFStartup(MF_VERSION, MFSTARTUP_LITE))) {
     qa_video_set_error("video export: Media Foundation failed to start");
@@ -150,8 +218,20 @@ QA_EXPORT int32_t qa_video_export_open(const char* utf8_path,
     return 0;
   }
 
-  HRESULT hr =
-      MFCreateSinkWriterFromURL(wide_path, NULL, NULL, &g_win_video.writer);
+  // Hardware transforms ON: Windows ships NO software HEVC encoder MFT,
+  // and the sink writer only reaches the hardware (async) ones through
+  // this attribute. H.264 keeps working either way (HW first, the
+  // software MFT as ever when there is none).
+  IMFAttributes* writer_attributes = NULL;
+  if (SUCCEEDED(MFCreateAttributes(&writer_attributes, 1))) {
+    IMFAttributes_SetUINT32(writer_attributes,
+                            &MF_READWRITE_ENABLE_HARDWARE_TRANSFORMS, TRUE);
+  }
+  HRESULT hr = MFCreateSinkWriterFromURL(wide_path, NULL, writer_attributes,
+                                         &g_win_video.writer);
+  if (writer_attributes != NULL) {
+    IMFAttributes_Release(writer_attributes);
+  }
   if (FAILED(hr)) {
     qa_video_set_error("video export: the MP4 file could not be created");
     qa_video_win_teardown();
@@ -161,9 +241,11 @@ QA_EXPORT int32_t qa_video_export_open(const char* utf8_path,
   // Quality: bits per pixel per frame in the range screen content wants.
   // 0.12 bpp lands ~7 Mbit/s at 1080p24 — visually clean for line art —
   // clamped so tiny and huge canvases both stay sane.
-  int64_t bitrate = (int64_t)((double)g_win_video.width *
-                              (double)g_win_video.height * (double)fps_num /
-                              (double)fps_den * 0.12);
+  int64_t bitrate = bitrate_bps > 0
+                        ? (int64_t)bitrate_bps
+                        : (int64_t)((double)g_win_video.width *
+                                    (double)g_win_video.height *
+                                    (double)fps_num / (double)fps_den * 0.12);
   if (bitrate < 2000000) {
     bitrate = 2000000;
   }
@@ -175,7 +257,9 @@ QA_EXPORT int32_t qa_video_export_open(const char* utf8_path,
   hr = MFCreateMediaType(&video_out);
   if (SUCCEEDED(hr)) {
     IMFMediaType_SetGUID(video_out, &MF_MT_MAJOR_TYPE, &MFMediaType_Video);
-    IMFMediaType_SetGUID(video_out, &MF_MT_SUBTYPE, &MFVideoFormat_H264);
+    IMFMediaType_SetGUID(video_out, &MF_MT_SUBTYPE,
+                         codec == QA_VIDEO_CODEC_HEVC ? &MFVideoFormat_HEVC
+                                                      : &MFVideoFormat_H264);
     IMFMediaType_SetUINT32(video_out, &MF_MT_AVG_BITRATE, (UINT32)bitrate);
     IMFMediaType_SetUINT64(
         video_out, &MF_MT_FRAME_SIZE,
@@ -218,7 +302,10 @@ QA_EXPORT int32_t qa_video_export_open(const char* utf8_path,
     IMFMediaType_Release(video_out);
   }
   if (FAILED(hr)) {
-    qa_video_set_error("video export: no H.264 encoder accepted the frames");
+    qa_video_set_error(codec == QA_VIDEO_CODEC_HEVC
+                           ? "video export: no H.265 encoder on this machine"
+                           : "video export: no H.264 encoder accepted the "
+                             "frames");
     qa_video_win_teardown();
     return 0;
   }
@@ -423,8 +510,13 @@ extern int32_t qa_video_apple_open(const char* utf8_path,
                                    int32_t fps_den,
                                    int32_t sample_rate,
                                    int32_t channels,
+                                   int32_t container,
+                                   int32_t codec,
+                                   int32_t alpha,
+                                   int32_t bitrate_bps,
                                    char* error,
                                    int32_t error_capacity);
+extern int32_t qa_video_apple_probe(int32_t container, int32_t codec);
 extern int32_t qa_video_apple_write_frame(const uint8_t* rgba);
 extern int32_t qa_video_apple_write_audio(const int16_t* interleaved,
                                           int32_t frames);
@@ -433,15 +525,24 @@ extern void qa_video_apple_abort(void);
 
 QA_EXPORT int32_t qa_video_export_supported(void) { return 1; }
 
+QA_EXPORT int32_t qa_video_export_probe(int32_t container, int32_t codec) {
+  return qa_video_apple_probe(container, codec);
+}
+
 QA_EXPORT int32_t qa_video_export_open(const char* utf8_path,
                                        int32_t width,
                                        int32_t height,
                                        int32_t fps_num,
                                        int32_t fps_den,
                                        int32_t sample_rate,
-                                       int32_t channels) {
+                                       int32_t channels,
+                                       int32_t container,
+                                       int32_t codec,
+                                       int32_t alpha,
+                                       int32_t bitrate_bps) {
   return qa_video_apple_open(utf8_path, width, height, fps_num, fps_den,
-                             sample_rate, channels, g_video_error,
+                             sample_rate, channels, container, codec, alpha,
+                             bitrate_bps, g_video_error,
                              (int32_t)sizeof(g_video_error));
 }
 
@@ -623,6 +724,26 @@ QA_EXPORT int32_t qa_video_export_supported(void) {
   return qa_ndk_encode_load();
 }
 
+// MP4 only (AMediaMuxer's one format here); HEVC answered by actually
+// asking the codec list — a missing encoder is a capability answer.
+QA_EXPORT int32_t qa_video_export_probe(int32_t container, int32_t codec) {
+  if (container != QA_VIDEO_CONTAINER_MP4 || !qa_ndk_encode_load()) {
+    return 0;
+  }
+  if (codec == QA_VIDEO_CODEC_H264) {
+    return 1;
+  }
+  if (codec != QA_VIDEO_CODEC_HEVC) {
+    return 0;
+  }
+  AMediaCodec* probe = g_ndk.codec_create_encoder("video/hevc");
+  if (probe == NULL) {
+    return 0;
+  }
+  g_ndk.codec_delete(probe);
+  return 1;
+}
+
 static void qa_droid_teardown(void) {
   qa_pending_sample* pending = g_droid.pending_head;
   while (pending != NULL) {
@@ -748,18 +869,23 @@ static int qa_droid_drain(AMediaCodec* codec, int32_t track) {
   }
 }
 
-static AMediaCodec* qa_droid_open_video_codec(int32_t color_format) {
-  AMediaCodec* codec = g_ndk.codec_create_encoder("video/avc");
+static AMediaCodec* qa_droid_open_video_codec(const char* mime,
+                                              int32_t color_format,
+                                              int32_t bitrate_bps) {
+  AMediaCodec* codec = g_ndk.codec_create_encoder(mime);
   if (codec == NULL) {
     return NULL;
   }
   AMediaFormat* format = g_ndk.format_new();
-  g_ndk.format_set_string(format, "mime", "video/avc");
+  g_ndk.format_set_string(format, "mime", mime);
   g_ndk.format_set_int32(format, "width", g_droid.width);
   g_ndk.format_set_int32(format, "height", g_droid.height);
-  int64_t bitrate = (int64_t)((double)g_droid.width * (double)g_droid.height *
-                              (double)g_droid.fps_num /
-                              (double)g_droid.fps_den * 0.12);
+  int64_t bitrate =
+      bitrate_bps > 0
+          ? (int64_t)bitrate_bps
+          : (int64_t)((double)g_droid.width * (double)g_droid.height *
+                      (double)g_droid.fps_num / (double)g_droid.fps_den *
+                      0.12);
   if (bitrate < 2000000) {
     bitrate = 2000000;
   }
@@ -788,10 +914,21 @@ QA_EXPORT int32_t qa_video_export_open(const char* utf8_path,
                                        int32_t fps_num,
                                        int32_t fps_den,
                                        int32_t sample_rate,
-                                       int32_t channels) {
+                                       int32_t channels,
+                                       int32_t container,
+                                       int32_t codec,
+                                       int32_t alpha,
+                                       int32_t bitrate_bps) {
+  (void)alpha;  // YUV420 carries no alpha.
   if (g_droid.open || utf8_path == NULL || width <= 0 || height <= 0 ||
       fps_num <= 0 || fps_den <= 0 || channels < 0 || !qa_ndk_encode_load()) {
     qa_video_set_error("video export: unsupported or bad parameters");
+    return 0;
+  }
+  if (container != QA_VIDEO_CONTAINER_MP4 ||
+      (codec != QA_VIDEO_CODEC_H264 && codec != QA_VIDEO_CODEC_HEVC)) {
+    qa_video_set_error(
+        "video export: Android writes MP4 H.264/H.265 only");
     return 0;
   }
   memset(&g_droid, 0, sizeof(g_droid));
@@ -821,14 +958,19 @@ QA_EXPORT int32_t qa_video_export_open(const char* utf8_path,
 
   // 21 = COLOR_FormatYUV420SemiPlanar (NV12) — what hardware encoders
   // overwhelmingly take; 19 (planar I420) is the fallback.
-  g_droid.video_codec = qa_droid_open_video_codec(21);
+  const char* mime =
+      codec == QA_VIDEO_CODEC_HEVC ? "video/hevc" : "video/avc";
+  g_droid.video_codec = qa_droid_open_video_codec(mime, 21, bitrate_bps);
   int32_t semi_planar = 1;
   if (g_droid.video_codec == NULL) {
-    g_droid.video_codec = qa_droid_open_video_codec(19);
+    g_droid.video_codec = qa_droid_open_video_codec(mime, 19, bitrate_bps);
     semi_planar = 0;
   }
   if (g_droid.video_codec == NULL) {
-    qa_video_set_error("video export: no H.264 encoder accepted the frames");
+    qa_video_set_error(codec == QA_VIDEO_CODEC_HEVC
+                           ? "video export: no H.265 encoder on this device"
+                           : "video export: no H.264 encoder accepted the "
+                             "frames");
     qa_droid_teardown();
     return 0;
   }
@@ -1045,13 +1187,23 @@ QA_EXPORT void qa_video_export_abort(void) {
 
 QA_EXPORT int32_t qa_video_export_supported(void) { return 0; }
 
+QA_EXPORT int32_t qa_video_export_probe(int32_t container, int32_t codec) {
+  (void)container;
+  (void)codec;
+  return 0;
+}
+
 QA_EXPORT int32_t qa_video_export_open(const char* utf8_path,
                                        int32_t width,
                                        int32_t height,
                                        int32_t fps_num,
                                        int32_t fps_den,
                                        int32_t sample_rate,
-                                       int32_t channels) {
+                                       int32_t channels,
+                                       int32_t container,
+                                       int32_t codec,
+                                       int32_t alpha,
+                                       int32_t bitrate_bps) {
   (void)utf8_path;
   (void)width;
   (void)height;
@@ -1059,6 +1211,10 @@ QA_EXPORT int32_t qa_video_export_open(const char* utf8_path,
   (void)fps_den;
   (void)sample_rate;
   (void)channels;
+  (void)container;
+  (void)codec;
+  (void)alpha;
+  (void)bitrate_bps;
   qa_video_set_error("video export: no OS encoder on this platform");
   return 0;
 }

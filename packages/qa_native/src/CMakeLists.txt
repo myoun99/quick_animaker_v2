@@ -24,6 +24,7 @@ add_library(qa_engine SHARED
   "${CMAKE_CURRENT_LIST_DIR}/qa_audio_decode.c"
   "${CMAKE_CURRENT_LIST_DIR}/qa_audio_device.c"
   "${CMAKE_CURRENT_LIST_DIR}/qa_video_encode.c"
+  "${CMAKE_CURRENT_LIST_DIR}/qa_image_encode.c"
 )
 if(APPLE)
   target_sources(qa_engine PRIVATE
@@ -55,11 +56,13 @@ if(MSVC)
   set_source_files_properties(
     "${CMAKE_CURRENT_LIST_DIR}/qa_audio_decode.c"
     "${CMAKE_CURRENT_LIST_DIR}/qa_audio_device.c"
+    "${CMAKE_CURRENT_LIST_DIR}/qa_image_encode.c"
     PROPERTIES COMPILE_OPTIONS "/wd4267;/wd4244;/wd4996;/wd4018;/wd4389")
 else()
   set_source_files_properties(
     "${CMAKE_CURRENT_LIST_DIR}/qa_audio_decode.c"
     "${CMAKE_CURRENT_LIST_DIR}/qa_audio_device.c"
+    "${CMAKE_CURRENT_LIST_DIR}/qa_image_encode.c"
     PROPERTIES COMPILE_OPTIONS "-Wno-conversion;-Wno-unused-function")
 endif()
 

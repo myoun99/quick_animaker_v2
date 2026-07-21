@@ -83,9 +83,30 @@ final class QaVideoEncoder {
           Int32,
           Int32,
           Int32,
+          Int32,
+          Int32,
+          Int32,
+          Int32,
         ),
-        int Function(Pointer<Utf8>, int, int, int, int, int, int)
+        int Function(
+          Pointer<Utf8>,
+          int,
+          int,
+          int,
+          int,
+          int,
+          int,
+          int,
+          int,
+          int,
+          int,
+        )
       >('qa_video_export_open');
+  late final _probe = _library
+      .lookupFunction<
+        Int32 Function(Int32, Int32),
+        int Function(int, int)
+      >('qa_video_export_probe');
   late final _writeFrame = _library
       .lookupFunction<
         Int32 Function(Pointer<Uint8>),
@@ -120,8 +141,22 @@ final class QaVideoEncoder {
     }
   }
 
-  /// Opens an MP4 at [path]. [channels] 0 = silent video. Returns false
-  /// with [lastError] readable on any refusal.
+  /// Whether this platform could take the [container]/[codec] pair
+  /// (ABI v21) — the format picker grays what the machine cannot write.
+  /// An older binary without the probe answers the legacy truth: only
+  /// MP4·H.264 existed.
+  bool probe({required int container, required int codec}) {
+    try {
+      return _probe(container, codec) != 0;
+    } on Object {
+      return container == 0 && codec == 0;
+    }
+  }
+
+  /// Opens the output at [path]. [channels] 0 = silent video;
+  /// [container]/[codec] follow the ABI v21 values ([alpha] only matters
+  /// for ProRes 4444, [bitrateBps] 0 = the encoder's own budget).
+  /// Returns false with [lastError] readable on any refusal.
   bool open({
     required String path,
     required int width,
@@ -130,6 +165,10 @@ final class QaVideoEncoder {
     required int fpsDenominator,
     int sampleRate = 0,
     int channels = 0,
+    int container = 0,
+    int codec = 0,
+    bool alpha = false,
+    int bitrateBps = 0,
   }) {
     final pathUtf8 = path.toNativeUtf8();
     try {
@@ -141,6 +180,10 @@ final class QaVideoEncoder {
             fpsDenominator,
             sampleRate,
             channels,
+            container,
+            codec,
+            alpha ? 1 : 0,
+            bitrateBps,
           ) !=
           0;
     } finally {

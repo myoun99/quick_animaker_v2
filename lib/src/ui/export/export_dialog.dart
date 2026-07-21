@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:io';
 import 'dart:math' as math;
+import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'package:file_selector/file_selector.dart';
@@ -11,12 +12,14 @@ import '../../models/cut.dart';
 import '../../models/export_format_selection.dart';
 import '../../models/export_preset.dart';
 import '../../models/export_spec.dart';
+import '../../native/qa_image_encoder.dart';
 import '../../services/audio/audio_mixer_reference.dart' show AudioMixSource;
 import '../../services/export/xdts_builder.dart';
 import '../../services/persistence/app_export_settings.dart';
 import '../../services/persistence/app_export_settings_store.dart';
 import '../editor_session_manager.dart';
 import 'export_audio_mix.dart';
+import 'export_format_availability.dart';
 import 'export_frame_renderer.dart';
 import 'export_job.dart';
 import 'export_nav_bar.dart';
@@ -47,6 +50,7 @@ class ExportDialog extends StatefulWidget {
     this.exportDirectoryPicker,
     this.videoExportService = const VideoExportService(),
     this.settingsStore,
+    this.formatAvailability,
   });
 
   final EditorSessionManager session;
@@ -61,6 +65,11 @@ class ExportDialog extends StatefulWidget {
   /// Persists presets/last-used state. Null (the test default) keeps the
   /// state in memory only — no test may write the user's real settings.
   final AppExportSettingsStore? settingsStore;
+
+  /// What this machine can write; null builds the real probe. Tests
+  /// inject [ExportFormatAvailability.permissive] so the fake ffmpeg can
+  /// carry any pair.
+  final ExportFormatAvailability? formatAvailability;
 
   @override
   State<ExportDialog> createState() => ExportDialogState();
@@ -89,11 +98,12 @@ class ExportDialogState extends State<ExportDialog> {
   String? _statusMessage;
   (int completed, int total)? _progress;
 
-  // EX3: the preview loop — one controller, two renderers (FX on/off; the
-  // toggle changes what frames look like, so flipping it clears the cache).
+  // EX3: the preview loop — one controller; renderers key on (FX,
+  // background) since EX4 made both change what a frame looks like.
   final ExportPreviewController _preview = ExportPreviewController();
-  late ExportFrameRenderer _previewRendererFx;
-  late ExportFrameRenderer _previewRendererRaw;
+  final Map<(bool, int), ExportFrameRenderer> _previewRenderers = {};
+  late ExportFormatAvailability _availability;
+  bool _ownsAvailability = false;
   int _sequencePosition = 0;
   late int _imageFrame;
   int _celPosition = 0;
@@ -121,11 +131,10 @@ class ExportDialogState extends State<ExportDialog> {
     _celSuffixController = TextEditingController(
       text: _specs.cels.naming.suffix,
     );
-    _previewRendererFx = ExportFrameRenderer(session: _session);
-    _previewRendererRaw = ExportFrameRenderer(
-      session: _session,
-      applyLayerFx: false,
-    );
+    _availability = widget.formatAvailability ?? ExportFormatAvailability();
+    _ownsAvailability = widget.formatAvailability == null;
+    // Grayed pairs re-enable when the async ffmpeg answer lands.
+    _availability.addListener(_onAvailabilityChanged);
     _imageFrame = _session.editingFrameCursor.value.clamp(
       0,
       math.max(1, _session.requireActiveCut.duration) - 1,
@@ -168,7 +177,35 @@ class ExportDialogState extends State<ExportDialog> {
     _celSuffixController.dispose();
     _queue.dispose();
     _preview.dispose();
+    _availability.removeListener(_onAvailabilityChanged);
+    if (_ownsAvailability) {
+      _availability.dispose();
+    }
     super.dispose();
+  }
+
+  void _onAvailabilityChanged() {
+    if (mounted) {
+      setState(() {});
+    }
+  }
+
+  ExportFrameRenderer _previewRendererFor({
+    required bool applyLayerFx,
+    required ExportFormatSelection format,
+  }) {
+    // -1 keys the transparent background (RGBA outputs).
+    final bgKey = format.wantsAlpha ? -1 : format.backgroundArgb;
+    return _previewRenderers.putIfAbsent(
+      (applyLayerFx, bgKey),
+      () => ExportFrameRenderer(
+        session: _session,
+        applyLayerFx: applyLayerFx,
+        background: bgKey == -1
+            ? const ui.Color(0x00000000)
+            : ui.Color(bgKey),
+      ),
+    );
   }
 
   // --- state plumbing -------------------------------------------------------
@@ -299,6 +336,7 @@ class ExportDialogState extends State<ExportDialog> {
           : ExportRange.activeCut,
       naming: spec.naming,
       onTimesheetOnly: spec.onTimesheetOnly,
+      fileExtension: spec.format.stillFormat.fileExtension,
     );
     // The project-side cut checks trim the project scope (the grid UI
     // arrives with EX5 — the seam is live already).
@@ -415,6 +453,7 @@ class ExportDialogState extends State<ExportDialog> {
           task: task,
           sizeMode: spec.sizeMode,
           applyLayerFx: spec.applyLayerFx,
+          format: spec.format,
           caption: 'F${_sequencePosition + 1}',
         );
       case ExportTab.image:
@@ -426,6 +465,7 @@ class ExportDialogState extends State<ExportDialog> {
           ),
           sizeMode: spec.sizeMode,
           applyLayerFx: spec.applyLayerFx,
+          format: spec.format,
           caption: 'F${_currentImageFrame() + 1}',
         );
       case ExportTab.cels:
@@ -436,13 +476,17 @@ class ExportDialogState extends State<ExportDialog> {
         }
         _celPosition = _celPosition.clamp(0, plan.length - 1);
         final task = plan[_celPosition];
-        final transparent = _specs.cels.format.wantsAlpha;
+        final format = _specs.cels.format;
+        final transparent = format.wantsAlpha;
+        final renderer = _previewRendererFor(
+          applyLayerFx: false,
+          format: format,
+        );
         _preview.request(
           key: 'cel:${task.cut.id.value}:${task.layer.id.value}:'
-              '${task.frame.id.value}:$transparent',
+              '${task.frame.id.value}:$transparent:${format.backgroundArgb}',
           caption: _celCaption(task),
-          render: () =>
-              _previewRendererRaw.renderCel(task, transparent: transparent),
+          render: () => renderer.renderCel(task, transparent: transparent),
         );
       case ExportTab.timesheet:
         // The sheet preview arrives with the Timesheet round.
@@ -454,9 +498,14 @@ class ExportDialogState extends State<ExportDialog> {
     required ExportFrameTask task,
     required ExportSizeMode sizeMode,
     required bool applyLayerFx,
+    required ExportFormatSelection format,
     required String caption,
   }) {
-    final renderer = applyLayerFx ? _previewRendererFx : _previewRendererRaw;
+    final renderer = _previewRendererFor(
+      applyLayerFx: applyLayerFx,
+      format: format,
+    );
+    final bgKey = format.wantsAlpha ? -1 : format.backgroundArgb;
     final source = sizeMode == ExportSizeMode.camera
         ? _session.cameraFrameSize
         : task.cut.canvasSize;
@@ -471,7 +520,7 @@ class ExportDialogState extends State<ExportDialog> {
         : CanvasSize(width: fitted.width, height: fitted.height);
     _preview.request(
       key: 'frame:${task.cut.id.value}:${task.frameIndex}:'
-          '${sizeMode.jsonValue}:$applyLayerFx:'
+          '${sizeMode.jsonValue}:$applyLayerFx:$bgKey:'
           '${outputSize?.width ?? source.width}x'
           '${outputSize?.height ?? source.height}',
       caption: caption,
@@ -565,11 +614,11 @@ class ExportDialogState extends State<ExportDialog> {
       case ExportTab.sequence:
         final spec = _specs.sequence;
         if (spec.format.isVideo) {
-          return '→ ${_singleFileName(_sequenceFileController, 'mp4')}';
+          return '→ ${_singleFileName(_sequenceFileController, spec.format.container.fileExtension)}';
         }
         return '→ ${_sequenceFileNameFor(0)} …';
       case ExportTab.image:
-        return '→ ${_singleFileName(_imageFileController, 'png')}';
+        return '→ ${_singleFileName(_imageFileController, _specs.image.format.stillFormat.fileExtension)}';
       case ExportTab.cels:
         final plan = _celPlan();
         return plan.isEmpty ? '→ (no cels)' : '→ ${plan.first.fileName} …';
@@ -582,6 +631,17 @@ class ExportDialogState extends State<ExportDialog> {
     }
   }
 
+  static const List<String> _knownExtensions = [
+    '.mp4',
+    '.mov',
+    '.png',
+    '.jpg',
+    '.psd',
+  ];
+
+  /// The single-file name with the CURRENT format's extension — a stale
+  /// lineup extension in the field swaps instead of stacking
+  /// (`name.mp4` + MOV → `name.mov`, never `name.mp4.mov`).
   String _singleFileName(TextEditingController controller, String extension) {
     var name = controller.text.trim();
     if (name.isEmpty) {
@@ -589,11 +649,81 @@ class ExportDialogState extends State<ExportDialog> {
         _session.repository.requireProject().name,
       );
     }
-    if (!name.toLowerCase().endsWith('.$extension')) {
-      name = '$name.$extension';
+    final lower = name.toLowerCase();
+    for (final known in _knownExtensions) {
+      if (lower.endsWith(known)) {
+        name = name.substring(0, name.length - known.length);
+        break;
+      }
     }
-    return name;
+    return '$name.$extension';
   }
+
+  /// Flattens un-premultiplied RGBA over the format's background and
+  /// hands RGB24 to the native stb encoder. Null = no encoder (an older
+  /// binary) — the file skips rather than lying.
+  Future<List<int>?> _encodeJpgImage(
+    ui.Image image,
+    ExportFormatSelection format,
+  ) async {
+    final encoder = QaImageEncoder.instance;
+    if (encoder == null) {
+      return null;
+    }
+    final data = await image.toByteData(format: ui.ImageByteFormat.rawRgba);
+    if (data == null) {
+      return null;
+    }
+    final rgba = data.buffer.asUint8List();
+    final pixelCount = image.width * image.height;
+    final rgb = Uint8List(pixelCount * 3);
+    final bg = format.backgroundArgb;
+    final bgR = (bg >> 16) & 0xFF;
+    final bgG = (bg >> 8) & 0xFF;
+    final bgB = bg & 0xFF;
+    for (var i = 0; i < pixelCount; i += 1) {
+      final a = rgba[i * 4 + 3];
+      if (a == 255) {
+        rgb[i * 3] = rgba[i * 4];
+        rgb[i * 3 + 1] = rgba[i * 4 + 1];
+        rgb[i * 3 + 2] = rgba[i * 4 + 2];
+      } else {
+        rgb[i * 3] = (rgba[i * 4] * a + bgR * (255 - a)) ~/ 255;
+        rgb[i * 3 + 1] = (rgba[i * 4 + 1] * a + bgG * (255 - a)) ~/ 255;
+        rgb[i * 3 + 2] = (rgba[i * 4 + 2] * a + bgB * (255 - a)) ~/ 255;
+      }
+    }
+    return encoder.encodeJpg(
+      rgb: rgb,
+      width: image.width,
+      height: image.height,
+      quality: format.jpgQuality,
+    );
+  }
+
+  /// The still write-path override per format; null keeps the engine PNG.
+  Future<List<int>?> Function(ui.Image image)? _stillEncodeFor(
+    ExportFormatSelection format,
+  ) {
+    if (format.stillFormat != ExportStillFormat.jpg) {
+      return null;
+    }
+    return (image) => _encodeJpgImage(image, format);
+  }
+
+  ExportFrameRenderer _runRenderer({
+    required bool applyLayerFx,
+    required ExportFormatSelection format,
+    bool alphaVideo = false,
+  }) => ExportFrameRenderer(
+    session: _session,
+    applyLayerFx: applyLayerFx,
+    background: (alphaVideo || (format.isStill && format.wantsAlpha))
+        ? const ui.Color(0x00000000)
+        : format.isStill
+        ? ui.Color(format.backgroundArgb)
+        : const ui.Color(0xFFFFFFFF),
+  );
 
   bool get _hasLocation => _location != null && _location!.isNotEmpty;
 
@@ -678,25 +808,36 @@ class ExportDialogState extends State<ExportDialog> {
 
   Future<String> _exportVideo() async {
     final spec = _specs.sequence;
+    final format = spec.format;
+    final alphaVideo = format.wantsAlpha;
     final plan = _sequencePlanForRun(video: true)!;
-    final renderer = ExportFrameRenderer(
-      session: _session,
+    final renderer = _runRenderer(
       applyLayerFx: spec.applyLayerFx,
+      format: format,
+      alphaVideo: alphaVideo,
     );
     final videoPath = _joinLocation(
-      _singleFileName(_sequenceFileController, 'mp4'),
+      _singleFileName(_sequenceFileController, format.container.fileExtension),
     );
     final audioMixPath =
         spec.includeAudio ? await _renderAudioMix(plan) : null;
     try {
       final summary = await widget.videoExportService.exportVideo(
         count: plan.length,
-        // Video frames bake the cut fade (H.264 carries no alpha).
-        renderImage: (index) =>
-            renderer.renderCompositeForVideo(plan[index], spec.sizeMode),
+        // Opaque codecs bake the cut fade/pose into RGB; ProRes 4444 α
+        // keeps the channel (transparent ground, fade still paints).
+        renderImage: (index) => renderer.renderCompositeForVideo(
+          plan[index],
+          spec.sizeMode,
+          preserveAlpha: alphaVideo,
+        ),
         outputFilePath: videoPath,
         frameRate: _session.projectFrameRate,
         audioMixPath: audioMixPath,
+        container: format.container,
+        codec: format.videoCodec,
+        alpha: alphaVideo,
+        bitrateBps: format.videoBitrateMbps * 1000000,
         isCancelled: () => _cancelRequested,
         onProgress: _reportProgress,
       );
@@ -722,9 +863,9 @@ class ExportDialogState extends State<ExportDialog> {
   Future<String> _exportPngSequence() async {
     final spec = _specs.sequence;
     final plan = _sequencePlanForRun(video: false)!;
-    final renderer = ExportFrameRenderer(
-      session: _session,
+    final renderer = _runRenderer(
       applyLayerFx: spec.applyLayerFx,
+      format: spec.format,
     );
     final summary = await _exportService.exportImages(
       count: plan.length,
@@ -732,6 +873,7 @@ class ExportDialogState extends State<ExportDialog> {
           renderer.renderComposite(plan[index], spec.sizeMode),
       fileNameFor: _sequenceFileNameFor,
       directoryPath: _location!,
+      encode: _stillEncodeFor(spec.format),
       isCancelled: () => _cancelRequested,
       onProgress: _reportProgress,
     );
@@ -745,20 +887,24 @@ class ExportDialogState extends State<ExportDialog> {
 
   Future<String> _exportCurrentFrame() async {
     final spec = _specs.image;
-    final renderer = ExportFrameRenderer(
-      session: _session,
+    final renderer = _runRenderer(
       applyLayerFx: spec.applyLayerFx,
+      format: spec.format,
     );
     final task = ExportFrameTask(
       cut: _activeCut,
       frameIndex: _currentImageFrame(),
     );
-    final fileName = _singleFileName(_imageFileController, 'png');
+    final fileName = _singleFileName(
+      _imageFileController,
+      spec.format.stillFormat.fileExtension,
+    );
     final summary = await _exportService.exportImages(
       count: 1,
       renderImage: (_) => renderer.renderComposite(task, spec.sizeMode),
       fileNameFor: (_) => fileName,
       directoryPath: _location!,
+      encode: _stillEncodeFor(spec.format),
       isCancelled: () => _cancelRequested,
       onProgress: _reportProgress,
     );
@@ -770,10 +916,9 @@ class ExportDialogState extends State<ExportDialog> {
   Future<String> _exportCels() async {
     final spec = _specs.cels;
     final plan = _celPlan();
-    final renderer = ExportFrameRenderer(
-      session: _session,
-      applyLayerFx: false,
-    );
+    // Cels stay raw artwork (no FX) — the renderer only carries the
+    // paper color for the RGB channel choice.
+    final renderer = _runRenderer(applyLayerFx: false, format: spec.format);
     final summary = await _exportService.exportImages(
       count: plan.length,
       renderImage: (index) => renderer.renderCel(
@@ -782,6 +927,7 @@ class ExportDialogState extends State<ExportDialog> {
       ),
       fileNameFor: (index) => plan[index].fileName,
       directoryPath: _location!,
+      encode: _stillEncodeFor(spec.format),
       isCancelled: () => _cancelRequested,
       onProgress: _reportProgress,
     );
@@ -1362,11 +1508,25 @@ class ExportDialogState extends State<ExportDialog> {
             _updateSpec(spec.copyWith(format: const ExportFormatSelection())),
         child: ExportFormatModule(
           selection: spec.format,
-          capabilities: const ExportFormatCapabilities(
-            stills: [ExportStillFormat.png],
-            video: {
-              ExportVideoContainer.mp4: [ExportVideoCodec.h264],
+          capabilities: ExportFormatCapabilities(
+            stills: const [ExportStillFormat.png, ExportStillFormat.jpg],
+            video: const {
+              ExportVideoContainer.mp4: [
+                ExportVideoCodec.h264,
+                ExportVideoCodec.h265,
+              ],
+              ExportVideoContainer.mov: [
+                ExportVideoCodec.h264,
+                ExportVideoCodec.proresProxy,
+                ExportVideoCodec.proresLt,
+                ExportVideoCodec.prores422,
+                ExportVideoCodec.proresHq,
+                ExportVideoCodec.prores4444,
+              ],
             },
+            stillEnabled: _availability.stillAllowed,
+            videoEnabled: _availability.videoAllowed,
+            videoReason: _availability.videoBlockedReason,
           ),
           enabled: !_isExporting,
           onChanged: (format) => _updateSpec(spec.copyWith(format: format)),
@@ -1414,7 +1574,9 @@ class ExportDialogState extends State<ExportDialog> {
       if (spec.format.isVideo)
         ExportAccordion(
           title: 'Audio',
-          summary: spec.includeAudio ? 'SE muxed · AAC' : 'Off',
+          summary: spec.includeAudio
+              ? 'SE muxed · ${spec.format.videoCodec.isProRes ? 'PCM' : 'AAC'}'
+              : 'Off',
           expanded: _expandedFor('audio'),
           onToggle: () => _toggleExpanded('audio'),
           child: ExportToggleRow(
@@ -1493,8 +1655,13 @@ class ExportDialogState extends State<ExportDialog> {
         onToggle: () => _toggleExpanded('format', fallback: true),
         child: ExportFormatModule(
           selection: spec.format,
-          capabilities: const ExportFormatCapabilities(
-            stills: [ExportStillFormat.png],
+          capabilities: ExportFormatCapabilities(
+            stills: const [
+              ExportStillFormat.png,
+              ExportStillFormat.jpg,
+              ExportStillFormat.psd,
+            ],
+            stillEnabled: _availability.stillAllowed,
           ),
           enabled: !_isExporting,
           onChanged: (format) => _updateSpec(spec.copyWith(format: format)),
@@ -1544,8 +1711,13 @@ class ExportDialogState extends State<ExportDialog> {
         onToggle: () => _toggleExpanded('format', fallback: true),
         child: ExportFormatModule(
           selection: spec.format,
-          capabilities: const ExportFormatCapabilities(
-            stills: [ExportStillFormat.png],
+          capabilities: ExportFormatCapabilities(
+            stills: const [
+              ExportStillFormat.png,
+              ExportStillFormat.jpg,
+              ExportStillFormat.psd,
+            ],
+            stillEnabled: _availability.stillAllowed,
           ),
           enabled: !_isExporting,
           onChanged: (format) => _updateSpec(spec.copyWith(format: format)),

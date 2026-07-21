@@ -17,6 +17,17 @@
 #include <stdint.h>
 #include <string.h>
 
+// Mirrors qa_video_encode.c's ABI v21 values.
+#define QA_VIDEO_CONTAINER_MP4 0
+#define QA_VIDEO_CONTAINER_MOV 1
+#define QA_VIDEO_CODEC_H264 0
+#define QA_VIDEO_CODEC_HEVC 1
+#define QA_VIDEO_CODEC_PRORES_PROXY 2
+#define QA_VIDEO_CODEC_PRORES_LT 3
+#define QA_VIDEO_CODEC_PRORES_422 4
+#define QA_VIDEO_CODEC_PRORES_HQ 5
+#define QA_VIDEO_CODEC_PRORES_4444 6
+
 typedef struct {
   int32_t src_width;
   int32_t src_height;
@@ -29,7 +40,54 @@ typedef struct {
   int32_t sample_rate;
   int32_t channels;
   int32_t open;
+  int32_t preserve_alpha;
 } qa_video_apple_state;
+
+// The v10 pair matrix on Apple: H.264 in both containers, H.265 in MP4,
+// ProRes in MOV. Legality alone — device support (an iPad without the
+// ProRes engine) answers at open, where the writer can refuse.
+static int qa_apple_pair_legal(int32_t container, int32_t codec) {
+  switch (codec) {
+    case QA_VIDEO_CODEC_H264:
+      return 1;
+    case QA_VIDEO_CODEC_HEVC:
+      return container == QA_VIDEO_CONTAINER_MP4;
+    case QA_VIDEO_CODEC_PRORES_PROXY:
+    case QA_VIDEO_CODEC_PRORES_LT:
+    case QA_VIDEO_CODEC_PRORES_422:
+    case QA_VIDEO_CODEC_PRORES_HQ:
+    case QA_VIDEO_CODEC_PRORES_4444:
+      return container == QA_VIDEO_CONTAINER_MOV;
+    default:
+      return 0;
+  }
+}
+
+int32_t qa_video_apple_probe(int32_t container, int32_t codec) {
+  return qa_apple_pair_legal(container, codec);
+}
+
+// The AVFoundation codec identifiers ARE these fourcc strings; literals
+// dodge SDK-availability guards on the newer named constants (ProRes
+// Proxy/LT gained names only in macOS 12 / iOS 15 SDKs).
+static NSString* qa_apple_codec_id(int32_t codec) {
+  switch (codec) {
+    case QA_VIDEO_CODEC_HEVC:
+      return @"hvc1";
+    case QA_VIDEO_CODEC_PRORES_PROXY:
+      return @"apco";
+    case QA_VIDEO_CODEC_PRORES_LT:
+      return @"apcs";
+    case QA_VIDEO_CODEC_PRORES_422:
+      return @"apcn";
+    case QA_VIDEO_CODEC_PRORES_HQ:
+      return @"apch";
+    case QA_VIDEO_CODEC_PRORES_4444:
+      return @"ap4h";
+    default:
+      return AVVideoCodecTypeH264;
+  }
+}
 
 static qa_video_apple_state g_apple;
 static AVAssetWriter* g_writer;
@@ -71,12 +129,22 @@ int32_t qa_video_apple_open(const char* utf8_path,
                             int32_t fps_den,
                             int32_t sample_rate,
                             int32_t channels,
+                            int32_t container,
+                            int32_t codec,
+                            int32_t alpha,
+                            int32_t bitrate_bps,
                             char* error,
                             int32_t error_capacity) {
   if (g_apple.open || utf8_path == NULL || width <= 0 || height <= 0 ||
       fps_num <= 0 || fps_den <= 0 || channels < 0) {
     qa_apple_set_error(error, error_capacity,
                        "video export: bad open parameters");
+    return 0;
+  }
+  if (!qa_apple_pair_legal(container, codec)) {
+    qa_apple_set_error(error, error_capacity,
+                       "video export: that container/codec pair is not in "
+                       "the lineup");
     return 0;
   }
   @autoreleasepool {
@@ -89,28 +157,38 @@ int32_t qa_video_apple_open(const char* utf8_path,
     g_apple.fps_den = fps_den;
     g_apple.sample_rate = sample_rate;
     g_apple.channels = channels;
+    g_apple.preserve_alpha =
+        (codec == QA_VIDEO_CODEC_PRORES_4444 && alpha != 0) ? 1 : 0;
+    const int is_prores = codec >= QA_VIDEO_CODEC_PRORES_PROXY;
 
     NSString* path = [NSString stringWithUTF8String:utf8_path];
     [[NSFileManager defaultManager] removeItemAtPath:path error:nil];
     NSError* writer_error = nil;
     g_writer = [[AVAssetWriter alloc]
         initWithURL:[NSURL fileURLWithPath:path]
-           fileType:AVFileTypeMPEG4
+           fileType:container == QA_VIDEO_CONTAINER_MOV
+                        ? AVFileTypeQuickTimeMovie
+                        : AVFileTypeMPEG4
               error:&writer_error];
     if (g_writer == nil) {
       qa_apple_set_error(error, error_capacity,
-                         "video export: the MP4 file could not be created");
+                         "video export: the output file could not be created");
       qa_apple_teardown();
       return 0;
     }
 
-    g_video_input = [[AVAssetWriterInput alloc]
-        initWithMediaType:AVMediaTypeVideo
-           outputSettings:@{
-             AVVideoCodecKey : AVVideoCodecTypeH264,
-             AVVideoWidthKey : @(g_apple.width),
-             AVVideoHeightKey : @(g_apple.height),
-           }];
+    NSMutableDictionary* video_settings = [@{
+      AVVideoCodecKey : qa_apple_codec_id(codec),
+      AVVideoWidthKey : @(g_apple.width),
+      AVVideoHeightKey : @(g_apple.height),
+    } mutableCopy];
+    if (!is_prores && bitrate_bps > 0) {
+      video_settings[AVVideoCompressionPropertiesKey] =
+          @{AVVideoAverageBitRateKey : @(bitrate_bps)};
+    }
+    g_video_input =
+        [[AVAssetWriterInput alloc] initWithMediaType:AVMediaTypeVideo
+                                       outputSettings:video_settings];
     g_video_input.expectsMediaDataInRealTime = NO;
     g_adaptor = [[AVAssetWriterInputPixelBufferAdaptor alloc]
         initWithAssetWriterInput:g_video_input
@@ -121,21 +199,35 @@ int32_t qa_video_apple_open(const char* utf8_path,
      }];
     if (![g_writer canAddInput:g_video_input]) {
       qa_apple_set_error(error, error_capacity,
-                         "video export: no H.264 encoder accepted the frames");
+                         "video export: this machine's encoder refused the "
+                         "codec");
       qa_apple_teardown();
       return 0;
     }
     [g_writer addInput:g_video_input];
 
     if (channels > 0) {
+      // ProRes deliveries carry PCM (the master convention); the H.26x
+      // containers keep AAC.
+      NSDictionary* audio_settings = is_prores
+          ? @{
+              AVFormatIDKey : @(kAudioFormatLinearPCM),
+              AVSampleRateKey : @(sample_rate),
+              AVNumberOfChannelsKey : @(channels),
+              AVLinearPCMBitDepthKey : @16,
+              AVLinearPCMIsFloatKey : @NO,
+              AVLinearPCMIsBigEndianKey : @NO,
+              AVLinearPCMIsNonInterleaved : @NO,
+            }
+          : @{
+              AVFormatIDKey : @(kAudioFormatMPEG4AAC),
+              AVSampleRateKey : @(sample_rate),
+              AVNumberOfChannelsKey : @(channels),
+              AVEncoderBitRateKey : @192000,
+            };
       g_audio_input = [[AVAssetWriterInput alloc]
           initWithMediaType:AVMediaTypeAudio
-             outputSettings:@{
-               AVFormatIDKey : @(kAudioFormatMPEG4AAC),
-               AVSampleRateKey : @(sample_rate),
-               AVNumberOfChannelsKey : @(channels),
-               AVEncoderBitRateKey : @192000,
-             }];
+             outputSettings:audio_settings];
       g_audio_input.expectsMediaDataInRealTime = NO;
       if (![g_writer canAddInput:g_audio_input]) {
         qa_apple_set_error(error, error_capacity,
@@ -202,10 +294,15 @@ int32_t qa_video_apple_write_frame(const uint8_t* rgba) {
     CVPixelBufferLockBaseAddress(pixel_buffer, 0);
     uint8_t* base = (uint8_t*)CVPixelBufferGetBaseAddress(pixel_buffer);
     const size_t stride = CVPixelBufferGetBytesPerRow(pixel_buffer);
+    // Opaque codecs bake white pad pixels and force A=0xFF; ProRes 4444
+    // with alpha keeps the real channel and pads TRANSPARENT (a hairline
+    // of paper would read as content in a compositing master).
+    const int keep_alpha = g_apple.preserve_alpha;
+    const uint8_t pad_value = keep_alpha ? 0x00 : 0xFF;
     for (int32_t y = 0; y < g_apple.height; y += 1) {
       uint8_t* out_row = base + (size_t)y * stride;
       if (y >= g_apple.src_height) {
-        memset(out_row, 0xFF, (size_t)g_apple.width * 4);
+        memset(out_row, pad_value, (size_t)g_apple.width * 4);
         continue;
       }
       const uint8_t* in_row =
@@ -214,13 +311,13 @@ int32_t qa_video_apple_write_frame(const uint8_t* rgba) {
         out_row[x * 4 + 0] = in_row[x * 4 + 2];  // B
         out_row[x * 4 + 1] = in_row[x * 4 + 1];  // G
         out_row[x * 4 + 2] = in_row[x * 4 + 0];  // R
-        out_row[x * 4 + 3] = 0xFF;
+        out_row[x * 4 + 3] = keep_alpha ? in_row[x * 4 + 3] : 0xFF;
       }
       for (int32_t x = g_apple.src_width; x < g_apple.width; x += 1) {
-        out_row[x * 4 + 0] = 0xFF;
-        out_row[x * 4 + 1] = 0xFF;
-        out_row[x * 4 + 2] = 0xFF;
-        out_row[x * 4 + 3] = 0xFF;
+        out_row[x * 4 + 0] = pad_value;
+        out_row[x * 4 + 1] = pad_value;
+        out_row[x * 4 + 2] = pad_value;
+        out_row[x * 4 + 3] = pad_value;
       }
     }
     CVPixelBufferUnlockBaseAddress(pixel_buffer, 0);

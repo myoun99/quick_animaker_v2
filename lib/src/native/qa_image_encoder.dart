@@ -1,0 +1,137 @@
+import 'dart:ffi';
+import 'dart:io';
+import 'dart:typed_data';
+
+import 'package:ffi/ffi.dart';
+
+/// The still-image encoder (EX4): baseline JPEG through the engine's
+/// vendored stb_image_write — memory to memory, byte-deterministic,
+/// no ffmpeg, no pub dependency.
+///
+/// Unlike the video encoder there is NO test gate: encoding a buffer is
+/// a pure function with no device side effects, and the widget tests
+/// exercise the real thing when the standalone binary is around
+/// (debugLibraryPathOverride, same as the parity suites).
+final class QaImageEncoder {
+  QaImageEncoder._(this._library);
+
+  final DynamicLibrary _library;
+
+  static QaImageEncoder? _instance;
+  static bool _tried = false;
+
+  /// Test hook: point the loader at a locally built binary.
+  static String? debugLibraryPathOverride;
+
+  static void debugResetForTests() {
+    _instance = null;
+    _tried = false;
+  }
+
+  static QaImageEncoder? get instance {
+    if (!_tried) {
+      _tried = true;
+      final library = _tryOpen();
+      _instance = library == null ? null : QaImageEncoder._(library);
+    }
+    return _instance;
+  }
+
+  static DynamicLibrary? _tryOpen() {
+    final overridePath =
+        debugLibraryPathOverride ?? Platform.environment['QA_ENGINE_PATH'];
+    if (overridePath != null && overridePath.isNotEmpty) {
+      try {
+        return DynamicLibrary.open(overridePath);
+      } on Object {
+        // Fall through to the platform defaults.
+      }
+    }
+    if (Platform.isIOS || Platform.isMacOS) {
+      try {
+        return DynamicLibrary.process();
+      } on Object {
+        // Fall through.
+      }
+    }
+    for (final candidate in [
+      if (Platform.isWindows) 'qa_engine.dll',
+      if (Platform.isLinux || Platform.isAndroid) 'libqa_engine.so',
+      if (Platform.isMacOS) 'libqa_engine.dylib',
+    ]) {
+      try {
+        return DynamicLibrary.open(candidate);
+      } on Object {
+        continue;
+      }
+    }
+    return null;
+  }
+
+  late final _encodeJpg = _library
+      .lookupFunction<
+        Int32 Function(
+          Pointer<Uint8>,
+          Int32,
+          Int32,
+          Int32,
+          Pointer<Pointer<Uint8>>,
+          Pointer<Int32>,
+        ),
+        int Function(
+          Pointer<Uint8>,
+          int,
+          int,
+          int,
+          Pointer<Pointer<Uint8>>,
+          Pointer<Int32>,
+        )
+      >('qa_image_encode_jpg');
+  late final _free = _library
+      .lookupFunction<Void Function(Pointer<Uint8>), void Function(Pointer<Uint8>)>(
+        'qa_image_encode_free',
+      );
+
+  bool get isSupported {
+    try {
+      _encodeJpg;
+      return true;
+    } on Object {
+      return false; // an older binary without the image surface
+    }
+  }
+
+  /// Encodes top-down RGB24 into JPEG bytes; null on refusal (an older
+  /// binary, a degenerate size).
+  Uint8List? encodeJpg({
+    required Uint8List rgb,
+    required int width,
+    required int height,
+    required int quality,
+  }) {
+    if (rgb.length < width * height * 3 || width <= 0 || height <= 0) {
+      return null;
+    }
+    final input = calloc<Uint8>(rgb.length);
+    final outData = calloc<Pointer<Uint8>>();
+    final outSize = calloc<Int32>();
+    try {
+      input.asTypedList(rgb.length).setAll(0, rgb);
+      final ok = _encodeJpg(input, width, height, quality, outData, outSize);
+      if (ok == 0 || outSize.value <= 0) {
+        return null;
+      }
+      final bytes = Uint8List.fromList(
+        outData.value.asTypedList(outSize.value),
+      );
+      _free(outData.value);
+      return bytes;
+    } on Object {
+      return null;
+    } finally {
+      calloc.free(input);
+      calloc.free(outData);
+      calloc.free(outSize);
+    }
+  }
+}

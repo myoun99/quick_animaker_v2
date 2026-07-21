@@ -15,12 +15,16 @@ import 'package:quick_animaker_v2/src/models/project.dart';
 import 'package:quick_animaker_v2/src/models/project_id.dart';
 import 'package:quick_animaker_v2/src/models/track.dart';
 import 'package:quick_animaker_v2/src/models/track_id.dart';
+import 'package:quick_animaker_v2/src/native/qa_image_encoder.dart';
 import 'package:quick_animaker_v2/src/services/persistence/app_export_settings.dart';
 import 'package:quick_animaker_v2/src/services/persistence/app_export_settings_store.dart';
 import 'package:quick_animaker_v2/src/ui/editor_session_manager.dart';
 import 'package:quick_animaker_v2/src/ui/export/export_dialog.dart';
+import 'package:quick_animaker_v2/src/ui/export/export_format_availability.dart';
+import 'package:quick_animaker_v2/src/ui/export/export_settings_modules.dart';
 import 'package:quick_animaker_v2/src/ui/export/video_export_service.dart';
 
+import '../../helpers/native_engine_path.dart';
 import 'fake_ffmpeg_process.dart';
 
 void main() {
@@ -112,6 +116,7 @@ void main() {
     ExportDirectoryPicker? exportDirectoryPicker,
     VideoExportService videoExportService = const VideoExportService(),
     AppExportSettingsStore? settingsStore,
+    ExportFormatAvailability? formatAvailability,
     Key? dialogKey,
   }) async {
     await tester.binding.setSurfaceSize(const Size(1120, 660));
@@ -130,6 +135,10 @@ void main() {
             exportDirectoryPicker: exportDirectoryPicker,
             videoExportService: videoExportService,
             settingsStore: settingsStore,
+            // Permissive by default: the fake ffmpeg carries any pair in
+            // tests; availability-gating gets its own dedicated test.
+            formatAvailability:
+                formatAvailability ?? ExportFormatAvailability.permissive(),
           ),
         ),
       ),
@@ -559,6 +568,145 @@ void main() {
         find.byKey(const ValueKey<String>('export-preview-image')),
         findsOneWidget,
       );
+    });
+  });
+
+  group('codec lineup (EX4)', () {
+    testWidgets('H.265 rides the ffmpeg fallback with libx265',
+        (tester) async {
+      final fake = FakeFfmpegProcess();
+      late List<String> capturedArgs;
+      final state = await pumpDialog(
+        tester,
+        exportSession(),
+        exportDirectoryPicker: () async => temp.path,
+        videoExportService: VideoExportService(
+          processStarter: (executable, arguments) async {
+            capturedArgs = arguments;
+            return fake;
+          },
+        ),
+      );
+      await browseTo(tester);
+      await tester.tap(
+        find.byKey(const ValueKey<String>('export-format-codec-h265')),
+      );
+      await tester.pump();
+      await tester.runAsync(state.export);
+      await tester.pump();
+      expect(capturedArgs, contains('libx265'));
+      expect(
+        capturedArgs.last.replaceAll('\\', '/'),
+        endsWith('/Project.mp4'),
+      );
+    });
+
+    testWidgets('MOV ProRes 4444 α: prores_ks profile 4, PCM, .mov name',
+        (tester) async {
+      final fake = FakeFfmpegProcess();
+      late List<String> capturedArgs;
+      final state = await pumpDialog(
+        tester,
+        exportSession(),
+        exportDirectoryPicker: () async => temp.path,
+        videoExportService: VideoExportService(
+          processStarter: (executable, arguments) async {
+            capturedArgs = arguments;
+            return fake;
+          },
+        ),
+      );
+      await browseTo(tester);
+      await tester.tap(
+        find.byKey(const ValueKey<String>('export-format-container-mov')),
+      );
+      await tester.pump();
+      await tester.tap(
+        find.byKey(
+          const ValueKey<String>('export-format-codec-prores4444'),
+        ),
+      );
+      await tester.pump();
+      // 4444 exposes the channel choice; RGBA is the default already.
+      expect(
+        find.byKey(const ValueKey<String>('export-format-channels-rgba')),
+        findsNothing,
+        reason: 'video channels stay internal — wantsAlpha follows 4444',
+      );
+      await tester.runAsync(state.export);
+      await tester.pump();
+      expect(capturedArgs, containsAllInOrder(['-profile:v', '4']));
+      expect(capturedArgs, contains('yuva444p10le'));
+      // The fixture has no SE audio — no audio codec at all, and never
+      // the AAC an H.26x run would carry (the PCM pairing is pinned in
+      // video_export_codec_args_test).
+      expect(capturedArgs, isNot(contains('aac')));
+      expect(
+        capturedArgs.last.replaceAll('\\', '/'),
+        endsWith('/Project.mov'),
+      );
+    });
+
+    testWidgets('a restrictive availability grays the pair with a reason',
+        (tester) async {
+      final restrictive = ExportFormatAvailability(
+        encoderResolver: () => null,
+        ffmpegCheck: () async => false,
+        jpgSupported: false,
+      );
+      addTearDown(restrictive.dispose);
+      await pumpDialog(
+        tester,
+        exportSession(),
+        formatAvailability: restrictive,
+      );
+      await tester.pump();
+      final h265 = find.byKey(
+        const ValueKey<String>('export-format-codec-h265'),
+      );
+      expect(h265, findsOneWidget);
+      expect(
+        find.ancestor(of: h265, matching: find.byType(Tooltip)),
+        findsOneWidget,
+        reason: 'a grayed chip explains itself',
+      );
+      // The tap is a no-op on a grayed chip — H.264 stays selected.
+      await tester.tap(h265);
+      await tester.pump();
+      final h264Chip = tester.widget<ExportChip>(
+        find.byKey(const ValueKey<String>('export-format-codec-h264')),
+      );
+      expect(h264Chip.selected, isTrue);
+    });
+
+    testWidgets('JPG sequence writes .jpg files through the native encoder',
+        (tester) async {
+      final enginePath = nativeEngineLibraryPathOrNull();
+      if (enginePath == null) {
+        markTestSkipped(nativeEngineMissingSkipReason);
+        return;
+      }
+      QaImageEncoder.debugResetForTests();
+      QaImageEncoder.debugLibraryPathOverride = enginePath;
+      addTearDown(() {
+        QaImageEncoder.debugLibraryPathOverride = null;
+        QaImageEncoder.debugResetForTests();
+      });
+      final state = await pumpDialog(
+        tester,
+        exportSession(),
+        exportDirectoryPicker: () async => temp.path,
+      );
+      await browseTo(tester);
+      await tester.tap(
+        find.byKey(const ValueKey<String>('export-format-still-jpg')),
+      );
+      await tester.pump();
+      await tester.runAsync(state.export);
+      await tester.pump();
+      expect(filesIn(temp), ['frame_0001.jpg', 'frame_0002.jpg']);
+      final bytes = File('${temp.path}/frame_0001.jpg').readAsBytesSync();
+      expect(bytes.sublist(0, 2), [0xFF, 0xD8]);
     });
   });
 
