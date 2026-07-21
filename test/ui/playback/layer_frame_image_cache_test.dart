@@ -1,4 +1,6 @@
-﻿import 'package:flutter_test/flutter_test.dart';
+﻿import 'dart:ui' as ui;
+
+import 'package:flutter_test/flutter_test.dart';
 import 'package:quick_animaker_v2/src/models/brush_dab.dart';
 import 'package:quick_animaker_v2/src/models/brush_frame_key.dart';
 import 'package:quick_animaker_v2/src/models/brush_history_policy.dart';
@@ -75,10 +77,38 @@ void main() {
         quality: PlaybackQuality.quarter,
       );
 
-      expect(full!.width, 8);
-      expect(full.height, 8);
-      expect(quarter!.width, 2);
-      expect(quarter.height, 2);
+      expect(full!.image.width, 8);
+      expect(full.image.height, 8);
+      expect(full.worldRect, const ui.Rect.fromLTWH(0, 0, 8, 8));
+      expect(quarter!.image.width, 2);
+      expect(quarter.image.height, 2);
+      expect(
+        quarter.worldRect,
+        const ui.Rect.fromLTWH(0, 0, 8, 8),
+        reason: 'the world rect stays canvas-space at every quality',
+      );
+      cache.dispose();
+    });
+  });
+
+  testWidgets('a cel with pasteboard content grows the image extent and '
+      'reports it through worldRect', (tester) async {
+    await tester.runAsync(() async {
+      final (store, coordinator) = storeWithStroke();
+      // Canvas 8×8, tile 4 → a dab at (-2, -2) lands on tile (-1, -1):
+      // pixels in [-3, -1]², extent grows to the tile rect [-4, 0)².
+      coordinator.commitSourceStroke(sourceDabs: [dab(x: -2, y: -2)]);
+      final cache = LayerFrameImageCache(frameStore: store);
+
+      final positioned = await cache.prepare(
+        key: key('frame-a'),
+        canvasSize: canvasSize,
+        quality: PlaybackQuality.full,
+      );
+
+      expect(positioned!.worldRect, const ui.Rect.fromLTRB(-4, -4, 8, 8));
+      expect(positioned.image.width, 12);
+      expect(positioned.image.height, 12);
       cache.dispose();
     });
   });
@@ -229,7 +259,7 @@ void main() {
         quality: PlaybackQuality.full,
       );
       expect(synced, isNotNull);
-      expect(synced!.width, 8);
+      expect(synced!.image.width, 8);
       expect(
         identical(
           cache.validImageOrNull(

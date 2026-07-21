@@ -11,18 +11,32 @@ import '../canvas/deferred_image_disposal.dart';
 import '../canvas/tiled_surface_compose.dart';
 import 'playback_cache_budget.dart';
 
+/// One cached layer-frame render: the image plus the CANVAS-SPACE rect it
+/// covers ([worldRect] == the canvas rect unless the cel has pasteboard
+/// tiles, which grow the extent so the editing stack can show them).
+class LayerFrameImage {
+  const LayerFrameImage({required this.image, required this.worldRect});
+
+  final ui.Image image;
+  final ui.Rect worldRect;
+}
+
 class _LayerFrameImageEntry {
   _LayerFrameImageEntry({
-    required this.image,
+    required this.positioned,
     required this.sourceRevision,
     required this.canvasSize,
     required this.lastUsed,
   });
 
-  final ui.Image image;
+  /// The stable per-entry wrapper — cache hits return the SAME instance,
+  /// so `identical` remains a valid hit oracle for consumers and tests.
+  final LayerFrameImage positioned;
   final int sourceRevision;
   final CanvasSize canvasSize;
   int lastUsed;
+
+  ui.Image get image => positioned.image;
 }
 
 /// Level-1 playback cache: one GPU [ui.Image] per (layer frame, quality),
@@ -44,7 +58,7 @@ class LayerFrameImageCache {
 
   /// The cached image when it still matches the frame's current source
   /// revision and [canvasSize]; `null` on miss or staleness.
-  ui.Image? validImageOrNull(
+  LayerFrameImage? validImageOrNull(
     BrushFrameKey key,
     PlaybackQuality quality, {
     required CanvasSize canvasSize,
@@ -56,15 +70,15 @@ class LayerFrameImageCache {
       return null;
     }
     entry.lastUsed = ++_useCounter;
-    return entry.image;
+    return entry.positioned;
   }
 
   /// Returns a valid image, rebuilding it when missing or stale. `null` when
   /// the frame has no drawn content — or, with [shouldAbort] (the warm path,
   /// R13-4), when the build was abandoned mid-way: aborts cache nothing and
   /// the abort checks bracket the two big slices (the display-cache replay
-  /// and each tile decode via [composeTiledSurfaceImage]).
-  Future<ui.Image?> prepare({
+  /// and each tile decode via [composePositionedSurfaceImage]).
+  Future<LayerFrameImage?> prepare({
     required BrushFrameKey key,
     required CanvasSize canvasSize,
     required PlaybackQuality quality,
@@ -96,33 +110,48 @@ class LayerFrameImageCache {
       canvasSize: canvasSize,
     ).prepareFramePreview(key).previewSurface;
 
-    // Per-tile GPU compose: the editing canvas keeps the on-screen frame's
-    // tiles decoded in the shared cache, so the post-stroke rebuild draws
-    // existing tile images instead of assembling + uploading the whole
-    // canvas — cost follows the CHANGED tiles, not the canvas size.
-    var image = await composeTiledSurfaceImage(
+    // Per-tile GPU compose over the CONTENT extent (canvas rect grown by
+    // any pasteboard tiles): the editing canvas keeps the on-screen
+    // frame's tiles decoded in the shared cache, so the post-stroke
+    // rebuild draws existing tile images instead of assembling + uploading
+    // the whole canvas — cost follows the CHANGED tiles, not the canvas.
+    var positioned = await composePositionedSurfaceImage(
       preview,
       reuse: BitmapTileImageCache.instance,
       shouldAbort: shouldAbort,
     );
-    if (image == null) {
+    if (positioned == null) {
       return null;
     }
     if (quality != PlaybackQuality.full) {
-      final scaled = scaledCanvasSize(canvasSize, quality);
-      final downscaled = await _downscale(image, scaled);
-      image.dispose();
-      image = downscaled;
+      final scale =
+          scaledCanvasSize(canvasSize, quality).width / canvasSize.width;
+      final downscaled = await _downscale(
+        positioned.image,
+        width: (positioned.worldRect.width * scale).round().clamp(1, 1 << 24),
+        height: (positioned.worldRect.height * scale).round().clamp(1, 1 << 24),
+      );
+      positioned.image.dispose();
+      // The worldRect stays CANVAS-SPACE — consumers map src→worldRect,
+      // so the raster resolution is free to differ.
+      positioned = PositionedSurfaceImage(
+        image: downscaled,
+        worldRect: positioned.worldRect,
+      );
     }
 
     _dropEntry((key, quality));
+    final result = LayerFrameImage(
+      image: positioned.image,
+      worldRect: positioned.worldRect,
+    );
     _entries[(key, quality)] = _LayerFrameImageEntry(
-      image: image,
+      positioned: result,
       sourceRevision: revision,
       canvasSize: canvasSize,
       lastUsed: ++_useCounter,
     );
-    return image;
+    return result;
   }
 
   /// Synchronous fast path for the editing canvas's layer-switch handoff:
@@ -130,7 +159,7 @@ class LayerFrameImageCache {
   /// tiles already decoded in the shared tile cache (the just-deactivated
   /// on-screen frame's tiles always are). `null` means the caller must
   /// fall back to [prepare].
-  ui.Image? prepareSyncOrNull({
+  LayerFrameImage? prepareSyncOrNull({
     required BrushFrameKey key,
     required CanvasSize canvasSize,
     required PlaybackQuality quality,
@@ -156,22 +185,26 @@ class LayerFrameImageCache {
         canvasSize: canvasSize,
       ).prepareFramePreview(key).previewSurface,
     );
-    final image = composeTiledSurfaceImageSyncOrNull(
+    final positioned = composePositionedSurfaceImageSyncOrNull(
       preview,
       reuse: BitmapTileImageCache.instance,
     );
-    if (image == null) {
+    if (positioned == null) {
       return null;
     }
 
     _dropEntry((key, quality));
+    final result = LayerFrameImage(
+      image: positioned.image,
+      worldRect: positioned.worldRect,
+    );
     _entries[(key, quality)] = _LayerFrameImageEntry(
-      image: image,
+      positioned: result,
       sourceRevision: revision,
       canvasSize: canvasSize,
       lastUsed: ++_useCounter,
     );
-    return image;
+    return result;
   }
 
   /// Eagerly drops every quality of one layer frame (sink-event eviction).
@@ -224,18 +257,22 @@ class LayerFrameImageCache {
     }
   }
 
-  Future<ui.Image> _downscale(ui.Image source, CanvasSize target) async {
+  Future<ui.Image> _downscale(
+    ui.Image source, {
+    required int width,
+    required int height,
+  }) async {
     final recorder = ui.PictureRecorder();
     final canvas = ui.Canvas(recorder);
     canvas.drawImageRect(
       source,
       ui.Rect.fromLTWH(0, 0, source.width.toDouble(), source.height.toDouble()),
-      ui.Rect.fromLTWH(0, 0, target.width.toDouble(), target.height.toDouble()),
+      ui.Rect.fromLTWH(0, 0, width.toDouble(), height.toDouble()),
       ui.Paint()..filterQuality = ui.FilterQuality.medium,
     );
     final picture = recorder.endRecording();
     try {
-      return await picture.toImage(target.width, target.height);
+      return await picture.toImage(width, height);
     } finally {
       picture.dispose();
     }

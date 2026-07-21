@@ -18,6 +18,7 @@ import 'canvas/viewport_canvas_transform.dart';
 import 'brush/main_canvas_brush_host.dart';
 import 'camera/camera_frame_overlay.dart';
 import 'canvas/canvas_layer_stack_view.dart';
+import 'canvas/pasteboard_dim_overlay.dart';
 import 'canvas/layer_pose_paint.dart';
 import 'canvas/layer_position_gizmo.dart';
 import 'editor_session_manager.dart';
@@ -480,12 +481,12 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
               // keeps the CAMERA overlay only — the preview is the current view
               // moving through time, so the frame stays visible and rides the
               // cursor.
-              viewportOverlayBuilder:
-                  (showCameraOverlay ||
-                          showAboveLayers ||
-                          showPositionGizmo ||
-                          showFadeWash) &&
-                      !isPlaybackActive
+              // Mounted whenever not in playback: even with no above
+              // layers/camera/gizmo, the pasteboard dim ring must sit
+              // above the WHOLE layer stack (below + active + above show
+              // off-canvas content now — a per-painter ring would stack
+              // alpha).
+              viewportOverlayBuilder: !isPlaybackActive
                   ? (context, viewport) => Stack(
                       children: [
                         if (showAboveLayers)
@@ -504,6 +505,15 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
                               viewport: viewport,
                             ),
                           ),
+                        Positioned.fill(
+                          // The pasteboard scrim — above all artwork,
+                          // below the chrome (fade wash, camera frame,
+                          // gizmo).
+                          child: PasteboardDimOverlay(
+                            canvasSize: canvasSize,
+                            viewport: viewport,
+                          ),
+                        ),
                         if (showFadeWash)
                           Positioned.fill(
                             // The cut fade as a wash of the fade target color

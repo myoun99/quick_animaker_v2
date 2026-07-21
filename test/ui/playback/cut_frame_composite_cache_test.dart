@@ -1,3 +1,6 @@
+import 'dart:typed_data';
+import 'dart:ui' as ui;
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:quick_animaker_v2/src/models/brush_dab.dart';
 import 'package:quick_animaker_v2/src/models/brush_frame_key.dart';
@@ -119,6 +122,61 @@ void main() {
       // Content addressing: two index entries, one stored image.
       expect(cache.estimatedBytes, 8 * 8 * 4);
       cache.dispose();
+    });
+  });
+
+  testWidgets('pasteboard content stays OUT of the composite: adding an '
+      'off-canvas stroke leaves the canvas-cropped bytes identical', (
+    tester,
+  ) async {
+    await tester.runAsync(() async {
+      Future<Uint8List> compositeBytes(BrushFrameStore store) async {
+        final cache = cacheFor(store);
+        final image = await cache.prepareComposite(
+          cut: cut(),
+          frameIndex: 0,
+          quality: PlaybackQuality.full,
+        );
+        final data = await image.toByteData(
+          format: ui.ImageByteFormat.rawRgba,
+        );
+        cache.dispose();
+        return data!.buffer.asUint8List(
+          data.offsetInBytes,
+          data.lengthInBytes,
+        );
+      }
+
+      final (plainStore, _) = storeWithStroke();
+      final reference = await compositeBytes(plainStore);
+
+      final (pasteboardStore, coordinator) = storeWithStroke();
+      // A stroke fully OFF the canvas (8×8 canvas → dab at (-2, -2)
+      // paints only negative coords).
+      coordinator.commitSourceStroke(
+        sourceDabs: [
+          BrushDab(
+            center: CanvasPoint(x: -2, y: -2),
+            color: 0xFF00FF00,
+            size: 2,
+            opacity: 1,
+            flow: 1,
+            hardness: 1,
+            tipShape: BrushTipShape.round,
+            pressure: 1,
+            sequence: 0,
+          ),
+        ],
+      );
+      final withPasteboard = await compositeBytes(pasteboardStore);
+
+      expect(
+        withPasteboard,
+        reference,
+        reason:
+            'the composite rasters at canvas size — off-canvas artwork '
+            'must neither leak in nor shift the on-canvas pixels',
+      );
     });
   });
 

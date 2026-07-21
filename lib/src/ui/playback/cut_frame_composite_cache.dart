@@ -212,13 +212,39 @@ class CutFrameCompositeCache {
           rasterScale: raster.width / cut.canvasSize.width,
         );
       }
-      canvas.drawImage(
-        layerImage,
-        ui.Offset.zero,
-        ui.Paint()
-          ..filterQuality = ui.FilterQuality.low
-          ..color = ui.Color.fromRGBO(0, 0, 0, layer.opacity),
-      );
+      final layerPaint = ui.Paint()
+        ..filterQuality = ui.FilterQuality.low
+        ..color = ui.Color.fromRGBO(0, 0, 0, layer.opacity);
+      final scale = raster.width / cut.canvasSize.width;
+      final worldRect = layerImage.worldRect;
+      if (worldRect.left == 0 &&
+          worldRect.top == 0 &&
+          layerImage.image.width == (worldRect.width * scale).round() &&
+          layerImage.image.height == (worldRect.height * scale).round()) {
+        // Canvas-extent image at this raster's resolution — the exact
+        // legacy draw (bytes pinned by the composite parity suites).
+        canvas.drawImage(layerImage.image, ui.Offset.zero, layerPaint);
+      } else {
+        // Pasteboard-extent image: map src onto its world rect (raster
+        // scale applied). The canvas-sized toImage below crops the
+        // off-canvas remainder, so playback/export stay stage-only.
+        canvas.drawImageRect(
+          layerImage.image,
+          ui.Rect.fromLTWH(
+            0,
+            0,
+            layerImage.image.width.toDouble(),
+            layerImage.image.height.toDouble(),
+          ),
+          ui.Rect.fromLTWH(
+            worldRect.left * scale,
+            worldRect.top * scale,
+            worldRect.width * scale,
+            worldRect.height * scale,
+          ),
+          layerPaint,
+        );
+      }
       if (layerPose != null) {
         canvas.restore();
       }
