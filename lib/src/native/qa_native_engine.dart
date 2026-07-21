@@ -36,7 +36,9 @@ class QaNativeEngine {
     this._gridRasterTile,
   ) : _spec = calloc<QaDabSpecStruct>();
 
-  static const int _abiVersion = 17;
+  // v18: AUDIO-PRO R1 extended the AUDIO clip struct; the raster surface
+  // is unchanged, but the version is one number for the whole binary.
+  static const int _abiVersion = 18;
 
   /// R25-③ batched fill compose: packs compose-tile items + their
   /// ordered layer blends into grow-only native arrays and fans the
