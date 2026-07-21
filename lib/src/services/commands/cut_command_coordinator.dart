@@ -32,9 +32,12 @@ import '../project_lookup.dart';
 import '../project_repository.dart';
 import 'cut_command_input_planner.dart';
 import 'create_cut_command.dart';
+import 'create_linked_cut_command.dart';
 import 'delete_cut_command.dart';
 import 'delete_layer_command.dart';
 import 'duplicate_cut_command.dart';
+import 'link_duplicate_layer_command.dart';
+import 'unlink_layer_command.dart';
 import 'paste_layer_command.dart';
 import 'rename_cut_command.dart';
 import 'update_cut_durations_command.dart';
@@ -353,6 +356,93 @@ class CutCommandCoordinator {
         cutId: cutId,
         layerId: layerId,
         name: trimmedName,
+      ),
+    );
+  }
+
+  /// 겸용컷 생성 (L2): a new cut whose drawing layers share the source's
+  /// cel banks with EMPTY timelines — the bank re-exposes to a new
+  /// rhythm. One undo step; the new cut becomes active.
+  void createLinkedCut({required CutId sourceCutId, String? name}) {
+    final project = repository.requireProject();
+    final sourceCut = requireCut(project, sourceCutId);
+    final plan = planCreateLinkedCutCommandInput(
+      project: project,
+      sourceCut: sourceCut,
+    );
+
+    historyManager.execute(
+      CreateLinkedCutCommand(
+        repository: repository,
+        editingSession: editingSession,
+        sourceCutId: sourceCutId,
+        newCutId: plan.newCutId,
+        newName: name ?? nextNumericCutName(project),
+        layerIdMap: plan.layerIdMap,
+        folderIdMap: plan.folderIdMap,
+        newGroupIdBySource: plan.newGroupIdBySource,
+      ),
+    );
+  }
+
+  /// 독립시키기 (L2): removes [layerId]'s whole attach group from its
+  /// link groups and forks the shared pixels into the group's own cels.
+  /// No-op when nothing in the group is linked. One undo step.
+  void unlinkLayer({required CutId cutId, required LayerId layerId}) {
+    final store = brushFrameStore;
+    if (store == null) {
+      throw StateError('unlinkLayer needs the brush frame store.');
+    }
+    final project = repository.requireProject();
+    final cut = requireCut(project, cutId);
+    final source = requireLayer(project, cutId: cutId, layerId: layerId);
+    final baseId = source.attachedToLayerId ?? source.id;
+    final endIndex = attachedGroupEndIndex(baseId, cut.layers);
+    final baseIndex = cut.layers.indexWhere((layer) => layer.id == baseId);
+    final anyLinked = cut.layers
+        .sublist(baseIndex, endIndex)
+        .any(
+          (member) =>
+              project.linkRegistry.groupOf(
+                cutId: cutId,
+                layerId: member.id,
+              ) !=
+              null,
+        );
+    if (!anyLinked) {
+      return;
+    }
+
+    historyManager.execute(
+      UnlinkLayerCommand(
+        repository: repository,
+        brushFrameStore: store,
+        cutId: cutId,
+        sourceLayerId: layerId,
+      ),
+    );
+  }
+
+  /// 링크 복제 (L2): duplicates [layerId]'s whole attach group as a free
+  /// group sharing the originals' cel banks (same FrameIds — the store's
+  /// canonical resolution makes the pictures one). One undo step.
+  void linkDuplicateLayer({required CutId cutId, required LayerId layerId}) {
+    final project = repository.requireProject();
+    final cut = requireCut(project, cutId);
+    _requireLayer(cutId: cutId, layerId: layerId);
+    final plan = planLinkDuplicateLayerCommandInput(
+      project: project,
+      cut: cut,
+      sourceLayerId: layerId,
+    );
+
+    historyManager.execute(
+      LinkDuplicateLayerCommand(
+        repository: repository,
+        cutId: cutId,
+        sourceLayerId: layerId,
+        layerIdMap: plan.layerIdMap,
+        newGroupIdBySource: plan.newGroupIdBySource,
       ),
     );
   }

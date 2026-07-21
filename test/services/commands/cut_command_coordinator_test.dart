@@ -2,6 +2,12 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:quick_animaker_v2/src/controllers/default_project_helpers.dart';
 import 'package:quick_animaker_v2/src/controllers/editing_session_state.dart';
 import 'package:quick_animaker_v2/src/models/audio_clip.dart';
+import 'package:quick_animaker_v2/src/models/bitmap_surface.dart';
+import 'package:quick_animaker_v2/src/models/bitmap_tile.dart';
+import 'package:quick_animaker_v2/src/models/brush_frame_key.dart';
+import 'package:quick_animaker_v2/src/models/tile_coord.dart';
+import 'package:quick_animaker_v2/src/services/brush_frame_store.dart';
+import 'package:quick_animaker_v2/src/services/commands/update_layer_timeline_command.dart';
 import 'package:quick_animaker_v2/src/models/camera_instruction.dart';
 import 'package:quick_animaker_v2/src/models/canvas_size.dart';
 import 'package:quick_animaker_v2/src/models/cut.dart';
@@ -78,6 +84,510 @@ void main() {
       expect(fixture.editingSession.activeCutId, const CutId('cut-1'));
       expect(fixture.historyManager.undoCount, 1);
       expect(fixture.historyManager.redoCount, 0);
+    });
+
+    group('linkDuplicateLayer (L2)', () {
+      Cut linkFixtureCut() => _cut(
+        id: 'cut-1',
+        layers: [
+          _layer(id: 'base', frames: [_frame(id: 'frame-a')]).copyWith(
+            timeline: {
+              0: TimelineExposure.drawing(const FrameId('frame-a'), length: 1),
+            },
+          ),
+          _layer(id: 'color').copyWith(
+            attachedToLayerId: const LayerId('base'),
+          ),
+          _layer(id: 'unrelated'),
+        ],
+      );
+
+      test('duplicates the WHOLE attach group as a FREE group with the '
+          'same FrameIds and names, and registers link pairs', () {
+        final fixture = _fixture(
+          _project(
+            tracks: [
+              _track(id: 'track-1', name: 'V', cuts: [linkFixtureCut()]),
+            ],
+          ),
+          activeCutId: const CutId('cut-1'),
+        );
+
+        fixture.coordinator.linkDuplicateLayer(
+          cutId: const CutId('cut-1'),
+          // Selecting the ATTACH member resolves to the whole group.
+          layerId: const LayerId('color'),
+        );
+
+        final cut = _cutById(fixture.project, const CutId('cut-1'));
+        expect(cut.layers.map((layer) => layer.id.value), [
+          'base',
+          'color',
+          'layer-1',
+          'layer-2',
+          'unrelated',
+        ]);
+        final baseCopy = cut.layers[2];
+        final colorCopy = cut.layers[3];
+        // Free group: the copy attaches internally, never to the source.
+        expect(baseCopy.attachedToLayerId, isNull);
+        expect(colorCopy.attachedToLayerId, baseCopy.id);
+        // Linked ⇒ same name, same FrameIds (the link mechanism).
+        expect(baseCopy.name, 'base');
+        expect(baseCopy.frames.single.id, const FrameId('frame-a'));
+        expect(
+          baseCopy.timeline[0]!.frameId,
+          const FrameId('frame-a'),
+          reason: 'the copied timeline exposes the SHARED cel',
+        );
+        // Registry: one pair per member.
+        final registry = fixture.project.linkRegistry;
+        expect(registry.groups, hasLength(2));
+        expect(
+          registry.useCountOf(
+            cutId: const CutId('cut-1'),
+            layerId: const LayerId('base'),
+          ),
+          2,
+        );
+        expect(
+          registry
+              .groupOf(cutId: const CutId('cut-1'), layerId: baseCopy.id)
+              ?.canonical
+              .layerId,
+          const LayerId('base'),
+          reason: 'the source stays canonical',
+        );
+
+        fixture.historyManager.undo();
+        expect(
+          _cutById(fixture.project, const CutId('cut-1')).layers.length,
+          3,
+        );
+        expect(fixture.project.linkRegistry.isEmpty, isTrue);
+
+        fixture.historyManager.redo();
+        expect(
+          _cutById(fixture.project, const CutId('cut-1')).layers.length,
+          5,
+        );
+        expect(fixture.project.linkRegistry.groups, hasLength(2));
+      });
+
+      test('createLinkedCut: the new cut links the drawing layers with '
+          'EMPTY timelines, fresh fixture rows, and registry pairs', () {
+        final fixture = _fixture(
+          _project(
+            tracks: [
+              _track(id: 'track-1', name: 'V', cuts: [linkFixtureCut()]),
+            ],
+          ),
+          activeCutId: const CutId('cut-1'),
+        );
+
+        fixture.coordinator.createLinkedCut(
+          sourceCutId: const CutId('cut-1'),
+          name: 'reuse',
+        );
+
+        final track = fixture.project.tracks.single;
+        expect(track.cuts.map((cut) => cut.name), ['Cut', 'reuse']);
+        final linkedCut = track.cuts[1];
+        expect(fixture.editingSession.activeCutId, linkedCut.id);
+
+        // Drawing layers linked (same FrameIds, same names), timelines
+        // EMPTY — the bank re-exposes to a new rhythm.
+        final animationCopies = linkedCut.layers
+            .where((layer) => layer.kind == LayerKind.animation)
+            .toList();
+        // EVERY drawing layer links — 겸용컷 = the whole picture stack.
+        expect(animationCopies.map((layer) => layer.name), [
+          'base',
+          'color',
+          'unrelated',
+        ]);
+        expect(
+          animationCopies.first.frames.single.id,
+          const FrameId('frame-a'),
+        );
+        expect(animationCopies.first.timeline, isEmpty);
+        expect(
+          animationCopies[1].attachedToLayerId,
+          animationCopies.first.id,
+          reason: 'the attach glue re-targets inside the linked cut',
+        );
+        // Fresh fixture rows exist (per-use SE/instruction floors).
+        expect(
+          linkedCut.layers.any(
+            (layer) => layer.kind == LayerKind.instruction,
+          ),
+          isTrue,
+        );
+
+        final registry = fixture.project.linkRegistry;
+        expect(registry.groups, hasLength(3));
+        expect(
+          registry
+              .groupOf(
+                cutId: linkedCut.id,
+                layerId: animationCopies.first.id,
+              )
+              ?.canonical
+              .cutId,
+          const CutId('cut-1'),
+          reason: 'the source cut stays canonical',
+        );
+
+        fixture.historyManager.undo();
+        expect(fixture.project.tracks.single.cuts, hasLength(1));
+        expect(fixture.project.linkRegistry.isEmpty, isTrue);
+        expect(
+          fixture.editingSession.activeCutId,
+          const CutId('cut-1'),
+        );
+
+        fixture.historyManager.redo();
+        expect(fixture.project.tracks.single.cuts, hasLength(2));
+        expect(fixture.project.linkRegistry.groups, hasLength(3));
+      });
+
+      test('unlinkLayer FORKS the pixels and leaves the group; undo '
+          're-links back to the shared cel', () {
+        final fixture = _fixture(
+          _project(
+            tracks: [
+              _track(id: 'track-1', name: 'V', cuts: [linkFixtureCut()]),
+            ],
+          ),
+          activeCutId: const CutId('cut-1'),
+        );
+        final store = BrushFrameStore()
+          ..setLinkResolver(
+            (key) =>
+                fixture.repository.currentProject?.linkRegistry
+                    .canonicalCelKey(key) ??
+                key,
+          );
+        final coordinator = CutCommandCoordinator(
+          repository: fixture.repository,
+          editingSession: fixture.editingSession,
+          historyManager: fixture.historyManager,
+          brushFrameStore: store,
+        );
+
+        coordinator.linkDuplicateLayer(
+          cutId: const CutId('cut-1'),
+          layerId: const LayerId('base'),
+        );
+        final copyId = fixture.project.linkRegistry.groups
+            .firstWhere(
+              (group) => group.contains(
+                cutId: const CutId('cut-1'),
+                layerId: const LayerId('base'),
+              ),
+            )
+            .members
+            .last
+            .layerId;
+
+        BrushFrameKey celKey(LayerId layerId) => BrushFrameKey(
+          projectId: const ProjectId('project-1'),
+          trackId: const TrackId('track-1'),
+          cutId: const CutId('cut-1'),
+          layerId: layerId,
+          frameId: const FrameId('frame-a'),
+        );
+        final ink = BitmapSurface(
+          canvasSize: const CanvasSize(width: 1280, height: 720),
+        ).putTile(
+          BitmapTile.blank(coord: TileCoord(x: 0, y: 0), size: 256),
+        );
+        // Draw through the COPY: lands under the canonical (base) key.
+        store.storeBakedSurface(celKey(copyId), ink);
+        expect(
+          identical(
+            store.bakedSurfaceOrNull(celKey(const LayerId('base'))),
+            store.bakedSurfaceOrNull(celKey(copyId)),
+          ),
+          isTrue,
+        );
+
+        coordinator.unlinkLayer(
+          cutId: const CutId('cut-1'),
+          layerId: copyId,
+        );
+
+        // Group dissolved (singleton leftovers are meaningless).
+        expect(
+          fixture.project.linkRegistry.groupOf(
+            cutId: const CutId('cut-1'),
+            layerId: const LayerId('base'),
+          ),
+          isNull,
+        );
+        // The copy owns its cel now: editing the ORIGINAL no longer
+        // touches it.
+        final repainted = BitmapSurface(
+          canvasSize: const CanvasSize(width: 1280, height: 720),
+        ).putTile(
+          BitmapTile.blank(coord: TileCoord(x: 1, y: 0), size: 256),
+        );
+        store.storeBakedSurface(celKey(const LayerId('base')), repainted);
+        expect(
+          identical(store.bakedSurfaceOrNull(celKey(copyId)), ink),
+          isTrue,
+          reason: 'the fork keeps the shared picture as its own',
+        );
+
+        // Undo (of the unlink, after undoing the base repaint is out of
+        // scope here — the store edit above is not a history command):
+        fixture.historyManager.undo();
+        // BOTH pairs restore — the unlink unit is the whole attach group
+        // (base pair AND color pair).
+        expect(fixture.project.linkRegistry.groups, hasLength(2));
+        expect(
+          identical(
+            store.bakedSurfaceOrNull(celKey(copyId)),
+            store.bakedSurfaceOrNull(celKey(const LayerId('base'))),
+          ),
+          isTrue,
+          reason: 're-linked: the member reads the canonical cel again',
+        );
+      });
+
+      test('renaming a linked layer PROPAGATES to every member — the link '
+          'survives and "linked means same name" stays true', () {
+        final fixture = _fixture(
+          _project(
+            tracks: [
+              _track(id: 'track-1', name: 'V', cuts: [linkFixtureCut()]),
+            ],
+          ),
+          activeCutId: const CutId('cut-1'),
+        );
+
+        fixture.coordinator.linkDuplicateLayer(
+          cutId: const CutId('cut-1'),
+          layerId: const LayerId('base'),
+        );
+        fixture.coordinator.renameLayer(
+          cutId: const CutId('cut-1'),
+          layerId: const LayerId('base'),
+          name: 'flower',
+        );
+
+        final cut = _cutById(fixture.project, const CutId('cut-1'));
+        final baseNames = [
+          for (final layer in cut.layers)
+            if (layer.id == const LayerId('base') ||
+                layer.id == const LayerId('layer-1'))
+              layer.name,
+        ];
+        expect(baseNames, ['flower', 'flower']);
+        expect(
+          fixture.project.linkRegistry.useCountOf(
+            cutId: const CutId('cut-1'),
+            layerId: const LayerId('base'),
+          ),
+          2,
+          reason: 'renaming never breaks the link',
+        );
+
+        fixture.historyManager.undo();
+        final reverted = _cutById(fixture.project, const CutId('cut-1'));
+        expect(
+          [
+            for (final layer in reverted.layers)
+              if (layer.id == const LayerId('base') ||
+                  layer.id == const LayerId('layer-1'))
+                layer.name,
+          ],
+          ['base', 'base'],
+          reason: 'one undo restores every member',
+        );
+      });
+
+      test('a frame-bank edit MIRRORS onto linked members (adopt the '
+          'bank, sweep dead exposures); lane edits stay local', () {
+        final fixture = _fixture(
+          _project(
+            tracks: [
+              _track(id: 'track-1', name: 'V', cuts: [linkFixtureCut()]),
+            ],
+          ),
+          activeCutId: const CutId('cut-1'),
+        );
+        fixture.coordinator.createLinkedCut(
+          sourceCutId: const CutId('cut-1'),
+          name: 'reuse',
+        );
+        final linkedCut = fixture.project.tracks.single.cuts[1];
+        final memberId = fixture.project.linkRegistry
+            .groupOf(cutId: const CutId('cut-1'), layerId: const LayerId('base'))!
+            .members
+            .last
+            .layerId;
+
+        // The member exposes the shared cel on ITS own lane.
+        final member = fixture.project.tracks.single.cuts[1].layers
+            .firstWhere((layer) => layer.id == memberId);
+        fixture.repository.replaceLayer(
+          layer: member.copyWith(
+            timeline: {
+              0: TimelineExposure.drawing(const FrameId('frame-a'), length: 2),
+            },
+          ),
+        );
+
+        // 1. RENAME the cel in the SOURCE bank → the member's bank
+        //    follows; its lane stays untouched.
+        final source = _cutById(
+          fixture.project,
+          const CutId('cut-1'),
+        ).layers.firstWhere((layer) => layer.id == const LayerId('base'));
+        fixture.historyManager.execute(
+          UpdateLayerTimelineCommand(
+            repository: fixture.repository,
+            before: source,
+            after: source.copyWith(
+              frames: [source.frames.single.copyWith(name: 'mouth-A')],
+            ),
+          ),
+        );
+
+        Layer memberNow() => _cutById(fixture.project, linkedCut.id).layers
+            .firstWhere((layer) => layer.id == memberId);
+        expect(memberNow().frames.single.name, 'mouth-A');
+        expect(memberNow().timeline[0]!.frameId, const FrameId('frame-a'));
+
+        // 2. REMOVE the cel from the source bank → it ceases to exist
+        //    everywhere; the member's dead exposure sweeps.
+        final renamedSource = _cutById(
+          fixture.project,
+          const CutId('cut-1'),
+        ).layers.firstWhere((layer) => layer.id == const LayerId('base'));
+        fixture.historyManager.execute(
+          UpdateLayerTimelineCommand(
+            repository: fixture.repository,
+            before: renamedSource,
+            after: renamedSource.copyWith(frames: [], timeline: const {}),
+          ),
+        );
+        expect(memberNow().frames, isEmpty);
+        expect(memberNow().timeline, isEmpty);
+
+        // One undo per step restores every member exactly.
+        fixture.historyManager.undo();
+        expect(memberNow().frames.single.name, 'mouth-A');
+        expect(memberNow().timeline[0]!.frameId, const FrameId('frame-a'));
+        fixture.historyManager.undo();
+        expect(memberNow().frames.single.name, isNull);
+      });
+
+      test('deleting a linked layer deletes EVERY member and dissolves '
+          'the group; one undo reinserts them all', () {
+        final fixture = _fixture(
+          _project(
+            tracks: [
+              _track(id: 'track-1', name: 'V', cuts: [linkFixtureCut()]),
+            ],
+          ),
+          activeCutId: const CutId('cut-1'),
+        );
+        fixture.coordinator.createLinkedCut(
+          sourceCutId: const CutId('cut-1'),
+          name: 'reuse',
+        );
+        final linkedCutId = fixture.project.tracks.single.cuts[1].id;
+        final memberId = fixture.project.linkRegistry
+            .groupOf(
+              cutId: const CutId('cut-1'),
+              layerId: const LayerId('unrelated'),
+            )!
+            .members
+            .last
+            .layerId;
+
+        fixture.coordinator.deleteLayer(
+          cutId: const CutId('cut-1'),
+          layerId: const LayerId('unrelated'),
+        );
+
+        expect(
+          _cutById(fixture.project, const CutId('cut-1')).layers.any(
+            (layer) => layer.id == const LayerId('unrelated'),
+          ),
+          isFalse,
+        );
+        expect(
+          _cutById(fixture.project, linkedCutId).layers.any(
+            (layer) => layer.id == memberId,
+          ),
+          isFalse,
+          reason: 'the deletion propagates to the linked cut',
+        );
+        expect(
+          fixture.project.linkRegistry.groupOf(
+            cutId: linkedCutId,
+            layerId: memberId,
+          ),
+          isNull,
+          reason: 'the emptied group dissolves',
+        );
+
+        fixture.historyManager.undo();
+        expect(
+          _cutById(fixture.project, const CutId('cut-1')).layers.any(
+            (layer) => layer.id == const LayerId('unrelated'),
+          ),
+          isTrue,
+        );
+        expect(
+          _cutById(fixture.project, linkedCutId).layers.any(
+            (layer) => layer.id == memberId,
+          ),
+          isTrue,
+        );
+        expect(
+          fixture.project.linkRegistry.useCountOf(
+            cutId: const CutId('cut-1'),
+            layerId: const LayerId('unrelated'),
+          ),
+          2,
+        );
+      });
+
+      test('link-duplicating an already-linked layer EXTENDS its group '
+          'instead of nesting a new one', () {
+        final fixture = _fixture(
+          _project(
+            tracks: [
+              _track(id: 'track-1', name: 'V', cuts: [linkFixtureCut()]),
+            ],
+          ),
+          activeCutId: const CutId('cut-1'),
+        );
+
+        fixture.coordinator.linkDuplicateLayer(
+          cutId: const CutId('cut-1'),
+          layerId: const LayerId('base'),
+        );
+        fixture.coordinator.linkDuplicateLayer(
+          cutId: const CutId('cut-1'),
+          layerId: const LayerId('layer-1'),
+        );
+
+        final registry = fixture.project.linkRegistry;
+        expect(registry.groups, hasLength(2));
+        expect(
+          registry.useCountOf(
+            cutId: const CutId('cut-1'),
+            layerId: const LayerId('base'),
+          ),
+          3,
+          reason: 'base, first copy and second copy share one group',
+        );
+      });
     });
 
     test(
