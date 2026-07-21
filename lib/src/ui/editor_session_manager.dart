@@ -111,6 +111,7 @@ import '../services/commands/update_media_assets_command.dart';
 import '../models/se_take_placement.dart';
 import '../services/audio/audio_peaks_extractor.dart' show AudioPeaks;
 import 'playback/audio_recorder.dart';
+import 'playback/voice_take_processing.dart';
 import '../services/audio/audio_conform_runner.dart' show runConformHere;
 import '../services/commands/track_se_layer_commands.dart';
 import '../services/history_manager.dart';
@@ -858,6 +859,7 @@ class EditorSessionManager extends ChangeNotifier {
     isVoiceRecording.dispose();
     voiceRecordingNotice.dispose();
     voiceRecordPreviewLane.dispose();
+    voiceRecordClipLit.dispose();
     audioPlaybackSync.dispose();
     audioScrubber.dispose();
     audioDeviceTransport.dispose();
@@ -3307,6 +3309,20 @@ class EditorSessionManager extends ChangeNotifier {
   bool _voiceRecordStartedRoll = false;
   String? _voiceRecordTempDirectory;
 
+  /// Capture-chain settings SNAPSHOT at arm time (REC1-D): a take records
+  /// with the gain/fold it started under; mid-take settings edits apply
+  /// to the next one.
+  int _voiceRecordGainDb = 0;
+  VoiceInputChannelMode _voiceRecordChannelMode = VoiceInputChannelMode.device;
+  bool _lastVoiceTakeClipped = false;
+
+  /// The transport's clip light (REC1-D): latches on the first post-gain
+  /// sample at the ceiling and stays lit for the rest of the take — the
+  /// performer sees "that pass clipped" without reading a meter. Always
+  /// on duty (the toast and block marker sit behind the notice toggle;
+  /// this does not).
+  final ValueNotifier<bool> voiceRecordClipLit = ValueNotifier<bool>(false);
+
   /// The SE lane whose playback yields to the microphone while a take
   /// rolls (the DAW armed-track rule); null when not recording.
   LayerId? get voiceRecordingMutedLaneId =>
@@ -3350,27 +3366,59 @@ class EditorSessionManager extends ChangeNotifier {
 
   /// Folds one captured chunk into the live envelope (the recorder's tap;
   /// split out so tests can feed made chunks).
+  ///
+  /// POST-chain (REC1-D): the channel fold picks what the take will
+  /// keep, the gain scales it — the envelope and the clip light both
+  /// show what lands in the file, which is the whole point of baking.
   @visibleForTesting
   void debugIngestVoiceRecordChunk(Float32List interleaved, int channels) {
     final perBucket = _voiceRecordSamplesPerBucket;
     if (channels <= 0 || perBucket <= 0) {
       return;
     }
+    final factor = micGainFactor(_voiceRecordGainDb);
+    final mode = channels >= 2
+        ? _voiceRecordChannelMode
+        : VoiceInputChannelMode.device;
     final frames = interleaved.length ~/ channels;
     for (var frame = 0; frame < frames; frame += 1) {
       final base = frame * channels;
-      for (var channel = 0; channel < channels; channel += 1) {
-        final value = interleaved[base + channel];
-        final magnitude = value < 0 ? -value : value;
-        if (magnitude > _voiceRecordBucketMax) {
-          _voiceRecordBucketMax = magnitude;
-        }
+      double magnitude;
+      switch (mode) {
+        case VoiceInputChannelMode.monoMix:
+          var sum = 0.0;
+          for (var channel = 0; channel < channels; channel += 1) {
+            sum += interleaved[base + channel];
+          }
+          final mixed = sum / channels;
+          magnitude = mixed < 0 ? -mixed : mixed;
+        case VoiceInputChannelMode.left:
+          final value = interleaved[base];
+          magnitude = value < 0 ? -value : value;
+        case VoiceInputChannelMode.right:
+          final value = interleaved[base + 1];
+          magnitude = value < 0 ? -value : value;
+        case VoiceInputChannelMode.device:
+          magnitude = 0;
+          for (var channel = 0; channel < channels; channel += 1) {
+            final value = interleaved[base + channel];
+            final size = value < 0 ? -value : value;
+            if (size > magnitude) {
+              magnitude = size;
+            }
+          }
+      }
+      final scaled = magnitude * factor;
+      if (scaled >= voiceClipThreshold && !voiceRecordClipLit.value) {
+        voiceRecordClipLit.value = true;
+      }
+      final clamped = scaled > 1.0 ? 1.0 : scaled;
+      if (clamped > _voiceRecordBucketMax) {
+        _voiceRecordBucketMax = clamped;
       }
       _voiceRecordBucketFill += 1;
       if (_voiceRecordBucketFill == perBucket) {
-        _voiceRecordPeakBuckets.add(
-          _voiceRecordBucketMax > 1.0 ? 1.0 : _voiceRecordBucketMax,
-        );
+        _voiceRecordPeakBuckets.add(_voiceRecordBucketMax);
         _voiceRecordBucketMax = 0;
         _voiceRecordBucketFill = 0;
       }
@@ -3435,6 +3483,7 @@ class EditorSessionManager extends ChangeNotifier {
     _voiceRecordBucketFill = 0;
     _voiceRecordSamplesPerBucket = 0;
     _voiceRecordLastPreviewLength = 0;
+    voiceRecordClipLit.value = false;
     if (voiceRecordPreviewLane.value != null) {
       voiceRecordPreviewLane.value = null;
     }
@@ -3531,6 +3580,14 @@ class EditorSessionManager extends ChangeNotifier {
         audioDeviceTransport.report.reportedLatencySamples +
         projectFrameRate.frameToSample(anchor - rollStart, rate);
     isVoiceRecording.value = true;
+    // Capture-chain snapshot (REC1-D): gain and channel fold ride the
+    // whole take; the clip light re-arms per take.
+    _voiceRecordGainDb = AudioSyncSettings.clampMicGainDb(
+      audioSyncSettings.value.micGainDb,
+    );
+    _voiceRecordChannelMode = audioSyncSettings.value.inputChannelMode;
+    _lastVoiceTakeClipped = false;
+    voiceRecordClipLit.value = false;
     // Live preview (REC1-C): the recorder's chunk tap feeds the growing
     // waveform; the playback frame channel drives the block preview at
     // frame boundaries — no session notify per tick (R12-B).
@@ -3593,6 +3650,8 @@ class EditorSessionManager extends ChangeNotifier {
       anchorFrame: _voiceRecordAnchorFrame,
       punchEndFrame: _voiceRecordPunchEndFrame,
       headTrimSamples: _voiceRecordHeadTrimSamples,
+      gainDb: _voiceRecordGainDb,
+      channelMode: _voiceRecordChannelMode,
     );
     if (!placed) {
       return uiStrings.recordPlacementFailed;
@@ -3602,6 +3661,9 @@ class EditorSessionManager extends ChangeNotifier {
         '{count}',
         '${recording.droppedFrames}',
       );
+    }
+    if (_lastVoiceTakeClipped && audioSyncSettings.value.clippingNotice) {
+      return uiStrings.recordTakeClipped;
     }
     return null;
   }
@@ -3617,6 +3679,8 @@ class EditorSessionManager extends ChangeNotifier {
     required int anchorFrame,
     int? punchEndFrame,
     int headTrimSamples = 0,
+    int gainDb = 0,
+    VoiceInputChannelMode channelMode = VoiceInputChannelMode.device,
   }) {
     final lane = laneId == null ? null : trackSeGlobalLayerById(laneId);
     if (lane == null ||
@@ -3633,12 +3697,23 @@ class EditorSessionManager extends ChangeNotifier {
       }
       samples = Float32List.sublistView(samples, trimFloats);
     }
+    // The capture chain (REC1-D): channel fold + baked gain, applied to
+    // the trimmed take — the file holds exactly what the meter showed.
+    final processed = processVoiceTake(
+      samples: samples,
+      channels: recording.channels,
+      gainDb: gainDb,
+      channelMode: channelMode,
+    );
+    samples = processed.samples;
+    final channels = processed.channels;
+    _lastVoiceTakeClipped = processed.clipped;
     // Whole frames covering the take, so the block window matches what
     // was actually said (min 1 — a sub-frame take still needs a cell).
     var lengthFrames = math.max(
       1,
       projectFrameRate.framesCoveringExactSeconds(
-        samples.length ~/ recording.channels,
+        samples.length ~/ channels,
         recording.sampleRate,
       ),
     );
@@ -3653,7 +3728,7 @@ class EditorSessionManager extends ChangeNotifier {
         // is context the performer heard, not part of the take.
         final windowFloats =
             projectFrameRate.frameToSample(window, recording.sampleRate) *
-            recording.channels;
+            channels;
         if (windowFloats > 0 && windowFloats < samples.length) {
           samples = Float32List.sublistView(samples, 0, windowFloats);
         }
@@ -3661,7 +3736,7 @@ class EditorSessionManager extends ChangeNotifier {
     }
     final wav = encodeConformWav(
       samples: samples,
-      channels: recording.channels,
+      channels: channels,
       sampleRate: recording.sampleRate,
     );
     final path = _writeRecordingWav(wav, laneName: lane.name);
@@ -3676,6 +3751,7 @@ class EditorSessionManager extends ChangeNotifier {
       filePath: path,
       takeFrameId: _mintFrameId(lane.id),
       newFrameId: () => _mintFrameId(lane.id),
+      takeClipped: processed.clipped,
     );
     if (plan == null) {
       return false;

@@ -56,6 +56,7 @@ class PlaybackTransportControls extends StatelessWidget {
     this.resolveMeterPeaks,
     this.isVoiceRecording,
     this.onToggleVoiceRecording,
+    this.voiceRecordClipLit,
     this.resolveStrings,
   });
 
@@ -72,6 +73,11 @@ class PlaybackTransportControls extends StatelessWidget {
   /// Works stopped (record a line cold) AND while playing (record along).
   final ValueListenable<bool>? isVoiceRecording;
   final VoidCallback? onToggleVoiceRecording;
+
+  /// The take's clip light (REC1-D): shown ONLY while recording, red once
+  /// any post-gain sample hit the ceiling — always on duty, unlike the
+  /// toast/marker which sit behind the notice toggle.
+  final ValueListenable<bool>? voiceRecordClipLit;
 
   /// The PROGRAM-language table for the mic tooltips; null keeps English
   /// (the incremental-coverage rule).
@@ -189,6 +195,28 @@ class PlaybackTransportControls extends StatelessWidget {
                     onPressed: onToggleVoiceRecording,
                   );
                 },
+              ),
+            if (isVoiceRecording != null && voiceRecordClipLit != null)
+              ValueListenableBuilder<bool>(
+                valueListenable: isVoiceRecording!,
+                builder: (context, recording, _) => !recording
+                    ? const SizedBox.shrink()
+                    : ValueListenableBuilder<bool>(
+                        valueListenable: voiceRecordClipLit!,
+                        builder: (context, lit, _) => Padding(
+                          padding: const EdgeInsets.only(left: 2, right: 2),
+                          child: Icon(
+                            Icons.circle,
+                            key: const ValueKey<String>(
+                              'playback-record-clip-light',
+                            ),
+                            size: 8,
+                            color: lit
+                                ? Theme.of(context).colorScheme.error
+                                : Theme.of(context).colorScheme.outlineVariant,
+                          ),
+                        ),
+                      ),
               ),
             PopupMenuButton<PlaybackQuality>(
               key: const ValueKey<String>('playback-quality-selector'),

@@ -65,6 +65,7 @@ class AudioClip {
     this.fadeOutFrames = 0,
     this.fadeCurve = AudioFadeCurve.linear,
     this.volumeKeys = const [],
+    this.clipped = false,
   }) : assert(offsetFrames >= 0, 'offsetFrames must be non-negative'),
        assert(gain >= 0, 'gain must be non-negative'),
        assert(fadeInFrames >= 0, 'fadeInFrames must be non-negative'),
@@ -103,6 +104,11 @@ class AudioClip {
   /// empty = unity.
   final List<AudioVolumeKey> volumeKeys;
 
+  /// A recorded take that hit the ceiling (REC1-D): the capture chain
+  /// detected digital clipping baked into this file. Display material —
+  /// the block's warning marker; playback ignores it.
+  final bool clipped;
+
   AudioClip copyWith({
     String? filePath,
     FrameId? frameId,
@@ -112,6 +118,7 @@ class AudioClip {
     int? fadeOutFrames,
     AudioFadeCurve? fadeCurve,
     List<AudioVolumeKey>? volumeKeys,
+    bool? clipped,
   }) {
     return AudioClip(
       filePath: filePath ?? this.filePath,
@@ -122,6 +129,7 @@ class AudioClip {
       fadeOutFrames: fadeOutFrames ?? this.fadeOutFrames,
       fadeCurve: fadeCurve ?? this.fadeCurve,
       volumeKeys: volumeKeys ?? this.volumeKeys,
+      clipped: clipped ?? this.clipped,
     );
   }
 
@@ -135,6 +143,7 @@ class AudioClip {
     if (fadeCurve != AudioFadeCurve.linear) 'fadeCurve': fadeCurve.name,
     if (volumeKeys.isNotEmpty)
       'volumeKeys': volumeKeys.map((key) => key.toJson()).toList(),
+    if (clipped) 'clipped': true,
   };
 
   factory AudioClip.fromJson(Map<String, dynamic> json) {
@@ -155,6 +164,7 @@ class AudioClip {
               for (final key in json['volumeKeys'] as List<dynamic>)
                 AudioVolumeKey.fromJson(key as Map<String, dynamic>),
             ],
+      clipped: json['clipped'] as bool? ?? false,
     );
   }
 
@@ -169,6 +179,7 @@ class AudioClip {
           other.fadeInFrames == fadeInFrames &&
           other.fadeOutFrames == fadeOutFrames &&
           other.fadeCurve == fadeCurve &&
+          other.clipped == clipped &&
           _keysEqual(other.volumeKeys, volumeKeys);
 
   static bool _keysEqual(List<AudioVolumeKey> a, List<AudioVolumeKey> b) {
@@ -192,6 +203,7 @@ class AudioClip {
     fadeInFrames,
     fadeOutFrames,
     fadeCurve,
+    clipped,
     Object.hashAll(volumeKeys),
   );
 
@@ -200,5 +212,6 @@ class AudioClip {
       'AudioClip(filePath: $filePath, frameId: $frameId, '
       'offsetFrames: $offsetFrames, gain: $gain, '
       'fadeInFrames: $fadeInFrames, fadeOutFrames: $fadeOutFrames, '
-      'fadeCurve: ${fadeCurve.name}, volumeKeys: $volumeKeys)';
+      'fadeCurve: ${fadeCurve.name}, volumeKeys: $volumeKeys, '
+      'clipped: $clipped)';
 }

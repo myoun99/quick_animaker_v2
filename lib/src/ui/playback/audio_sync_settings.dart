@@ -35,6 +35,9 @@ class AudioSyncSettings {
     this.unit = AvOffsetUnit.milliseconds,
     this.outputDeviceName,
     this.inputDeviceName,
+    this.micGainDb = 0,
+    this.inputChannelMode = VoiceInputChannelMode.device,
+    this.clippingNotice = false,
   });
 
   static const AudioSyncSettings defaults = AudioSyncSettings();
@@ -45,8 +48,27 @@ class AudioSyncSettings {
   static const int maxMilliseconds = 500;
   static const int maxFrames = 60;
 
+  /// The mic gain's honest range (REC1-D): +24 dB rescues a quiet
+  /// built-in mic; past that is noise amplification, not level.
+  static const int maxMicGainDb = 24;
+
   final int offset;
   final AvOffsetUnit unit;
+
+  /// Software input gain in dB, BAKED into the take at capture (the OBS
+  /// model, user decision): the meter shows post-gain, what you see is
+  /// what lands in the file. Fine adjustment afterwards stays the
+  /// non-destructive clip gain's job.
+  final int micGainDb;
+
+  /// Which capture channels a take keeps (REC1-D): an audio interface
+  /// with a mono mic on input 1 otherwise records one-sided stereo.
+  final VoiceInputChannelMode inputChannelMode;
+
+  /// Whether clipping surfaces beyond the transport light (stop toast +
+  /// block marker). Default OFF — an animator who does not care must not
+  /// see red corners all day (user decision).
+  final bool clippingNotice;
 
   /// The chosen output/input device, by NAME (AUDIO-PRO R4); null = the
   /// system default. Names, not indexes: indexes shuffle when hardware
@@ -62,6 +84,9 @@ class AudioSyncSettings {
     AvOffsetUnit? unit,
     Object? outputDeviceName = _unset,
     Object? inputDeviceName = _unset,
+    int? micGainDb,
+    VoiceInputChannelMode? inputChannelMode,
+    bool? clippingNotice,
   }) => AudioSyncSettings(
     offset: offset ?? this.offset,
     unit: unit ?? this.unit,
@@ -71,7 +96,13 @@ class AudioSyncSettings {
     inputDeviceName: identical(inputDeviceName, _unset)
         ? this.inputDeviceName
         : inputDeviceName as String?,
+    micGainDb: micGainDb ?? this.micGainDb,
+    inputChannelMode: inputChannelMode ?? this.inputChannelMode,
+    clippingNotice: clippingNotice ?? this.clippingNotice,
   );
+
+  static int clampMicGainDb(int value) =>
+      value.clamp(-maxMicGainDb, maxMicGainDb);
 
   /// The offset in samples at [sampleRate], which is what the clock adds.
   ///
@@ -131,6 +162,10 @@ class AudioSyncSettings {
     'avOffsetUnit': unit.name,
     if (outputDeviceName != null) 'outputDevice': outputDeviceName,
     if (inputDeviceName != null) 'inputDevice': inputDeviceName,
+    if (micGainDb != 0) 'micGainDb': micGainDb,
+    if (inputChannelMode != VoiceInputChannelMode.device)
+      'inputChannelMode': inputChannelMode.name,
+    if (clippingNotice) 'clippingNotice': true,
   };
 
   factory AudioSyncSettings.fromJson(Map<String, dynamic> json) {
@@ -143,6 +178,12 @@ class AudioSyncSettings {
       unit: unit,
       outputDeviceName: json['outputDevice'] as String?,
       inputDeviceName: json['inputDevice'] as String?,
+      micGainDb: clampMicGainDb((json['micGainDb'] as num?)?.toInt() ?? 0),
+      inputChannelMode: VoiceInputChannelMode.values.firstWhere(
+        (candidate) => candidate.name == json['inputChannelMode'],
+        orElse: () => VoiceInputChannelMode.device,
+      ),
+      clippingNotice: json['clippingNotice'] as bool? ?? false,
     );
   }
 
@@ -153,17 +194,36 @@ class AudioSyncSettings {
           other.offset == offset &&
           other.unit == unit &&
           other.outputDeviceName == outputDeviceName &&
-          other.inputDeviceName == inputDeviceName;
+          other.inputDeviceName == inputDeviceName &&
+          other.micGainDb == micGainDb &&
+          other.inputChannelMode == inputChannelMode &&
+          other.clippingNotice == clippingNotice;
 
   @override
-  int get hashCode =>
-      Object.hash(offset, unit, outputDeviceName, inputDeviceName);
+  int get hashCode => Object.hash(
+    offset,
+    unit,
+    outputDeviceName,
+    inputDeviceName,
+    micGainDb,
+    inputChannelMode,
+    clippingNotice,
+  );
 
   @override
   String toString() =>
       'AudioSyncSettings(offset: $offset, unit: ${unit.name}, '
-      'outputDevice: $outputDeviceName, inputDevice: $inputDeviceName)';
+      'outputDevice: $outputDeviceName, inputDevice: $inputDeviceName, '
+      'micGainDb: $micGainDb, inputChannelMode: ${inputChannelMode.name}, '
+      'clippingNotice: $clippingNotice)';
 }
+
+/// Which capture channels a recorded take keeps (REC1-D).
+///
+/// [device] records the capture stream as delivered. [monoMix] averages
+/// the channels into one, [left]/[right] keep a single channel — the fix
+/// for an audio interface whose mono mic arrives as one-sided stereo.
+enum VoiceInputChannelMode { device, monoMix, left, right }
 
 /// What the sync inspector shows (audio program 2D).
 ///

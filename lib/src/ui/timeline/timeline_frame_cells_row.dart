@@ -53,6 +53,7 @@ class TimelineFrameCellsRow extends StatelessWidget {
     this.instructionDefById,
     this.audioPeaksFor,
     this.projectFrameRate = ProjectFrameRate.fps24,
+    this.seClipMarkerTooltip,
     this.showSeconds = false,
     this.onRemoveAudioClip,
     this.onDropMediaAsset,
@@ -105,6 +106,10 @@ class TimelineFrameCellsRow extends StatelessWidget {
   /// Waveform peaks resolver for SE rows' audio clips; null hides them.
   final AudioPeaks? Function(String filePath)? audioPeaksFor;
   final ProjectFrameRate projectFrameRate;
+
+  /// Clipped-take marker tooltip (REC1-D); null = markers off (the
+  /// clipping-notice toggle, threaded as the string itself).
+  final String? seClipMarkerTooltip;
 
   /// The shared frames/seconds display toggle — the block duration labels
   /// (R26 #7) follow it.
@@ -275,6 +280,21 @@ class TimelineFrameCellsRow extends StatelessWidget {
             frameCellExtent: metrics.frameCellWidth,
             crossAxisExtent: metrics.layerRowHeight,
             axis: Axis.horizontal,
+          ),
+        // Clipped-take markers (REC1-D): mounted only when the clipping
+        // notice is on — the tooltip string doubles as the switch.
+        if (layerKindUsesSeSheetCells(layer.kind) &&
+            seClipMarkerTooltip != null)
+          ...timelineRowClipMarkerOverlays(
+            layer: layer,
+            frameStartIndex: frameStartIndex,
+            frameEndIndexExclusive: frameEndIndexExclusive,
+            leadingFrameSpacerWidth: leadingFrameSpacerWidth,
+            frameCellExtent: metrics.frameCellWidth,
+            crossAxisExtent: metrics.layerRowHeight,
+            axis: Axis.horizontal,
+            tooltip: seClipMarkerTooltip!,
+            color: Theme.of(context).colorScheme.error,
           ),
         // Cut-boundary `~` marks (UI-R7 #6): a sound running past the cut
         // end / spilling in from the previous cut announces its other half.
