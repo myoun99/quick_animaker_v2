@@ -9,6 +9,7 @@ import 'package:quick_animaker_v2/src/models/cut_id.dart';
 import 'package:quick_animaker_v2/src/models/dirty_tile_set.dart';
 import 'package:quick_animaker_v2/src/models/frame_id.dart';
 import 'package:quick_animaker_v2/src/models/layer_id.dart';
+import 'package:quick_animaker_v2/src/models/layer_link_registry.dart';
 import 'package:quick_animaker_v2/src/models/project_id.dart';
 import 'package:quick_animaker_v2/src/models/tile_coord.dart';
 import 'package:quick_animaker_v2/src/models/track_id.dart';
@@ -39,6 +40,79 @@ void main() {
       BitmapTile(coord: TileCoord(x: 0, y: 0), size: 4, pixels: pixels),
     );
   }
+
+  group('link resolver (L1): linked members address ONE physical cel', () {
+    /// cut-b/layer-9 links to canonical cut-a/layer-1.
+    void installLink(BrushFrameStore store) {
+      final registry = LayerLinkRegistry(
+        groups: [
+          LayerLinkGroup(
+            id: 'g1',
+            members: const [
+              LayerLinkMember(
+                trackId: TrackId('t'),
+                cutId: CutId('c'),
+                layerId: LayerId('l'),
+              ),
+              LayerLinkMember(
+                trackId: TrackId('t'),
+                cutId: CutId('cut-b'),
+                layerId: LayerId('layer-9'),
+              ),
+            ],
+          ),
+        ],
+      );
+      store.setLinkResolver(registry.canonicalCelKey);
+    }
+
+    test('writes through a member land under the canonical key and reads '
+        'through EITHER member see them', () {
+      final store = BrushFrameStore();
+      installLink(store);
+      final memberKey = key(cut: 'cut-b', layer: 'layer-9');
+      final canonicalKey = key();
+
+      store.storeBakedSurface(memberKey, surfaceWithInk());
+
+      expect(store.celHasRenderableContent(canonicalKey), isTrue);
+      expect(store.celHasRenderableContent(memberKey), isTrue);
+      expect(
+        identical(
+          store.bakedSurfaceOrNull(memberKey),
+          store.bakedSurfaceOrNull(canonicalKey),
+        ),
+        isTrue,
+        reason: 'one physical surface — the member is a window onto it',
+      );
+      // The invariant: non-canonical keys never enter storage, so the
+      // save payload holds the linked bank exactly once.
+      expect(store.bakedSnapshotForSave().hot.keys, [canonicalKey]);
+    });
+
+    test('an edit through a member bumps the revision the OTHER member '
+        'reads (cache validity propagates with zero fan-out)', () {
+      final store = BrushFrameStore();
+      installLink(store);
+      final memberKey = key(cut: 'cut-b', layer: 'layer-9');
+      final canonicalKey = key();
+      store.storeBakedSurface(canonicalKey, surfaceWithInk());
+      final before = store.getOrCreateFrame(canonicalKey).sourceRevision;
+
+      store.markCelEdited(memberKey);
+
+      expect(store.frameOrNull(canonicalKey)!.sourceRevision, before + 1);
+      expect(store.frameOrNull(memberKey)!.sourceRevision, before + 1);
+    });
+
+    test('unlinked keys resolve to themselves', () {
+      final store = BrushFrameStore();
+      installLink(store);
+      final unlinked = key(cut: 'cut-x', layer: 'layer-1');
+      store.storeBakedSurface(unlinked, surfaceWithInk());
+      expect(store.bakedSnapshotForSave().hot.keys, [unlinked]);
+    });
+  });
 
   test('storeBakedSurface is the content oracle; empty tiles REMOVE the '
       'cel (an all-undone cel is empty)', () {

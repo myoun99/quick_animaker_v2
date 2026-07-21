@@ -15,6 +15,28 @@ import 'persistence/brush_drawing_binary_codec.dart';
 class BrushFrameStore {
   BrushFrameStore();
 
+  /// Link resolution (L1): every SINGLE-CEL public operation resolves its
+  /// key through this first, so linked layers address ONE physical cel —
+  /// "the picture exists once; the members are windows onto it". Editing
+  /// through any member bumps the canonical revision, which every
+  /// member's caches see (revision-based validation needs no fan-out).
+  ///
+  /// Invariant: because writes resolve too, NON-canonical keys never
+  /// enter the maps — enumeration and persistence stay canonical-only
+  /// (the .qap saves each linked bank exactly once). Cut-scoped physical
+  /// ops (rekey/translate/resize/snapshot) intentionally stay RAW: they
+  /// manage canonical storage directly.
+  BrushFrameKey Function(BrushFrameKey key) _canonicalize = _identityKey;
+
+  static BrushFrameKey _identityKey(BrushFrameKey key) => key;
+
+  /// Installs (or clears, with null) the canonical-key resolver — wire it
+  /// to the current project's [LayerLinkRegistry.canonicalCelKey]. The
+  /// resolver must be idempotent.
+  void setLinkResolver(BrushFrameKey Function(BrushFrameKey key)? resolver) {
+    _canonicalize = resolver ?? _identityKey;
+  }
+
   final Map<BrushFrameKey, BrushFrameDrawingState> _frames = {};
 
   /// Derived preview caches. NOT byte-budgeted (R19 P3a): every donated or
@@ -26,13 +48,15 @@ class BrushFrameStore {
   final Map<BrushFrameKey, BrushFrameDisplayCache> _displayCaches = {};
 
   BrushFrameDrawingState getOrCreateFrame(BrushFrameKey key) {
+    key = _canonicalize(key);
     return _frames.putIfAbsent(key, () => BrushFrameDrawingState(key: key));
   }
 
-  BrushFrameDrawingState? frameOrNull(BrushFrameKey key) => _frames[key];
+  BrushFrameDrawingState? frameOrNull(BrushFrameKey key) =>
+      _frames[_canonicalize(key)];
 
   BrushFrameDisplayCache? displayCacheOrNull(BrushFrameKey key) =>
-      _displayCaches[key];
+      _displayCaches[_canonicalize(key)];
 
   bool hasValidDisplayCache(BrushFrameKey key) =>
       displayCacheOrNull(key)?.isValid ?? false;
@@ -116,6 +140,7 @@ class BrushFrameStore {
   /// a file-backed cel reads its bytes from the saved .qap first — this
   /// is the ONE seam every pixel consumer goes through.
   BitmapSurface? bakedSurfaceOrNull(BrushFrameKey key) {
+    key = _canonicalize(key);
     final hot = _bakedSurfaces.remove(key);
     if (hot != null) {
       _bakedSurfaces[key] = hot; // LRU touch.
@@ -183,6 +208,7 @@ class BrushFrameStore {
   /// Stores [surface] as the cel's baked truth (commit donations and
   /// snapshot restores land here) — always hot: it was just touched.
   void storeBakedSurface(BrushFrameKey key, BitmapSurface surface) {
+    key = _canonicalize(key);
     if (identical(_bakedSurfaces[key], surface)) {
       // Re-donation of the identical truth (session seeding does this on
       // every cel view): bytes unchanged, so the cel stays CLEAN and any
@@ -282,10 +308,12 @@ class BrushFrameStore {
   /// Whether the cel shows ANY picture content — the composite/export/
   /// fill resolvers' emptiness oracle. Every tier counts: representation
   /// is not existence.
-  bool celHasRenderableContent(BrushFrameKey key) =>
-      _bakedSurfaces.containsKey(key) ||
-      _coldCels.containsKey(key) ||
-      _fileCels.containsKey(key);
+  bool celHasRenderableContent(BrushFrameKey key) {
+    key = _canonicalize(key);
+    return _bakedSurfaces.containsKey(key) ||
+        _coldCels.containsKey(key) ||
+        _fileCels.containsKey(key);
+  }
 
   /// The cel's current pixels: a VALID display cache at [canvasSize]
   /// first (donations keep it fresh), else the baked truth (a cold cel
@@ -295,6 +323,7 @@ class BrushFrameStore {
     BrushFrameKey key, {
     required CanvasSize canvasSize,
   }) {
+    key = _canonicalize(key);
     final cached = validPreviewSurfaceOrNull(key);
     if (cached != null && cached.canvasSize == canvasSize) {
       return cached;
@@ -577,6 +606,7 @@ class BrushFrameStore {
     required BrushFrameKey key,
     required BitmapSurface previewSurface,
   }) {
+    key = _canonicalize(key);
     final state = getOrCreateFrame(key);
     final cache = BrushFrameDisplayCache(
       frameKey: key,
@@ -601,7 +631,7 @@ class BrushFrameStore {
     DirtyTileSet? dirtyTiles,
   }) {
     return _update(
-      key,
+      _canonicalize(key),
       (state) => _markCacheDirty(state, dirtyTiles: dirtyTiles),
     );
   }

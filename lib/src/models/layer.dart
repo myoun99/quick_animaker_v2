@@ -1,9 +1,11 @@
 import 'dart:collection';
 
 import '../core/collection_equality.dart';
+import '../core/copy_with_sentinel.dart';
 import 'attached_mode.dart';
 import 'attached_placement.dart';
 import 'audio_clip.dart';
+import 'folder_id.dart';
 import 'camera_instruction.dart';
 import 'frame.dart';
 import 'frame_id.dart';
@@ -43,6 +45,7 @@ class Layer {
     this.attachedMode = AttachedMode.synced,
     Map<FrameId, FrameId> baseFrameLinks = const {},
     List<TimelineRunBehavior> runBehaviors = const [],
+    this.folderId,
   }) : frames = List.unmodifiable(frames),
        timeline = _immutableTimeline(timeline ?? _deriveTimeline(frames)),
        instructions = immutableInstructionMap(instructions ?? const {}),
@@ -78,6 +81,12 @@ class Layer {
 
   /// Organizational color label; see [LayerMark].
   final LayerMark mark;
+
+  /// The enclosing folder in the cut's folder table (L1); null = top
+  /// level. Pure organization — render/timeline order stays the cut's
+  /// flat layer list. Attach groups share one folder (never split across
+  /// a folder boundary; the commands keep the invariant).
+  final FolderId? folderId;
 
   /// Reference layer for the FILL tool (R20-C2, the CSP lighthouse):
   /// when any visible layer of the cut carries this flag, fills read
@@ -143,6 +152,7 @@ class Layer {
     AttachedMode? attachedMode,
     Map<FrameId, FrameId>? baseFrameLinks,
     List<TimelineRunBehavior>? runBehaviors,
+    Object? folderId = copyWithSentinel,
   }) {
     final nextFrames = frames ?? this.frames;
     return Layer(
@@ -167,6 +177,11 @@ class Layer {
       attachedMode: attachedMode ?? this.attachedMode,
       baseFrameLinks: baseFrameLinks ?? this.baseFrameLinks,
       runBehaviors: runBehaviors ?? this.runBehaviors,
+      // Sentinel: moving a layer OUT of its folder (null) must be
+      // expressible.
+      folderId: identical(folderId, copyWithSentinel)
+          ? this.folderId
+          : folderId as FolderId?,
     );
   }
 
@@ -188,6 +203,7 @@ class Layer {
     'onTimesheet': onTimesheet,
     'mark': mark.toJson(),
     if (isFillReference) 'fillReference': true,
+    if (folderId != null) 'folderId': folderId!.toJson(),
     if (runBehaviors.isNotEmpty)
       'runBehaviors': [for (final behavior in runBehaviors) behavior.toJson()],
     if (transformTrack.isNotEmpty) 'transform': transformTrack.toJson(),
@@ -280,6 +296,9 @@ class Layer {
           : LayerId.fromJson(json['attachedTo'] as Map<String, dynamic>),
       attachedPlacement: AttachedPlacement.fromJson(json['attachedPlacement']),
       attachedMode: AttachedMode.fromJson(json['attachedMode']),
+      folderId: json['folderId'] == null
+          ? null
+          : FolderId.fromJson(json['folderId'] as Map<String, dynamic>),
       baseFrameLinks: json['baseFrameLinks'] == null
           ? const {}
           : {
@@ -316,7 +335,8 @@ class Layer {
           other.attachedPlacement == attachedPlacement &&
           other.attachedMode == attachedMode &&
           mapEquals(other.baseFrameLinks, baseFrameLinks) &&
-          listEquals(other.runBehaviors, runBehaviors);
+          listEquals(other.runBehaviors, runBehaviors) &&
+          other.folderId == folderId;
 
   @override
   int get hashCode => Object.hash(
@@ -346,6 +366,7 @@ class Layer {
       ),
     ),
     Object.hashAll(runBehaviors),
+    folderId,
   );
 
   @override
