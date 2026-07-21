@@ -54,6 +54,21 @@ Layer requireLayer(
   throw StateError('Layer not found in cut $cutId: $layerId');
 }
 
+/// The cut holding [layerId], or null for track-owned SE rows (and
+/// unknown ids). Layer ids are globally unique.
+CutId? cutIdOfLayer(Project project, LayerId layerId) {
+  for (final track in project.tracks) {
+    for (final cut in track.cuts) {
+      for (final layer in cut.layers) {
+        if (layer.id == layerId) {
+          return cut.id;
+        }
+      }
+    }
+  }
+  return null;
+}
+
 /// Returns the layer matching [layerId] anywhere in [project] — cut layers
 /// AND the tracks' track-owned SE rows (the same reach as the repository's
 /// updateLayerAnywhere seam). Layer ids are globally unique, so the flag

@@ -7,6 +7,7 @@ import 'package:quick_animaker_v2/src/models/bitmap_tile.dart';
 import 'package:quick_animaker_v2/src/models/brush_frame_key.dart';
 import 'package:quick_animaker_v2/src/models/tile_coord.dart';
 import 'package:quick_animaker_v2/src/services/brush_frame_store.dart';
+import 'package:quick_animaker_v2/src/services/commands/update_layer_timeline_command.dart';
 import 'package:quick_animaker_v2/src/models/camera_instruction.dart';
 import 'package:quick_animaker_v2/src/models/canvas_size.dart';
 import 'package:quick_animaker_v2/src/models/cut.dart';
@@ -404,6 +405,83 @@ void main() {
           ['base', 'base'],
           reason: 'one undo restores every member',
         );
+      });
+
+      test('a frame-bank edit MIRRORS onto linked members (adopt the '
+          'bank, sweep dead exposures); lane edits stay local', () {
+        final fixture = _fixture(
+          _project(
+            tracks: [
+              _track(id: 'track-1', name: 'V', cuts: [linkFixtureCut()]),
+            ],
+          ),
+          activeCutId: const CutId('cut-1'),
+        );
+        fixture.coordinator.createLinkedCut(
+          sourceCutId: const CutId('cut-1'),
+          name: 'reuse',
+        );
+        final linkedCut = fixture.project.tracks.single.cuts[1];
+        final memberId = fixture.project.linkRegistry
+            .groupOf(cutId: const CutId('cut-1'), layerId: const LayerId('base'))!
+            .members
+            .last
+            .layerId;
+
+        // The member exposes the shared cel on ITS own lane.
+        final member = fixture.project.tracks.single.cuts[1].layers
+            .firstWhere((layer) => layer.id == memberId);
+        fixture.repository.replaceLayer(
+          layer: member.copyWith(
+            timeline: {
+              0: TimelineExposure.drawing(const FrameId('frame-a'), length: 2),
+            },
+          ),
+        );
+
+        // 1. RENAME the cel in the SOURCE bank → the member's bank
+        //    follows; its lane stays untouched.
+        final source = _cutById(
+          fixture.project,
+          const CutId('cut-1'),
+        ).layers.firstWhere((layer) => layer.id == const LayerId('base'));
+        fixture.historyManager.execute(
+          UpdateLayerTimelineCommand(
+            repository: fixture.repository,
+            before: source,
+            after: source.copyWith(
+              frames: [source.frames.single.copyWith(name: 'mouth-A')],
+            ),
+          ),
+        );
+
+        Layer memberNow() => _cutById(fixture.project, linkedCut.id).layers
+            .firstWhere((layer) => layer.id == memberId);
+        expect(memberNow().frames.single.name, 'mouth-A');
+        expect(memberNow().timeline[0]!.frameId, const FrameId('frame-a'));
+
+        // 2. REMOVE the cel from the source bank → it ceases to exist
+        //    everywhere; the member's dead exposure sweeps.
+        final renamedSource = _cutById(
+          fixture.project,
+          const CutId('cut-1'),
+        ).layers.firstWhere((layer) => layer.id == const LayerId('base'));
+        fixture.historyManager.execute(
+          UpdateLayerTimelineCommand(
+            repository: fixture.repository,
+            before: renamedSource,
+            after: renamedSource.copyWith(frames: [], timeline: const {}),
+          ),
+        );
+        expect(memberNow().frames, isEmpty);
+        expect(memberNow().timeline, isEmpty);
+
+        // One undo per step restores every member exactly.
+        fixture.historyManager.undo();
+        expect(memberNow().frames.single.name, 'mouth-A');
+        expect(memberNow().timeline[0]!.frameId, const FrameId('frame-a'));
+        fixture.historyManager.undo();
+        expect(memberNow().frames.single.name, isNull);
       });
 
       test('link-duplicating an already-linked layer EXTENDS its group '
