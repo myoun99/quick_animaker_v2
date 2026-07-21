@@ -7,6 +7,7 @@ import '../models/cut.dart';
 import '../models/cut_camera.dart';
 import '../models/cut_id.dart';
 import '../models/cut_metadata.dart';
+import '../models/export_overrides.dart';
 import '../models/frame.dart';
 import '../models/frame_id.dart';
 import '../models/folder_id.dart';
@@ -58,6 +59,18 @@ class ProjectRepository {
 
   void updateProject(Project Function(Project project) update) {
     _currentProject = _reconcileAttachedMirrors(update(requireProject()));
+  }
+
+  /// Export scope/delta state (출력 UI): PROJECT data — it travels with
+  /// the film — but not a document edit, so writes land directly with no
+  /// history entry (the visibility-toggle precedent).
+  void updateExportOverrides(
+    ExportProjectOverrides Function(ExportProjectOverrides overrides) update,
+  ) {
+    updateProject(
+      (project) =>
+          project.copyWith(exportOverrides: update(project.exportOverrides)),
+    );
   }
 
   /// The ALWAYS-MIRROR invariant (UI-R23 #7 v2): every write leaves every
