@@ -2,7 +2,23 @@ import 'package:flutter/material.dart';
 
 import 'timeline_cell_style.dart';
 
-class TimelineBlock extends StatelessWidget {
+/// R26 #8: the resting edge color for a block sitting on [brightness]
+/// lanes — the single place both states are defined. Dark lanes get a
+/// LIGHT edge, light lanes a DARK one; the old one-color grey vanished
+/// against the near-black track background.
+Color timelineBlockRestingEdgeColor(
+  ColorScheme colorScheme,
+  Brightness brightness,
+) => brightness == Brightness.dark
+    ? colorScheme.onSurface.withValues(alpha: 0.60)
+    : colorScheme.onSurface.withValues(alpha: 0.45);
+
+/// The hovered edge (R26 #8): the resting color pushed toward full ink,
+/// so a pointer resting on a block reads before any click.
+Color timelineBlockHoverEdgeColor(ColorScheme colorScheme) =>
+    colorScheme.onSurface.withValues(alpha: 0.95);
+
+class TimelineBlock extends StatefulWidget {
   const TimelineBlock({
     super.key,
     required this.width,
@@ -29,41 +45,56 @@ class TimelineBlock extends StatelessWidget {
   static const double borderRadiusValue = 8;
 
   @override
+  State<TimelineBlock> createState() => _TimelineBlockState();
+}
+
+class _TimelineBlockState extends State<TimelineBlock> {
+  bool _hovered = false;
+
+  @override
   Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
-    final borderRadius = BorderRadius.circular(borderRadiusValue);
-    final baseColor = isActive
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    final borderRadius = BorderRadius.circular(
+      TimelineBlock.borderRadiusValue,
+    );
+    final baseColor = widget.isActive
         ? colorScheme.primaryContainer
         : colorScheme.surfaceContainerHighest;
+
+    // R26 #8: the ACTIVE accent edge stays exactly as it was; the resting
+    // edge follows the background's brightness and a hover brightens it.
+    final borderColor = widget.isActive
+        ? colorScheme.primary
+        : _hovered
+        ? timelineBlockHoverEdgeColor(colorScheme)
+        : timelineBlockRestingEdgeColor(colorScheme, theme.brightness);
 
     return Material(
       color: Colors.transparent,
       child: InkWell(
         borderRadius: borderRadius,
-        mouseCursor: onTap == null
+        mouseCursor: widget.onTap == null
             ? SystemMouseCursors.basic
             : SystemMouseCursors.click,
-        onTap: onTap,
+        onTap: widget.onTap,
+        onHover: (hovered) => setState(() => _hovered = hovered),
         child: Container(
-          width: width,
-          constraints: BoxConstraints(minHeight: minHeight),
-          padding: padding,
+          width: widget.width,
+          constraints: BoxConstraints(minHeight: widget.minHeight),
+          padding: widget.padding,
           decoration: timelineBlockDecoration(
-            backgroundColor: isRangeSelected
+            backgroundColor: widget.isRangeSelected
                 ? Color.alphaBlend(
                     timelineSelectedFrameBorderColor.withValues(alpha: 0.28),
                     baseColor,
                   )
                 : baseColor,
-            // Blocks sit on dark track lanes: a brighter inactive edge
-            // keeps cut boundaries readable.
-            borderColor: isActive
-                ? colorScheme.primary
-                : colorScheme.onSurfaceVariant.withValues(alpha: 0.65),
-            borderWidth: isActive ? 2 : 1,
+            borderColor: borderColor,
+            borderWidth: widget.isActive ? 2 : 1,
             borderRadius: borderRadius,
           ),
-          child: child,
+          child: widget.child,
         ),
       ),
     );
