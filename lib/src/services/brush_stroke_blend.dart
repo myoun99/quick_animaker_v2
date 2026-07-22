@@ -21,7 +21,9 @@ import '../models/tile_coord.dart';
 ///   Co = [ αs(1-αd)Cs + αd(1-αs)Cd + αs·αd·B(Cs,Cd) ] / αo
 /// in doubles per channel (softLight needs floats anyway; this is a
 /// one-shot pen-up pass over stroke bounds, not a per-frame path). The
-/// GPU preview approximates this within ±1/255; the commit is the truth.
+/// live overlay runs the SAME math per dirty tile (R27 #4,
+/// [preBlendStrokeOverlayPixels]) — live and committed pixels are one
+/// set of bytes, no GPU approximation anywhere.
 ///
 /// Untouched pixels stay BYTE-EXACT: source alpha 0 copies the
 /// destination verbatim (the erase-rect landing pass covers the whole
@@ -152,6 +154,90 @@ double _blendChannel(BrushBlendMode mode, double cs, double cd) {
 int _clampByte(double value) {
   final rounded = (value * 255).round();
   return rounded < 0 ? 0 : (rounded > 255 ? 255 : rounded);
+}
+
+/// R27 #4: the live overlay's PRE-BLEND — the exact bytes the pen-up
+/// commit will land for the region, computed the moment the tile shows.
+///
+/// The GPU preview approximated non-plain modes within ±1/255 because it
+/// re-derived the blend in float; the user's rule is ZERO drift in every
+/// mode. So the overlay stops handing the GPU anything to blend: this
+/// runs the SAME per-pixel math the commit runs — [blendStrokeRegionPixels]
+/// for the kernel modes, and for erase a byte-exact mirror of the stamp
+/// kernel's destination-out at opacity 1 (the erase landing IS one stamp
+/// of the stroke buffer — see `compositeStrokePixelsOntoBitmapSurface`).
+/// The result draws as a plain REPLACEMENT tile, so pen-up cannot move a
+/// byte: identical bytes flow into identical composites.
+///
+/// [dst]/[src] are BOUNDS-LOCAL straight RGBA; [erase] covers both the
+/// eraser tool and the 소거 blend mode (the tool locks the mode, so the
+/// two arrive together). [BrushBlendMode.color] never comes here — plain
+/// srcOver previews directly and stays on the GPU path.
+Uint8List preBlendStrokeOverlayPixels({
+  required Uint8List dst,
+  required Uint8List src,
+  required BrushBlendMode mode,
+  required bool erase,
+  required int pixelCount,
+}) {
+  if (erase || mode == BrushBlendMode.erase) {
+    // Mirror of the stamp-ERASE per-pixel path at dabOpacity 1
+    // (bitmap_surface_brush_commit): sa==0 leaves the pixel verbatim,
+    // sa==255 zeroes it byte-hard, and the general case scales alpha
+    // through the same double expression — the parity test pins this
+    // against the real commit, native kernel included.
+    final result = Uint8List(pixelCount * 4);
+    for (var i = 0; i < pixelCount; i += 1) {
+      final o = i * 4;
+      final sa = src[o + 3];
+      if (sa == 0) {
+        result[o] = dst[o];
+        result[o + 1] = dst[o + 1];
+        result[o + 2] = dst[o + 2];
+        result[o + 3] = dst[o + 3];
+        continue;
+      }
+      if (sa == 255) {
+        continue; // Already zeroed.
+      }
+      final sourceAlpha = sa / 255.0;
+      final outAlpha = (dst[o + 3] / 255.0) * (1.0 - sourceAlpha);
+      if (outAlpha == 0.0) {
+        continue; // Already zeroed.
+      }
+      result[o] = dst[o];
+      result[o + 1] = dst[o + 1];
+      result[o + 2] = dst[o + 2];
+      result[o + 3] = (outAlpha * 255.0).round().clamp(0, 255);
+    }
+    return result;
+  }
+  assert(
+    mode != BrushBlendMode.color,
+    'color previews srcOver directly — no pre-blend',
+  );
+  final result = blendStrokeRegionPixels(
+    dst: dst,
+    src: src,
+    mode: mode,
+    pixelCount: pixelCount,
+  );
+  // Mirror the LANDING normalization: the commit lands the kernel result
+  // through an erase-clear + srcOver stamp, whose srcOver skips α==0
+  // pixels — a fully transparent result pixel therefore lands as
+  // (0,0,0,0) whatever RGB the kernel's verbatim-copy rule carried (the
+  // native kernel mirrors the same rule). Without this the straight
+  // bytes differ where the base held α==0 junk RGB, even though both
+  // display identically after premultiply.
+  for (var i = 0; i < pixelCount; i += 1) {
+    final o = i * 4;
+    if (result[o + 3] == 0) {
+      result[o] = 0;
+      result[o + 1] = 0;
+      result[o + 2] = 0;
+    }
+  }
+  return result;
 }
 
 /// Blends the stroke buffer [src] against the cel region [dst] (both

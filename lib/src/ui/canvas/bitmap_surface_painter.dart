@@ -93,11 +93,14 @@ class BitmapSurfacePainter extends CustomPainter {
     // makes the hole transparent so whatever is underneath shows through.
     // BB-1: a non-srcOver BRUSH BLEND needs the same isolation — the
     // mode must blend against the CEL's pixels only, never the paper or
-    // panel chrome below.
+    // panel chrome below. R27 #4: PRE-BLENDED overlays land in the same
+    // layer for a different reason — their tiles REPLACE (BlendMode.src),
+    // which without the layer would punch the paper out of the rect.
     final overlayBlendsInLayer =
         overlayModel != null &&
         overlayModel!.hasStrokeContent &&
-        (overlayModel!.erase ||
+        (overlayModel!.preBlended ||
+            overlayModel!.erase ||
             overlayModel!.blendMode.previewBlendMode != BlendMode.srcOver);
     if (overlayBlendsInLayer) {
       canvas.saveLayer(pasteboardRect, Paint());
@@ -214,7 +217,17 @@ class BitmapSurfacePainter extends CustomPainter {
       // never overlap, so plain source-over per tile is exact. An ERASE
       // stroke draws destination-out instead: the accumulated stroke alpha
       // removes committed pixels exactly like the commit pass will.
-      final overlayPaint = overlay.erase
+      // R27 #4: pre-blended tiles carry the COMMIT's finished pixels for
+      // their rect (base included) — they REPLACE, never blend: any GPU
+      // blend here would re-derive in float what the CPU already produced
+      // exactly. The erase/blend paints below now serve only the modes
+      // that don't pre-blend (plain color, and the fill stamp).
+      final overlayPaint = overlay.preBlended
+          ? (Paint()
+              ..filterQuality = FilterQuality.none
+              ..isAntiAlias = false
+              ..blendMode = BlendMode.src)
+          : overlay.erase
           ? (Paint()
               ..filterQuality = FilterQuality.none
               ..isAntiAlias = false

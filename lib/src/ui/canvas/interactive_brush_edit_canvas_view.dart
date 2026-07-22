@@ -535,15 +535,31 @@ class _InteractiveBrushEditCanvasViewState
         : null;
     _touchStrokeCommitted = false;
     // The stroke's settings snapshot — every downstream dab reads it, so
-    // the mapped-eraser substitution here flips the WHOLE stroke.
+    // the mapped-eraser substitution here flips the WHOLE stroke. The
+    // substitution forces the BLEND to erase too (R27 #4 in passing): the
+    // eraser tool locks its mode, but this path kept the brush's — a
+    // mapped-erase press with a separable brush blend would have taken
+    // the commit's blend branch and PAINTED instead of erasing.
     final strokeSettings = mappedErase
-        ? widget.inputSettings.copyWith(erase: true)
+        ? widget.inputSettings.copyWith(
+            erase: true,
+            blendMode: BrushBlendMode.erase,
+          )
         : widget.inputSettings;
     _activeStrokeInputSettings = strokeSettings;
     // The overlay must display in the stroke's blend mode (paint vs erase)
     // from the first dab through settling.
     _overlayModel.erase = strokeSettings.erase;
     _overlayModel.blendMode = strokeSettings.blendMode;
+    // R27 #4: every non-plain mode PRE-BLENDS its live tiles with the
+    // commit's own kernels against the cel as it stands — the GPU never
+    // approximates the blend, so pen-up cannot move a byte in ANY mode.
+    // Plain color strokes keep the classic stroke-only overlay.
+    _overlayModel.preBlendBase =
+        strokeSettings.erase ||
+            strokeSettings.blendMode != BrushBlendMode.color
+        ? widget.sessionState.canvasState.currentSurface
+        : null;
     _currentPressure = _normalizedPressure(event);
     widget.onActiveStrokeChanged?.call(true);
     _nextSequence = 0;

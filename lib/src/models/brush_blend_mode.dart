@@ -38,9 +38,14 @@ enum BrushBlendMode {
     _ => true,
   };
 
-  /// The live overlay's preview blend. The GPU float math approximates
-  /// the integer commit kernel within ±1/255 — the committed pixels are
-  /// the truth.
+  /// The GPU BlendMode this brush mode maps to.
+  ///
+  /// R27 #4: live STROKES no longer preview through this — every
+  /// non-[color] mode pre-blends its overlay tiles with the commit's own
+  /// CPU kernels (`preBlendStrokeOverlayPixels`), so the pixels on screen
+  /// while drawing ARE the committed pixels, byte for byte. This mapping
+  /// remains for [color]'s plain srcOver and as the identity the painter
+  /// keys its fallback branch on.
   BlendMode get previewBlendMode => switch (this) {
     color => BlendMode.srcOver,
     behind => BlendMode.dstOver,

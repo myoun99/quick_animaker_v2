@@ -5,6 +5,7 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/foundation.dart';
 
+import '../../models/bitmap_surface.dart';
 import '../../models/bitmap_tile.dart';
 import '../../models/brush_blend_mode.dart';
 import '../../models/brush_dab.dart';
@@ -15,6 +16,8 @@ import '../../models/tile_coord.dart';
 import '../../native/qa_native_engine.dart' show QaStampScratch;
 import '../../services/brush_live_stroke_rasterizer.dart'
     show ActiveStrokePixelSource, BrushLiveStrokeRasterizer;
+import '../../services/brush_stroke_blend.dart'
+    show bitmapSurfaceRegionPixels, preBlendStrokeOverlayPixels;
 import 'deferred_image_disposal.dart';
 
 /// Mutable state of the in-progress stroke overlay.
@@ -54,11 +57,29 @@ class ActiveStrokeOverlayModel extends ChangeNotifier {
   /// committed tiles decode).
   bool erase = false;
 
-  /// The stroke's BRUSH blend (BB-1, R26 #9): the painter previews the
-  /// overlay through the matching ui.BlendMode inside the isolation
-  /// layer, so what blends on screen is what the pen-up kernel lands
-  /// (GPU float vs integer commit: within ±1/255).
+  /// The stroke's BRUSH blend (BB-1, R26 #9). With [preBlendBase] set the
+  /// mode feeds the CPU pre-blend below and the GPU never blends at all;
+  /// only plain color-mode strokes still preview through ui.BlendMode.
   BrushBlendMode blendMode = BrushBlendMode.color;
+
+  /// R27 #4: the cel's committed surface at stroke start — non-null puts
+  /// the overlay in PRE-BLEND mode: every tile decode runs the COMMIT's
+  /// own per-pixel math (stroke against these base bytes) and uploads the
+  /// finished result, which the painter draws as a plain REPLACEMENT
+  /// (BlendMode.src inside the cel isolation layer). The GPU's float
+  /// approximation of the blend — the BB-1 ±1/255 honest limit — is out
+  /// of the loop entirely: what settles at pen-up is byte-for-byte what
+  /// was already on screen.
+  ///
+  /// Set for every non-plain mode (erase included); null keeps the classic
+  /// stroke-only tiles for color-mode strokes. Immutable surface: holding
+  /// it across async decodes is safe, and mid-stroke the cel cannot
+  /// change under it (commits happen at pen-up only).
+  BitmapSurface? preBlendBase;
+
+  /// Whether tiles carry PRE-BLENDED result pixels (replacement
+  /// semantics) rather than stroke-only pixels the painter must blend.
+  bool get preBlended => preBlendBase != null;
 
   final Map<TileCoord, ui.Image> _tileImages = <TileCoord, ui.Image>{};
   final Set<TileCoord> _decoding = <TileCoord>{};
@@ -175,10 +196,13 @@ class ActiveStrokeOverlayModel extends ChangeNotifier {
     // premultiply collapse into one C call (per 2000px move that is
     // ~256 tiles — the Dart loops below were the big-brush stall and
     // the visible pre-stroke tiles). Same bytes: the C premultiply is
-    // parity-pinned against this exact rounding.
+    // parity-pinned against this exact rounding. Pre-blend strokes skip
+    // it — the kernel needs the STRAIGHT stroke bytes, not premultiplied.
+    final preBlend = preBlendBase;
     QaStampScratch? scratch;
     Uint8List? fused;
-    if (width == tileSize &&
+    if (preBlend == null &&
+        width == tileSize &&
         height == tileSize &&
         source is BrushLiveStrokeRasterizer &&
         BrushLiveStrokeRasterizer.tileSize == tileSize) {
@@ -196,10 +220,34 @@ class ActiveStrokeOverlayModel extends ChangeNotifier {
     if (fused != null) {
       bytes = fused;
     } else {
-      bytes = Uint8List(width * height * 4);
+      var straight = Uint8List(width * height * 4);
       for (var y = 0; y < height; y += 1) {
-        source.copyRow(left, top + y, width, bytes, y * width * 4);
+        source.copyRow(left, top + y, width, straight, y * width * 4);
       }
+      if (preBlend != null) {
+        // R27 #4: the tile shows the COMMIT's result, computed by the
+        // commit's own math against the cel's committed bytes — the
+        // painter replaces the base with it, and pen-up lands the exact
+        // same bytes. (This forgoes the fused C snapshot: correctness is
+        // the rule here; the giant-brush + blend-mode combo pays some
+        // Dart time and is flagged for a native lift if it ever shows.)
+        straight = preBlendStrokeOverlayPixels(
+          dst: bitmapSurfaceRegionPixels(
+            preBlend,
+            DirtyRegion(
+              left: left,
+              top: top,
+              rightExclusive: left + width,
+              bottomExclusive: top + height,
+            ),
+          ),
+          src: straight,
+          mode: blendMode,
+          erase: erase,
+          pixelCount: width * height,
+        );
+      }
+      bytes = straight;
       for (var offset = 0; offset < bytes.length; offset += 4) {
         final alpha = bytes[offset + 3];
         if (alpha == 255) {
@@ -272,6 +320,7 @@ class ActiveStrokeOverlayModel extends ChangeNotifier {
     _generation += 1;
     _clearTiles();
     _settleHoldTiles = null;
+    preBlendBase = null;
     dabs.clear();
     notifyListeners();
   }
