@@ -94,7 +94,7 @@ void main() {
                 onSelectUpdate(layerId, anchorIndex, headIndex),
       onClear: onClear ?? () {},
       move: TimelineRangeMoveCallbacks(
-        onBegin: onMoveBegin ?? () => true,
+        onBegin: onMoveBegin == null ? (_) => true : (_) => onMoveBegin(),
         onUpdate: onMoveUpdate ?? ({required frameDelta, targetLayerId}) {},
         onEnd: onMoveEnd ?? () {},
         onCancel: () {},
@@ -358,12 +358,6 @@ void main() {
     laneSelection.value = null;
     await tester.pump();
     expect(markerBorder().top.color, isNot(AppColors.accent));
-    expect(
-      find.byKey(
-        const ValueKey<String>('timeline-lane-selection-layer-a-position'),
-      ),
-      findsNothing,
-    );
     laneSelection.value = const TimelineLaneSelection(
       layerId: LayerId('layer-a'),
       laneId: 'position',
@@ -373,12 +367,10 @@ void main() {
     await tester.pump();
     expect(markerBorder().top.color, AppColors.accent);
     expect(markerBorder().top.width, moreOrLessEquals(4 / 3));
-    expect(
-      find.byKey(
-        const ValueKey<String>('timeline-lane-selection-layer-a-position'),
-      ),
-      findsOneWidget,
-    );
+    // R27 #14: the span BAND no longer lives inside the lane row — it is
+    // the cell selection's band, drawn by the cursor overlay. This
+    // harness mounts lane bands alone, so only the key ring is visible
+    // here; the shared band is pinned in the grid-level test below.
   });
 
   testWidgets('the gesture layer SURVIVES mid-drag preview rebuilds that '
@@ -422,7 +414,7 @@ void main() {
               onSelectUpdate: (_, _, _, {headLayerId}) {},
               onClear: () {},
               move: TimelineRangeMoveCallbacks(
-                onBegin: () => true,
+                onBegin: (_) => true,
                 // The session's row-change preview: the SOURCE row loses
                 // its blocks — its SE overlays (labels/marks) vanish, so
                 // the row's Stack children count CHANGES mid-drag.

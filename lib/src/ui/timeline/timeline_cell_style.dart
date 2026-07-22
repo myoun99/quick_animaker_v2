@@ -23,6 +23,16 @@ const Color timelineDrawingStartBorderColor = AppColors.hairlineStrong;
 /// LIVE accent read (UI-R22 #5): the selection ink follows accent 1.
 Color get timelineSelectedFrameBorderColor => AppColors.accent;
 
+/// R27 #14: the ONE range-selection band — cells and property lanes draw
+/// exactly this, so a key span cannot read as a different kind of
+/// selection than a cell span ("다른 프레임셀선택이랑 완전동일화").
+/// Non-const because the accent is live (UI-R22 #5).
+BoxDecoration get timelineRangeSelectionBandDecoration => BoxDecoration(
+  color: timelineSelectedFrameBorderColor.withValues(alpha: 0.18),
+  border: Border.all(color: timelineSelectedFrameBorderColor, width: 2),
+  borderRadius: const BorderRadius.all(Radius.circular(6)),
+);
+
 /// Ink for glyphs (frame names, marks) sitting on the near-white drawing
 /// blocks; the usual light on-surface text would vanish there.
 const Color timelineDrawingInkColor = Color(0xFF26282B);

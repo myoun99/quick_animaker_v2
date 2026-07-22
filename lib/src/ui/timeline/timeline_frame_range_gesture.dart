@@ -26,7 +26,12 @@ class TimelineRangeMoveCallbacks {
   });
 
   /// Starts moving the CURRENT selection; false = nothing to move.
-  final bool Function() onBegin;
+  ///
+  /// [grabLayerId] is the row the pointer went DOWN on (R27 #8). The row
+  /// hop a step asks for is "this row lands on the row under the
+  /// pointer" — measuring it from the selection's anchor instead made the
+  /// hop wrong whenever the two differed (select upward, grab the block).
+  final bool Function(LayerId grabLayerId) onBegin;
   final void Function({required int frameDelta, LayerId? targetLayerId})
   onUpdate;
   final VoidCallback onEnd;
@@ -75,7 +80,7 @@ class TimelineRangeMoveRowResolver {
     if (callbacks == null) {
       return false;
     }
-    final accepted = callbacks.onBegin();
+    final accepted = callbacks.onBegin(layerId);
     _sourceLayerId = accepted ? layerId : null;
     return accepted;
   }

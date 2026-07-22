@@ -1845,6 +1845,13 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                                                         frameRangeSelection:
                                                             rangeHooks
                                                                 ?.selection,
+                                                        // R27 #14: the lane
+                                                        // span draws the SAME
+                                                        // band here.
+                                                        laneRangeSelection:
+                                                            widget
+                                                                .laneRange
+                                                                ?.selection,
                                                         rows: rows,
                                                         activeLayerId: widget
                                                             .activeLayerId,
