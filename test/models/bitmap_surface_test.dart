@@ -33,25 +33,26 @@ void main() {
       'containsTileCoord returns true for valid coords',
       () => expect(surface().containsTileCoord(TileCoord(x: 7, y: 4)), isTrue),
     );
-    // Pasteboard (canvas + one canvas size each side): x ∈ [-1920, 3840)
-    // → tiles [-8, 15), y ∈ [-1080, 2160) → tiles [-5, 9).
+    // Pasteboard (5x5 — two canvas sizes each side): x ∈ [-3840, 5760)
+    // → tiles [-15, 23), y ∈ [-2160, 3240) → tiles [-9, 13).
     test(
       'containsTileCoord accepts pasteboard tiles beyond the canvas grid',
       () {
         expect(surface().containsTileCoord(TileCoord(x: 8, y: 4)), isTrue);
-        expect(surface().containsTileCoord(TileCoord(x: 14, y: 8)), isTrue);
-        expect(surface().containsTileCoord(TileCoord(x: -8, y: -5)), isTrue);
+        expect(surface().containsTileCoord(TileCoord(x: 22, y: 12)), isTrue);
+        expect(surface().containsTileCoord(TileCoord(x: -15, y: -9)), isTrue);
       },
     );
     test(
       'containsTileCoord returns false for coord outside pasteboard right edge',
       () =>
-          expect(surface().containsTileCoord(TileCoord(x: 15, y: 4)), isFalse),
+          expect(surface().containsTileCoord(TileCoord(x: 23, y: 4)), isFalse),
     );
     test(
       'containsTileCoord returns false for coord outside pasteboard bottom '
       'edge',
-      () => expect(surface().containsTileCoord(TileCoord(x: 7, y: 9)), isFalse),
+      () =>
+          expect(surface().containsTileCoord(TileCoord(x: 7, y: 13)), isFalse),
     );
     test(
       'tileAt returns null for missing tile',
@@ -131,8 +132,8 @@ void main() {
       expect(
         () => surface(
           tiles: {
-            TileCoord(x: 15, y: 0): BitmapTile.blank(
-              coord: TileCoord(x: 15, y: 0),
+            TileCoord(x: 23, y: 0): BitmapTile.blank(
+              coord: TileCoord(x: 23, y: 0),
               size: 256,
             ),
           },
@@ -142,8 +143,8 @@ void main() {
       expect(
         () => surface(
           tiles: {
-            TileCoord(x: -9, y: 0): BitmapTile.blank(
-              coord: TileCoord(x: -9, y: 0),
+            TileCoord(x: -16, y: 0): BitmapTile.blank(
+              coord: TileCoord(x: -16, y: 0),
               size: 256,
             ),
           },
