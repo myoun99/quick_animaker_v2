@@ -385,6 +385,78 @@ class _AudioSettingsSectionState extends State<AudioSettingsSection> {
                 ),
               ],
             ),
+            // ADR cueing (REC1-E): the stopped-⏺ count-in, the 3-beep
+            // countdown into a punch, and the streamer wipe on the
+            // picture.
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    strings.audioCountInLabel,
+                    style: const TextStyle(fontSize: 12),
+                  ),
+                ),
+                SizedBox(
+                  width: 150,
+                  child: Slider(
+                    key: const ValueKey<String>('settings-count-in-slider'),
+                    value: settings.countInSeconds.toDouble(),
+                    max: AudioSyncSettings.maxCountInSeconds.toDouble(),
+                    divisions: AudioSyncSettings.maxCountInSeconds,
+                    onChanged: (value) => widget.session.setAudioSyncSettings(
+                      settings.copyWith(
+                        countInSeconds: AudioSyncSettings.clampCountInSeconds(
+                          value.round(),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+                SizedBox(
+                  width: 30,
+                  child: Text(
+                    '${settings.countInSeconds}',
+                    key: const ValueKey<String>('settings-count-in-value'),
+                    textAlign: TextAlign.end,
+                    style: const TextStyle(fontSize: 12),
+                  ),
+                ),
+              ],
+            ),
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    strings.audioCueBeepsLabel,
+                    style: const TextStyle(fontSize: 12),
+                  ),
+                ),
+                Switch(
+                  key: const ValueKey<String>('settings-cue-beeps'),
+                  value: settings.cueBeeps,
+                  onChanged: (value) => widget.session.setAudioSyncSettings(
+                    settings.copyWith(cueBeeps: value),
+                  ),
+                ),
+              ],
+            ),
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    strings.audioStreamerLabel,
+                    style: const TextStyle(fontSize: 12),
+                  ),
+                ),
+                Switch(
+                  key: const ValueKey<String>('settings-streamer'),
+                  value: settings.streamerEnabled,
+                  onChanged: (value) => widget.session.setAudioSyncSettings(
+                    settings.copyWith(streamerEnabled: value),
+                  ),
+                ),
+              ],
+            ),
             const Divider(height: 24),
             Row(
               children: [

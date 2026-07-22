@@ -47,6 +47,9 @@ class AppStrings {
     required this.audioClippingNoticeLabel,
     required this.audioInputMeterLabel,
     required this.audioTestSoundLabel,
+    required this.audioCountInLabel,
+    required this.audioCueBeepsLabel,
+    required this.audioStreamerLabel,
     required this.recordNothingRecording,
     required this.recordTakeEmpty,
     required this.recordPlacementFailed,
@@ -141,6 +144,11 @@ class AppStrings {
   final String audioClippingNoticeLabel;
   final String audioInputMeterLabel;
   final String audioTestSoundLabel;
+
+  // --- ADR cueing (REC1-E) ---
+  final String audioCountInLabel;
+  final String audioCueBeepsLabel;
+  final String audioStreamerLabel;
   final String recordNothingRecording;
   final String recordTakeEmpty;
   final String recordPlacementFailed;
@@ -237,6 +245,9 @@ class AppStrings {
     audioClippingNoticeLabel: 'Clipping warnings (toast + block marker)',
     audioInputMeterLabel: 'Input level',
     audioTestSoundLabel: 'Test sound',
+    audioCountInLabel: 'Count-in (seconds)',
+    audioCueBeepsLabel: 'Cue beeps (ADR 3-beep)',
+    audioStreamerLabel: 'Streamer (punch-in wipe)',
     recordNothingRecording: 'Nothing was recording.',
     recordTakeEmpty: 'The take was empty — nothing to place.',
     recordPlacementFailed: 'The recording could not be placed.',
@@ -330,6 +341,9 @@ class AppStrings {
     audioClippingNoticeLabel: 'クリッピング警告（トースト＋ブロックマーカー）',
     audioInputMeterLabel: '入力レベル',
     audioTestSoundLabel: 'テスト音を再生',
+    audioCountInLabel: 'カウントイン（秒）',
+    audioCueBeepsLabel: 'キュービープ（ADR式3ビープ）',
+    audioStreamerLabel: 'ストリーマー（パンチイン・ワイプ）',
     recordNothingRecording: '録音中ではありません。',
     recordTakeEmpty: 'テイクが空でした — 配置するものがありません。',
     recordPlacementFailed: '録音を配置できませんでした。',
@@ -421,6 +435,9 @@ class AppStrings {
     audioClippingNoticeLabel: '클리핑 주의 안내(토스트+블록 마커)',
     audioInputMeterLabel: '입력 레벨',
     audioTestSoundLabel: '테스트 사운드',
+    audioCountInLabel: '카운트인(초)',
+    audioCueBeepsLabel: '큐 비프(ADR식 3비프)',
+    audioStreamerLabel: '스트리머(펀치인 와이프)',
     recordNothingRecording: '녹음 중이 아닙니다.',
     recordTakeEmpty: '테이크가 비어 있어 배치할 것이 없습니다.',
     recordPlacementFailed: '녹음을 배치하지 못했습니다.',
@@ -518,6 +535,9 @@ class AppStrings {
     audioClippingNoticeLabel: 'Alertes de saturation (toast + marqueur)',
     audioInputMeterLabel: 'Niveau d\'entrée',
     audioTestSoundLabel: 'Son de test',
+    audioCountInLabel: 'Décompte (secondes)',
+    audioCueBeepsLabel: 'Bips de repère (3 bips ADR)',
+    audioStreamerLabel: 'Streamer (balayage punch-in)',
     recordNothingRecording: 'Aucun enregistrement en cours.',
     recordTakeEmpty: 'La prise était vide — rien à placer.',
     recordPlacementFailed: 'La prise n\'a pas pu être placée.',
@@ -612,6 +632,9 @@ class AppStrings {
     audioClippingNoticeLabel: '削波警告（提示+块标记）',
     audioInputMeterLabel: '输入电平',
     audioTestSoundLabel: '测试声音',
+    audioCountInLabel: '倒数（秒）',
+    audioCueBeepsLabel: '提示音（ADR三响）',
+    audioStreamerLabel: '光带（切入扫过）',
     recordNothingRecording: '当前没有在录音。',
     recordTakeEmpty: '录音为空 — 没有可放置的内容。',
     recordPlacementFailed: '录音未能放置。',

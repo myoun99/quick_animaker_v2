@@ -111,6 +111,7 @@ import '../native/qa_audio_device.dart'
 import '../services/audio/audio_mixer_reference.dart'
     show AudioMixClip, AudioMixSource;
 import 'playback/audio_input_monitor.dart';
+import 'playback/audio_playback_schedule.dart' show ScheduledAudioClip;
 import '../services/audio/audio_conform_pipeline.dart' show ProjectAssetLayout;
 import '../services/audio/conform_wav_codec.dart' show encodeConformWav;
 import '../services/commands/update_media_assets_command.dart';
@@ -476,6 +477,7 @@ class EditorSessionManager extends ChangeNotifier {
         ),
     resolveSoloedLayerIds: () => soloedSeLayerIds.value,
     resolveRecordingMutedLayerIds: () => recordingMutedLayerIds,
+    resolveCueClips: () => voiceRecordCueClips,
     resolveOutputDeviceName: () => audioSyncSettings.value.outputDeviceName,
   );
 
@@ -522,6 +524,7 @@ class EditorSessionManager extends ChangeNotifier {
     deviceCarriesPlayback: () => audioDeviceTransport.carryingPlayback,
     resolveSoloedLayerIds: () => soloedSeLayerIds.value,
     resolveRecordingMutedLayerIds: () => recordingMutedLayerIds,
+    resolveCueClips: () => voiceRecordCueClips,
   );
 
   void _onPlaybackStopped(PlaybackPosition lastPosition) {
@@ -867,6 +870,7 @@ class EditorSessionManager extends ChangeNotifier {
     voiceRecordPreviewLane.dispose();
     voiceRecordClipLit.dispose();
     _testToneTimer?.cancel();
+    _voiceRecordCountInTimer?.cancel();
     detachInputMeter();
     audioPlaybackSync.dispose();
     audioScrubber.dispose();
@@ -3331,6 +3335,131 @@ class EditorSessionManager extends ChangeNotifier {
   /// this does not).
   final ValueNotifier<bool> voiceRecordClipLit = ValueNotifier<bool>(false);
 
+  // --- ADR cueing (REC1-E) --------------------------------------------------
+
+  /// Cue beeps riding the playback schedule while a take approaches its
+  /// punch-in (REC1-E): three one-second-spaced beeps ending AT the
+  /// punch — the "삐-삐-삐-(대사)" timing anchor, leaving the CHOSEN
+  /// output device because they are ordinary schedule clips. Empty
+  /// outside recording.
+  List<ScheduledAudioClip> _voiceRecordCueClips = const [];
+  List<ScheduledAudioClip> get voiceRecordCueClips => _voiceRecordCueClips;
+
+  /// The streamer's window on the PLAYBACK axis (REC1-E): non-null while
+  /// a take rolls toward a punch-in with the streamer enabled — the
+  /// canvas overlay sweeps from [startFrame] to [punchFrame].
+  ({int startFrame, int punchFrame})? _voiceRecordStreamerWindow;
+  ({int startFrame, int punchFrame})? get voiceRecordStreamerWindow =>
+      _voiceRecordStreamerWindow;
+
+  Timer? _voiceRecordCountInTimer;
+  String? _cueBeepPath;
+
+  /// The cue beep on disk (project-rate mono, ~90 ms of 1 kHz with 5 ms
+  /// ramps), written once per session and registered with the conform
+  /// store like any take.
+  String? _ensureCueBeepWav() {
+    final existing = _cueBeepPath;
+    if (existing != null && File(existing).existsSync()) {
+      return existing;
+    }
+    try {
+      final sampleRate = audioConformStore.projectSampleRate;
+      final toneSamples = sampleRate * 9 ~/ 100;
+      final ramp = sampleRate ~/ 200;
+      final samples = Float32List(toneSamples);
+      for (var sample = 0; sample < toneSamples; sample += 1) {
+        var value = 0.5 * math.sin(2 * math.pi * 1000 * sample / sampleRate);
+        if (sample < ramp) {
+          value *= sample / ramp;
+        } else if (sample >= toneSamples - ramp) {
+          value *= (toneSamples - sample) / ramp;
+        }
+        samples[sample] = value;
+      }
+      final wav = encodeConformWav(
+        samples: samples,
+        channels: 1,
+        sampleRate: sampleRate,
+      );
+      final directory = Directory.systemTemp.createTempSync('qa_cue_');
+      final file = File('${directory.path}/cue-beep.wav');
+      file.writeAsBytesSync(wav);
+      audioConformStore.invalidate(file.path);
+      audioConformStore.warmPaths([file.path]);
+      _cueBeepPath = file.path;
+      return file.path;
+    } on Object {
+      return null; // No beep is a degraded cue, never a failed take.
+    }
+  }
+
+  /// Stopped-⏺ count-in beeps: the same standalone device path as the
+  /// test tone — [seconds] beeps a second apart, then the device closes
+  /// so the transport can take it for the roll.
+  void _playCountInBeeps(int seconds) {
+    if (Platform.environment['FLUTTER_TEST'] == 'true') {
+      return;
+    }
+    final device = QaAudioDevice.instance;
+    if (device == null || playback.isActive || device.isOpen) {
+      return;
+    }
+    final index = audioOutputDeviceIndexByName(
+      device,
+      audioSyncSettings.value.outputDeviceName,
+    );
+    var opened = device.open(
+      sampleRate: 48000,
+      channels: 2,
+      deviceIndex: index,
+    );
+    if (opened == 0 && index >= 0) {
+      opened = device.open(sampleRate: 48000, channels: 2);
+    }
+    if (opened == 0) {
+      return;
+    }
+    final sampleRate = device.sampleRate;
+    final channels = device.channels;
+    final toneSamples = sampleRate * 9 ~/ 100;
+    final ramp = sampleRate ~/ 200;
+    final pcm = Float32List(toneSamples * channels);
+    for (var sample = 0; sample < toneSamples; sample += 1) {
+      var value = 0.4 * math.sin(2 * math.pi * 1000 * sample / sampleRate);
+      if (sample < ramp) {
+        value *= sample / ramp;
+      } else if (sample >= toneSamples - ramp) {
+        value *= (toneSamples - sample) / ramp;
+      }
+      for (var channel = 0; channel < channels; channel += 1) {
+        pcm[sample * channels + channel] = value;
+      }
+    }
+    device.setSchedule(
+      clips: [
+        for (var beep = 0; beep < seconds; beep += 1)
+          AudioMixClip(
+            sourceIndex: 0,
+            startSample: beep * sampleRate,
+            endSample: beep * sampleRate + toneSamples,
+          ),
+      ],
+      sources: [AudioMixSource(samples: pcm, channels: channels)],
+    );
+    device.play(
+      startSample: 0,
+      stopSample: (seconds - 1) * sampleRate + toneSamples,
+    );
+    _testToneTimer?.cancel();
+    _testToneTimer = Timer(Duration(milliseconds: seconds * 1000), () {
+      if (!playback.isActive && device.isOpen) {
+        device.stop();
+        device.close();
+      }
+    });
+  }
+
   // --- Settings input meter + test tone (REC1-D2) --------------------------
 
   AudioInputMonitor? _inputMonitor;
@@ -3599,6 +3728,12 @@ class EditorSessionManager extends ChangeNotifier {
     _voiceRecordSamplesPerBucket = 0;
     _voiceRecordLastPreviewLength = 0;
     voiceRecordClipLit.value = false;
+    // The ADR cueing retires with the take (REC1-E): the stop's own
+    // notify rebuilds the schedules without the beeps.
+    _voiceRecordCountInTimer?.cancel();
+    _voiceRecordCountInTimer = null;
+    _voiceRecordCueClips = const [];
+    _voiceRecordStreamerWindow = null;
     if (voiceRecordPreviewLane.value != null) {
       voiceRecordPreviewLane.value = null;
     }
@@ -3711,8 +3846,38 @@ class EditorSessionManager extends ChangeNotifier {
     _voiceRecordSamplesPerBucket = rate ~/ 40;
     recorder.onChunk = debugIngestVoiceRecordChunk;
     playback.globalFrameIndexListenable.addListener(_syncVoiceRecordPreview);
-    if (playback.isActive && playback.isPlaying) {
+    final wasRolling = playback.isActive && playback.isPlaying;
+    // Stopped-⏺ count-in (REC1-E): the mic is ALREADY rolling, the
+    // transport waits — the wait rides the head trim, so the take still
+    // anchors where the roll will start. A punch has its own run-up; the
+    // count-in stays out of its way.
+    final countInSeconds = !wasRolling && punchEnd == null
+        ? AudioSyncSettings.clampCountInSeconds(
+            audioSyncSettings.value.countInSeconds,
+          )
+        : 0;
+    if (wasRolling) {
       _voiceRecordStartedRoll = false;
+    } else if (countInSeconds > 0) {
+      _voiceRecordStartedRoll = true;
+      _voiceRecordHeadTrimSamples += countInSeconds * rate;
+      if (audioSyncSettings.value.cueBeeps) {
+        _playCountInBeeps(countInSeconds);
+      }
+      _voiceRecordCountInTimer?.cancel();
+      _voiceRecordCountInTimer = Timer(Duration(seconds: countInSeconds), () {
+        if (!isVoiceRecording.value) {
+          return;
+        }
+        if (playback.isActive) {
+          playback.resume();
+        } else {
+          playback.play(
+            scope: PlaybackScope.allCuts,
+            startGlobalFrame: rollStart,
+          );
+        }
+      });
     } else {
       _voiceRecordStartedRoll = true;
       if (playback.isActive) {
@@ -3724,8 +3889,51 @@ class EditorSessionManager extends ChangeNotifier {
         );
       }
     }
+    // ADR cue clips + the streamer window (REC1-E): only with a punch
+    // AHEAD of the roll — the approach is what they count down.
+    _voiceRecordCueClips = const [];
+    _voiceRecordStreamerWindow = null;
+    if (punchEnd != null && anchor > rollStart) {
+      final axisShift =
+          playback.isActive && playback.scope == PlaybackScope.activeCut
+          ? activeCutGlobalStartFrame
+          : 0;
+      final secondFrames = projectFrameRate.framesCoveringExactSeconds(1, 1);
+      if (secondFrames > 0) {
+        final settingsNow = audioSyncSettings.value;
+        if (settingsNow.cueBeeps) {
+          final beepPath = _ensureCueBeepWav();
+          if (beepPath != null) {
+            final beepFrames = math.max(
+              1,
+              projectFrameRate.framesCoveringExactSeconds(9, 100),
+            );
+            _voiceRecordCueClips = [
+              for (var beep = 3; beep >= 1; beep -= 1)
+                if (anchor - beep * secondFrames >= rollStart)
+                  ScheduledAudioClip(
+                    filePath: beepPath,
+                    startFrame: anchor - beep * secondFrames - axisShift,
+                    endFrameExclusive:
+                        anchor - beep * secondFrames - axisShift + beepFrames,
+                    gain: 0.8,
+                  ),
+            ];
+          }
+        }
+        if (settingsNow.streamerEnabled) {
+          final approach = math.min(3 * secondFrames, anchor - rollStart);
+          if (approach >= 1) {
+            _voiceRecordStreamerWindow = (
+              startFrame: anchor - approach - axisShift,
+              punchFrame: anchor - axisShift,
+            );
+          }
+        }
+      }
+    }
     _syncVoiceRecordPreview();
-    notifyListeners(); // The armed lane mutes: schedules rebuild on this.
+    notifyListeners(); // Armed-lane mute + cue clips join the schedules.
     return VoiceRecordStartResult.started;
   }
 

@@ -38,6 +38,9 @@ class AudioSyncSettings {
     this.micGainDb = 0,
     this.inputChannelMode = VoiceInputChannelMode.device,
     this.clippingNotice = false,
+    this.countInSeconds = 0,
+    this.cueBeeps = true,
+    this.streamerEnabled = true,
   });
 
   static const AudioSyncSettings defaults = AudioSyncSettings();
@@ -70,6 +73,24 @@ class AudioSyncSettings {
   /// see red corners all day (user decision).
   final bool clippingNotice;
 
+  /// Stopped-⏺ count-in in seconds (REC1-E): the mic arms immediately,
+  /// the roll waits this long. 0 = off (the default, user decision).
+  final int countInSeconds;
+
+  /// The ADR cue beeps (REC1-E): with a punch window, three beeps count
+  /// down the last seconds INTO the punch-in — the "삐-삐-삐-(대사)"
+  /// timing anchor; without one, they ride the count-in.
+  final bool cueBeeps;
+
+  /// The streamer (REC1-E): the vertical wipe over the picture that
+  /// reaches the edge exactly at the punch-in.
+  final bool streamerEnabled;
+
+  static const int maxCountInSeconds = 10;
+
+  static int clampCountInSeconds(int value) =>
+      value.clamp(0, maxCountInSeconds);
+
   /// The chosen output/input device, by NAME (AUDIO-PRO R4); null = the
   /// system default. Names, not indexes: indexes shuffle when hardware
   /// replugs, and a missing name falls back to the default at open time
@@ -87,6 +108,9 @@ class AudioSyncSettings {
     int? micGainDb,
     VoiceInputChannelMode? inputChannelMode,
     bool? clippingNotice,
+    int? countInSeconds,
+    bool? cueBeeps,
+    bool? streamerEnabled,
   }) => AudioSyncSettings(
     offset: offset ?? this.offset,
     unit: unit ?? this.unit,
@@ -99,6 +123,9 @@ class AudioSyncSettings {
     micGainDb: micGainDb ?? this.micGainDb,
     inputChannelMode: inputChannelMode ?? this.inputChannelMode,
     clippingNotice: clippingNotice ?? this.clippingNotice,
+    countInSeconds: countInSeconds ?? this.countInSeconds,
+    cueBeeps: cueBeeps ?? this.cueBeeps,
+    streamerEnabled: streamerEnabled ?? this.streamerEnabled,
   );
 
   static int clampMicGainDb(int value) =>
@@ -166,6 +193,9 @@ class AudioSyncSettings {
     if (inputChannelMode != VoiceInputChannelMode.device)
       'inputChannelMode': inputChannelMode.name,
     if (clippingNotice) 'clippingNotice': true,
+    if (countInSeconds != 0) 'countInSeconds': countInSeconds,
+    if (!cueBeeps) 'cueBeeps': false,
+    if (!streamerEnabled) 'streamerEnabled': false,
   };
 
   factory AudioSyncSettings.fromJson(Map<String, dynamic> json) {
@@ -184,6 +214,11 @@ class AudioSyncSettings {
         orElse: () => VoiceInputChannelMode.device,
       ),
       clippingNotice: json['clippingNotice'] as bool? ?? false,
+      countInSeconds: clampCountInSeconds(
+        (json['countInSeconds'] as num?)?.toInt() ?? 0,
+      ),
+      cueBeeps: json['cueBeeps'] as bool? ?? true,
+      streamerEnabled: json['streamerEnabled'] as bool? ?? true,
     );
   }
 
@@ -197,7 +232,10 @@ class AudioSyncSettings {
           other.inputDeviceName == inputDeviceName &&
           other.micGainDb == micGainDb &&
           other.inputChannelMode == inputChannelMode &&
-          other.clippingNotice == clippingNotice;
+          other.clippingNotice == clippingNotice &&
+          other.countInSeconds == countInSeconds &&
+          other.cueBeeps == cueBeeps &&
+          other.streamerEnabled == streamerEnabled;
 
   @override
   int get hashCode => Object.hash(
@@ -208,6 +246,9 @@ class AudioSyncSettings {
     micGainDb,
     inputChannelMode,
     clippingNotice,
+    countInSeconds,
+    cueBeeps,
+    streamerEnabled,
   );
 
   @override
