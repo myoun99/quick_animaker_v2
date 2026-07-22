@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:quick_animaker_v2/src/models/brush_preset.dart';
 import 'package:quick_animaker_v2/src/models/brush_preset_id.dart';
+import 'package:quick_animaker_v2/src/models/brush_pressure_curve.dart';
 import 'package:quick_animaker_v2/src/models/brush_settings.dart';
 import 'package:quick_animaker_v2/src/models/brush_tip_mask.dart';
 import 'package:quick_animaker_v2/src/ui/brush/brush_preset_panel.dart';
@@ -19,7 +20,7 @@ BrushPreset _calligraphy() {
       hardness: 0.9,
       roundness: 0.3,
       angleDegrees: 45,
-      pressureSize: true,
+      sizePressureCurve: BrushPressureCurve.identity(),
     ),
   );
 }

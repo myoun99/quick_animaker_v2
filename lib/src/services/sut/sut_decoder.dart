@@ -7,6 +7,7 @@ import 'package:sqlite3/sqlite3.dart';
 
 import '../../models/brush_preset.dart';
 import '../../models/brush_preset_id.dart';
+import '../../models/brush_pressure_curve.dart';
 import '../../models/brush_settings.dart';
 import '../../models/brush_tip_mask.dart';
 
@@ -189,13 +190,21 @@ BrushSettings _settingsFromVariant(
   final thicknessPercent = _doubleOf(variant['BrushThickness']) ?? 100.0;
   final rotation = _doubleOf(variant['BrushRotation']) ?? 0.0;
 
-  final pressureSize = _effectorUsesPressure(variant['BrushSizeEffector']);
-  final pressureOpacity =
-      _effectorUsesPressure(variant['BrushOpacityEffector']) ||
-      _effectorUsesPressure(variant['BrushFlowEffector']);
-  final minimumSizeRatio = pressureSize
-      ? _effectorMinimumRatio(variant['BrushSizeEffector'])
-      : 0.0;
+  // BB-3: effectors map to pressure CURVES — the CSP minimum value is the
+  // size curve's left endpoint. Opacity and flow effectors now import as
+  // their own channels (they used to be OR-merged into one opacity bool).
+  final sizePressureCurve = _effectorUsesPressure(variant['BrushSizeEffector'])
+      ? BrushPressureCurve.linearFrom(
+          _effectorMinimumRatio(variant['BrushSizeEffector']),
+        )
+      : null;
+  final opacityPressureCurve =
+      _effectorUsesPressure(variant['BrushOpacityEffector'])
+      ? BrushPressureCurve.identity()
+      : null;
+  final flowPressureCurve = _effectorUsesPressure(variant['BrushFlowEffector'])
+      ? BrushPressureCurve.identity()
+      : null;
 
   // Spray mode scatters dabs around the stroke; the spray size is a
   // percentage of the brush size (its diameter), so the radius is half.
@@ -219,10 +228,10 @@ BrushSettings _settingsFromVariant(
         : 0.25,
     roundness: (thicknessPercent / 100.0).clamp(0.01, 1.0).toDouble(),
     angleDegrees: rotation.isFinite ? ((rotation % 180.0) + 180.0) % 180.0 : 0,
-    pressureSize: pressureSize,
-    pressureOpacity: pressureOpacity,
+    sizePressureCurve: sizePressureCurve,
+    opacityPressureCurve: opacityPressureCurve,
+    flowPressureCurve: flowPressureCurve,
     tipMask: mask,
-    minimumSizeRatio: minimumSizeRatio,
     scatterRadiusRatio: scatterRadiusRatio,
     scatterCount: scatterCount,
     textureMask: textureMask,

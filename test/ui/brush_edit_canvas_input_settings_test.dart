@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:quick_animaker_v2/src/models/brush_pressure_curve.dart';
 import 'package:quick_animaker_v2/src/models/brush_tip_shape.dart';
 import 'package:quick_animaker_v2/src/ui/canvas/brush_edit_canvas_input_settings.dart';
 
@@ -13,8 +14,11 @@ void main() {
       expect(settings.flow, 1.0);
       expect(settings.hardness, 1.0);
       expect(settings.tipShape, BrushTipShape.round);
-      expect(settings.pressureSize, isFalse);
-      expect(settings.pressureOpacity, isFalse);
+      expect(settings.sizePressureCurve, isNull);
+      expect(settings.opacityPressureCurve, isNull);
+      expect(settings.flowPressureCurve, isNull);
+      expect(settings.hardnessPressureCurve, isNull);
+      expect(settings.hasPressureDynamics, isFalse);
     });
 
     test('stores custom values', () {
@@ -114,25 +118,35 @@ void main() {
       );
     });
 
-    test('stores and copies pressure toggles', () {
-      const settings = BrushEditCanvasInputSettings(
-        pressureSize: true,
-        pressureOpacity: true,
+    test('stores and copies pressure curves (BB-3)', () {
+      final settings = BrushEditCanvasInputSettings(
+        sizePressureCurve: BrushPressureCurve.identity(),
+        opacityPressureCurve: BrushPressureCurve.linearFrom(0.2),
       );
-      expect(settings.pressureSize, isTrue);
-      expect(settings.pressureOpacity, isTrue);
+      expect(settings.sizePressureCurve, BrushPressureCurve.identity());
+      expect(
+        settings.opacityPressureCurve,
+        BrushPressureCurve.linearFrom(0.2),
+      );
+      expect(settings.hasPressureDynamics, isTrue);
 
-      final toggledOff = settings.copyWith(pressureOpacity: false);
-      expect(toggledOff.pressureSize, isTrue);
-      expect(toggledOff.pressureOpacity, isFalse);
+      final updated = settings.copyWith(
+        flowPressureCurve: BrushPressureCurve.identity(),
+      );
+      expect(updated.sizePressureCurve, BrushPressureCurve.identity());
+      expect(updated.flowPressureCurve, BrushPressureCurve.identity());
 
-      const a = BrushEditCanvasInputSettings(pressureSize: true);
-      const b = BrushEditCanvasInputSettings(pressureSize: true);
+      final a = BrushEditCanvasInputSettings(
+        sizePressureCurve: BrushPressureCurve.identity(),
+      );
+      final b = BrushEditCanvasInputSettings(
+        sizePressureCurve: BrushPressureCurve.identity(),
+      );
       const c = BrushEditCanvasInputSettings();
       expect(a, b);
       expect(a.hashCode, b.hashCode);
       expect(a == c, isFalse);
-      expect(a.toString(), contains('pressureSize: true'));
+      expect(a.toString(), contains('sizePressureCurve: BrushPressureCurve'));
     });
 
     test('copyWith preserves omitted values', () {

@@ -1,6 +1,7 @@
-import 'package:flutter_test/flutter_test.dart';
+﻿import 'package:flutter_test/flutter_test.dart';
 import 'package:quick_animaker_v2/src/models/brush_input_sample.dart';
 import 'package:quick_animaker_v2/src/models/brush_preset.dart';
+import 'package:quick_animaker_v2/src/models/brush_pressure_curve.dart';
 import 'package:quick_animaker_v2/src/models/brush_preset_id.dart';
 import 'package:quick_animaker_v2/src/models/brush_settings.dart';
 import 'package:quick_animaker_v2/src/models/brush_tip_shape.dart';
@@ -22,8 +23,8 @@ void main() {
           hardness: 0.5,
           spacing: 0.25,
           tipShape: BrushTipShape.square,
-          pressureSize: true,
-          pressureOpacity: true,
+          sizePressureCurve: BrushPressureCurve.linearFrom(0.2),
+          opacityPressureCurve: BrushPressureCurve.identity(),
         ),
       );
 
@@ -34,8 +35,8 @@ void main() {
       expect(brushJson['hardness'], 0.5);
       expect(brushJson['spacing'], 0.25);
       expect(brushJson['tipShape'], 'square');
-      expect(brushJson['pressureSize'], isTrue);
-      expect(brushJson['pressureOpacity'], isTrue);
+      expect(brushJson['sizePressureCurve'], [0.0, 0.2, 1.0, 1.0]);
+      expect(brushJson['opacityPressureCurve'], [0.0, 0.0, 1.0, 1.0]);
     });
 
     test(

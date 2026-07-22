@@ -2,9 +2,11 @@ import 'package:flutter/material.dart';
 
 import '../../models/app_language.dart';
 import '../../models/brush_blend_mode.dart';
+import '../../models/brush_pressure_curve.dart';
 import '../panels/editor_panel_frame.dart';
 import '../widgets/field_slider.dart';
 import '../widgets/panel_flyout.dart';
+import '../widgets/pressure_curve_popup.dart';
 import 'brush_tool_state.dart';
 
 /// Editable brush tool properties — the CSP-style GROUPED layout (BB-2,
@@ -30,6 +32,17 @@ class BrushSettingsPanel extends StatelessWidget {
   /// The program language — the blend mode labels localize (ja = CSP
   /// terms); the rest of the panel keeps the incremental-coverage rule.
   final AppLanguage language;
+
+  /// The CSP-style per-setting pressure button (BB-3): sits at the right
+  /// of each pressure-capable slider row and opens the shared curve popup.
+  Widget _pressureButton(BrushPressureTarget target, String title) {
+    return PressureCurveButton(
+      keyValue: 'brush-tool-pressure-${target.name}',
+      title: title,
+      curve: state.pressureCurveFor(target),
+      onChanged: (curve) => onChanged(state.withPressureCurve(target, curve)),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -59,6 +72,7 @@ class BrushSettingsPanel extends StatelessWidget {
             scale: FieldSliderScale.exponential,
             keyValue: 'brush-tool-size-slider',
             onChanged: (value) => onChanged(state.copyWith(size: value)),
+            trailing: _pressureButton(BrushPressureTarget.size, 'Size'),
           ),
           _GroupHeader('Ink'),
           _BlendModeRow(state: state, onChanged: onChanged, language: language),
@@ -71,6 +85,7 @@ class BrushSettingsPanel extends StatelessWidget {
             displayFactor: 100,
             keyValue: 'brush-tool-opacity-slider',
             onChanged: (value) => onChanged(state.copyWith(opacity: value)),
+            trailing: _pressureButton(BrushPressureTarget.opacity, 'Opacity'),
           ),
           _PanelSlider(
             label: 'Flow',
@@ -81,6 +96,7 @@ class BrushSettingsPanel extends StatelessWidget {
             displayFactor: 100,
             keyValue: 'brush-tool-flow-slider',
             onChanged: (value) => onChanged(state.copyWith(flow: value)),
+            trailing: _pressureButton(BrushPressureTarget.flow, 'Flow'),
           ),
           _GroupHeader('Brush tip'),
           _PanelSlider(
@@ -92,6 +108,10 @@ class BrushSettingsPanel extends StatelessWidget {
             displayFactor: 100,
             keyValue: 'brush-tool-hardness-slider',
             onChanged: (value) => onChanged(state.copyWith(hardness: value)),
+            trailing: _pressureButton(
+              BrushPressureTarget.hardness,
+              'Hardness',
+            ),
           ),
           _PanelSlider(
             label: 'Roundness',
@@ -138,23 +158,6 @@ class BrushSettingsPanel extends StatelessWidget {
             keyValue: 'brush-tool-stabilizer-slider',
             onChanged: (value) =>
                 onChanged(state.copyWith(stabilizerStrength: value)),
-          ),
-          // Pressure toggles survive until BB-3 lands the per-setting
-          // pressure CURVES (the popup editor replaces both switches).
-          _GroupHeader('Pen pressure'),
-          _PanelSwitch(
-            label: 'Size',
-            value: state.pressureSize,
-            keyValue: 'brush-tool-pressure-size-toggle',
-            onChanged: (value) =>
-                onChanged(state.copyWith(pressureSize: value)),
-          ),
-          _PanelSwitch(
-            label: 'Opacity',
-            value: state.pressureOpacity,
-            keyValue: 'brush-tool-pressure-opacity-toggle',
-            onChanged: (value) =>
-                onChanged(state.copyWith(pressureOpacity: value)),
           ),
         ],
       ),
@@ -289,6 +292,7 @@ class _PanelSlider extends StatelessWidget {
     required this.onChanged,
     this.scale = FieldSliderScale.linear,
     this.displayFactor = 1,
+    this.trailing,
   });
 
   final String label;
@@ -301,52 +305,33 @@ class _PanelSlider extends StatelessWidget {
   final FieldSliderScale scale;
   final double displayFactor;
 
+  /// Optional right-edge control (BB-3: the pressure-curve button).
+  final Widget? trailing;
+
   @override
   Widget build(BuildContext context) {
+    final slider = FieldSlider(
+      key: ValueKey<String>(keyValue),
+      value: value,
+      min: min,
+      max: max,
+      label: label,
+      valueText: valueLabel,
+      scale: scale,
+      displayFactor: displayFactor,
+      onChanged: onChanged,
+    );
     return Padding(
       padding: const EdgeInsets.only(bottom: 6),
-      child: FieldSlider(
-        key: ValueKey<String>(keyValue),
-        value: value,
-        min: min,
-        max: max,
-        label: label,
-        valueText: valueLabel,
-        scale: scale,
-        displayFactor: displayFactor,
-        onChanged: onChanged,
-      ),
-    );
-  }
-}
-
-class _PanelSwitch extends StatelessWidget {
-  const _PanelSwitch({
-    required this.label,
-    required this.value,
-    required this.keyValue,
-    required this.onChanged,
-  });
-
-  final String label;
-  final bool value;
-  final String keyValue;
-  final ValueChanged<bool> onChanged;
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      children: [
-        Expanded(
-          child: Text(label, style: Theme.of(context).textTheme.labelSmall),
-        ),
-        Switch(
-          key: ValueKey<String>(keyValue),
-          value: value,
-          materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-          onChanged: onChanged,
-        ),
-      ],
+      child: trailing == null
+          ? slider
+          : Row(
+              children: [
+                Expanded(child: slider),
+                const SizedBox(width: 4),
+                trailing!,
+              ],
+            ),
     );
   }
 }

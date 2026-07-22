@@ -62,21 +62,25 @@ class BrushDab {
     required BrushSettings settings,
     required int sequence,
   }) {
+    // BB-3: each setting's pressure curve scales its base value (null =
+    // the setting ignores pressure). The old minimum-size floor is the
+    // size curve's left endpoint, so light strokes still never vanish.
+    final pressure = sample.pressure;
     return BrushDab(
       center: CanvasPoint(x: sample.x, y: sample.y),
       color: settings.color,
-      // Pressure scales size down to the minimum-size floor (Photoshop's
-      // "minimum diameter"), so light strokes never vanish entirely.
-      size: settings.pressureSize
-          ? settings.size *
-                (settings.minimumSizeRatio +
-                    (1.0 - settings.minimumSizeRatio) * sample.pressure)
-          : settings.size,
-      opacity: settings.pressureOpacity
-          ? settings.opacity * sample.pressure
-          : settings.opacity,
-      flow: settings.flow,
-      hardness: settings.hardness,
+      size:
+          settings.size *
+          (settings.sizePressureCurve?.evaluate(pressure) ?? 1.0),
+      opacity:
+          settings.opacity *
+          (settings.opacityPressureCurve?.evaluate(pressure) ?? 1.0),
+      flow:
+          settings.flow *
+          (settings.flowPressureCurve?.evaluate(pressure) ?? 1.0),
+      hardness:
+          settings.hardness *
+          (settings.hardnessPressureCurve?.evaluate(pressure) ?? 1.0),
       tipShape: settings.tipShape,
       pressure: sample.pressure,
       sequence: sequence,

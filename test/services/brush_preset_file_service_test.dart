@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:quick_animaker_v2/src/models/brush_preset.dart';
 import 'package:quick_animaker_v2/src/models/brush_preset_id.dart';
+import 'package:quick_animaker_v2/src/models/brush_pressure_curve.dart';
 import 'package:quick_animaker_v2/src/models/brush_settings.dart';
 import 'package:quick_animaker_v2/src/services/brush_preset_defaults.dart';
 import 'package:quick_animaker_v2/src/services/brush_preset_file_service.dart';
@@ -52,7 +53,7 @@ void main() {
             hardness: 0.9,
             roundness: 0.4,
             angleDegrees: 45,
-            pressureSize: true,
+            sizePressureCurve: BrushPressureCurve.identity(),
           ),
         ),
         defaultBrushPresets.first,

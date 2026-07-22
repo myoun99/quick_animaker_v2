@@ -13,6 +13,7 @@ import 'package:quick_animaker_v2/src/models/dirty_region.dart';
 import 'package:quick_animaker_v2/src/models/tile_coord.dart';
 import 'package:quick_animaker_v2/src/models/brush_dab.dart';
 import 'package:quick_animaker_v2/src/models/brush_edit_session_state.dart';
+import 'package:quick_animaker_v2/src/models/brush_pressure_curve.dart';
 import 'package:quick_animaker_v2/src/models/canvas_point.dart';
 import 'package:quick_animaker_v2/src/models/canvas_size.dart';
 import 'package:quick_animaker_v2/src/models/canvas_surface_state.dart';
@@ -717,9 +718,9 @@ void main() {
           _view(
             _sessionState(width: 200, height: 16),
             results.add,
-            inputSettings: const BrushEditCanvasInputSettings(
+            inputSettings: BrushEditCanvasInputSettings(
               size: 8,
-              pressureSize: true,
+              sizePressureCurve: BrushPressureCurve.identity(),
             ),
           ),
         ),
@@ -732,14 +733,14 @@ void main() {
       );
 
       expect(results, hasLength(1));
-      // Constant 0.5 pressure with pressureSize on halves every dab's size.
+      // Constant 0.5 pressure with the size curve on halves every dab's size.
       for (final dab in results.single) {
         expect(dab.size, closeTo(4.0, 1e-6));
       }
     });
 
     testWidgets(
-      'mouse strokes paint at full pressure even with the size toggle on',
+      'mouse strokes paint at full pressure even with the size curve on',
       (tester) async {
         // Regression: a mouse claims a 0..1 pressure range on some platforms
         // while always reporting pressure 0.0, which scaled every dab to
@@ -750,10 +751,10 @@ void main() {
             _view(
               _sessionState(width: 200, height: 16),
               results.add,
-              inputSettings: const BrushEditCanvasInputSettings(
+              inputSettings: BrushEditCanvasInputSettings(
                 size: 8,
-                pressureSize: true,
-                pressureOpacity: true,
+                sizePressureCurve: BrushPressureCurve.identity(),
+                opacityPressureCurve: BrushPressureCurve.identity(),
               ),
             ),
           ),
@@ -787,9 +788,9 @@ void main() {
             _view(
               _sessionState(width: 200, height: 16),
               results.add,
-              inputSettings: const BrushEditCanvasInputSettings(
+              inputSettings: BrushEditCanvasInputSettings(
                 size: 8,
-                pressureSize: true,
+                sizePressureCurve: BrushPressureCurve.identity(),
               ),
             ),
           ),
@@ -842,9 +843,9 @@ void main() {
             _view(
               _sessionState(width: 200, height: 16),
               results.add,
-              inputSettings: const BrushEditCanvasInputSettings(
+              inputSettings: BrushEditCanvasInputSettings(
                 size: 8,
-                pressureSize: true,
+                sizePressureCurve: BrushPressureCurve.identity(),
               ),
             ),
           ),
@@ -1120,7 +1121,7 @@ void main() {
       });
     });
 
-    testWidgets('pen pressure is ignored when the size toggle is off', (
+    testWidgets('pen pressure is ignored when no size curve is set', (
       tester,
     ) async {
       final results = <List<BrushDab>>[];
@@ -1129,7 +1130,7 @@ void main() {
           _view(
             _sessionState(width: 200, height: 16),
             results.add,
-            // pressureSize defaults off: pressure must not change the size.
+            // No size curve: pressure must not change the size.
             inputSettings: const BrushEditCanvasInputSettings(size: 8),
           ),
         ),
@@ -1152,9 +1153,9 @@ void main() {
           _view(
             _sessionState(width: 200, height: 16),
             results.add,
-            inputSettings: const BrushEditCanvasInputSettings(
+            inputSettings: BrushEditCanvasInputSettings(
               size: 8,
-              pressureSize: true,
+              sizePressureCurve: BrushPressureCurve.identity(),
             ),
           ),
         ),

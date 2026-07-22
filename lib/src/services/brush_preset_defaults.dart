@@ -1,5 +1,6 @@
-import '../models/brush_preset.dart';
+﻿import '../models/brush_preset.dart';
 import '../models/brush_preset_id.dart';
+import '../models/brush_pressure_curve.dart';
 import '../models/brush_settings.dart';
 import 'brush_tip_mask_defaults.dart';
 
@@ -16,7 +17,7 @@ final List<BrushPreset> defaultBrushPresets = List.unmodifiable(<BrushPreset>[
       size: 4,
       hardness: 1.0,
       spacing: 0.15,
-      pressureSize: true,
+      sizePressureCurve: BrushPressureCurve.identity(),
     ),
   ),
   BrushPreset(
@@ -26,7 +27,7 @@ final List<BrushPreset> defaultBrushPresets = List.unmodifiable(<BrushPreset>[
       size: 8,
       hardness: 1.0,
       spacing: 0.1,
-      pressureSize: true,
+      sizePressureCurve: BrushPressureCurve.identity(),
     ),
   ),
   BrushPreset(
@@ -37,7 +38,7 @@ final List<BrushPreset> defaultBrushPresets = List.unmodifiable(<BrushPreset>[
       hardness: 0.25,
       flow: 0.7,
       spacing: 0.1,
-      pressureOpacity: true,
+      opacityPressureCurve: BrushPressureCurve.identity(),
     ),
   ),
   BrushPreset(
@@ -49,7 +50,7 @@ final List<BrushPreset> defaultBrushPresets = List.unmodifiable(<BrushPreset>[
       spacing: 0.1,
       roundness: 0.3,
       angleDegrees: 45,
-      pressureSize: true,
+      sizePressureCurve: BrushPressureCurve.identity(),
     ),
   ),
   BrushPreset(
@@ -71,7 +72,7 @@ final List<BrushPreset> defaultBrushPresets = List.unmodifiable(<BrushPreset>[
       flow: 0.85,
       spacing: 0.2,
       tipMask: chalkBrushTipMask,
-      pressureSize: true,
+      sizePressureCurve: BrushPressureCurve.identity(),
     ),
   ),
   BrushPreset(

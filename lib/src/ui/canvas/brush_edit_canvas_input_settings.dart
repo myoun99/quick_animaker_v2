@@ -1,4 +1,5 @@
 import '../../models/brush_blend_mode.dart';
+import '../../models/brush_pressure_curve.dart';
 import '../../models/brush_tip_mask.dart';
 import '../../models/brush_tip_rotation_mode.dart';
 import '../../models/brush_tip_shape.dart';
@@ -12,13 +13,14 @@ class BrushEditCanvasInputSettings {
     this.hardness = 1.0,
     this.tipShape = BrushTipShape.round,
     this.spacing = 0.25,
-    this.pressureSize = false,
-    this.pressureOpacity = false,
+    this.sizePressureCurve,
+    this.opacityPressureCurve,
+    this.flowPressureCurve,
+    this.hardnessPressureCurve,
     this.roundness = 1.0,
     this.angleDegrees = 0.0,
     this.tipMask,
     this.rotationMode = BrushTipRotationMode.fixed,
-    this.minimumSizeRatio = 0.0,
     this.sizeJitter = 0.0,
     this.opacityJitter = 0.0,
     this.angleJitter = 0.0,
@@ -50,10 +52,6 @@ class BrushEditCanvasInputSettings {
        assert(
          dualMaskScale > 0.0,
          'BrushEditCanvasInputSettings.dualMaskScale must be > 0.',
-       ),
-       assert(
-         minimumSizeRatio >= 0.0 && minimumSizeRatio <= 1.0,
-         'BrushEditCanvasInputSettings.minimumSizeRatio must be in [0, 1].',
        ),
        assert(
          scatterRadiusRatio >= 0.0,
@@ -92,11 +90,20 @@ class BrushEditCanvasInputSettings {
   final BrushTipShape tipShape;
   final double spacing;
 
-  /// When true, each dab's size is scaled by the input pressure (linear).
-  final bool pressureSize;
+  /// BB-3 (R26 #11): per-setting pressure response curves; `null` = the
+  /// setting ignores pressure. See `BrushSettings` for the model story.
+  final BrushPressureCurve? sizePressureCurve;
+  final BrushPressureCurve? opacityPressureCurve;
+  final BrushPressureCurve? flowPressureCurve;
+  final BrushPressureCurve? hardnessPressureCurve;
 
-  /// When true, each dab's opacity is scaled by the input pressure (linear).
-  final bool pressureOpacity;
+  /// Whether any pressure curve is active (the no-pressure hot path skips
+  /// the per-dab dynamics pass entirely).
+  bool get hasPressureDynamics =>
+      sizePressureCurve != null ||
+      opacityPressureCurve != null ||
+      flowPressureCurve != null ||
+      hardnessPressureCurve != null;
 
   /// Minor-to-major axis ratio of the tip in (0, 1]; 1.0 is the classic
   /// circle/square.
@@ -111,9 +118,6 @@ class BrushEditCanvasInputSettings {
 
   /// How dab angles are chosen at placement time.
   final BrushTipRotationMode rotationMode;
-
-  /// Size floor for pressure scaling, as a ratio of [size].
-  final double minimumSizeRatio;
 
   /// Random per-dab size reduction, 0..1.
   final double sizeJitter;
@@ -165,13 +169,14 @@ class BrushEditCanvasInputSettings {
     double? hardness,
     BrushTipShape? tipShape,
     double? spacing,
-    bool? pressureSize,
-    bool? pressureOpacity,
+    BrushPressureCurve? sizePressureCurve,
+    BrushPressureCurve? opacityPressureCurve,
+    BrushPressureCurve? flowPressureCurve,
+    BrushPressureCurve? hardnessPressureCurve,
     double? roundness,
     double? angleDegrees,
     BrushTipMask? tipMask,
     BrushTipRotationMode? rotationMode,
-    double? minimumSizeRatio,
     double? sizeJitter,
     double? opacityJitter,
     double? angleJitter,
@@ -195,13 +200,15 @@ class BrushEditCanvasInputSettings {
       hardness: hardness ?? this.hardness,
       tipShape: tipShape ?? this.tipShape,
       spacing: spacing ?? this.spacing,
-      pressureSize: pressureSize ?? this.pressureSize,
-      pressureOpacity: pressureOpacity ?? this.pressureOpacity,
+      sizePressureCurve: sizePressureCurve ?? this.sizePressureCurve,
+      opacityPressureCurve: opacityPressureCurve ?? this.opacityPressureCurve,
+      flowPressureCurve: flowPressureCurve ?? this.flowPressureCurve,
+      hardnessPressureCurve:
+          hardnessPressureCurve ?? this.hardnessPressureCurve,
       roundness: roundness ?? this.roundness,
       angleDegrees: angleDegrees ?? this.angleDegrees,
       tipMask: tipMask ?? this.tipMask,
       rotationMode: rotationMode ?? this.rotationMode,
-      minimumSizeRatio: minimumSizeRatio ?? this.minimumSizeRatio,
       sizeJitter: sizeJitter ?? this.sizeJitter,
       opacityJitter: opacityJitter ?? this.opacityJitter,
       angleJitter: angleJitter ?? this.angleJitter,
@@ -230,13 +237,14 @@ class BrushEditCanvasInputSettings {
           other.hardness == hardness &&
           other.tipShape == tipShape &&
           other.spacing == spacing &&
-          other.pressureSize == pressureSize &&
-          other.pressureOpacity == pressureOpacity &&
+          other.sizePressureCurve == sizePressureCurve &&
+          other.opacityPressureCurve == opacityPressureCurve &&
+          other.flowPressureCurve == flowPressureCurve &&
+          other.hardnessPressureCurve == hardnessPressureCurve &&
           other.roundness == roundness &&
           other.angleDegrees == angleDegrees &&
           other.tipMask == tipMask &&
           other.rotationMode == rotationMode &&
-          other.minimumSizeRatio == minimumSizeRatio &&
           other.sizeJitter == sizeJitter &&
           other.opacityJitter == opacityJitter &&
           other.angleJitter == angleJitter &&
@@ -261,13 +269,14 @@ class BrushEditCanvasInputSettings {
     hardness,
     tipShape,
     spacing,
-    pressureSize,
-    pressureOpacity,
+    sizePressureCurve,
+    opacityPressureCurve,
+    flowPressureCurve,
+    hardnessPressureCurve,
     roundness,
     angleDegrees,
     tipMask,
     rotationMode,
-    minimumSizeRatio,
     sizeJitter,
     opacityJitter,
     angleJitter,
@@ -289,10 +298,13 @@ class BrushEditCanvasInputSettings {
       'BrushEditCanvasInputSettings(color: $color, size: $size, '
       'opacity: $opacity, flow: $flow, hardness: $hardness, '
       'tipShape: $tipShape, spacing: $spacing, '
-      'pressureSize: $pressureSize, pressureOpacity: $pressureOpacity, '
+      'sizePressureCurve: $sizePressureCurve, '
+      'opacityPressureCurve: $opacityPressureCurve, '
+      'flowPressureCurve: $flowPressureCurve, '
+      'hardnessPressureCurve: $hardnessPressureCurve, '
       'roundness: $roundness, angleDegrees: $angleDegrees, '
       'tipMask: $tipMask, rotationMode: $rotationMode, '
-      'minimumSizeRatio: $minimumSizeRatio, sizeJitter: $sizeJitter, '
+      'sizeJitter: $sizeJitter, '
       'opacityJitter: $opacityJitter, angleJitter: $angleJitter, '
       'scatterRadiusRatio: $scatterRadiusRatio, '
       'scatterCount: $scatterCount, scatterBothAxes: $scatterBothAxes)';
