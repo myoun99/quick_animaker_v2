@@ -1,7 +1,9 @@
+import '../core/floor_math.dart';
 import '../models/bitmap_surface.dart';
 import '../models/canvas_point.dart';
 import '../models/cut.dart';
 import '../models/layer_id.dart';
+import '../models/pasteboard_bounds.dart';
 import '../models/tile_coord.dart';
 import 'cut_frame_composite_plan.dart';
 
@@ -12,16 +14,18 @@ import 'cut_frame_composite_plan.dart';
 const int canvasPaperColor = 0xFFEDEDED;
 
 /// The straight-alpha RGBA of [surface] at integer canvas coords, or null
-/// outside/empty (missing tiles are fully transparent).
+/// beyond the PASTEBOARD wall (missing tiles are fully transparent).
+/// Off-canvas coordinates are real pixels — the eyedropper picks them
+/// like Flash does; floorDiv keeps negative coords on the right tile.
 int? surfacePixelRgba(BitmapSurface surface, int x, int y) {
-  if (x < 0 ||
-      y < 0 ||
-      x >= surface.canvasSize.width ||
-      y >= surface.canvasSize.height) {
+  if (!surface.canvasSize.containsPasteboardPixel(x: x, y: y)) {
     return null;
   }
   final tileSize = surface.tileSize;
-  final tile = surface.tiles[TileCoord(x: x ~/ tileSize, y: y ~/ tileSize)];
+  final tile = surface.tiles[TileCoord(
+    x: floorDiv(x, tileSize),
+    y: floorDiv(y, tileSize),
+  )];
   if (tile == null) {
     return 0;
   }

@@ -10,7 +10,7 @@ import 'package:quick_animaker_v2/src/services/canvas_segment_clipper.dart';
 void main() {
   const clipper = CanvasSegmentClipper();
   const size = CanvasSize(width: 100, height: 80);
-  // Pasteboard: x ∈ [-100, 200), y ∈ [-80, 160).
+  // Pasteboard (5x5): x ∈ [-200, 300), y ∈ [-160, 240).
 
   test('crossing the STAGE edge does not clip — off-canvas travel is '
       'drawable pasteboard', () {
@@ -43,34 +43,34 @@ void main() {
   test('the pasteboard WALL clips: inside to beyond cuts at the wall', () {
     final segment = clipper.clip(
       previous: CanvasPoint(x: 50, y: 40),
-      current: CanvasPoint(x: 350, y: 40),
+      current: CanvasPoint(x: 450, y: 40),
       canvasSize: size,
     );
 
     expect(segment, isNotNull);
     expect(segment!.start.x, 50);
-    expect(segment.end.x, 200, reason: 'pasteboard right wall = 2×width');
+    expect(segment.end.x, 300, reason: 'pasteboard right wall = 3×width');
     expect(segment.startsNewVisibleSegment, isFalse);
   });
 
   test('re-entering from beyond the wall starts a NEW visible segment at '
       'the wall', () {
     final segment = clipper.clip(
-      previous: CanvasPoint(x: -250, y: 40),
+      previous: CanvasPoint(x: -350, y: 40),
       current: CanvasPoint(x: 0, y: 40),
       canvasSize: size,
     );
 
     expect(segment, isNotNull);
-    expect(segment!.start.x, -100, reason: 'pasteboard left wall = -width');
+    expect(segment!.start.x, -200, reason: 'pasteboard left wall = -2×width');
     expect(segment.end.x, 0);
     expect(segment.startsNewVisibleSegment, isTrue);
   });
 
   test('fully beyond the wall produces no segment', () {
     final segment = clipper.clip(
-      previous: CanvasPoint(x: -300, y: -200),
-      current: CanvasPoint(x: -210, y: -170),
+      previous: CanvasPoint(x: -500, y: -300),
+      current: CanvasPoint(x: -410, y: -270),
       canvasSize: size,
     );
 

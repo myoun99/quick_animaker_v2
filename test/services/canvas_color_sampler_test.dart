@@ -73,13 +73,38 @@ void main() {
       expect(surfacePixelRgba(surface, 5, 2), 0x112233FF);
     });
 
-    test('missing tiles are transparent, out of bounds is null', () {
+    test('missing tiles are transparent; only beyond the PASTEBOARD wall '
+        'is null (off-canvas pixels are pickable, Flash-style)', () {
       final surface = surfaceWithPixels({
         (0, 0): [1, 2, 3, 4],
       });
       expect(surfacePixelRgba(surface, 6, 6), 0);
-      expect(surfacePixelRgba(surface, -1, 0), isNull);
-      expect(surfacePixelRgba(surface, 8, 0), isNull);
+      expect(surfacePixelRgba(surface, -1, 0), 0,
+          reason: 'off-canvas but on the pasteboard = transparent, not null');
+      expect(surfacePixelRgba(surface, 8, 0), 0);
+      // The 8×8 stage's 5x5 pasteboard: x,y ∈ [-16, 24).
+      expect(surfacePixelRgba(surface, -17, 0), isNull);
+      expect(surfacePixelRgba(surface, 24, 0), isNull);
+    });
+
+    test('reads OFF-canvas pixels through negative tiles (floorDiv — the '
+        'eyedropper picks pasteboard artwork)', () {
+      // Canvas point (-3, 2) lives on tile (-1, 0) at local (1, 2)
+      // (Dart % is Euclidean: -3 % 4 == 1).
+      final buffer = Uint8List(4 * 4 * 4);
+      buffer.setAll((2 * 4 + 1) * 4, [0xAA, 0xBB, 0xCC, 0xFF]);
+      final surface = BitmapSurface(
+        canvasSize: canvasSize,
+        tileSize: 4,
+        tiles: {
+          TileCoord(x: -1, y: 0): BitmapTile(
+            coord: TileCoord(x: -1, y: 0),
+            size: 4,
+            pixels: buffer,
+          ),
+        },
+      );
+      expect(surfacePixelRgba(surface, -3, 2), 0xAABBCCFF);
     });
   });
 
