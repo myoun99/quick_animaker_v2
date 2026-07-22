@@ -661,6 +661,7 @@ void main() {
         ).surface;
 
         for (final mode in const [
+          BrushBlendMode.color,
           BrushBlendMode.multiply,
           BrushBlendMode.behind,
           BrushBlendMode.erase,

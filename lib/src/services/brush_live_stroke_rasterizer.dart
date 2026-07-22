@@ -1,14 +1,19 @@
+import 'dart:ffi' show Uint8Pointer;
 import 'dart:math' as math;
 import 'dart:typed_data';
 
 import '../core/floor_math.dart';
+import '../models/bitmap_surface.dart';
+import '../models/brush_blend_mode.dart';
 import '../models/brush_dab.dart';
 import '../models/brush_tip_shape.dart';
 import '../models/canvas_size.dart';
 import '../models/dirty_region.dart';
 import '../models/pasteboard_bounds.dart';
+import '../models/tile_coord.dart';
 import '../native/qa_native_engine.dart';
 import 'brush_dab_dirty_region.dart';
+import 'brush_stroke_blend.dart' show strokeBlendModeNativeId;
 import 'brush_tip_mask_sampling.dart';
 
 /// Read access to the in-progress stroke's straight-alpha pixels — what
@@ -125,6 +130,132 @@ class BrushLiveStrokeRasterizer implements ActiveStrokePixelSource {
       buffer.pointer,
       tileSize * tileSize,
     );
+  }
+
+  /// R27 #4 native route: pre-blends this stroke tile against [base]'s
+  /// bytes through the COMMIT'S OWN C KERNELS and returns the
+  /// premultiplied upload — stage base rect, blend in place
+  /// (stamp srcOver / stamp erase / stroke-blend, exactly the calls the
+  /// pen-up commit makes), premultiply in C. The stroke tile is already
+  /// a native pointer, so nothing uploads. Null when the native route
+  /// cannot serve (no engine, Dart-buffer mode, or an untouched tile) —
+  /// the caller's Dart pre-blend path produces the same bytes (both
+  /// sides parity-pinned against the commit).
+  QaStampScratch? preBlendedOverlayTile({
+    required int tileX,
+    required int tileY,
+    required BitmapSurface base,
+    required BrushBlendMode mode,
+    required bool erase,
+  }) {
+    final native = _native;
+    if (native == null) {
+      return null;
+    }
+    final stroke = _nativeBuffers[_tileKey(tileX, tileY)];
+    if (stroke == null) {
+      return null;
+    }
+    final tileLeft = tileX * tileSize;
+    final tileTop = tileY * tileSize;
+    final byteLength = tileSize * tileSize * 4;
+    final staged = native.acquireTileBuffer(byteLength, zeroed: true);
+    try {
+      _copyBaseRectInto(staged.view, base, tileLeft, tileTop);
+      native.ensureTileSpanBatch(1);
+      native.setTileSpan(
+        0,
+        tilePixels: staged.pointer,
+        tileLeft: tileLeft,
+        tileTop: tileTop,
+        spanLeft: tileLeft,
+        spanRightExclusive: tileLeft + tileSize,
+        spanTop: tileTop,
+        spanBottomExclusive: tileTop + tileSize,
+      );
+      if (erase || mode == BrushBlendMode.erase) {
+        native.stampBlendTiles(
+          count: 1,
+          tileSize: tileSize,
+          stampBytes: stroke.pointer,
+          stampWidth: tileSize,
+          stampLeft: tileLeft,
+          stampTop: tileTop,
+          opacity: 1.0,
+          erase: true,
+        );
+      } else if (mode == BrushBlendMode.color) {
+        native.stampBlendTiles(
+          count: 1,
+          tileSize: tileSize,
+          stampBytes: stroke.pointer,
+          stampWidth: tileSize,
+          stampLeft: tileLeft,
+          stampTop: tileTop,
+          opacity: 1.0,
+          erase: false,
+        );
+      } else {
+        native.strokeBlendTiles(
+          count: 1,
+          tileSize: tileSize,
+          strokeBytes: stroke.pointer,
+          strokeWidth: tileSize,
+          strokeLeft: tileLeft,
+          strokeTop: tileTop,
+          mode: strokeBlendModeNativeId(mode),
+        );
+      }
+      return native.premultipliedTileScratch(
+        staged.pointer,
+        tileSize * tileSize,
+      );
+    } finally {
+      native.releaseTileBuffer(staged);
+    }
+  }
+
+  /// Copies [base]'s straight bytes for the 128-rect at ([left], [top])
+  /// into [target] (stride [tileSize]); missing base tiles stay zero.
+  /// The base grid is the surface's own tile size — a stroke tile can
+  /// overlap up to four base tiles.
+  void _copyBaseRectInto(Uint8List target, BitmapSurface base, int left, int top) {
+    final baseTileSize = base.tileSize;
+    final right = left + tileSize;
+    final bottom = top + tileSize;
+    final tileX0 = floorDiv(left, baseTileSize);
+    final tileY0 = floorDiv(top, baseTileSize);
+    final tileX1 = floorDiv(right - 1, baseTileSize);
+    final tileY1 = floorDiv(bottom - 1, baseTileSize);
+    for (var tileY = tileY0; tileY <= tileY1; tileY += 1) {
+      for (var tileX = tileX0; tileX <= tileX1; tileX += 1) {
+        final tile = base.tileAt(TileCoord(x: tileX, y: tileY));
+        if (tile == null) {
+          continue;
+        }
+        final tilePixels = tile.nativePixels.asTypedList(
+          baseTileSize * baseTileSize * 4,
+        );
+        final worldLeft = tileX * baseTileSize;
+        final worldTop = tileY * baseTileSize;
+        final copyLeft = math.max(left, worldLeft);
+        final copyTop = math.max(top, worldTop);
+        final copyRight = math.min(right, worldLeft + baseTileSize);
+        final copyBottom = math.min(bottom, worldTop + baseTileSize);
+        final rowBytes = (copyRight - copyLeft) * 4;
+        for (var y = copyTop; y < copyBottom; y += 1) {
+          final srcOffset =
+              ((y - worldTop) * baseTileSize + (copyLeft - worldLeft)) * 4;
+          final dstOffset = ((y - top) * tileSize + (copyLeft - left)) * 4;
+          target.setRange(
+            dstOffset,
+            dstOffset + rowBytes,
+            tilePixels,
+            srcOffset,
+          );
+        }
+      }
+    }
   }
 
   Uint8List _tileBuffer(int tileX, int tileY) {

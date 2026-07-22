@@ -7,11 +7,15 @@ import '../helpers/native_engine_path.dart';
 import 'package:quick_animaker_v2/src/models/bitmap_surface.dart';
 import 'package:quick_animaker_v2/src/models/bitmap_tile.dart';
 import 'package:quick_animaker_v2/src/models/brush_blend_mode.dart';
+import 'package:quick_animaker_v2/src/models/brush_dab.dart';
+import 'package:quick_animaker_v2/src/models/brush_tip_shape.dart';
+import 'package:quick_animaker_v2/src/models/canvas_point.dart';
 import 'package:quick_animaker_v2/src/models/canvas_size.dart';
 import 'package:quick_animaker_v2/src/models/dirty_region.dart';
 import 'package:quick_animaker_v2/src/models/tile_coord.dart';
 import 'package:quick_animaker_v2/src/native/qa_native_engine.dart';
 import 'package:quick_animaker_v2/src/services/bitmap_surface_brush_commit.dart';
+import 'package:quick_animaker_v2/src/services/brush_live_stroke_rasterizer.dart';
 import 'package:quick_animaker_v2/src/services/brush_stroke_blend.dart';
 
 /// R27 #4: the live overlay's PRE-BLEND must be byte-identical to the
@@ -69,8 +73,10 @@ void main() {
     );
   }
 
-  /// The modes a stroke can pre-blend — everything but plain color.
+  /// Every stroke mode pre-blends now — color included (user rule 07-23:
+  /// one display pipeline, live == commit unconditionally).
   const preBlendModes = [
+    BrushBlendMode.color,
     BrushBlendMode.erase,
     BrushBlendMode.behind,
     BrushBlendMode.add,
@@ -155,4 +161,120 @@ void main() {
     expect(QaNativeEngine.instance, isNotNull);
     runAllModes(seed: 8151225);
   });
+
+  test(
+    'the NATIVE overlay-tile route (stage + C blend + C premultiply) == '
+    'the Dart route, every mode, byte for byte',
+    () {
+      if (!available) {
+        markTestSkipped('qa_engine.dll not built');
+        return;
+      }
+      QaNativeEngine.debugResetForTests();
+      QaNativeEngine.debugLibraryPathOverride = dllPath;
+      QaNativeEngine.debugForceDartFallback = false;
+      expect(QaNativeEngine.instance, isNotNull);
+
+      const liveTile = BrushLiveStrokeRasterizer.tileSize;
+      const bigCanvas = CanvasSize(width: 256, height: 256);
+      final random = Random(451);
+      // Base on a DIFFERENT grid (64) than the stroke tiles (128): the
+      // base-rect copy walks multiple base tiles per overlay tile.
+      final baseTiles = <TileCoord, BitmapTile>{};
+      for (var tileY = 0; tileY < 2; tileY += 1) {
+        for (var tileX = 0; tileX < 2; tileX += 1) {
+          final coord = TileCoord(x: tileX, y: tileY);
+          baseTiles[coord] = BitmapTile(
+            coord: coord,
+            size: 64,
+            pixels: randomPixels(random, 64 * 64 * 4),
+          );
+        }
+      }
+      final base = BitmapSurface(
+        canvasSize: bigCanvas,
+        tileSize: 64,
+        tiles: baseTiles,
+      );
+
+      int mul255Round(int value, int alpha) {
+        final product = value * alpha + 128;
+        return (product + (product >> 8)) >> 8;
+      }
+
+      for (final mode in preBlendModes) {
+        final rasterizer = BrushLiveStrokeRasterizer(canvasSize: bigCanvas);
+        rasterizer.blendFrom([
+          BrushDab(
+            center: CanvasPoint(x: 64, y: 64),
+            color: 0x90C04010,
+            size: 60,
+            opacity: 0.7,
+            flow: 0.8,
+            hardness: 0.4,
+            tipShape: BrushTipShape.round,
+            pressure: 1,
+            sequence: 0,
+          ),
+        ], from: 0);
+
+        final scratch = rasterizer.preBlendedOverlayTile(
+          tileX: 0,
+          tileY: 0,
+          base: base,
+          mode: mode,
+          erase: mode == BrushBlendMode.erase,
+        );
+        expect(scratch, isNotNull, reason: '${mode.name}: native route');
+
+        // The Dart route on the same inputs.
+        final stroke = Uint8List(liveTile * liveTile * 4);
+        for (var y = 0; y < liveTile; y += 1) {
+          rasterizer.copyRow(0, y, liveTile, stroke, y * liveTile * 4);
+        }
+        final straight = preBlendStrokeOverlayPixels(
+          dst: bitmapSurfaceRegionPixels(
+            base,
+            DirtyRegion(
+              left: 0,
+              top: 0,
+              rightExclusive: liveTile,
+              bottomExclusive: liveTile,
+            ),
+          ),
+          src: stroke,
+          mode: mode,
+          erase: mode == BrushBlendMode.erase,
+          pixelCount: liveTile * liveTile,
+        );
+        final expected = Uint8List(straight.length);
+        for (var o = 0; o < straight.length; o += 4) {
+          final alpha = straight[o + 3];
+          if (alpha == 0) {
+            continue;
+          }
+          if (alpha == 255) {
+            expected[o] = straight[o];
+            expected[o + 1] = straight[o + 1];
+            expected[o + 2] = straight[o + 2];
+            expected[o + 3] = 255;
+            continue;
+          }
+          expected[o] = mul255Round(straight[o], alpha);
+          expected[o + 1] = mul255Round(straight[o + 1], alpha);
+          expected[o + 2] = mul255Round(straight[o + 2], alpha);
+          expected[o + 3] = alpha;
+        }
+
+        final view = scratch!.view;
+        expect(
+          view,
+          expected,
+          reason: '${mode.name}: native overlay tile == Dart overlay tile',
+        );
+        scratch.free();
+        rasterizer.clear();
+      }
+    },
+  );
 }

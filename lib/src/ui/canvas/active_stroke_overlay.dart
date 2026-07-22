@@ -201,12 +201,23 @@ class ActiveStrokeOverlayModel extends ChangeNotifier {
     final preBlend = preBlendBase;
     QaStampScratch? scratch;
     Uint8List? fused;
-    if (preBlend == null &&
-        width == tileSize &&
+    if (width == tileSize &&
         height == tileSize &&
         source is BrushLiveStrokeRasterizer &&
         BrushLiveStrokeRasterizer.tileSize == tileSize) {
-      scratch = source.premultipliedOverlayTile(coord.x, coord.y);
+      // R27 #4 native route first: stage base + blend + premultiply all
+      // in C (the commit's own kernels — user rule: "무조건 네이티브").
+      // Falls to the Dart path below when the engine or the native tile
+      // is absent; both routes are parity-pinned to the same bytes.
+      scratch = preBlend != null
+          ? source.preBlendedOverlayTile(
+              tileX: coord.x,
+              tileY: coord.y,
+              base: preBlend,
+              mode: blendMode,
+              erase: erase,
+            )
+          : source.premultipliedOverlayTile(coord.x, coord.y);
       fused = scratch?.view;
     }
     // Snapshot the straight-alpha rows, then premultiply in place with the

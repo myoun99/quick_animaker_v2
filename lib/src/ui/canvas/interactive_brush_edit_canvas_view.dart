@@ -551,15 +551,15 @@ class _InteractiveBrushEditCanvasViewState
     // from the first dab through settling.
     _overlayModel.erase = strokeSettings.erase;
     _overlayModel.blendMode = strokeSettings.blendMode;
-    // R27 #4: every non-plain mode PRE-BLENDS its live tiles with the
-    // commit's own kernels against the cel as it stands — the GPU never
-    // approximates the blend, so pen-up cannot move a byte in ANY mode.
-    // Plain color strokes keep the classic stroke-only overlay.
+    // R27 #4: EVERY stroke pre-blends its live tiles with the commit's
+    // own kernels against the cel as it stands (user rule 07-23: ONE
+    // display pipeline for all modes — color included). The GPU never
+    // computes a pixel of the stroke composite, so pen-up cannot move a
+    // byte in any mode. Revert switch if stroke feel regresses on
+    // device: gate this on `blendMode != color` to give plain strokes
+    // their classic stroke-only GPU-srcOver overlay back.
     _overlayModel.preBlendBase =
-        strokeSettings.erase ||
-            strokeSettings.blendMode != BrushBlendMode.color
-        ? widget.sessionState.canvasState.currentSurface
-        : null;
+        widget.sessionState.canvasState.currentSurface;
     _currentPressure = _normalizedPressure(event);
     widget.onActiveStrokeChanged?.call(true);
     _nextSequence = 0;

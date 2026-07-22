@@ -171,8 +171,10 @@ int _clampByte(double value) {
 ///
 /// [dst]/[src] are BOUNDS-LOCAL straight RGBA; [erase] covers both the
 /// eraser tool and the 소거 blend mode (the tool locks the mode, so the
-/// two arrive together). [BrushBlendMode.color] never comes here — plain
-/// srcOver previews directly and stays on the GPU path.
+/// two arrive together). [BrushBlendMode.color] mirrors the stamp
+/// kernel's srcOver at opacity 1 (the color landing is one stamp of the
+/// stroke buffer) — every stroke mode pre-blends now (user rule 07-23:
+/// ONE display pipeline, live == commit unconditionally).
 Uint8List preBlendStrokeOverlayPixels({
   required Uint8List dst,
   required Uint8List src,
@@ -212,10 +214,49 @@ Uint8List preBlendStrokeOverlayPixels({
     }
     return result;
   }
-  assert(
-    mode != BrushBlendMode.color,
-    'color previews srcOver directly — no pre-blend',
-  );
+  if (mode == BrushBlendMode.color) {
+    // Mirror of the stamp srcOver per-pixel path at dabOpacity 1
+    // (bitmap_surface_brush_commit) — the same fast paths, the same
+    // double expressions in the same order, so the doubles round to the
+    // same bytes. sa==0 leaves the pixel verbatim (junk α==0 RGB
+    // included, exactly like the commit's skip).
+    final result = Uint8List(pixelCount * 4);
+    for (var i = 0; i < pixelCount; i += 1) {
+      final o = i * 4;
+      final sa = src[o + 3];
+      if (sa == 0) {
+        result[o] = dst[o];
+        result[o + 1] = dst[o + 1];
+        result[o + 2] = dst[o + 2];
+        result[o + 3] = dst[o + 3];
+        continue;
+      }
+      if (sa == 255) {
+        result[o] = src[o];
+        result[o + 1] = src[o + 1];
+        result[o + 2] = src[o + 2];
+        result[o + 3] = 255;
+        continue;
+      }
+      final sourceAlpha = sa / 255.0;
+      final destinationAlpha = dst[o + 3] / 255.0;
+      final outAlpha = sourceAlpha + destinationAlpha * (1.0 - sourceAlpha);
+      if (outAlpha == 0.0) {
+        continue; // Already zeroed.
+      }
+      final inverseSourceAlpha = 1.0 - sourceAlpha;
+      for (var c = 0; c < 3; c += 1) {
+        result[o + c] =
+            ((src[o + c] * sourceAlpha +
+                        dst[o + c] * destinationAlpha * inverseSourceAlpha) /
+                    outAlpha)
+                .round()
+                .clamp(0, 255);
+      }
+      result[o + 3] = (outAlpha * 255.0).round().clamp(0, 255);
+    }
+    return result;
+  }
   final result = blendStrokeRegionPixels(
     dst: dst,
     src: src,
