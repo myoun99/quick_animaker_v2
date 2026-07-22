@@ -368,6 +368,26 @@ class _AudioSettingsSectionState extends State<AudioSettingsSection> {
                 ),
               ],
             ),
+            // RNNoise (the noise-suppression round): BAKED into the take
+            // like the gain — speech-specific, so foley sessions turn it
+            // off (the label says so).
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    strings.audioDenoiseLabel,
+                    style: const TextStyle(fontSize: 12),
+                  ),
+                ),
+                Switch(
+                  key: const ValueKey<String>('settings-denoise-voice'),
+                  value: settings.denoiseVoice,
+                  onChanged: (value) => widget.session.setAudioSyncSettings(
+                    settings.copyWith(denoiseVoice: value),
+                  ),
+                ),
+              ],
+            ),
             Row(
               children: [
                 Expanded(

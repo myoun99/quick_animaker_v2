@@ -26,11 +26,12 @@ final class QaAudioNative {
     this._busToInt16,
     this._resample,
     this._resampleFrames,
+    this._denoise,
   );
 
   /// Must match `qa_engine_abi_version()` in the C.
-  /// v22: BB-N1 (stroke-blend + alpha-bounds kernels; audio unchanged).
-  static const int _abiVersion = 22;
+  /// v23: RNNoise round (qa_audio_denoise_f32 — voice-take suppression).
+  static const int _abiVersion = 23;
 
   final void Function(
     Pointer<QaAudioClipStruct>,
@@ -59,6 +60,7 @@ final class QaAudioNative {
   )
   _resample;
   final int Function(int, int, int) _resampleFrames;
+  final int Function(Pointer<Float>, int, int, int) _denoise;
 
   static QaAudioNative? _instance;
   static bool _tried = false;
@@ -190,6 +192,10 @@ final class QaAudioNative {
           Int64 Function(Int64, Int32, Int32),
           int Function(int, int, int)
         >('qa_audio_resample_frames'),
+        library.lookupFunction<
+          Int32 Function(Pointer<Float>, Int64, Int32, Int32),
+          int Function(Pointer<Float>, int, int, int)
+        >('qa_audio_denoise_f32'),
       );
     } on Object {
       return null;
@@ -332,6 +338,37 @@ final class QaAudioNative {
       calloc.free(envelopeArray);
       calloc.free(sourceArray);
       calloc.free(clipArray);
+    }
+  }
+
+  /// RNNoise voice suppression over a finished take (48 kHz only — the
+  /// model's native rate). Returns the denoised samples, or null when
+  /// the C declined (wrong rate/empty) — null always means "use the raw
+  /// take", never a half-processed buffer.
+  Float32List? denoiseVoice({
+    required Float32List samples,
+    required int channels,
+    required int sampleRate,
+  }) {
+    if (samples.isEmpty || channels <= 0) {
+      return null;
+    }
+    final frames = samples.length ~/ channels;
+    if (frames <= 0) {
+      return null;
+    }
+    final buffer = calloc<Float>(samples.length);
+    try {
+      buffer.asTypedList(samples.length).setAll(0, samples);
+      final processed = _denoise(buffer, frames, channels, sampleRate);
+      if (processed != 1) {
+        return null;
+      }
+      final result = Float32List(samples.length);
+      result.setAll(0, buffer.asTypedList(samples.length));
+      return result;
+    } finally {
+      calloc.free(buffer);
     }
   }
 

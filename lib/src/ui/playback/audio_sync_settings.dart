@@ -41,6 +41,7 @@ class AudioSyncSettings {
     this.countInSeconds = 0,
     this.cueBeeps = true,
     this.streamerEnabled = true,
+    this.denoiseVoice = false,
   });
 
   static const AudioSyncSettings defaults = AudioSyncSettings();
@@ -86,6 +87,14 @@ class AudioSyncSettings {
   /// reaches the edge exactly at the punch-in.
   final bool streamerEnabled;
 
+  /// RNNoise voice suppression, BAKED into the take (the RNNoise round).
+  /// Speech-specific by design: it eats footsteps and props, which is
+  /// exactly why this is a toggle — dialogue ON, foley OFF (user
+  /// decision). Default OFF: a pristine capture is the safer default.
+  /// When ON, capture runs at 48 kHz (the model's native rate) and the
+  /// take conforms once through the normal pipeline on placement.
+  final bool denoiseVoice;
+
   static const int maxCountInSeconds = 10;
 
   static int clampCountInSeconds(int value) =>
@@ -111,6 +120,7 @@ class AudioSyncSettings {
     int? countInSeconds,
     bool? cueBeeps,
     bool? streamerEnabled,
+    bool? denoiseVoice,
   }) => AudioSyncSettings(
     offset: offset ?? this.offset,
     unit: unit ?? this.unit,
@@ -126,6 +136,7 @@ class AudioSyncSettings {
     countInSeconds: countInSeconds ?? this.countInSeconds,
     cueBeeps: cueBeeps ?? this.cueBeeps,
     streamerEnabled: streamerEnabled ?? this.streamerEnabled,
+    denoiseVoice: denoiseVoice ?? this.denoiseVoice,
   );
 
   static int clampMicGainDb(int value) =>
@@ -196,6 +207,7 @@ class AudioSyncSettings {
     if (countInSeconds != 0) 'countInSeconds': countInSeconds,
     if (!cueBeeps) 'cueBeeps': false,
     if (!streamerEnabled) 'streamerEnabled': false,
+    if (denoiseVoice) 'denoiseVoice': true,
   };
 
   factory AudioSyncSettings.fromJson(Map<String, dynamic> json) {
@@ -219,6 +231,7 @@ class AudioSyncSettings {
       ),
       cueBeeps: json['cueBeeps'] as bool? ?? true,
       streamerEnabled: json['streamerEnabled'] as bool? ?? true,
+      denoiseVoice: json['denoiseVoice'] as bool? ?? false,
     );
   }
 
@@ -235,7 +248,8 @@ class AudioSyncSettings {
           other.clippingNotice == clippingNotice &&
           other.countInSeconds == countInSeconds &&
           other.cueBeeps == cueBeeps &&
-          other.streamerEnabled == streamerEnabled;
+          other.streamerEnabled == streamerEnabled &&
+          other.denoiseVoice == denoiseVoice;
 
   @override
   int get hashCode => Object.hash(
@@ -249,6 +263,7 @@ class AudioSyncSettings {
     countInSeconds,
     cueBeeps,
     streamerEnabled,
+    denoiseVoice,
   );
 
   @override
