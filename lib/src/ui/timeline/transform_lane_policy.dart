@@ -115,6 +115,38 @@ List<PropertyLaneRow> transformPropertyLanes(
   ];
 }
 
+/// Canonical display order of the transform lanes (the AE order
+/// [transformPropertyLanes] emits) — the lane-row span (R26 #3) resolves
+/// anchor→head against this.
+const List<String> transformLaneDisplayOrder = [
+  'anchor-point',
+  'position',
+  'scale',
+  'rotation',
+  'opacity',
+];
+
+/// The display-ordered lane span from [anchorLaneId] to [headLaneId]
+/// (R26 #3 — the cell selection's Excel span rule applied to lane rows,
+/// within one layer's lane group). The group HEADER as either endpoint
+/// selects the WHOLE group ("모두에 적용되는 그 행"). Ids outside the
+/// canonical order (folder-FX lanes keep their own machinery) fall back
+/// to the anchor lane alone.
+List<String> transformLaneSpan(String anchorLaneId, String headLaneId) {
+  if (anchorLaneId == transformGroupHeaderLane.laneId ||
+      headLaneId == transformGroupHeaderLane.laneId) {
+    return List.of(transformLaneDisplayOrder);
+  }
+  final anchor = transformLaneDisplayOrder.indexOf(anchorLaneId);
+  final head = transformLaneDisplayOrder.indexOf(headLaneId);
+  if (anchor < 0 || head < 0) {
+    return [anchorLaneId];
+  }
+  final low = anchor < head ? anchor : head;
+  final high = anchor < head ? head : anchor;
+  return transformLaneDisplayOrder.sublist(low, high + 1);
+}
+
 /// Folder FX lanes (L5c): lane ids carry the folder ADDRESS so the
 /// single laneEdit callback set can route commits into the folder's own
 /// track — `folder-fx:<folderId>:<base>`. The composite already consumes

@@ -138,7 +138,8 @@ import 'timeline/transform_lane_editing.dart'
     show
         transformLaneKeyFrames,
         transformTrackWithLaneKeyToggled,
-        transformTrackWithLaneKeysShifted;
+        transformTrackWithLaneSpanKeysShifted;
+import 'timeline/transform_lane_policy.dart' show transformLaneSpan;
 
 /// A planned SE row-change pair in COMMIT (global track) form: the source
 /// row after its blocks leave, the target row after they arrive.
@@ -5125,26 +5126,30 @@ class EditorSessionManager extends ChangeNotifier {
     }
     var track = layer.transformTrack;
     var changed = false;
-    for (
-      var frame = lane.startIndex;
-      frame < lane.endIndexExclusive;
-      frame += 1
-    ) {
-      if (frame < 0 ||
-          transformLaneKeyFrames(track, lane.laneId).contains(frame)) {
-        continue;
-      }
-      final next = transformTrackWithLaneKeyToggled(
-        track,
-        laneId: lane.laneId,
-        frameIndex: frame,
-        resolvedPose: layerPoseAtFrame(layer, frame),
-        resolvedAnchorPoint: layerAnchorPointAtFrame(layer, frame),
-        resolvedOpacity: layerOpacityAtFrame(layer, frame),
-      );
-      if (next != null) {
-        track = next;
-        changed = true;
+    // R26 #3: a multi-lane span freezes keys on EVERY spanned lane —
+    // still one undo.
+    for (final laneId in lane.spanLaneIds) {
+      for (
+        var frame = lane.startIndex;
+        frame < lane.endIndexExclusive;
+        frame += 1
+      ) {
+        if (frame < 0 ||
+            transformLaneKeyFrames(track, laneId).contains(frame)) {
+          continue;
+        }
+        final next = transformTrackWithLaneKeyToggled(
+          track,
+          laneId: laneId,
+          frameIndex: frame,
+          resolvedPose: layerPoseAtFrame(layer, frame),
+          resolvedAnchorPoint: layerAnchorPointAtFrame(layer, frame),
+          resolvedOpacity: layerOpacityAtFrame(layer, frame),
+        );
+        if (next != null) {
+          track = next;
+          changed = true;
+        }
       }
     }
     if (changed) {
@@ -6136,14 +6141,27 @@ class EditorSessionManager extends ChangeNotifier {
   /// A lane-band select-drag step (raw cells — lane keys are points, no
   /// block snap). Starting a lane selection clears the cell selection
   /// (mutual exclusion, the F4 rule).
+  ///
+  /// R26 #3 — the cells' grammar on lane rows: [headLaneId] (the lane row
+  /// under the pointer) spans the selection across the layer's lane group
+  /// in display order; the group HEADER as anchor selects every member
+  /// lane. Starting on ANOTHER layer's lanes activates that layer
+  /// (선택하면 액티브 레이어가 바뀜); lanes of the active layer leave it
+  /// unchanged — the fx-row selection rides ALONGSIDE the active layer.
   void updateLaneRangeSelectionDrag({
     required LayerId layerId,
     required String laneId,
     required int anchorIndex,
     required int headIndex,
+    String? headLaneId,
   }) {
     if (_layerById(layerId) == null) {
       return;
+    }
+    if (activeLayerId != layerId) {
+      // selectLayer first: it drops the OLD selection (a different
+      // layer's), then the fresh span lands for the new active layer.
+      selectLayer(layerId);
     }
     clearFrameRangeSelection();
     final start = math.max(0, math.min(anchorIndex, headIndex));
@@ -6151,11 +6169,13 @@ class EditorSessionManager extends ChangeNotifier {
     if (endExclusive <= start) {
       return;
     }
+    final span = transformLaneSpan(laneId, headLaneId ?? laneId);
     laneRangeSelection.value = TimelineLaneSelection(
       layerId: layerId,
       laneId: laneId,
       startIndex: start,
       endIndexExclusive: endExclusive,
+      laneIds: span.length <= 1 ? const [] : span,
     );
   }
 
@@ -6172,7 +6192,7 @@ class EditorSessionManager extends ChangeNotifier {
   TransformTrack? _laneMoveShifted;
 
   /// Starts moving the current lane selection; false when there is none
-  /// or it covers no keys (nothing to move).
+  /// or it covers no keys on ANY spanned lane (nothing to move).
   bool beginLaneRangeMoveDrag() {
     final selection = laneRangeSelection.value;
     if (selection == null) {
@@ -6182,10 +6202,12 @@ class EditorSessionManager extends ChangeNotifier {
     if (layer == null || isAttachedLayer(layer)) {
       return false;
     }
-    final keyed = transformLaneKeyFrames(
-      layer.transformTrack,
-      selection.laneId,
-    ).any(selection.contains);
+    final keyed = selection.spanLaneIds.any(
+      (laneId) => transformLaneKeyFrames(
+        layer.transformTrack,
+        laneId,
+      ).any(selection.contains),
+    );
     if (!keyed) {
       return false;
     }
@@ -6195,9 +6217,10 @@ class EditorSessionManager extends ChangeNotifier {
     return true;
   }
 
-  /// A lane-move drag step: shifts ONLY the selected lane's keys by
-  /// [frameDelta] and previews via [dragPreview]. A blocked landing HOLDS
-  /// the last valid preview (UI-R23 #10 — no snap-back).
+  /// A lane-move drag step: shifts EVERY spanned lane's ranged keys by
+  /// [frameDelta] (R26 #3 — one rigid group, all-or-nothing across
+  /// lanes) and previews via [dragPreview]. A blocked landing HOLDS the
+  /// last valid preview (UI-R23 #10 — no snap-back).
   void updateLaneRangeMoveDrag({required int frameDelta}) {
     final before = _laneMoveBefore;
     if (before == null) {
@@ -6210,9 +6233,9 @@ class EditorSessionManager extends ChangeNotifier {
       laneRangeSelection.value = before.selection;
       return;
     }
-    final shifted = transformTrackWithLaneKeysShifted(
+    final shifted = transformTrackWithLaneSpanKeysShifted(
       before.layer.transformTrack,
-      laneId: before.selection.laneId,
+      laneIds: before.selection.spanLaneIds,
       rangeStartIndex: before.selection.startIndex,
       rangeEndIndexExclusive: before.selection.endIndexExclusive,
       frameDelta: frameDelta,
@@ -6235,6 +6258,7 @@ class EditorSessionManager extends ChangeNotifier {
         laneId: before.selection.laneId,
         startIndex: newStart,
         endIndexExclusive: before.selection.endIndexExclusive + frameDelta,
+        laneIds: before.selection.laneIds,
       );
     }
   }

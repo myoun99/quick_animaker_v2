@@ -295,7 +295,7 @@ void main() {
             ],
             laneRange: TimelineLaneRangeCallbacks(
               selection: laneSelection,
-              onSelectUpdate: (layerId, laneId, anchor, head) {
+              onSelectUpdate: (layerId, laneId, anchor, head, headRowDelta) {
                 selectUpdates.add((layerId, laneId, anchor, head));
                 laneSelection.value = TimelineLaneSelection(
                   layerId: layerId,

@@ -9,6 +9,7 @@ import '../../models/timeline_frame_range.dart' show TimelineLaneSelection;
 import '../theme/app_theme.dart' show AppColors, instantMenuAnimation;
 import 'layer_label_controls.dart' show LayerSectionBandCell;
 import 'property_lane_model.dart';
+import 'transform_lane_policy.dart' show transformLaneDisplayOrder;
 import 'timeline_cell_style.dart' show timelineDrawingStartColor;
 import 'timeline_frame_range_gesture.dart'
     show TimelineLaneRangeCallbacks, TimelineLaneRangeGestureLayer;
@@ -572,13 +573,26 @@ class TimelineLaneFrameRow extends StatelessWidget {
     final hitSize = (markerSize + 8).clamp(14.0, crossExtent).toDouble();
     final horizontal = axis == Axis.horizontal;
 
+    // R26 #3: the header row washes when the selection spans its WHOLE
+    // member group (the header selected it, or a drag covered every
+    // lane) — visible even while the group is collapsed.
+    bool selectionCoversRow(TimelineLaneSelection? selection) {
+      if (selection == null) {
+        return false;
+      }
+      if (!lane.isGroupHeader) {
+        return selection.coversLane(layer.id, lane.laneId);
+      }
+      return selection.layerId == layer.id &&
+          transformLaneDisplayOrder.every(selection.spanLaneIds.contains);
+    }
+
     List<Widget> markerChildren(TimelineLaneSelection? selection) => [
       // The lane-selection WASH (UI-R23 #3 part 2, the #4 style): a thin
       // accent-1 outline + low wash over the selected span, UNDER the
       // markers.
-      if (selection != null &&
-          selection.coversLane(layer.id, lane.laneId) &&
-          selection.endIndexExclusive > frameStartIndex &&
+      if (selectionCoversRow(selection) &&
+          selection!.endIndexExclusive > frameStartIndex &&
           selection.startIndex < frameEndIndexExclusive)
         () {
           final start = selection.startIndex < frameStartIndex
@@ -639,10 +653,11 @@ class TimelineLaneFrameRow extends StatelessWidget {
               axis: axis,
               // Selected markers ring in ACCENT 1 (UI-R23 #3/#4): the
               // LANE selection owns the ring now — frame selection is a
-              // separate domain and never rings lane keys.
+              // separate domain and never rings lane keys. Header union
+              // diamonds ring on a whole-group selection (R26 #3).
               selected:
                   selection != null &&
-                  selection.coversLane(layer.id, lane.laneId) &&
+                  selectionCoversRow(selection) &&
                   selection.contains(frame),
               // Group headers show the KEY UNION (UI-R20 #13) —
               // display-only: a union diamond has no single lane to
@@ -677,8 +692,10 @@ class TimelineLaneFrameRow extends StatelessWidget {
         children: [
           // The band-wide LANE gesture (UI-R23 #3 part 2), UNDER the
           // markers: pans on the band select THIS lane; marker drags keep
-          // their arena priority above. Group headers stay display-only.
-          if (laneRange != null && !lane.isGroupHeader)
+          // their arena priority above. The GROUP HEADER band selects too
+          // (R26 #3): its anchor spans the WHOLE member group — the
+          // "모두에 적용되는 그 행", collapsed state included.
+          if (laneRange != null)
             TimelineLaneRangeGestureLayer(
               key: ValueKey<String>(
                 '$keyPrefix-lane-range-gesture-${layer.id}-${lane.laneId}',
@@ -688,6 +705,7 @@ class TimelineLaneFrameRow extends StatelessWidget {
               frameStartIndex: frameStartIndex,
               leadingFrameSpacerWidth: 0,
               frameCellExtent: cellExtent,
+              crossAxisExtent: crossExtent,
               callbacks: laneRange!,
               axis: axis,
             ),

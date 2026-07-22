@@ -383,11 +383,16 @@ class TimelineLaneRangeCallbacks {
   /// The session's live LANE selection (read at press to pick the mode).
   final ValueListenable<TimelineLaneSelection?> selection;
 
+  /// A select-drag step. [headRowDelta] (R26 #3, the cells' Excel rule on
+  /// lane rows) is the pointer's row offset from the anchor lane row —
+  /// the host maps it onto the layer's displayed lane list to span the
+  /// selection across lane rows.
   final void Function(
     LayerId layerId,
     String laneId,
     int anchorIndex,
     int headIndex,
+    int headRowDelta,
   )
   onSelectUpdate;
 
@@ -403,7 +408,9 @@ class TimelineLaneRangeCallbacks {
 /// The band-wide gesture layer for ONE property lane (UI-R23 #3 part 2)
 /// — the lane counterpart of [TimelineFrameRangeGestureLayer]: same
 /// EAGER pan (UI-R22F #2), same device policy, same dispose-commits rule
-/// (R12-③); frame axis only (lanes never row-change).
+/// (R12-③). Select drags report a cross-axis ROW delta (R26 #3) so the
+/// selection spans lane rows like the cells span layers; moves stay
+/// frame-axis only.
 class TimelineLaneRangeGestureLayer extends StatefulWidget {
   const TimelineLaneRangeGestureLayer({
     super.key,
@@ -412,6 +419,7 @@ class TimelineLaneRangeGestureLayer extends StatefulWidget {
     required this.frameStartIndex,
     required this.leadingFrameSpacerWidth,
     required this.frameCellExtent,
+    required this.crossAxisExtent,
     required this.callbacks,
     this.axis = Axis.horizontal,
   });
@@ -421,6 +429,11 @@ class TimelineLaneRangeGestureLayer extends StatefulWidget {
   final int frameStartIndex;
   final double leadingFrameSpacerWidth;
   final double frameCellExtent;
+
+  /// Lane-row height (horizontal) / column width (X-sheet) — the select
+  /// drag's cross-axis row step (lane rows share one extent).
+  final double crossAxisExtent;
+
   final TimelineLaneRangeCallbacks callbacks;
   final Axis axis;
 
@@ -467,7 +480,21 @@ class _TimelineLaneRangeGestureLayerState
       widget.laneId,
       frame,
       frame,
+      0,
     );
+  }
+
+  /// The lane-row delta of the pointer relative to THIS lane row (R26 #3
+  /// cross-row select): the cross-axis local position may run past the
+  /// row's own bounds during the pan.
+  int _rowDeltaAt(Offset localPosition) {
+    final cross = widget.axis == Axis.horizontal
+        ? localPosition.dy
+        : localPosition.dx;
+    if (widget.crossAxisExtent <= 0) {
+      return 0;
+    }
+    return (cross / widget.crossAxisExtent).floor();
   }
 
   void _updateDrag(DragUpdateDetails details) {
@@ -480,6 +507,7 @@ class _TimelineLaneRangeGestureLayerState
           widget.laneId,
           _anchorIndex,
           _frameAt(details.localPosition),
+          _rowDeltaAt(details.localPosition),
         );
       case _RangeDragMode.move:
         _mainDelta += widget.axis == Axis.horizontal

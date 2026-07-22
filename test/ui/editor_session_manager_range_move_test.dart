@@ -1000,4 +1000,92 @@ void main() {
     s.undo();
     expect(layer().transformTrack.position.keys.keys.toSet(), {2, 8});
   });
+
+  test('R26 #3: a lane span covers MULTIPLE lane rows (headLaneId), the '
+      'group header anchors the whole group, and the move shifts every '
+      'spanned lane as one rigid undo', () {
+    final (s, a, _) = fixture();
+    s.repository.replaceLayer(
+      layer: s.layers
+          .firstWhere((l) => l.id == a.id)
+          .copyWith(
+            transformTrack: TransformTrack.properties(
+              anchorPoint: PropertyTrack.empty(),
+              position: PropertyTrack<CanvasPoint>().withKey(
+                2,
+                CanvasPoint(x: 1, y: 1),
+              ),
+              scale: PropertyTrack<double>().withKey(3, 1.5),
+              rotation: PropertyTrack<double>().withKey(9, 45),
+              opacity: PropertyTrack.empty(),
+            ),
+          ),
+    );
+
+    // A cross-row drag position→scale spans both lanes.
+    s.updateLaneRangeSelectionDrag(
+      layerId: a.id,
+      laneId: 'position',
+      anchorIndex: 1,
+      headIndex: 4,
+      headLaneId: 'scale',
+    );
+    final span = s.laneRangeSelection.value!;
+    expect(span.spanLaneIds, ['position', 'scale']);
+    expect(span.coversLane(a.id, 'scale'), isTrue);
+    expect(span.coversLane(a.id, 'rotation'), isFalse);
+
+    // The move shifts BOTH covered keys (+2) in one undo; the rotation
+    // key outside the span stays put.
+    expect(s.beginLaneRangeMoveDrag(), isTrue);
+    s.updateLaneRangeMoveDrag(frameDelta: 2);
+    s.endLaneRangeMoveDrag();
+    Layer layer() => s.layers.firstWhere((l) => l.id == a.id);
+    expect(layer().transformTrack.position.keys.keys.toSet(), {4});
+    expect(layer().transformTrack.scale.keys.keys.toSet(), {5});
+    expect(layer().transformTrack.rotation.keys.keys.toSet(), {9});
+    s.undo();
+    expect(layer().transformTrack.position.keys.keys.toSet(), {2});
+    expect(layer().transformTrack.scale.keys.keys.toSet(), {3});
+
+    // The group HEADER as anchor selects the whole member group.
+    s.updateLaneRangeSelectionDrag(
+      layerId: a.id,
+      laneId: 'transform-group',
+      anchorIndex: 0,
+      headIndex: 2,
+    );
+    expect(
+      s.laneRangeSelection.value!.spanLaneIds,
+      containsAll(['position', 'scale', 'rotation', 'opacity']),
+    );
+  });
+
+  test('R26 #3: selecting ANOTHER layer\'s lane rows activates that layer; '
+      'the active layer\'s own lanes leave it unchanged', () {
+    final (s, a, b) = fixture();
+    expect(s.activeLayerId, a.id);
+
+    // Lanes of the ACTIVE layer: selection lands, active layer holds.
+    s.updateLaneRangeSelectionDrag(
+      layerId: a.id,
+      laneId: 'position',
+      anchorIndex: 0,
+      headIndex: 1,
+    );
+    expect(s.activeLayerId, a.id);
+    expect(s.laneRangeSelection.value!.layerId, a.id);
+
+    // Another layer's lanes: the active layer FOLLOWS (원문: 다른
+    // 레이어의 fx행쪽 선택하면 액티브 레이어는 바뀜) and the fresh
+    // selection survives the switch.
+    s.updateLaneRangeSelectionDrag(
+      layerId: b.id,
+      laneId: 'position',
+      anchorIndex: 0,
+      headIndex: 1,
+    );
+    expect(s.activeLayerId, b.id);
+    expect(s.laneRangeSelection.value!.layerId, b.id);
+  });
 }

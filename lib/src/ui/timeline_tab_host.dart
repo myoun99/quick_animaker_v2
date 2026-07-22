@@ -209,6 +209,41 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
     }
   }
 
+  /// R26 #3: maps a lane select-drag's cross-row delta onto the layer's
+  /// DISPLAYED lane list (the same one the grids render) and returns the
+  /// lane row under the pointer — member lanes only; headers and
+  /// non-transform lanes (SE audio) cross silently, and rows past the
+  /// group clamp to the farthest member reached. Null keeps the anchor.
+  String? _laneSpanHeadLane(LayerId layerId, String anchorLaneId, int rowDelta) {
+    if (rowDelta == 0) {
+      return null;
+    }
+    final layer = _session.layers
+        .where((candidate) => candidate.id == layerId)
+        .firstOrNull;
+    if (layer == null) {
+      return null;
+    }
+    final lanes = _lanesForLayer(layer);
+    final anchor = lanes.indexWhere((lane) => lane.laneId == anchorLaneId);
+    if (anchor < 0) {
+      return null;
+    }
+    final step = rowDelta > 0 ? 1 : -1;
+    String? head;
+    for (var moved = 1; moved <= rowDelta.abs(); moved += 1) {
+      final index = anchor + moved * step;
+      if (index < 0 || index >= lanes.length) {
+        break;
+      }
+      final laneId = lanes[index].laneId;
+      if (transformLaneDisplayOrder.contains(laneId)) {
+        head = laneId;
+      }
+    }
+    return head;
+  }
+
   List<PropertyLaneRow> _lanesForLayer(Layer layer) {
     // Attach rows ride their BASE's transform/opacity lanes (W5 fx
     // sharing) — no lanes of their own in v1.
@@ -1105,19 +1140,27 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
               onCancel: _session.cancelFrameRangeMoveDrag,
             ),
           ),
-          // The LANE selection domain (UI-R23 #3 part 2): a lane-band pan
-          // selects on that (layer, lane); a pan inside the selection
-          // moves ONLY that lane's keys — frame selection ⊥ transform
-          // keys, mutually exclusive domains.
+          // The LANE selection domain (UI-R23 #3 part 2; MULTI-LANE since
+          // R26 #3): a lane-band pan selects lane rows — the cross-row
+          // delta spans the layer's lane group like cells span layers,
+          // the group header anchors the WHOLE group — and a pan inside
+          // the selection moves every spanned lane's keys. Frame
+          // selection ⊥ transform keys, mutually exclusive domains.
           laneRange: TimelineLaneRangeCallbacks(
             selection: _session.laneRangeSelection,
-            onSelectUpdate: (layerId, laneId, anchorIndex, headIndex) =>
-                _session.updateLaneRangeSelectionDrag(
-                  layerId: layerId,
-                  laneId: laneId,
-                  anchorIndex: anchorIndex,
-                  headIndex: headIndex,
-                ),
+            onSelectUpdate:
+                (layerId, laneId, anchorIndex, headIndex, headRowDelta) =>
+                    _session.updateLaneRangeSelectionDrag(
+                      layerId: layerId,
+                      laneId: laneId,
+                      anchorIndex: anchorIndex,
+                      headIndex: headIndex,
+                      headLaneId: _laneSpanHeadLane(
+                        layerId,
+                        laneId,
+                        headRowDelta,
+                      ),
+                    ),
             onTapClear: _session.clearLaneRangeSelection,
             onMoveBegin: _session.beginLaneRangeMoveDrag,
             onMoveUpdate: (frameDelta) =>
