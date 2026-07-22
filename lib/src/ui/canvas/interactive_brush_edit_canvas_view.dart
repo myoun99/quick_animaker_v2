@@ -460,7 +460,9 @@ class _InteractiveBrushEditCanvasViewState
           _hoverToolHoldButton = 0;
           widget.onTemporaryToolHold?.call(CanvasTool.eyedropper);
           final pickPosition = _canvasPositionFromLocal(event.localPosition);
-          if (_isInsideSurface(pickPosition)) {
+          // The eyedropper picks anywhere on the pasteboard, like Flash
+          // (off-canvas artwork is real artwork).
+          if (_isInsidePasteboard(pickPosition)) {
             widget.onAltPick?.call(pickPosition);
           }
           return;
@@ -483,15 +485,15 @@ class _InteractiveBrushEditCanvasViewState
     }
 
     final canvasPosition = _canvasPositionFromLocal(event.localPosition);
-    final startsInsideSurface = _isInsideSurface(canvasPosition);
-    // The pasteboard is the STROKE's input boundary (user feedback: the
-    // picture already lives outside the stage — the pointer must too).
+    // The pasteboard is EVERY tool's input boundary (user feedback +
+    // Flash parity): strokes, the eyedropper and fill taps all work on
+    // off-canvas artwork; only the pasteboard wall stops them.
     final startsInsidePasteboard = _isInsidePasteboard(canvasPosition);
 
     // Alt+click = temporary eyedropper (P5): pick, never stroke.
     final onAltPick = widget.onAltPick;
     if (onAltPick != null && HardwareKeyboard.instance.isAltPressed) {
-      if (startsInsideSurface) {
+      if (startsInsidePasteboard) {
         onAltPick(canvasPosition);
       }
       return;
@@ -507,7 +509,10 @@ class _InteractiveBrushEditCanvasViewState
     // settle-frame stall.)
     final fillDabAt = widget.fillDabAt;
     if (fillDabAt != null) {
-      if (!startsInsideSurface || _pendingFillCommitDab != null) {
+      // Off-canvas fill taps flow through: the default (stage-bounded)
+      // raster answers null for them, the extended raster fills — the
+      // fill's own boundary options decide, not the pointer.
+      if (!startsInsidePasteboard || _pendingFillCommitDab != null) {
         // A deferred fill commit is one frame away — a second tap in
         // that window would interleave with it.
         return;
@@ -592,7 +597,7 @@ class _InteractiveBrushEditCanvasViewState
     // '누르는 동안 해당 색을 뽑는다').
     if (event.pointer == _mappedHoldPointer && _mappedHoldIsEyedropper) {
       final pickPosition = _canvasPositionFromLocal(event.localPosition);
-      if (_isInsideSurface(pickPosition)) {
+      if (_isInsidePasteboard(pickPosition)) {
         widget.onAltPick?.call(pickPosition);
       }
       return;
@@ -952,18 +957,9 @@ class _InteractiveBrushEditCanvasViewState
     widget.onTemporaryToolRelease?.call(keep: keep);
   }
 
-  bool _isInsideSurface(CanvasPoint localPosition) {
-    final canvasSize =
-        widget.sessionState.canvasState.currentSurface.canvasSize;
-    return localPosition.x >= 0 &&
-        localPosition.y >= 0 &&
-        localPosition.x < canvasSize.width &&
-        localPosition.y < canvasSize.height;
-  }
-
-  /// STROKES draw anywhere on the pasteboard (Flash-style — the stage
-  /// rectangle is a crop at composite time, not an input boundary); the
-  /// eyedropper and fill taps keep the stage gate ([_isInsideSurface]).
+  /// EVERY tool works anywhere on the pasteboard (Flash-style — the
+  /// stage rectangle is a crop at composite time, not an input
+  /// boundary): strokes, eyedropper picks and fill taps alike.
   bool _isInsidePasteboard(CanvasPoint localPosition) {
     final canvasSize =
         widget.sessionState.canvasState.currentSurface.canvasSize;

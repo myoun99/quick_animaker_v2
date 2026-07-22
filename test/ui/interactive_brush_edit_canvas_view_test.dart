@@ -650,13 +650,14 @@ void main() {
         14,
       ]);
 
-      // Beyond the wall (x ≥ 16 for the 8×8 stage): nothing.
+      // Beyond the wall (x ≥ 24 for the 8×8 stage, 5x5 pasteboard):
+      // nothing.
       results.clear();
       final beyond = await tester.startGesture(
-        origin + const Offset(17, 1),
+        origin + const Offset(25, 1),
         pointer: 2,
       );
-      await beyond.moveTo(origin + const Offset(19, 1));
+      await beyond.moveTo(origin + const Offset(27, 1));
       await beyond.up();
       await tester.pump();
 
