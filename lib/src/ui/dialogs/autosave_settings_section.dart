@@ -1,6 +1,10 @@
+import 'dart:io' show Platform;
+
 import 'package:file_selector/file_selector.dart' show getDirectoryPath;
 import 'package:flutter/material.dart';
 
+import '../../services/persistence/app_documents.dart'
+    show appRecordingsDirectory;
 import '../../services/persistence/app_save_settings.dart';
 import '../editor_session_manager.dart';
 
@@ -109,6 +113,60 @@ class AutosaveSettingsSection extends StatelessWidget {
                   ),
                 ],
               ),
+            const Divider(height: 16),
+            // REC1-B2: the take shelf. Mobile shows where takes land but
+            // cannot move it (the app documents home is the only sane
+            // place there); desktop may point it anywhere.
+            const Text(
+              'Recordings folder',
+              style: TextStyle(fontWeight: FontWeight.w600),
+            ),
+            const SizedBox(height: 4),
+            const Text(
+              'Where voice takes land while a project has never been '
+              'saved. The first save moves the project\'s takes into its '
+              'Media folder; unused takes stay here.',
+              style: TextStyle(fontSize: 12),
+            ),
+            const SizedBox(height: 4),
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    appRecordingsDirectory(),
+                    key: const ValueKey<String>(
+                      'settings-recordings-directory',
+                    ),
+                    style: const TextStyle(fontSize: 12),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+                if (!Platform.isAndroid && !Platform.isIOS) ...[
+                  if (settings.recordingsDirectory != null)
+                    TextButton(
+                      key: const ValueKey<String>('settings-recordings-reset'),
+                      onPressed: () => session.setSaveSettings(
+                        settings.copyWith(recordingsDirectory: null),
+                      ),
+                      child: const Text('Default'),
+                    ),
+                  TextButton(
+                    key: const ValueKey<String>('settings-recordings-browse'),
+                    onPressed: () async {
+                      final directory = await getDirectoryPath();
+                      if (directory != null) {
+                        session.setSaveSettings(
+                          AppSave.settings.value.copyWith(
+                            recordingsDirectory: directory,
+                          ),
+                        );
+                      }
+                    },
+                    child: const Text('Choose…'),
+                  ),
+                ],
+              ],
+            ),
           ],
         );
       },

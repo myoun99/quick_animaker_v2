@@ -25,15 +25,21 @@ void main() {
       autosaveEnabled: false,
       autosaveIntervalMinutes: 12,
       sidecarDirectory: '/tmp/sidecars',
+      recordingsDirectory: '/tmp/takes',
     );
     expect(AppSaveSettings.fromJson(settings.toJson()), settings);
     expect(
       AppSaveSettings.fromJson(const AppSaveSettings().toJson()),
       const AppSaveSettings(),
     );
-    // copyWith can EXPLICITLY clear the directory back to "beside".
+    // copyWith can EXPLICITLY clear the directories back to defaults.
     expect(settings.copyWith(sidecarDirectory: null).sidecarDirectory, isNull);
     expect(settings.copyWith().sidecarDirectory, '/tmp/sidecars');
+    expect(
+      settings.copyWith(recordingsDirectory: null).recordingsDirectory,
+      isNull,
+    );
+    expect(settings.copyWith().recordingsDirectory, '/tmp/takes');
   });
 
   test('store roundtrip; missing/corrupt files yield null', () async {

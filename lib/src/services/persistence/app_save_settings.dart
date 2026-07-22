@@ -10,11 +10,15 @@ import 'package:flutter/foundation.dart';
 /// - The sidecar lives BESIDE the project file by default; a custom
 ///   directory serves setups where "beside" is unwanted (cloud-synced
 ///   folders uploading a big sidecar every tick) or impossible.
+/// - REC1-B2: never-saved projects record onto a visible take shelf
+///   (`<app documents>/Recordings` by default) instead of the hidden OS
+///   temp; a custom folder is a desktop-only choice.
 class AppSaveSettings {
   const AppSaveSettings({
     this.autosaveEnabled = true,
     this.autosaveIntervalMinutes = 5,
     this.sidecarDirectory,
+    this.recordingsDirectory,
   });
 
   final bool autosaveEnabled;
@@ -25,12 +29,17 @@ class AppSaveSettings {
   /// Where sidecars live; null/empty = beside the project file.
   final String? sidecarDirectory;
 
+  /// Where a never-saved project's voice takes land; null/empty = the
+  /// app documents `Recordings` folder.
+  final String? recordingsDirectory;
+
   static const Object _unset = Object();
 
   AppSaveSettings copyWith({
     bool? autosaveEnabled,
     int? autosaveIntervalMinutes,
     Object? sidecarDirectory = _unset,
+    Object? recordingsDirectory = _unset,
   }) => AppSaveSettings(
     autosaveEnabled: autosaveEnabled ?? this.autosaveEnabled,
     autosaveIntervalMinutes:
@@ -38,22 +47,30 @@ class AppSaveSettings {
     sidecarDirectory: identical(sidecarDirectory, _unset)
         ? this.sidecarDirectory
         : sidecarDirectory as String?,
+    recordingsDirectory: identical(recordingsDirectory, _unset)
+        ? this.recordingsDirectory
+        : recordingsDirectory as String?,
   );
 
   Map<String, dynamic> toJson() => {
     'autosaveEnabled': autosaveEnabled,
     'autosaveIntervalMinutes': autosaveIntervalMinutes,
     'sidecarDirectory': sidecarDirectory,
+    'recordingsDirectory': recordingsDirectory,
   };
 
   static AppSaveSettings fromJson(Map<String, dynamic> json) {
     final directory = json['sidecarDirectory'];
+    final recordings = json['recordingsDirectory'];
     return AppSaveSettings(
       autosaveEnabled: json['autosaveEnabled'] as bool? ?? true,
       autosaveIntervalMinutes:
           (json['autosaveIntervalMinutes'] as num?)?.round() ?? 5,
       sidecarDirectory: directory is String && directory.isNotEmpty
           ? directory
+          : null,
+      recordingsDirectory: recordings is String && recordings.isNotEmpty
+          ? recordings
           : null,
     );
   }
@@ -63,11 +80,16 @@ class AppSaveSettings {
       other is AppSaveSettings &&
       other.autosaveEnabled == autosaveEnabled &&
       other.autosaveIntervalMinutes == autosaveIntervalMinutes &&
-      other.sidecarDirectory == sidecarDirectory;
+      other.sidecarDirectory == sidecarDirectory &&
+      other.recordingsDirectory == recordingsDirectory;
 
   @override
-  int get hashCode =>
-      Object.hash(autosaveEnabled, autosaveIntervalMinutes, sidecarDirectory);
+  int get hashCode => Object.hash(
+    autosaveEnabled,
+    autosaveIntervalMinutes,
+    sidecarDirectory,
+    recordingsDirectory,
+  );
 }
 
 /// The LIVE save policy (the [AppInput] idiom): the session restores and

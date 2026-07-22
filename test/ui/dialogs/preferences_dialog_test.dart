@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:quick_animaker_v2/src/controllers/default_project_helpers.dart';
+import 'package:quick_animaker_v2/src/services/persistence/app_documents.dart'
+    show appRecordingsDirectory;
 import 'package:quick_animaker_v2/src/services/persistence/app_save_settings.dart';
 import 'package:quick_animaker_v2/src/ui/dialogs/preferences_dialog.dart';
 import 'package:quick_animaker_v2/src/ui/editor_session_manager.dart';
@@ -136,6 +138,41 @@ void main() {
     );
     await tester.pumpAndSettle();
     expect(AppSave.settings.value.sidecarDirectory, isNull);
+
+    // REC1-B2: the recordings folder row shows the live shelf — the
+    // default app folder, a custom choice, and the reset back.
+    final recordingsPath = find.byKey(
+      const ValueKey<String>('settings-recordings-directory'),
+    );
+    await tester.ensureVisible(recordingsPath);
+    await tester.pumpAndSettle();
+    expect(
+      tester.widget<Text>(recordingsPath).data,
+      appRecordingsDirectory(),
+    );
+    expect(
+      find.byKey(const ValueKey<String>('settings-recordings-reset')),
+      findsNothing,
+      reason: 'the default shelf has nothing to reset',
+    );
+
+    session.setSaveSettings(
+      AppSave.settings.value.copyWith(recordingsDirectory: '/tmp/takes'),
+    );
+    await tester.pumpAndSettle();
+    expect(tester.widget<Text>(recordingsPath).data, '/tmp/takes');
+    final reset = find.byKey(
+      const ValueKey<String>('settings-recordings-reset'),
+    );
+    await tester.ensureVisible(reset);
+    await tester.pumpAndSettle();
+    await tester.tap(reset);
+    await tester.pumpAndSettle();
+    expect(AppSave.settings.value.recordingsDirectory, isNull);
+    expect(
+      tester.widget<Text>(recordingsPath).data,
+      appRecordingsDirectory(),
+    );
   });
 
   testWidgets('the Audio section drives the live A/V offset: typed values '
