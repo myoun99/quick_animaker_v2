@@ -1,36 +1,43 @@
 import '../models/brush_dab.dart';
+import '../models/brush_pressure_curve.dart';
 
-/// Scales a dab's size and/or opacity by its input pressure (linear response).
+/// Scales a dab's size/opacity/flow/hardness by its input pressure through
+/// the per-setting response curves (BB-3, R26 #11).
 ///
-/// The dab is expected to still carry the base tool size and opacity in its
-/// [BrushDab.size] and [BrushDab.opacity] fields, with the normalized input
-/// pressure in [BrushDab.pressure]. When a channel's toggle is enabled the
-/// value becomes `base * pressure`; otherwise it is left untouched. This is
-/// the same linear formula `BrushDab.fromInputSample` applies in the offline
+/// The dab is expected to still carry the base tool values in its
+/// [BrushDab.size]/[BrushDab.opacity]/[BrushDab.flow]/[BrushDab.hardness]
+/// fields, with the normalized input pressure in [BrushDab.pressure]. Each
+/// non-null curve multiplies its base value by `curve.evaluate(pressure)`
+/// — the same formula `BrushDab.fromInputSample` applies in the offline
 /// placement path — applied here as a post-interpolation step so each
 /// inserted dab is scaled by its own interpolated pressure.
 ///
-/// Returns the dab unchanged when neither toggle is on, so the no-pressure
+/// Returns the dab unchanged when every curve is null, so the no-pressure
 /// path allocates nothing.
 BrushDab applyBrushPressureDynamics(
   BrushDab dab, {
-  required bool pressureSize,
-  required bool pressureOpacity,
-  double minimumSizeRatio = 0.0,
+  BrushPressureCurve? sizeCurve,
+  BrushPressureCurve? opacityCurve,
+  BrushPressureCurve? flowCurve,
+  BrushPressureCurve? hardnessCurve,
 }) {
-  if (!pressureSize && !pressureOpacity) {
+  if (sizeCurve == null &&
+      opacityCurve == null &&
+      flowCurve == null &&
+      hardnessCurve == null) {
     return dab;
   }
-  // The minimum-size floor (Photoshop "minimum diameter", Clip Studio
-  // 최소치) keeps light strokes from vanishing: pressure interpolates
-  // between minimum*size and the full size.
+  final pressure = dab.pressure;
   return dab.copyWith(
-    size: pressureSize
-        ? dab.size *
-              (minimumSizeRatio + (1.0 - minimumSizeRatio) * dab.pressure)
-        : dab.size,
-    opacity: pressureOpacity
-        ? (dab.opacity * dab.pressure).clamp(0.0, 1.0)
-        : dab.opacity,
+    size: sizeCurve == null ? dab.size : dab.size * sizeCurve.evaluate(pressure),
+    opacity: opacityCurve == null
+        ? dab.opacity
+        : (dab.opacity * opacityCurve.evaluate(pressure)).clamp(0.0, 1.0),
+    flow: flowCurve == null
+        ? dab.flow
+        : (dab.flow * flowCurve.evaluate(pressure)).clamp(0.0, 1.0),
+    hardness: hardnessCurve == null
+        ? dab.hardness
+        : (dab.hardness * hardnessCurve.evaluate(pressure)).clamp(0.0, 1.0),
   );
 }

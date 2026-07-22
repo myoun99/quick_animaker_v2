@@ -1,7 +1,8 @@
-import 'dart:math' as math;
+﻿import 'dart:math' as math;
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:quick_animaker_v2/src/models/brush_dab.dart';
+import 'package:quick_animaker_v2/src/models/brush_pressure_curve.dart';
 import 'package:quick_animaker_v2/src/models/brush_tip_rotation_mode.dart';
 import 'package:quick_animaker_v2/src/models/brush_tip_shape.dart';
 import 'package:quick_animaker_v2/src/models/canvas_point.dart';
@@ -154,20 +155,15 @@ void main() {
   });
 
   test('pressure minimum-size floor keeps light strokes visible', () {
+    // BB-3: the floor IS the size curve's left endpoint.
+    final floor = BrushPressureCurve.linearFrom(0.65);
     final light = _dab().copyWith(pressure: 0.0);
-    final scaled = applyBrushPressureDynamics(
-      light,
-      pressureSize: true,
-      pressureOpacity: false,
-      minimumSizeRatio: 0.65,
-    );
+    final scaled = applyBrushPressureDynamics(light, sizeCurve: floor);
     expect(scaled.size, closeTo(6.5, 1e-9));
 
     final full = applyBrushPressureDynamics(
       _dab().copyWith(pressure: 1.0),
-      pressureSize: true,
-      pressureOpacity: false,
-      minimumSizeRatio: 0.65,
+      sizeCurve: floor,
     );
     expect(full.size, closeTo(10.0, 1e-9));
   });

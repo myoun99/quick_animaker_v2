@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:quick_animaker_v2/src/models/brush_pressure_curve.dart';
 import 'package:quick_animaker_v2/src/models/brush_tip_shape.dart';
 import 'package:quick_animaker_v2/src/ui/brush/brush_preset_panel.dart';
 import 'package:quick_animaker_v2/src/ui/brush/brush_settings_panel.dart';
@@ -225,48 +226,67 @@ void main() {
     expect(inputSettings.angleDegrees, state.angleDegrees);
   });
 
-  testWidgets('BrushSettingsPanel toggles pen-pressure size and opacity', (
-    tester,
-  ) async {
-    var state = BrushToolState.defaults;
-    await tester.pumpWidget(
-      MaterialApp(
-        home: Scaffold(
-          body: SingleChildScrollView(
-            child: StatefulBuilder(
-              builder: (context, setState) => BrushSettingsPanel(
-                state: state,
-                onChanged: (next) => setState(() => state = next),
+  testWidgets(
+    'BrushSettingsPanel opens the pressure popup and toggles the curve '
+    '(BB-3)',
+    (tester) async {
+      var state = BrushToolState.defaults;
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: SingleChildScrollView(
+              child: StatefulBuilder(
+                builder: (context, setState) => BrushSettingsPanel(
+                  state: state,
+                  onChanged: (next) => setState(() => state = next),
+                ),
               ),
             ),
           ),
         ),
-      ),
-    );
+      );
 
-    expect(state.pressureSize, isFalse);
-    expect(state.pressureOpacity, isFalse);
+      expect(state.sizePressureCurve, isNull);
 
-    final sizeToggle = find.byKey(
-      const ValueKey<String>('brush-tool-pressure-size-toggle'),
-    );
-    await tester.ensureVisible(sizeToggle);
-    await tester.tap(sizeToggle);
-    await tester.pumpAndSettle();
-    expect(state.pressureSize, isTrue);
-    expect(state.pressureOpacity, isFalse);
+      // Every pressure-capable row carries its curve button.
+      for (final target in BrushPressureTarget.values) {
+        expect(
+          find.byKey(ValueKey<String>('brush-tool-pressure-${target.name}')),
+          findsOneWidget,
+        );
+      }
+      // The legacy toggle group is gone.
+      expect(
+        find.byKey(const ValueKey<String>('brush-tool-pressure-size-toggle')),
+        findsNothing,
+      );
 
-    final opacityToggle = find.byKey(
-      const ValueKey<String>('brush-tool-pressure-opacity-toggle'),
-    );
-    await tester.ensureVisible(opacityToggle);
-    await tester.tap(opacityToggle);
-    await tester.pumpAndSettle();
-    expect(state.pressureOpacity, isTrue);
+      final sizeButton = find.byKey(
+        const ValueKey<String>('brush-tool-pressure-size'),
+      );
+      await tester.ensureVisible(sizeButton);
+      await tester.tap(sizeButton);
+      await tester.pumpAndSettle();
+      expect(
+        find.byKey(const ValueKey<String>('pressure-curve-popup')),
+        findsOneWidget,
+      );
 
-    // Both toggles reach the sampled canvas input settings.
-    final inputSettings = state.toInputSettings();
-    expect(inputSettings.pressureSize, isTrue);
-    expect(inputSettings.pressureOpacity, isTrue);
-  });
+      // Enabling pressure installs the identity curve.
+      await tester.tap(
+        find.byKey(const ValueKey<String>('pressure-curve-enable-switch')),
+      );
+      await tester.pumpAndSettle();
+      expect(state.sizePressureCurve, BrushPressureCurve.identity());
+      expect(state.toInputSettings().sizePressureCurve, isNotNull);
+
+      // Disabling clears it back to null (the copyWith-preserve rule is
+      // bypassed through withPressureCurve).
+      await tester.tap(
+        find.byKey(const ValueKey<String>('pressure-curve-enable-switch')),
+      );
+      await tester.pumpAndSettle();
+      expect(state.sizePressureCurve, isNull);
+    },
+  );
 }

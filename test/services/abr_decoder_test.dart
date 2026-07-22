@@ -1,7 +1,8 @@
-import 'dart:convert';
+﻿import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:quick_animaker_v2/src/models/brush_pressure_curve.dart';
 import 'package:quick_animaker_v2/src/models/brush_tip_rotation_mode.dart';
 import 'package:quick_animaker_v2/src/services/abr/abr_byte_reader.dart';
 import 'package:quick_animaker_v2/src/services/abr/abr_decoder.dart';
@@ -305,10 +306,19 @@ void main() {
       expect(chalk.settings.tipMask, isNotNull);
       // Preset-level dynamics: szVr control 2 = pen pressure, minimum
       // diameter, jitters, direction-following angle, scatter block.
-      expect(chalk.settings.pressureSize, isTrue);
-      expect(chalk.settings.minimumSizeRatio, closeTo(0.65, 1e-9));
+      // BB-3: szVr pen pressure + minimum diameter 65% = the size curve
+      // (0, 0.65)-(1, 1); opVr pen pressure = the identity opacity curve
+      // (prVr is absent, so the flow channel stays pressure-free).
+      expect(
+        chalk.settings.sizePressureCurve,
+        BrushPressureCurve.linearFrom(0.65),
+      );
       expect(chalk.settings.sizeJitter, closeTo(0.3, 1e-9));
-      expect(chalk.settings.pressureOpacity, isTrue);
+      expect(
+        chalk.settings.opacityPressureCurve,
+        BrushPressureCurve.identity(),
+      );
+      expect(chalk.settings.flowPressureCurve, isNull);
       expect(chalk.settings.rotationMode, BrushTipRotationMode.direction);
       expect(chalk.settings.angleJitter, closeTo(0.1, 1e-9));
       expect(chalk.settings.scatterRadiusRatio, closeTo(2.0, 1e-9));

@@ -4,6 +4,7 @@ import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:quick_animaker_v2/src/models/brush_pressure_curve.dart';
 import 'package:quick_animaker_v2/src/services/sut/sut_decoder.dart';
 import 'package:sqlite3/sqlite3.dart';
 
@@ -186,9 +187,13 @@ void main() {
     expect(s.spacing, closeTo(0.15, 1e-9));
     expect(s.roundness, closeTo(0.4, 1e-9));
     expect(s.angleDegrees, closeTo(20.0, 1e-9)); // 200 normalized into 0-180
-    expect(s.pressureSize, isTrue); // effector flag 0x10
-    expect(s.pressureOpacity, isTrue); // via the flow effector's 0x30
-    expect(s.minimumSizeRatio, closeTo(0.59, 1e-9)); // effector minimum 59%
+    // BB-3 curve mapping: size effector 0x10 with minimum 59% becomes the
+    // line (0, 0.59)-(1, 1); the flow effector's 0x30 now lands on its OWN
+    // flow channel (it used to be OR-merged into opacity); the opacity
+    // effector (0x00) stays pressure-free.
+    expect(s.sizePressureCurve, BrushPressureCurve.linearFrom(0.59));
+    expect(s.opacityPressureCurve, isNull);
+    expect(s.flowPressureCurve, BrushPressureCurve.identity());
     // Spray maps to scatter: 200% spray size -> radius ratio 1.0.
     expect(s.scatterRadiusRatio, closeTo(1.0, 1e-9));
     expect(s.scatterCount, 4);
@@ -211,7 +216,7 @@ void main() {
     expect(round.settings.tipMask, isNull);
     expect(round.settings.size, 8.0);
     expect(round.settings.hardness, closeTo(0.9, 1e-9));
-    expect(round.settings.pressureSize, isFalse);
+    expect(round.settings.sizePressureCurve, isNull);
   });
 
   test('missing material degrades to a round tip with a warning', () async {

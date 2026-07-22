@@ -1,3 +1,4 @@
+import 'brush_pressure_curve.dart';
 import 'brush_tip_mask.dart';
 import 'brush_tip_rotation_mode.dart';
 import 'brush_tip_shape.dart';
@@ -11,13 +12,14 @@ class BrushSettings {
     this.hardness = 1.0,
     this.spacing = 0.1,
     this.tipShape = BrushTipShape.round,
-    this.pressureSize = false,
-    this.pressureOpacity = false,
+    this.sizePressureCurve,
+    this.opacityPressureCurve,
+    this.flowPressureCurve,
+    this.hardnessPressureCurve,
     this.roundness = 1.0,
     this.angleDegrees = 0.0,
     this.tipMask,
     this.rotationMode = BrushTipRotationMode.fixed,
-    this.minimumSizeRatio = 0.0,
     this.sizeJitter = 0.0,
     this.opacityJitter = 0.0,
     this.angleJitter = 0.0,
@@ -52,7 +54,6 @@ class BrushSettings {
     _validatePositive(spacing, 'spacing');
     _validateRoundness(roundness);
     _validateFinite(angleDegrees, 'angleDegrees');
-    _validateUnitInterval(minimumSizeRatio, 'minimumSizeRatio');
     _validateUnitInterval(sizeJitter, 'sizeJitter');
     _validateUnitInterval(opacityJitter, 'opacityJitter');
     _validateUnitInterval(angleJitter, 'angleJitter');
@@ -73,8 +74,16 @@ class BrushSettings {
   final double hardness;
   final double spacing;
   final BrushTipShape tipShape;
-  final bool pressureSize;
-  final bool pressureOpacity;
+
+  /// BB-3 (R26 #11): per-setting pen-pressure response — `null` means the
+  /// setting ignores pressure. These replaced the pressureSize /
+  /// pressureOpacity booleans and the minimumSizeRatio floor (the floor is
+  /// now the size curve's left endpoint); [fromJson] migrates the legacy
+  /// keys to the equivalent straight-line curves.
+  final BrushPressureCurve? sizePressureCurve;
+  final BrushPressureCurve? opacityPressureCurve;
+  final BrushPressureCurve? flowPressureCurve;
+  final BrushPressureCurve? hardnessPressureCurve;
 
   /// Minor-to-major axis ratio of the tip in (0, 1]; 1.0 is the classic
   /// circle/square.
@@ -89,10 +98,6 @@ class BrushSettings {
 
   /// How dab angles are chosen at placement time.
   final BrushTipRotationMode rotationMode;
-
-  /// Size floor for pressure scaling, as a ratio of [size]: with pressure
-  /// enabled, effective size = size * (min + (1 - min) * pressure).
-  final double minimumSizeRatio;
 
   /// Random per-dab size reduction, 0..1 of the base size.
   final double sizeJitter;
@@ -123,6 +128,16 @@ class BrushSettings {
   final double textureScale;
   final double textureDensity;
 
+  /// The pressure curve driving [target], if any.
+  BrushPressureCurve? pressureCurveFor(BrushPressureTarget target) {
+    return switch (target) {
+      BrushPressureTarget.size => sizePressureCurve,
+      BrushPressureTarget.opacity => opacityPressureCurve,
+      BrushPressureTarget.flow => flowPressureCurve,
+      BrushPressureTarget.hardness => hardnessPressureCurve,
+    };
+  }
+
   BrushSettings copyWith({
     int? color,
     double? size,
@@ -131,13 +146,14 @@ class BrushSettings {
     double? hardness,
     double? spacing,
     BrushTipShape? tipShape,
-    bool? pressureSize,
-    bool? pressureOpacity,
+    BrushPressureCurve? sizePressureCurve,
+    BrushPressureCurve? opacityPressureCurve,
+    BrushPressureCurve? flowPressureCurve,
+    BrushPressureCurve? hardnessPressureCurve,
     double? roundness,
     double? angleDegrees,
     BrushTipMask? tipMask,
     BrushTipRotationMode? rotationMode,
-    double? minimumSizeRatio,
     double? sizeJitter,
     double? opacityJitter,
     double? angleJitter,
@@ -158,13 +174,15 @@ class BrushSettings {
       hardness: hardness ?? this.hardness,
       spacing: spacing ?? this.spacing,
       tipShape: tipShape ?? this.tipShape,
-      pressureSize: pressureSize ?? this.pressureSize,
-      pressureOpacity: pressureOpacity ?? this.pressureOpacity,
+      sizePressureCurve: sizePressureCurve ?? this.sizePressureCurve,
+      opacityPressureCurve: opacityPressureCurve ?? this.opacityPressureCurve,
+      flowPressureCurve: flowPressureCurve ?? this.flowPressureCurve,
+      hardnessPressureCurve:
+          hardnessPressureCurve ?? this.hardnessPressureCurve,
       roundness: roundness ?? this.roundness,
       angleDegrees: angleDegrees ?? this.angleDegrees,
       tipMask: tipMask ?? this.tipMask,
       rotationMode: rotationMode ?? this.rotationMode,
-      minimumSizeRatio: minimumSizeRatio ?? this.minimumSizeRatio,
       sizeJitter: sizeJitter ?? this.sizeJitter,
       opacityJitter: opacityJitter ?? this.opacityJitter,
       angleJitter: angleJitter ?? this.angleJitter,
@@ -187,13 +205,18 @@ class BrushSettings {
     'hardness': hardness,
     'spacing': spacing,
     'tipShape': tipShape.toJson(),
-    'pressureSize': pressureSize,
-    'pressureOpacity': pressureOpacity,
+    if (sizePressureCurve != null)
+      'sizePressureCurve': sizePressureCurve!.toJson(),
+    if (opacityPressureCurve != null)
+      'opacityPressureCurve': opacityPressureCurve!.toJson(),
+    if (flowPressureCurve != null)
+      'flowPressureCurve': flowPressureCurve!.toJson(),
+    if (hardnessPressureCurve != null)
+      'hardnessPressureCurve': hardnessPressureCurve!.toJson(),
     'roundness': roundness,
     'angleDegrees': angleDegrees,
     if (tipMask != null) 'tipMask': tipMask!.toJson(),
     'rotationMode': rotationMode.toJson(),
-    'minimumSizeRatio': minimumSizeRatio,
     'sizeJitter': sizeJitter,
     'opacityJitter': opacityJitter,
     'angleJitter': angleJitter,
@@ -208,6 +231,22 @@ class BrushSettings {
   };
 
   factory BrushSettings.fromJson(Map<String, dynamic> json) {
+    // Legacy pressure toggles (pre-BB-3) migrate to their equivalent
+    // straight-line curves: size ON was `min + (1 - min) * p` (the
+    // minimumSizeRatio floor), opacity ON was plain `p`.
+    BrushPressureCurve? curveOf(String key) => json[key] == null
+        ? null
+        : BrushPressureCurve.fromJson(json[key] as List<dynamic>);
+    var sizeCurve = curveOf('sizePressureCurve');
+    if (sizeCurve == null && json['pressureSize'] == true) {
+      sizeCurve = BrushPressureCurve.linearFrom(
+        (json['minimumSizeRatio'] as num?)?.toDouble() ?? 0.0,
+      );
+    }
+    var opacityCurve = curveOf('opacityPressureCurve');
+    if (opacityCurve == null && json['pressureOpacity'] == true) {
+      opacityCurve = BrushPressureCurve.identity();
+    }
     return BrushSettings(
       color: json['color'] as int,
       size: (json['size'] as num).toDouble(),
@@ -218,15 +257,16 @@ class BrushSettings {
       tipShape: json.containsKey('tipShape')
           ? BrushTipShape.fromJson(json['tipShape'])
           : BrushTipShape.round,
-      pressureSize: json['pressureSize'] as bool? ?? false,
-      pressureOpacity: json['pressureOpacity'] as bool? ?? false,
+      sizePressureCurve: sizeCurve,
+      opacityPressureCurve: opacityCurve,
+      flowPressureCurve: curveOf('flowPressureCurve'),
+      hardnessPressureCurve: curveOf('hardnessPressureCurve'),
       roundness: (json['roundness'] as num?)?.toDouble() ?? 1.0,
       angleDegrees: (json['angleDegrees'] as num?)?.toDouble() ?? 0.0,
       tipMask: json['tipMask'] == null
           ? null
           : BrushTipMask.fromJson(json['tipMask'] as Map<String, dynamic>),
       rotationMode: BrushTipRotationMode.fromJson(json['rotationMode']),
-      minimumSizeRatio: (json['minimumSizeRatio'] as num?)?.toDouble() ?? 0.0,
       sizeJitter: (json['sizeJitter'] as num?)?.toDouble() ?? 0.0,
       opacityJitter: (json['opacityJitter'] as num?)?.toDouble() ?? 0.0,
       angleJitter: (json['angleJitter'] as num?)?.toDouble() ?? 0.0,
@@ -257,13 +297,14 @@ class BrushSettings {
           other.hardness == hardness &&
           other.spacing == spacing &&
           other.tipShape == tipShape &&
-          other.pressureSize == pressureSize &&
-          other.pressureOpacity == pressureOpacity &&
+          other.sizePressureCurve == sizePressureCurve &&
+          other.opacityPressureCurve == opacityPressureCurve &&
+          other.flowPressureCurve == flowPressureCurve &&
+          other.hardnessPressureCurve == hardnessPressureCurve &&
           other.roundness == roundness &&
           other.angleDegrees == angleDegrees &&
           other.tipMask == tipMask &&
           other.rotationMode == rotationMode &&
-          other.minimumSizeRatio == minimumSizeRatio &&
           other.sizeJitter == sizeJitter &&
           other.opacityJitter == opacityJitter &&
           other.angleJitter == angleJitter &&
@@ -285,13 +326,14 @@ class BrushSettings {
     hardness,
     spacing,
     tipShape,
-    pressureSize,
-    pressureOpacity,
+    sizePressureCurve,
+    opacityPressureCurve,
+    flowPressureCurve,
+    hardnessPressureCurve,
     roundness,
     angleDegrees,
     tipMask,
     rotationMode,
-    minimumSizeRatio,
     sizeJitter,
     opacityJitter,
     angleJitter,
@@ -309,10 +351,13 @@ class BrushSettings {
   String toString() =>
       'BrushSettings(color: $color, size: $size, opacity: $opacity, '
       'flow: $flow, hardness: $hardness, spacing: $spacing, '
-      'tipShape: $tipShape, pressureSize: $pressureSize, '
-      'pressureOpacity: $pressureOpacity, roundness: $roundness, '
+      'tipShape: $tipShape, sizePressureCurve: $sizePressureCurve, '
+      'opacityPressureCurve: $opacityPressureCurve, '
+      'flowPressureCurve: $flowPressureCurve, '
+      'hardnessPressureCurve: $hardnessPressureCurve, '
+      'roundness: $roundness, '
       'angleDegrees: $angleDegrees, tipMask: $tipMask, '
-      'rotationMode: $rotationMode, minimumSizeRatio: $minimumSizeRatio, '
+      'rotationMode: $rotationMode, '
       'sizeJitter: $sizeJitter, opacityJitter: $opacityJitter, '
       'angleJitter: $angleJitter, scatterRadiusRatio: $scatterRadiusRatio, '
       'scatterCount: $scatterCount, scatterBothAxes: $scatterBothAxes)';

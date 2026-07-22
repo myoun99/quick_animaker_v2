@@ -1,5 +1,6 @@
-import 'package:flutter_test/flutter_test.dart';
+﻿import 'package:flutter_test/flutter_test.dart';
 import 'package:quick_animaker_v2/src/models/brush_input_sample.dart';
+import 'package:quick_animaker_v2/src/models/brush_pressure_curve.dart';
 import 'package:quick_animaker_v2/src/models/brush_settings.dart';
 import 'package:quick_animaker_v2/src/services/brush_dab_placement.dart';
 
@@ -93,18 +94,23 @@ void main() {
       expect(sequence.dabs.map((dab) => dab.pressure), [0, 0.5, 1]);
     });
 
-    test('pressureSize affects emitted dab size', () {
+    test('the size pressure curve affects emitted dab size', () {
       final sequence = brushInputSamplesToBrushDabs(
         samples: [BrushInputSample(x: 0, y: 0, pressure: 0.5)],
-        settings: settings.copyWith(pressureSize: true),
+        settings: settings.copyWith(
+          sizePressureCurve: BrushPressureCurve.identity(),
+        ),
       );
       expect(sequence.dabs.single.size, 5);
     });
 
-    test('pressureOpacity affects emitted dab opacity', () {
+    test('the opacity pressure curve affects emitted dab opacity', () {
       final sequence = brushInputSamplesToBrushDabs(
         samples: [BrushInputSample(x: 0, y: 0, pressure: 0.5)],
-        settings: settings.copyWith(opacity: 0.8, pressureOpacity: true),
+        settings: settings.copyWith(
+          opacity: 0.8,
+          opacityPressureCurve: BrushPressureCurve.identity(),
+        ),
       );
       expect(sequence.dabs.single.opacity, 0.4);
     });

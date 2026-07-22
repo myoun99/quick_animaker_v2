@@ -998,20 +998,21 @@ class _InteractiveBrushEditCanvasViewState
   }
 
   /// Scales freshly interpolated dabs by their pressure per the active
-  /// stroke's pressure toggles. Returns the input unchanged when neither
-  /// toggle is on, so the common no-pressure path stays allocation-free.
+  /// stroke's pressure curves (BB-3). Returns the input unchanged when no
+  /// curve is set, so the common no-pressure path stays allocation-free.
   List<BrushDab> _withPressureDynamics(List<BrushDab> dabs) {
     final settings = _activeStrokeInputSettings ?? widget.inputSettings;
-    if (!settings.pressureSize && !settings.pressureOpacity) {
+    if (!settings.hasPressureDynamics) {
       return dabs;
     }
     return <BrushDab>[
       for (final dab in dabs)
         applyBrushPressureDynamics(
           dab,
-          pressureSize: settings.pressureSize,
-          pressureOpacity: settings.pressureOpacity,
-          minimumSizeRatio: settings.minimumSizeRatio,
+          sizeCurve: settings.sizePressureCurve,
+          opacityCurve: settings.opacityPressureCurve,
+          flowCurve: settings.flowPressureCurve,
+          hardnessCurve: settings.hardnessPressureCurve,
         ),
     ];
   }

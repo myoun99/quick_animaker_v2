@@ -3,6 +3,7 @@ import 'dart:typed_data';
 
 import '../../models/brush_preset.dart';
 import '../../models/brush_preset_id.dart';
+import '../../models/brush_pressure_curve.dart';
 import '../../models/brush_settings.dart';
 import '../../models/brush_tip_mask.dart';
 import '../../models/brush_tip_rotation_mode.dart';
@@ -372,18 +373,22 @@ BrushPreset? _presetFromBrushDescriptor(
   // Dynamics live at the preset level (sibling of 'Brsh'), gated by the
   // useTipDynamics / usePaintDynamics switches. Control type ('bVTy')
   // 2 = pen pressure; 6/7 = initial direction / direction.
-  var pressureSize = false;
+  BrushPressureCurve? sizePressureCurve;
   var sizeJitter = 0.0;
-  var minimumSizeRatio = 0.0;
   var rotationMode = BrushTipRotationMode.fixed;
   var angleJitter = 0.0;
   if (entry['useTipDynamics'] == true) {
     final sizeVariance = entry.childDescriptor('szVr');
-    pressureSize = _controlOf(sizeVariance) == 2;
+    if (_controlOf(sizeVariance) == 2) {
+      // BB-3: Photoshop's minimum diameter is the size curve's left
+      // endpoint (the old minimumSizeRatio floor).
+      sizePressureCurve = BrushPressureCurve.linearFrom(
+        ((entry.numberValue('minimumDiameter') ?? 0.0) / 100.0)
+            .clamp(0.0, 1.0)
+            .toDouble(),
+      );
+    }
     sizeJitter = _jitterOf(sizeVariance, cap: 1.0);
-    minimumSizeRatio = ((entry.numberValue('minimumDiameter') ?? 0.0) / 100.0)
-        .clamp(0.0, 1.0)
-        .toDouble();
     final angleVariance = entry.childDescriptor('angleDynamics');
     final angleControl = _controlOf(angleVariance);
     if (angleControl == 6 || angleControl == 7) {
@@ -391,13 +396,20 @@ BrushPreset? _presetFromBrushDescriptor(
     }
     angleJitter = _jitterOf(angleVariance, cap: 1.0);
   }
-  var pressureOpacity = false;
+  BrushPressureCurve? opacityPressureCurve;
+  BrushPressureCurve? flowPressureCurve;
   var opacityJitter = 0.0;
   if (entry['usePaintDynamics'] == true) {
     final opacityVariance = entry.childDescriptor('opVr');
     final flowVariance = entry.childDescriptor('prVr');
-    pressureOpacity =
-        _controlOf(opacityVariance) == 2 || _controlOf(flowVariance) == 2;
+    // BB-3: opacity (opVr) and flow (prVr) import as their own pressure
+    // channels — they used to be OR-merged into one opacity bool.
+    if (_controlOf(opacityVariance) == 2) {
+      opacityPressureCurve = BrushPressureCurve.identity();
+    }
+    if (_controlOf(flowVariance) == 2) {
+      flowPressureCurve = BrushPressureCurve.identity();
+    }
     opacityJitter = math.max(
       _jitterOf(opacityVariance, cap: 1.0),
       _jitterOf(flowVariance, cap: 1.0),
@@ -472,9 +484,9 @@ BrushPreset? _presetFromBrushDescriptor(
       angleDegrees: angle,
       roundness: roundnessPercent / 100.0,
       hardness: hardnessPercent / 100.0,
-      pressureSize: pressureSize,
-      pressureOpacity: pressureOpacity,
-      minimumSizeRatio: minimumSizeRatio,
+      sizePressureCurve: sizePressureCurve,
+      opacityPressureCurve: opacityPressureCurve,
+      flowPressureCurve: flowPressureCurve,
       sizeJitter: sizeJitter,
       opacityJitter: opacityJitter,
       angleJitter: angleJitter,
@@ -515,9 +527,9 @@ BrushSettings _settingsForTip(
   required double angleDegrees,
   required double roundness,
   double hardness = 1.0,
-  bool pressureSize = false,
-  bool pressureOpacity = false,
-  double minimumSizeRatio = 0.0,
+  BrushPressureCurve? sizePressureCurve,
+  BrushPressureCurve? opacityPressureCurve,
+  BrushPressureCurve? flowPressureCurve,
   double sizeJitter = 0.0,
   double opacityJitter = 0.0,
   double angleJitter = 0.0,
@@ -539,9 +551,9 @@ BrushSettings _settingsForTip(
     roundness: roundness.isFinite ? roundness.clamp(0.01, 1.0).toDouble() : 1.0,
     hardness: hardness.isFinite ? hardness.clamp(0.0, 1.0).toDouble() : 1.0,
     tipMask: mask,
-    pressureSize: pressureSize,
-    pressureOpacity: pressureOpacity,
-    minimumSizeRatio: minimumSizeRatio,
+    sizePressureCurve: sizePressureCurve,
+    opacityPressureCurve: opacityPressureCurve,
+    flowPressureCurve: flowPressureCurve,
     sizeJitter: sizeJitter,
     opacityJitter: opacityJitter,
     angleJitter: angleJitter,

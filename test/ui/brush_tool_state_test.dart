@@ -1,4 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:quick_animaker_v2/src/models/brush_blend_mode.dart';
+import 'package:quick_animaker_v2/src/models/brush_pressure_curve.dart';
 import 'package:quick_animaker_v2/src/models/brush_settings.dart';
 import 'package:quick_animaker_v2/src/models/brush_tip_shape.dart';
 import 'package:quick_animaker_v2/src/ui/brush/brush_tool_state.dart';
@@ -99,38 +101,93 @@ void main() {
       expect(state.toInputSettings().color, color);
     });
 
-    test('pressure toggles default off and preserve prior behavior', () {
+    test('pressure curves default to null (no pressure response)', () {
       const state = BrushToolState.defaults;
-      expect(state.pressureSize, isFalse);
-      expect(state.pressureOpacity, isFalse);
-      expect(state.toInputSettings().pressureSize, isFalse);
-      expect(state.toInputSettings().pressureOpacity, isFalse);
+      expect(state.sizePressureCurve, isNull);
+      expect(state.opacityPressureCurve, isNull);
+      expect(state.flowPressureCurve, isNull);
+      expect(state.hardnessPressureCurve, isNull);
+      expect(state.toInputSettings().hasPressureDynamics, isFalse);
     });
 
-    test('pressure toggles round-trip through copyWith and input settings', () {
+    test('pressure curves round-trip through copyWith and input settings', () {
       final state = BrushToolState.defaults.copyWith(
-        pressureSize: true,
-        pressureOpacity: true,
+        sizePressureCurve: BrushPressureCurve.identity(),
+        opacityPressureCurve: BrushPressureCurve.linearFrom(0.25),
       );
-      expect(state.pressureSize, isTrue);
-      expect(state.pressureOpacity, isTrue);
+      expect(state.sizePressureCurve, BrushPressureCurve.identity());
+      expect(
+        state.opacityPressureCurve,
+        BrushPressureCurve.linearFrom(0.25),
+      );
 
       final settings = state.toInputSettings();
-      expect(settings.pressureSize, isTrue);
-      expect(settings.pressureOpacity, isTrue);
+      expect(settings.sizePressureCurve, BrushPressureCurve.identity());
+      expect(
+        settings.opacityPressureCurve,
+        BrushPressureCurve.linearFrom(0.25),
+      );
 
-      // Omitted copyWith args keep the existing toggle values.
-      expect(state.copyWith(size: 5).pressureSize, isTrue);
-      expect(state.copyWith(size: 5).pressureOpacity, isTrue);
+      // Omitted copyWith args keep the existing curves.
+      expect(
+        state.copyWith(size: 5).sizePressureCurve,
+        BrushPressureCurve.identity(),
+      );
+      expect(
+        state.copyWith(size: 5).opacityPressureCurve,
+        BrushPressureCurve.linearFrom(0.25),
+      );
     });
 
-    test('pressure toggles participate in equality', () {
-      final a = BrushToolState.defaults.copyWith(pressureSize: true);
-      final b = BrushToolState.defaults.copyWith(pressureSize: true);
+    test('withPressureCurve sets and CLEARS one channel', () {
+      final state = BrushToolState.defaults.withPressureCurve(
+        BrushPressureTarget.flow,
+        BrushPressureCurve.identity(),
+      );
+      expect(state.flowPressureCurve, BrushPressureCurve.identity());
+      expect(
+        state.pressureCurveFor(BrushPressureTarget.flow),
+        BrushPressureCurve.identity(),
+      );
+
+      // copyWith cannot clear (it preserves); withPressureCurve(null) can.
+      final cleared = state.withPressureCurve(BrushPressureTarget.flow, null);
+      expect(cleared.flowPressureCurve, isNull);
+      // Other channels survive the clear.
+      final both = state.withPressureCurve(
+        BrushPressureTarget.size,
+        BrushPressureCurve.identity(),
+      );
+      final sizeOnly = both.withPressureCurve(BrushPressureTarget.flow, null);
+      expect(sizeOnly.sizePressureCurve, BrushPressureCurve.identity());
+      expect(sizeOnly.flowPressureCurve, isNull);
+    });
+
+    test('pressure curves participate in equality', () {
+      final a = BrushToolState.defaults.copyWith(
+        sizePressureCurve: BrushPressureCurve.identity(),
+      );
+      final b = BrushToolState.defaults.copyWith(
+        sizePressureCurve: BrushPressureCurve.identity(),
+      );
       const c = BrushToolState.defaults;
       expect(a, b);
       expect(a.hashCode, b.hashCode);
       expect(a == c, isFalse);
+    });
+
+    test('brushBlendMode participates in equality (BB-3 audit fix)', () {
+      final a = BrushToolState.defaults.copyWith(
+        brushBlendMode: BrushBlendMode.multiply,
+      );
+      const b = BrushToolState.defaults;
+      expect(a == b, isFalse);
+      expect(
+        a,
+        BrushToolState.defaults.copyWith(
+          brushBlendMode: BrushBlendMode.multiply,
+        ),
+      );
     });
 
     test('roundness and angle default to the classic full-round tip', () {
@@ -181,8 +238,8 @@ void main() {
         hardness: 0.6,
         flow: 0.5,
         tipShape: BrushTipShape.square,
-        pressureSize: true,
-        pressureOpacity: true,
+        sizePressureCurve: BrushPressureCurve.linearFrom(0.2),
+        opacityPressureCurve: BrushPressureCurve.identity(),
         roundness: 0.4,
         angleDegrees: 60,
       );
@@ -195,8 +252,8 @@ void main() {
       expect(settings.hardness, 0.6);
       expect(settings.flow, 0.5);
       expect(settings.tipShape, BrushTipShape.square);
-      expect(settings.pressureSize, isTrue);
-      expect(settings.pressureOpacity, isTrue);
+      expect(settings.sizePressureCurve, BrushPressureCurve.linearFrom(0.2));
+      expect(settings.opacityPressureCurve, BrushPressureCurve.identity());
       expect(settings.roundness, 0.4);
       expect(settings.angleDegrees, 60.0);
 

@@ -3,6 +3,7 @@ import 'dart:typed_data';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:quick_animaker_v2/src/models/brush_dab.dart';
 import 'package:quick_animaker_v2/src/models/brush_input_sample.dart';
+import 'package:quick_animaker_v2/src/models/brush_pressure_curve.dart';
 import 'package:quick_animaker_v2/src/models/brush_settings.dart';
 import 'package:quick_animaker_v2/src/models/brush_tip_mask.dart';
 import 'package:quick_animaker_v2/src/models/brush_tip_shape.dart';
@@ -256,22 +257,43 @@ void main() {
       expect(value.color, 0x80FF3366);
     });
 
-    test('fromInputSample applies pressureSize', () {
+    test('fromInputSample applies the size pressure curve', () {
       final value = BrushDab.fromInputSample(
         sample: BrushInputSample(x: 0, y: 0, pressure: 0.25),
-        settings: BrushSettings(size: 20, pressureSize: true),
+        settings: BrushSettings(
+          size: 20,
+          sizePressureCurve: BrushPressureCurve.identity(),
+        ),
         sequence: 0,
       );
       expect(value.size, 5);
     });
 
-    test('fromInputSample applies pressureOpacity', () {
+    test('fromInputSample applies the opacity pressure curve', () {
       final value = BrushDab.fromInputSample(
         sample: BrushInputSample(x: 0, y: 0, pressure: 0.25),
-        settings: BrushSettings(opacity: 0.8, pressureOpacity: true),
+        settings: BrushSettings(
+          opacity: 0.8,
+          opacityPressureCurve: BrushPressureCurve.identity(),
+        ),
         sequence: 0,
       );
       expect(value.opacity, 0.2);
+    });
+
+    test('fromInputSample applies the flow and hardness curves (BB-3)', () {
+      final value = BrushDab.fromInputSample(
+        sample: BrushInputSample(x: 0, y: 0, pressure: 0.5),
+        settings: BrushSettings(
+          flow: 0.8,
+          hardness: 0.5,
+          flowPressureCurve: BrushPressureCurve.identity(),
+          hardnessPressureCurve: BrushPressureCurve.identity(),
+        ),
+        sequence: 0,
+      );
+      expect(value.flow, closeTo(0.4, 1e-9));
+      expect(value.hardness, closeTo(0.25, 1e-9));
     });
 
     test('fromInputSample preserves flow/hardness/tipShape', () {

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:quick_animaker_v2/src/models/brush_pressure_curve.dart';
 import 'package:quick_animaker_v2/src/models/brush_settings.dart';
 import 'package:quick_animaker_v2/src/ui/brush/brush_stroke_preview.dart';
 import 'package:quick_animaker_v2/src/ui/brush/brush_stroke_preview_cache.dart';
@@ -13,7 +14,10 @@ void main() {
   setUp(BrushStrokePreviewCache.instance.clear);
 
   test('the sample rasterizer is deterministic and non-empty', () {
-    final settings = BrushSettings(pressureSize: true, pressureOpacity: true);
+    final settings = BrushSettings(
+      sizePressureCurve: BrushPressureCurve.identity(),
+      opacityPressureCurve: BrushPressureCurve.identity(),
+    );
     final first = rasterizeBrushStrokeSample(settings, 96, 24);
     final second = rasterizeBrushStrokeSample(settings, 96, 24);
     expect(first, equals(second));

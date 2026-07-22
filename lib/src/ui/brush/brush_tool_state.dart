@@ -1,4 +1,5 @@
 import '../../models/brush_blend_mode.dart';
+import '../../models/brush_pressure_curve.dart';
 import '../../models/brush_settings.dart';
 import '../../models/brush_tip_mask.dart';
 import '../../models/brush_tip_rotation_mode.dart';
@@ -40,13 +41,14 @@ class BrushToolState {
     double hardness = defaultHardness,
     double flow = defaultFlow,
     BrushTipShape tipShape = defaultTipShape,
-    bool pressureSize = defaultPressureSize,
-    bool pressureOpacity = defaultPressureOpacity,
+    BrushPressureCurve? sizePressureCurve,
+    BrushPressureCurve? opacityPressureCurve,
+    BrushPressureCurve? flowPressureCurve,
+    BrushPressureCurve? hardnessPressureCurve,
     double roundness = defaultRoundness,
     double angleDegrees = defaultAngleDegrees,
     BrushTipMask? tipMask,
     BrushTipRotationMode rotationMode = BrushTipRotationMode.fixed,
-    double minimumSizeRatio = 0.0,
     double sizeJitter = 0.0,
     double opacityJitter = 0.0,
     double angleJitter = 0.0,
@@ -70,13 +72,14 @@ class BrushToolState {
       hardness: hardness,
       flow: flow,
       tipShape: tipShape,
-      pressureSize: pressureSize,
-      pressureOpacity: pressureOpacity,
+      sizePressureCurve: sizePressureCurve,
+      opacityPressureCurve: opacityPressureCurve,
+      flowPressureCurve: flowPressureCurve,
+      hardnessPressureCurve: hardnessPressureCurve,
       roundness: roundness,
       angleDegrees: angleDegrees,
       tipMask: tipMask,
       rotationMode: rotationMode,
-      minimumSizeRatio: minimumSizeRatio,
       sizeJitter: sizeJitter,
       opacityJitter: opacityJitter,
       angleJitter: angleJitter,
@@ -102,13 +105,14 @@ class BrushToolState {
     required this.hardness,
     required this.flow,
     required this.tipShape,
-    required this.pressureSize,
-    required this.pressureOpacity,
+    this.sizePressureCurve,
+    this.opacityPressureCurve,
+    this.flowPressureCurve,
+    this.hardnessPressureCurve,
     required this.roundness,
     required this.angleDegrees,
     this.tipMask,
     this.rotationMode = BrushTipRotationMode.fixed,
-    this.minimumSizeRatio = 0.0,
     this.sizeJitter = 0.0,
     this.opacityJitter = 0.0,
     this.angleJitter = 0.0,
@@ -133,13 +137,14 @@ class BrushToolState {
     double? hardness,
     double? flow,
     BrushTipShape? tipShape,
-    bool? pressureSize,
-    bool? pressureOpacity,
+    BrushPressureCurve? sizePressureCurve,
+    BrushPressureCurve? opacityPressureCurve,
+    BrushPressureCurve? flowPressureCurve,
+    BrushPressureCurve? hardnessPressureCurve,
     double? roundness,
     double? angleDegrees,
     BrushTipMask? tipMask,
     BrushTipRotationMode? rotationMode,
-    double? minimumSizeRatio,
     double? sizeJitter,
     double? opacityJitter,
     double? angleJitter,
@@ -163,13 +168,14 @@ class BrushToolState {
       hardness: clampUnit(hardness ?? defaultHardness),
       flow: clampUnit(flow ?? defaultFlow),
       tipShape: tipShape ?? defaultTipShape,
-      pressureSize: pressureSize ?? defaultPressureSize,
-      pressureOpacity: pressureOpacity ?? defaultPressureOpacity,
+      sizePressureCurve: sizePressureCurve,
+      opacityPressureCurve: opacityPressureCurve,
+      flowPressureCurve: flowPressureCurve,
+      hardnessPressureCurve: hardnessPressureCurve,
       roundness: clampRoundness(roundness ?? defaultRoundness),
       angleDegrees: clampAngleDegrees(angleDegrees ?? defaultAngleDegrees),
       tipMask: tipMask,
       rotationMode: rotationMode ?? BrushTipRotationMode.fixed,
-      minimumSizeRatio: clampZeroToOne(minimumSizeRatio ?? 0.0),
       sizeJitter: clampZeroToOne(sizeJitter ?? 0.0),
       opacityJitter: clampZeroToOne(opacityJitter ?? 0.0),
       angleJitter: clampZeroToOne(angleJitter ?? 0.0),
@@ -200,8 +206,6 @@ class BrushToolState {
   static const double defaultHardness = 1.0;
   static const double defaultFlow = 1.0;
   static const BrushTipShape defaultTipShape = BrushTipShape.round;
-  static const bool defaultPressureSize = false;
-  static const bool defaultPressureOpacity = false;
   static const double minRoundness = 0.05;
   static const double defaultRoundness = 1.0;
   static const double minAngleDegrees = 0.0;
@@ -215,8 +219,6 @@ class BrushToolState {
     hardness: defaultHardness,
     flow: defaultFlow,
     tipShape: defaultTipShape,
-    pressureSize: defaultPressureSize,
-    pressureOpacity: defaultPressureOpacity,
     roundness: defaultRoundness,
     angleDegrees: defaultAngleDegrees,
   );
@@ -237,11 +239,15 @@ class BrushToolState {
 
   final BrushTipShape tipShape;
 
-  /// When true, pen/tablet pressure scales each dab's size (linear response).
-  final bool pressureSize;
-
-  /// When true, pen/tablet pressure scales each dab's opacity (linear).
-  final bool pressureOpacity;
+  /// BB-3 (R26 #11): per-setting pen-pressure response curves; `null` =
+  /// the setting ignores pressure. Part of brush presets (they travel
+  /// through [toBrushSettings]/[fromBrushSettings] like the sliders).
+  /// [copyWith] PRESERVES them (same contract as [tipMask]); clearing one
+  /// goes through [withPressureCurve].
+  final BrushPressureCurve? sizePressureCurve;
+  final BrushPressureCurve? opacityPressureCurve;
+  final BrushPressureCurve? flowPressureCurve;
+  final BrushPressureCurve? hardnessPressureCurve;
 
   /// Minor-to-major axis ratio of the tip; 1.0 keeps the classic
   /// circle/square, smaller values flatten it into an ellipse/rectangle.
@@ -262,7 +268,6 @@ class BrushToolState {
   /// yet, pending the unified UI pass): see the same-named fields on
   /// `BrushSettings`.
   final BrushTipRotationMode rotationMode;
-  final double minimumSizeRatio;
   final double sizeJitter;
   final double opacityJitter;
   final double angleJitter;
@@ -300,13 +305,14 @@ class BrushToolState {
       hardness: settings.hardness,
       flow: settings.flow,
       tipShape: settings.tipShape,
-      pressureSize: settings.pressureSize,
-      pressureOpacity: settings.pressureOpacity,
+      sizePressureCurve: settings.sizePressureCurve,
+      opacityPressureCurve: settings.opacityPressureCurve,
+      flowPressureCurve: settings.flowPressureCurve,
+      hardnessPressureCurve: settings.hardnessPressureCurve,
       roundness: settings.roundness,
       angleDegrees: settings.angleDegrees,
       tipMask: settings.tipMask,
       rotationMode: settings.rotationMode,
-      minimumSizeRatio: settings.minimumSizeRatio,
       sizeJitter: settings.sizeJitter,
       opacityJitter: settings.opacityJitter,
       angleJitter: settings.angleJitter,
@@ -332,13 +338,14 @@ class BrushToolState {
       hardness: hardness,
       spacing: spacing,
       tipShape: tipShape,
-      pressureSize: pressureSize,
-      pressureOpacity: pressureOpacity,
+      sizePressureCurve: sizePressureCurve,
+      opacityPressureCurve: opacityPressureCurve,
+      flowPressureCurve: flowPressureCurve,
+      hardnessPressureCurve: hardnessPressureCurve,
       roundness: roundness,
       angleDegrees: angleDegrees,
       tipMask: tipMask,
       rotationMode: rotationMode,
-      minimumSizeRatio: minimumSizeRatio,
       sizeJitter: sizeJitter,
       opacityJitter: opacityJitter,
       angleJitter: angleJitter,
@@ -362,13 +369,14 @@ class BrushToolState {
       hardness: hardness,
       flow: flow,
       tipShape: tipShape,
-      pressureSize: pressureSize,
-      pressureOpacity: pressureOpacity,
+      sizePressureCurve: sizePressureCurve,
+      opacityPressureCurve: opacityPressureCurve,
+      flowPressureCurve: flowPressureCurve,
+      hardnessPressureCurve: hardnessPressureCurve,
       roundness: roundness,
       angleDegrees: angleDegrees,
       tipMask: tipMask,
       rotationMode: rotationMode,
-      minimumSizeRatio: minimumSizeRatio,
       sizeJitter: sizeJitter,
       opacityJitter: opacityJitter,
       angleJitter: angleJitter,
@@ -400,13 +408,14 @@ class BrushToolState {
     double? hardness,
     double? flow,
     BrushTipShape? tipShape,
-    bool? pressureSize,
-    bool? pressureOpacity,
+    BrushPressureCurve? sizePressureCurve,
+    BrushPressureCurve? opacityPressureCurve,
+    BrushPressureCurve? flowPressureCurve,
+    BrushPressureCurve? hardnessPressureCurve,
     double? roundness,
     double? angleDegrees,
     BrushTipMask? tipMask,
     BrushTipRotationMode? rotationMode,
-    double? minimumSizeRatio,
     double? sizeJitter,
     double? opacityJitter,
     double? angleJitter,
@@ -430,13 +439,15 @@ class BrushToolState {
       hardness: hardness ?? this.hardness,
       flow: flow ?? this.flow,
       tipShape: tipShape ?? this.tipShape,
-      pressureSize: pressureSize ?? this.pressureSize,
-      pressureOpacity: pressureOpacity ?? this.pressureOpacity,
+      sizePressureCurve: sizePressureCurve ?? this.sizePressureCurve,
+      opacityPressureCurve: opacityPressureCurve ?? this.opacityPressureCurve,
+      flowPressureCurve: flowPressureCurve ?? this.flowPressureCurve,
+      hardnessPressureCurve:
+          hardnessPressureCurve ?? this.hardnessPressureCurve,
       roundness: roundness ?? this.roundness,
       angleDegrees: angleDegrees ?? this.angleDegrees,
       tipMask: tipMask ?? this.tipMask,
       rotationMode: rotationMode ?? this.rotationMode,
-      minimumSizeRatio: minimumSizeRatio ?? this.minimumSizeRatio,
       sizeJitter: sizeJitter ?? this.sizeJitter,
       opacityJitter: opacityJitter ?? this.opacityJitter,
       angleJitter: angleJitter ?? this.angleJitter,
@@ -451,6 +462,64 @@ class BrushToolState {
       tool: tool ?? this.tool,
       stabilizerStrength: stabilizerStrength ?? this.stabilizerStrength,
       brushBlendMode: brushBlendMode ?? this.brushBlendMode,
+    );
+  }
+
+  /// The pressure curve driving [target], if any.
+  BrushPressureCurve? pressureCurveFor(BrushPressureTarget target) {
+    return switch (target) {
+      BrushPressureTarget.size => sizePressureCurve,
+      BrushPressureTarget.opacity => opacityPressureCurve,
+      BrushPressureTarget.flow => flowPressureCurve,
+      BrushPressureTarget.hardness => hardnessPressureCurve,
+    };
+  }
+
+  /// Replaces (or CLEARS, with null) one setting's pressure curve —
+  /// [copyWith] deliberately preserves curves, so disabling pressure on a
+  /// setting comes through here.
+  BrushToolState withPressureCurve(
+    BrushPressureTarget target,
+    BrushPressureCurve? curve,
+  ) {
+    return BrushToolState.clamped(
+      size: size,
+      opacity: opacity,
+      color: color,
+      spacing: spacing,
+      hardness: hardness,
+      flow: flow,
+      tipShape: tipShape,
+      sizePressureCurve: target == BrushPressureTarget.size
+          ? curve
+          : sizePressureCurve,
+      opacityPressureCurve: target == BrushPressureTarget.opacity
+          ? curve
+          : opacityPressureCurve,
+      flowPressureCurve: target == BrushPressureTarget.flow
+          ? curve
+          : flowPressureCurve,
+      hardnessPressureCurve: target == BrushPressureTarget.hardness
+          ? curve
+          : hardnessPressureCurve,
+      roundness: roundness,
+      angleDegrees: angleDegrees,
+      tipMask: tipMask,
+      rotationMode: rotationMode,
+      sizeJitter: sizeJitter,
+      opacityJitter: opacityJitter,
+      angleJitter: angleJitter,
+      scatterRadiusRatio: scatterRadiusRatio,
+      scatterCount: scatterCount,
+      scatterBothAxes: scatterBothAxes,
+      dualMask: dualMask,
+      dualMaskScale: dualMaskScale,
+      textureMask: textureMask,
+      textureScale: textureScale,
+      textureDensity: textureDensity,
+      tool: tool,
+      stabilizerStrength: stabilizerStrength,
+      brushBlendMode: brushBlendMode,
     );
   }
 
@@ -546,13 +615,14 @@ class BrushToolState {
           other.hardness == hardness &&
           other.flow == flow &&
           other.tipShape == tipShape &&
-          other.pressureSize == pressureSize &&
-          other.pressureOpacity == pressureOpacity &&
+          other.sizePressureCurve == sizePressureCurve &&
+          other.opacityPressureCurve == opacityPressureCurve &&
+          other.flowPressureCurve == flowPressureCurve &&
+          other.hardnessPressureCurve == hardnessPressureCurve &&
           other.roundness == roundness &&
           other.angleDegrees == angleDegrees &&
           other.tipMask == tipMask &&
           other.rotationMode == rotationMode &&
-          other.minimumSizeRatio == minimumSizeRatio &&
           other.sizeJitter == sizeJitter &&
           other.opacityJitter == opacityJitter &&
           other.angleJitter == angleJitter &&
@@ -565,7 +635,11 @@ class BrushToolState {
           other.textureScale == textureScale &&
           other.textureDensity == textureDensity &&
           other.tool == tool &&
-          other.stabilizerStrength == stabilizerStrength;
+          other.stabilizerStrength == stabilizerStrength &&
+          // BB-3 audit fix: brushBlendMode was MISSING from ==/hashCode
+          // since BB-1 — two states differing only in blend compared
+          // equal, so listeners could skip rebuilding on a blend change.
+          other.brushBlendMode == brushBlendMode;
 
   @override
   int get hashCode => Object.hashAll([
@@ -576,13 +650,14 @@ class BrushToolState {
     hardness,
     flow,
     tipShape,
-    pressureSize,
-    pressureOpacity,
+    sizePressureCurve,
+    opacityPressureCurve,
+    flowPressureCurve,
+    hardnessPressureCurve,
     roundness,
     angleDegrees,
     tipMask,
     rotationMode,
-    minimumSizeRatio,
     sizeJitter,
     opacityJitter,
     angleJitter,
@@ -596,5 +671,6 @@ class BrushToolState {
     textureDensity,
     tool,
     stabilizerStrength,
+    brushBlendMode,
   ]);
 }

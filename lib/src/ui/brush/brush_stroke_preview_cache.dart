@@ -193,21 +193,28 @@ Uint8List rasterizeBrushStrokeSample(
     }
     pendingDistance = 0;
 
-    final pressure = math.sin(t * math.pi).clamp(0.08, 1.0);
-    final sizeRatio = settings.pressureSize
-        ? settings.minimumSizeRatio + (1 - settings.minimumSizeRatio) * pressure
-        : 1.0;
-    final opacity = settings.pressureOpacity
-        ? settings.opacity * pressure
-        : settings.opacity;
+    final pressure = math.sin(t * math.pi).clamp(0.08, 1.0).toDouble();
+    // BB-3: the preview's synthetic pressure arc rides the SAME curves as
+    // real strokes, so the list shows the configured taper (size/opacity/
+    // flow/hardness alike).
+    final sizeRatio = settings.sizePressureCurve?.evaluate(pressure) ?? 1.0;
+    final opacity =
+        settings.opacity *
+        (settings.opacityPressureCurve?.evaluate(pressure) ?? 1.0);
+    final flow =
+        settings.flow *
+        (settings.flowPressureCurve?.evaluate(pressure) ?? 1.0);
+    final hardness =
+        settings.hardness *
+        (settings.hardnessPressureCurve?.evaluate(pressure) ?? 1.0);
     final dab = BrushTipStampCache.instance.resolveDab(
       BrushDab(
         center: CanvasPoint(x: x, y: y),
         color: 0xFF000000,
         size: math.max(1.0, baseSize * sizeRatio),
         opacity: opacity.clamp(0.05, 1.0),
-        flow: settings.flow.clamp(0.05, 1.0),
-        hardness: settings.hardness,
+        flow: flow.clamp(0.05, 1.0),
+        hardness: hardness.clamp(0.0, 1.0),
         tipShape: settings.tipShape,
         pressure: pressure,
         sequence: sequence,
