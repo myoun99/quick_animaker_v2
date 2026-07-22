@@ -926,14 +926,29 @@ BrushSurfaceMaterialization compositeStrokePixelsOntoBitmapSurface({
     stamp: BrushStampImage(id: id, width: width, height: height, rgba: rgba),
   );
 
-  // BB-1 (R26 #9): a non-trivial BRUSH BLEND applies once per stroke —
-  // the result region is computed through the blend kernel and lands
-  // through the SAME stamp kernels as everything else: an erase-rect
-  // pass clears the bounds, then a source-over pass writes the result
-  // verbatim (over emptiness srcOver IS replace, byte-exactly). Pixels
-  // the stroke never touched come back verbatim from the kernel's
-  // alpha-0 copy rule, so the round trip is invisible outside the ink.
+  // BB-1 (R26 #9): a non-trivial BRUSH BLEND applies once per stroke.
   if (blendMode != BrushBlendMode.color && blendMode != BrushBlendMode.erase) {
+    // BB-N1 (ABI 22): with the engine loaded, C blends the stroke buffer
+    // straight into the staged tile scratch — no region extraction, no
+    // result buffer, no two-pass stamp landing — fanned across the
+    // worker pool. Byte-identical to the Dart route below (parity-pinned).
+    final native = QaNativeEngine.instance;
+    if (native != null) {
+      return _materializeStrokeBlendNative(
+        surface: surface,
+        strokePixels: strokePixels,
+        bounds: bounds,
+        mode: blendMode,
+        native: native,
+      );
+    }
+    // Dart REFERENCE + fallback: the result region is computed through
+    // the blend kernel and lands through the SAME stamp passes as
+    // everything else: an erase-rect pass clears the bounds, then a
+    // source-over pass writes the result verbatim (over emptiness
+    // srcOver IS replace, byte-exactly). Pixels the stroke never touched
+    // come back verbatim from the kernel's alpha-0 copy rule, so the
+    // round trip is invisible outside the ink.
     final result = blendStrokeRegionPixels(
       dst: bitmapSurfaceRegionPixels(surface, bounds),
       src: strokePixels,
@@ -964,5 +979,144 @@ BrushSurfaceMaterialization compositeStrokePixelsOntoBitmapSurface({
         erase: erase || blendMode == BrushBlendMode.erase,
       ),
     ]),
+  );
+}
+
+/// BB-N1 (ABI 22): the native once-per-stroke blend landing. Stages every
+/// tile the bounds cover (existing bytes copied in, missing tiles zeroed
+/// — the kernel's da==0 branch IS the transparent read), blends the
+/// stroke buffer in place through `qa_stroke_blend_tiles` (one pooled
+/// call), and adopts the CHANGED buffers as the finished tiles. Pixels
+/// the stroke never inked copy through verbatim, so an untouched tile
+/// reports unchanged and returns to the pool — the dirty set is the
+/// TRUE change set (the Dart fallback route over-reports: its erase+
+/// rewrite passes mark every bounds tile).
+BrushSurfaceMaterialization _materializeStrokeBlendNative({
+  required BitmapSurface surface,
+  required Uint8List strokePixels,
+  required DirtyRegion bounds,
+  required BrushBlendMode mode,
+  required QaNativeEngine native,
+}) {
+  final canvasSize = surface.canvasSize;
+  final tileSize = surface.tileSize;
+  final tileByteLength = tileSize * tileSize * BitmapTile.bytesPerPixel;
+  // The stroke buffer is BOUNDS-LOCAL (stride = bounds width, origin =
+  // bounds top-left, like a stamp's raw placement); the blend clips at
+  // the pasteboard exactly like the stamp path.
+  final left = math.max(canvasSize.pasteboardLeft, bounds.left);
+  final top = math.max(canvasSize.pasteboardTop, bounds.top);
+  final rightExclusive = math.min(
+    canvasSize.pasteboardRightExclusive,
+    bounds.rightExclusive,
+  );
+  final bottomExclusive = math.min(
+    canvasSize.pasteboardBottomExclusive,
+    bounds.bottomExclusive,
+  );
+  if (rightExclusive <= left || bottomExclusive <= top) {
+    return BrushSurfaceMaterialization(
+      surface: surface,
+      dirtyTiles: DirtyTileSet.empty(),
+    );
+  }
+  final strokeUpload = labProbe(
+    'strokeBlend.upload',
+    () => native.uploadStampBytes(strokePixels),
+  );
+  final tileXStart = floorDiv(left, tileSize);
+  final tileXEnd = floorDiv(rightExclusive - 1, tileSize);
+  final tileYStart = floorDiv(top, tileSize);
+  final tileYEnd = floorDiv(bottomExclusive - 1, tileSize);
+  final nativeTiles = <TileCoord, QaNativeTileBuffer>{};
+  final batchCoords = <TileCoord>[];
+  labProbe('strokeBlend.stage', () {
+    native.ensureTileSpanBatch(
+      (tileYEnd - tileYStart + 1) * (tileXEnd - tileXStart + 1),
+    );
+    for (var tileY = tileYStart; tileY <= tileYEnd; tileY += 1) {
+      final tileTop = tileY * tileSize;
+      for (var tileX = tileXStart; tileX <= tileXEnd; tileX += 1) {
+        final coord = TileCoord(x: tileX, y: tileY);
+        final tile = surface.tileAt(coord);
+        final buffer = native.acquireTileBuffer(
+          tileByteLength,
+          zeroed: tile == null,
+        );
+        if (tile != null) {
+          native.copyBytes(buffer.pointer, tile.nativePixels, tileByteLength);
+        }
+        nativeTiles[coord] = buffer;
+        final tileLeft = tileX * tileSize;
+        native.setTileSpan(
+          batchCoords.length,
+          tilePixels: buffer.pointer,
+          tileLeft: tileLeft,
+          tileTop: tileTop,
+          spanLeft: math.max(left, tileLeft),
+          spanRightExclusive: math.min(rightExclusive, tileLeft + tileSize),
+          spanTop: math.max(top, tileTop),
+          spanBottomExclusive: math.min(bottomExclusive, tileTop + tileSize),
+        );
+        batchCoords.add(coord);
+      }
+    }
+  });
+  final changed = labProbe(
+    'strokeBlend.blend',
+    () => native.strokeBlendTiles(
+      count: batchCoords.length,
+      tileSize: tileSize,
+      strokeBytes: strokeUpload,
+      strokeWidth: bounds.rightExclusive - bounds.left,
+      strokeLeft: bounds.left,
+      strokeTop: bounds.top,
+      mode: strokeBlendModeNativeId(mode),
+    ),
+  );
+  final changedCoords = <TileCoord>[
+    for (var i = 0; i < batchCoords.length; i += 1)
+      if (changed[i] != 0) batchCoords[i],
+  ];
+  void releaseStagedTiles() {
+    for (final buffer in nativeTiles.values) {
+      native.releaseTileBuffer(buffer);
+    }
+    nativeTiles.clear();
+  }
+
+  if (changedCoords.isEmpty) {
+    releaseStagedTiles();
+    return BrushSurfaceMaterialization(
+      surface: surface,
+      dirtyTiles: DirtyTileSet.empty(),
+    );
+  }
+  changedCoords.sort((a, b) {
+    final yComparison = a.y.compareTo(b.y);
+    if (yComparison != 0) return yComparison;
+    return a.x.compareTo(b.x);
+  });
+  var updatedSurface = surface;
+  var dirtyTiles = DirtyTileSet.empty();
+  labProbe('strokeBlend.putTiles', () {
+    // Changed buffers become the finished tiles (adopted, R19-Z);
+    // unchanged staged buffers return to the pool below.
+    updatedSurface = updatedSurface.putTiles([
+      for (final coord in changedCoords)
+        BitmapTile.adoptNative(
+          coord: coord,
+          size: tileSize,
+          pixels: nativeTiles.remove(coord)!.pointer,
+        ),
+    ]);
+    for (final coord in changedCoords) {
+      dirtyTiles = dirtyTiles.add(coord);
+    }
+  });
+  releaseStagedTiles();
+  return BrushSurfaceMaterialization(
+    surface: updatedSurface,
+    dirtyTiles: dirtyTiles,
   );
 }

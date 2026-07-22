@@ -1834,6 +1834,336 @@ QA_EXPORT void qa_stamp_blend_tiles(
 }
 
 // ---------------------------------------------------------------------------
+// Stroke blend (BB-N1, ABI 22): the ONCE-per-stroke brush blend
+// (brush_stroke_blend.dart `blendStrokeRegionPixels`) ported verbatim -
+// the pen-up pass blends the finished straight-alpha stroke buffer
+// against the cel's pixels through the W3C separable equations (plus
+// behind / add). The Dart function stays in the tree as the reference
+// oracle AND the no-native fallback; every float expression below is an
+// EXACT transcription (same grouping, llround == double.round()), so the
+// parity suite pins byte-identity across the whole mode table.
+//
+// The C path reads the DESTINATION straight from the staged tile scratch
+// and writes the result in place - the v1 Dart route's region extraction,
+// result buffer, opaque rect and two-pass stamp landing all disappear.
+// Untouched pixels (stroke alpha 0) copy the destination verbatim, so a
+// span the stroke never inked reports unchanged.
+
+// Mode ids: a fixed FFI contract - the Dart side maps BrushBlendMode
+// through `strokeBlendModeNativeId` with EXACTLY these values. color and
+// erase never reach this kernel (they ride the ordinary stamp path).
+enum {
+  QA_STROKE_BLEND_BEHIND = 0,
+  QA_STROKE_BLEND_ADD = 1,
+  QA_STROKE_BLEND_DARKEN = 2,
+  QA_STROKE_BLEND_MULTIPLY = 3,
+  QA_STROKE_BLEND_COLOR_BURN = 4,
+  QA_STROKE_BLEND_LIGHTEN = 5,
+  QA_STROKE_BLEND_SCREEN = 6,
+  QA_STROKE_BLEND_COLOR_DODGE = 7,
+  QA_STROKE_BLEND_OVERLAY = 8,
+  QA_STROKE_BLEND_SOFT_LIGHT = 9,
+  QA_STROKE_BLEND_HARD_LIGHT = 10,
+  QA_STROKE_BLEND_DIFFERENCE = 11,
+  QA_STROKE_BLEND_EXCLUSION = 12,
+};
+
+static inline int32_t qa_stroke_clamp_byte(double value) {
+  int64_t rounded = llround(value * 255.0);
+  if (rounded < 0) return 0;
+  if (rounded > 255) return 255;
+  return (int32_t)rounded;
+}
+
+// `_blendChannel` transcribed: the separable B(Cs, Cd) table. overlay is
+// hardLight with the operands swapped, exactly like the Dart reference.
+static double qa_stroke_blend_channel(int32_t mode, double cs, double cd) {
+  switch (mode) {
+    case QA_STROKE_BLEND_DARKEN:
+      return cs < cd ? cs : cd;
+    case QA_STROKE_BLEND_MULTIPLY:
+      return cs * cd;
+    case QA_STROKE_BLEND_COLOR_BURN: {
+      if (cd >= 1.0) return 1.0;
+      if (cs <= 0.0) return 0.0;
+      const double quotient = (1.0 - cd) / cs;
+      return 1.0 - (quotient < 1.0 ? quotient : 1.0);
+    }
+    case QA_STROKE_BLEND_LIGHTEN:
+      return cs > cd ? cs : cd;
+    case QA_STROKE_BLEND_SCREEN:
+      return cs + cd - cs * cd;
+    case QA_STROKE_BLEND_COLOR_DODGE: {
+      if (cd <= 0.0) return 0.0;
+      if (cs >= 1.0) return 1.0;
+      const double quotient = cd / (1.0 - cs);
+      return quotient < 1.0 ? quotient : 1.0;
+    }
+    case QA_STROKE_BLEND_OVERLAY:
+      return qa_stroke_blend_channel(QA_STROKE_BLEND_HARD_LIGHT, cd, cs);
+    case QA_STROKE_BLEND_SOFT_LIGHT: {
+      if (cs <= 0.5) {
+        return cd - (1.0 - 2.0 * cs) * cd * (1.0 - cd);
+      }
+      const double d =
+          cd <= 0.25 ? ((16.0 * cd - 12.0) * cd + 4.0) * cd : sqrt(cd);
+      return cd + (2.0 * cs - 1.0) * (d - cd);
+    }
+    case QA_STROKE_BLEND_HARD_LIGHT:
+      return cs <= 0.5 ? 2.0 * cs * cd
+                       : (2.0 * cs - 1.0) + cd - (2.0 * cs - 1.0) * cd;
+    case QA_STROKE_BLEND_DIFFERENCE:
+      return fabs(cs - cd);
+    case QA_STROKE_BLEND_EXCLUSION:
+    default:
+      return cs + cd - 2.0 * cs * cd;
+  }
+}
+
+// Blends one stroke row span into a tile row in place. Returns nonzero
+// when any destination byte changed.
+static int32_t qa_stroke_blend_row(
+    uint8_t* tile_row,
+    const uint8_t* stroke_row,
+    int32_t count,
+    int32_t mode) {
+  int32_t changed = 0;
+  for (int32_t i = 0; i < count; i += 1) {
+    uint8_t* dst = tile_row + (ptrdiff_t)i * 4;
+    const uint8_t* src = stroke_row + (ptrdiff_t)i * 4;
+    const int32_t sa = src[3];
+    if (sa == 0) {
+      // Alpha-0 copies the destination through - EXCEPT that the Dart
+      // reference's erase+rewrite landing zeroes the RGB of any pixel
+      // that ends fully transparent (its srcOver pass skips alpha-0
+      // result pixels after the erase pass cleared them). Mirror that
+      // byte-exactly; real surfaces never carry RGB under alpha 0, so
+      // this branch is parity insurance, not a visible behavior.
+      if (dst[3] == 0 && (dst[0] != 0 || dst[1] != 0 || dst[2] != 0)) {
+        dst[0] = 0;
+        dst[1] = 0;
+        dst[2] = 0;
+        changed = 1;
+      }
+      continue;
+    }
+    const int32_t da = dst[3];
+    int32_t out_r, out_g, out_b, out_a;
+    if (mode == QA_STROKE_BLEND_BEHIND) {
+      if (da == 255) {
+        continue; // Fully covered: destination-over changes nothing.
+      }
+      if (da == 0) {
+        out_r = src[0];
+        out_g = src[1];
+        out_b = src[2];
+        out_a = sa;
+      } else {
+        // destination-over on straight alpha.
+        const double as_ = sa / 255.0, ad = da / 255.0;
+        const double ao = ad + as_ * (1.0 - ad);
+        out_r = qa_stroke_clamp_byte(
+            (ad * dst[0] / 255.0 + (1.0 - ad) * as_ * src[0] / 255.0) / ao);
+        out_g = qa_stroke_clamp_byte(
+            (ad * dst[1] / 255.0 + (1.0 - ad) * as_ * src[1] / 255.0) / ao);
+        out_b = qa_stroke_clamp_byte(
+            (ad * dst[2] / 255.0 + (1.0 - ad) * as_ * src[2] / 255.0) / ao);
+        out_a = qa_stroke_clamp_byte(ao);
+      }
+    } else if (da == 0) {
+      out_r = src[0];
+      out_g = src[1];
+      out_b = src[2];
+      out_a = sa;
+    } else {
+      const double as_ = sa / 255.0, ad = da / 255.0;
+      if (mode == QA_STROKE_BLEND_ADD) {
+        // Skia plus: saturating premultiplied add.
+        double ao = as_ + ad;
+        if (ao > 1.0) ao = 1.0;
+        double premul_r = src[0] / 255.0 * as_ + dst[0] / 255.0 * ad;
+        if (premul_r > 1.0) premul_r = 1.0;
+        double premul_g = src[1] / 255.0 * as_ + dst[1] / 255.0 * ad;
+        if (premul_g > 1.0) premul_g = 1.0;
+        double premul_b = src[2] / 255.0 * as_ + dst[2] / 255.0 * ad;
+        if (premul_b > 1.0) premul_b = 1.0;
+        out_r = qa_stroke_clamp_byte(premul_r / ao);
+        out_g = qa_stroke_clamp_byte(premul_g / ao);
+        out_b = qa_stroke_clamp_byte(premul_b / ao);
+        out_a = qa_stroke_clamp_byte(ao);
+      } else {
+        const double ao = as_ + ad * (1.0 - as_);
+        const double cs_r = src[0] / 255.0, cd_r = dst[0] / 255.0;
+        const double cs_g = src[1] / 255.0, cd_g = dst[1] / 255.0;
+        const double cs_b = src[2] / 255.0, cd_b = dst[2] / 255.0;
+        out_r = qa_stroke_clamp_byte(
+            (as_ * (1.0 - ad) * cs_r + ad * (1.0 - as_) * cd_r +
+             as_ * ad * qa_stroke_blend_channel(mode, cs_r, cd_r)) /
+            ao);
+        out_g = qa_stroke_clamp_byte(
+            (as_ * (1.0 - ad) * cs_g + ad * (1.0 - as_) * cd_g +
+             as_ * ad * qa_stroke_blend_channel(mode, cs_g, cd_g)) /
+            ao);
+        out_b = qa_stroke_clamp_byte(
+            (as_ * (1.0 - ad) * cs_b + ad * (1.0 - as_) * cd_b +
+             as_ * ad * qa_stroke_blend_channel(mode, cs_b, cd_b)) /
+            ao);
+        out_a = qa_stroke_clamp_byte(ao);
+      }
+    }
+    if ((uint8_t)out_r != dst[0] || (uint8_t)out_g != dst[1] ||
+        (uint8_t)out_b != dst[2] || (uint8_t)out_a != dst[3]) {
+      dst[0] = (uint8_t)out_r;
+      dst[1] = (uint8_t)out_g;
+      dst[2] = (uint8_t)out_b;
+      dst[3] = (uint8_t)out_a;
+      changed = 1;
+    }
+  }
+  return changed;
+}
+
+QA_EXPORT int32_t qa_stroke_blend_tile(
+    uint8_t* tile_pixels,
+    int32_t tile_size,
+    int32_t tile_left,
+    int32_t tile_top,
+    const uint8_t* stroke,
+    int32_t stroke_width,
+    int32_t stroke_left,
+    int32_t stroke_top,
+    int32_t span_left,
+    int32_t span_right_exclusive,
+    int32_t span_top,
+    int32_t span_bottom_exclusive,
+    int32_t mode) {
+  int32_t changed = 0;
+  const int32_t count = span_right_exclusive - span_left;
+  for (int32_t y = span_top; y < span_bottom_exclusive; y += 1) {
+    uint8_t* tile_row =
+        tile_pixels +
+        ((ptrdiff_t)(y - tile_top) * tile_size + (span_left - tile_left)) * 4;
+    const uint8_t* stroke_row =
+        stroke + ((ptrdiff_t)(y - stroke_top) * stroke_width +
+                  (span_left - stroke_left)) *
+                     4;
+    if (qa_stroke_blend_row(tile_row, stroke_row, count, mode)) {
+      changed = 1;
+    }
+  }
+  return changed;
+}
+
+typedef struct {
+  qa_tile_span* tiles;
+  int32_t tile_size;
+  const uint8_t* stroke;
+  int32_t stroke_width;
+  int32_t stroke_left;
+  int32_t stroke_top;
+  int32_t mode;
+  uint8_t* changed_out;
+} qa_stroke_batch_context;
+
+static void qa_stroke_batch_item(int32_t item_index, void* context) {
+  const qa_stroke_batch_context* batch =
+      (const qa_stroke_batch_context*)context;
+  const qa_tile_span* span = &batch->tiles[item_index];
+  batch->changed_out[item_index] = (uint8_t)qa_stroke_blend_tile(
+      span->tile_pixels, batch->tile_size, span->tile_left, span->tile_top,
+      batch->stroke, batch->stroke_width, batch->stroke_left,
+      batch->stroke_top, span->span_left, span->span_right_exclusive,
+      span->span_top, span->span_bottom_exclusive, batch->mode);
+}
+
+// Blends the stroke buffer into MANY tiles in one call, fanned across the
+// pool. Tiles are disjoint and every pixel's math is independent, so the
+// result is byte-identical regardless of worker count.
+QA_EXPORT void qa_stroke_blend_tiles(
+    qa_tile_span* tiles,
+    int32_t tile_count,
+    int32_t tile_size,
+    const uint8_t* stroke,
+    int32_t stroke_width,
+    int32_t stroke_left,
+    int32_t stroke_top,
+    int32_t mode,
+    uint8_t* changed_out) {
+  qa_stroke_batch_context context;
+  context.tiles = tiles;
+  context.tile_size = tile_size;
+  context.stroke = stroke;
+  context.stroke_width = stroke_width;
+  context.stroke_left = stroke_left;
+  context.stroke_top = stroke_top;
+  context.mode = mode;
+  context.changed_out = changed_out;
+  qa_pool_run(qa_stroke_batch_item, &context, tile_count);
+}
+
+// ---------------------------------------------------------------------------
+// Tile alpha bounds (BB-N1, ABI 22): the per-tile word scan of
+// bitmapSurfaceContentBounds (R26 #13) - RGBA little-endian, alpha in the
+// word's top byte. Pure integer logic, so parity is structural. Each item
+// writes only its own 4-int slot; the Dart driver merges tile-local
+// bounds into world coordinates.
+
+// bounds_out per tile: minX, minY, maxX, maxY in TILE-LOCAL pixels;
+// an ink-free tile reports minX=0x7fffffff / maxX=-0x7fffffff (the same
+// sentinels the Dart merge loop starts from).
+QA_EXPORT void qa_tile_alpha_bounds(
+    const uint8_t* tile_pixels,
+    int32_t tile_size,
+    int32_t* bounds_out) {
+  int32_t min_x = 0x7fffffff, min_y = 0x7fffffff;
+  int32_t max_x = -0x7fffffff, max_y = -0x7fffffff;
+  const uint32_t* words = (const uint32_t*)tile_pixels;
+  for (int32_t y = 0; y < tile_size; y += 1) {
+    const uint32_t* row = words + (ptrdiff_t)y * tile_size;
+    for (int32_t x = 0; x < tile_size; x += 1) {
+      if ((row[x] & 0xff000000u) == 0) {
+        continue;
+      }
+      if (x < min_x) min_x = x;
+      if (x > max_x) max_x = x;
+      if (y < min_y) min_y = y;
+      if (y > max_y) max_y = y;
+    }
+  }
+  bounds_out[0] = min_x;
+  bounds_out[1] = min_y;
+  bounds_out[2] = max_x;
+  bounds_out[3] = max_y;
+}
+
+typedef struct {
+  qa_tile_span* tiles;
+  int32_t tile_size;
+  int32_t* bounds_out;
+} qa_alpha_bounds_context;
+
+static void qa_alpha_bounds_item(int32_t item_index, void* context) {
+  const qa_alpha_bounds_context* batch =
+      (const qa_alpha_bounds_context*)context;
+  qa_tile_alpha_bounds(batch->tiles[item_index].tile_pixels, batch->tile_size,
+                       batch->bounds_out + (ptrdiff_t)item_index * 4);
+}
+
+// Scans MANY tiles' alpha bounds in one call, fanned across the pool.
+// Only tile_pixels of each span is consumed (the scan is whole-tile).
+QA_EXPORT void qa_alpha_bounds_tiles(
+    qa_tile_span* tiles,
+    int32_t tile_count,
+    int32_t tile_size,
+    int32_t* bounds_out) {
+  qa_alpha_bounds_context context;
+  context.tiles = tiles;
+  context.tile_size = tile_size;
+  context.bounds_out = bounds_out;
+  qa_pool_run(qa_alpha_bounds_item, &context, tile_count);
+}
+
+// ---------------------------------------------------------------------------
 // Parallel flood fill (R22-E3): wave-parallel connected growth.
 //
 // The sequential stepper (qa_flood_fill_step) grows the region pixel by
@@ -3328,4 +3658,4 @@ QA_EXPORT int64_t qa_audio_resample_frames(int64_t input_frames,
 // v20: AUDIO-PRO R7 - qa_video_export_* (the OS video encoder).
 // v21: EX4 - qa_video_export_open gains container/codec/alpha/bitrate,
 //      qa_video_export_probe, and qa_image_encode_jpg (stb).
-QA_EXPORT int32_t qa_engine_abi_version(void) { return 21; }
+QA_EXPORT int32_t qa_engine_abi_version(void) { return 22; }

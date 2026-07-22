@@ -70,6 +70,32 @@ Uint8List bitmapSurfaceRegionPixels(BitmapSurface surface, DirtyRegion bounds) {
   return region;
 }
 
+/// The C-side `QA_STROKE_BLEND_*` id for [mode] (BB-N1, ABI 22) — a fixed
+/// FFI contract; both tables MUST stay in lockstep. color/erase never
+/// reach the blend kernel (they ride the ordinary stamp path).
+int strokeBlendModeNativeId(BrushBlendMode mode) {
+  return switch (mode) {
+    BrushBlendMode.behind => 0,
+    BrushBlendMode.add => 1,
+    BrushBlendMode.darken => 2,
+    BrushBlendMode.multiply => 3,
+    BrushBlendMode.colorBurn => 4,
+    BrushBlendMode.lighten => 5,
+    BrushBlendMode.screen => 6,
+    BrushBlendMode.colorDodge => 7,
+    BrushBlendMode.overlay => 8,
+    BrushBlendMode.softLight => 9,
+    BrushBlendMode.hardLight => 10,
+    BrushBlendMode.difference => 11,
+    BrushBlendMode.exclusion => 12,
+    BrushBlendMode.color || BrushBlendMode.erase => throw ArgumentError.value(
+      mode,
+      'mode',
+      'color/erase land through the ordinary stamp kernels',
+    ),
+  };
+}
+
 double _blendChannel(BrushBlendMode mode, double cs, double cd) {
   switch (mode) {
     case BrushBlendMode.darken:

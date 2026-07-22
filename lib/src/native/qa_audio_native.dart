@@ -29,7 +29,8 @@ final class QaAudioNative {
   );
 
   /// Must match `qa_engine_abi_version()` in the C.
-  static const int _abiVersion = 21;
+  /// v22: BB-N1 (stroke-blend + alpha-bounds kernels; audio unchanged).
+  static const int _abiVersion = 22;
 
   final void Function(
     Pointer<QaAudioClipStruct>,
