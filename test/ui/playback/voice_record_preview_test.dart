@@ -9,6 +9,7 @@ import 'package:quick_animaker_v2/src/services/audio/audio_conform_pipeline.dart
 import 'package:quick_animaker_v2/src/ui/audio/audio_conform_store.dart';
 import 'package:quick_animaker_v2/src/ui/editor_session_manager.dart';
 import 'package:quick_animaker_v2/src/ui/playback/audio_recorder.dart';
+import 'package:quick_animaker_v2/src/ui/storyboard_tab_host.dart';
 import 'package:quick_animaker_v2/src/ui/timeline/timeline_orientation.dart';
 import 'package:quick_animaker_v2/src/ui/timeline_tab_host.dart';
 
@@ -152,6 +153,49 @@ void main() {
     await tester.pumpAndSettle();
     // The real landing keeps the block (same spot, real file now).
     expect(find.byKey(dropKey), findsOneWidget);
+  });
+
+  testWidgets('REC1-C follow-up: the STORYBOARD strip shows the growing '
+      'take WITHOUT a session notify — the preview channel rebuilds the '
+      'panel', (tester) async {
+    final manager = session();
+    addTearDown(manager.dispose);
+    final lane = manager.activeTrack.seLayers.first;
+    manager.selectLayer(lane.id);
+    manager.debugVoiceRecorderFactory = () => _FakeRecorder(take());
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: ListenableBuilder(
+            listenable: manager,
+            builder: (context, _) => StoryboardTabHost(
+              session: manager,
+              pixelsPerFrame: 4,
+              onPixelsPerFrameChanged: (_) {},
+              showSeconds: false,
+              onShowSecondsChanged: (_) {},
+              thumbnailFor: null,
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    // The armed lane's strip row carries no paper span yet.
+    final paperKey = ValueKey<String>('storyboard-se-paper-${lane.id}-0');
+    expect(find.byKey(paperKey), findsNothing);
+
+    expect(manager.startVoiceRecording(), VoiceRecordStartResult.started);
+    await tester.pump();
+    // The in-flight take paints through the REAL strip-row pipeline.
+    expect(find.byKey(paperKey), findsOneWidget);
+
+    manager.stopVoiceRecordingAndPlace();
+    await tester.pumpAndSettle();
+    // The real landing keeps the block (same spot, real file now).
+    expect(find.byKey(paperKey), findsOneWidget);
   });
 }
 

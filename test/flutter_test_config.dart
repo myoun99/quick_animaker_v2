@@ -1,5 +1,7 @@
 import 'dart:async';
+import 'dart:io';
 
+import 'package:quick_animaker_v2/src/services/persistence/app_documents.dart';
 import 'package:quick_animaker_v2/src/ui/input/app_input_settings.dart';
 
 /// Corpus-wide input baseline (UI-R22F #1).
@@ -16,5 +18,20 @@ import 'package:quick_animaker_v2/src/ui/input/app_input_settings.dart';
 /// product default `AppInputSettings()`.
 Future<void> testExecutable(FutureOr<void> Function() testMain) async {
   AppInput.settings.value = AppInputSettings.testCorpusBaseline;
-  await testMain();
+  // REC1-B2: the app documents home — and with it the Recordings take
+  // shelf — resolves through the channel override, pointed at a per-run
+  // temp sandbox so no test ever writes into the REAL user Documents.
+  // Tests that override the path themselves must tearDown-restore the
+  // previous value, never null (null falls back to the real home).
+  final sandbox = Directory.systemTemp.createTempSync('qa_test_docs_');
+  AppStorage.channelDocumentsPath = sandbox.path.replaceAll('\\', '/');
+  try {
+    await testMain();
+  } finally {
+    try {
+      sandbox.deleteSync(recursive: true);
+    } on Object {
+      // A leaked handle on Windows must not fail the suite.
+    }
+  }
 }

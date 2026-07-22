@@ -183,6 +183,7 @@ class StoryboardPanel extends StatefulWidget {
     this.isFrameCached,
     this.thumbnailFor,
     this.audioPeaksFor,
+    this.seLanePreview,
     this.expandedSeAudioRows = const {},
     this.onToggleSeRowLane,
     this.expandedTransformTracks = const {},
@@ -338,6 +339,11 @@ class StoryboardPanel extends StatefulWidget {
 
   /// Waveform peaks per audio file for the SE rows (null hides waveforms).
   final AudioPeaks? Function(String filePath)? audioPeaksFor;
+
+  /// The armed SE lane's in-flight take PREVIEW while recording rolls
+  /// (REC1-C): stands in for the matching track lane in the DISPLAY rows
+  /// only — rail controls, commits and undo keep the repository lane.
+  final Layer? seLanePreview;
 
   /// Twirled-down S rows ([seRowKey]): an enlarged read-only waveform lane
   /// under the row, the timeline Audio lane's storyboard sibling.
@@ -1038,6 +1044,16 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
     ];
   }
 
+  /// The DISPLAY form of a track SE lane: the in-flight take preview
+  /// stands in for the armed lane, by identity (REC1-C).
+  Layer? _seDisplayAt(Track track, int slot) {
+    final base = _trackSeAt(track, slot);
+    final preview = widget.seLanePreview;
+    return preview != null && base != null && preview.id == base.id
+        ? preview
+        : base;
+  }
+
   /// One track's SE strip rows (+ twirled-down audio/transform lanes) —
   /// track-global content, built from the base layout.
   List<Widget> _seStripRowsForTrack(
@@ -1067,7 +1083,7 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
           // cut-trim preview steps, R10-③), so without it an SE edge drag
           // only showed on release. It resolves the GLOBAL preview form —
           // this strip renders the track axis, not the active-cut clone.
-          switch (_trackSeAt(track, slot)) {
+          switch (_seDisplayAt(track, slot)) {
             null => seRow(slot, null),
             final globalLayer => TimelineDragPreviewRowGate(
               dragPreview: widget.dragPreview,
@@ -1084,7 +1100,7 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
             _StoryboardAudioLaneRow(
               trackIndex: index,
               slot: slot,
-              layer: _trackSeAt(track, slot),
+              layer: _seDisplayAt(track, slot),
               layoutEntries: entries,
               width: width,
               timelineScale: scale,
@@ -1504,8 +1520,7 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
                                                       alpha:
                                                           timelineBaseGridAlpha,
                                                     ),
-                                                framesPerSecond:
-                                                    _countingFps,
+                                                framesPerSecond: _countingFps,
                                                 colorScheme: colorScheme,
                                               ),
                                             ),
