@@ -45,6 +45,11 @@ class QaNativeEngine {
   // brush blend) and the alpha-bounds tile scan.
   static const int _abiVersion = 22;
 
+  /// The ABI this build expects — surfaced by the runtime-path report
+  /// (Preferences > System) so a user can see which engine generation
+  /// their binary carries.
+  static int get abiVersion => _abiVersion;
+
   /// R25-③ batched fill compose: packs compose-tile items + their
   /// ordered layer blends into grow-only native arrays and fans the
   /// tiles across the worker pool in ONE call (the per-tile serial FFI

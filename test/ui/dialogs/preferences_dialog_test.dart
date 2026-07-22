@@ -95,6 +95,15 @@ void main() {
       find.byKey(const ValueKey<String>('settings-accent2-auto')),
       findsOneWidget,
     );
+
+    await tester.tap(
+      find.byKey(const ValueKey<String>('preferences-section-system')),
+    );
+    await tester.pumpAndSettle();
+    expect(
+      find.byKey(const ValueKey<String>('system-status-section')),
+      findsOneWidget,
+    );
   });
 
   testWidgets('the Autosave section drives the live policy: toggle, '
