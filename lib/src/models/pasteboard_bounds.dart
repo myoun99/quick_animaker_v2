@@ -27,6 +27,15 @@ extension PasteboardBounds on CanvasSize {
         y < pasteboardBottomExclusive;
   }
 
+  /// [containsPasteboardPixel] for continuous canvas-space positions
+  /// (pointer input, stroke segment clipping).
+  bool containsPasteboardPoint({required double x, required double y}) {
+    return x >= pasteboardLeft &&
+        x < pasteboardRightExclusive &&
+        y >= pasteboardTop &&
+        y < pasteboardBottomExclusive;
+  }
+
   /// First tile column that intersects the pasteboard.
   int pasteboardTileXMin(int tileSize) => floorDiv(pasteboardLeft, tileSize);
 
