@@ -27,6 +27,36 @@ int commaDragFrameDelta({
   return (accumulatedDelta / frameCellExtent).round();
 }
 
+/// R27 #12: the CROSS-axis (row) step of a move drag, with a deadband.
+///
+/// Rows used to step on the same half-cell rounding the frame axis uses.
+/// At the slim 28px row height that is a 14px wobble — which a fast
+/// horizontal drag produces without meaning anything by it — and each
+/// wobble handed the step to the row-change path, where an incompatible
+/// landing HOLDS: the block stopped following the pointer and the drag
+/// read as "그랩이 풀린" mid-sweep. A row must be crossed by
+/// [_rowStepThreshold] of its height before it counts, so a horizontal
+/// sweep stays horizontal while a deliberate row change still lands one
+/// row per row.
+int timelineRowStepDelta({
+  required double accumulatedDelta,
+  required double rowExtent,
+}) {
+  assert(rowExtent > 0, 'Row extent must be positive.');
+  final raw = accumulatedDelta / rowExtent;
+  final steps = raw.truncate();
+  final fraction = raw - steps;
+  if (fraction >= _rowStepThreshold) {
+    return steps + 1;
+  }
+  if (fraction <= -_rowStepThreshold) {
+    return steps - 1;
+  }
+  return steps;
+}
+
+const double _rowStepThreshold = 0.75;
+
 /// The drag hooks a grip needs, bundled so rows/grids thread one optional
 /// object instead of four callbacks. Wired to the editor session's
 /// begin/update/end/cancel exposure-edge-drag methods (single undo entry

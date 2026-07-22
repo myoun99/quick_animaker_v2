@@ -311,31 +311,47 @@ void main() {
       reason: 'the content re-raster landed',
     );
 
-    // GEOMETRY staleness must NOT hold the old tile — a mis-sized tile
-    // would stretch. A changed cell extent goes back to the classic
-    // pass until its raster lands.
-    final zoomedPainter = TimelineRowCellsPainter(
+    // R27 #10: a ZOOM step re-geometries every visible tile at once, and
+    // dropping them all to the classic pass is what made zooming crawl.
+    // The tile covers the SAME frames and the painter draws it into a
+    // dst rect built from the CURRENT geometry, so the stale raster
+    // simply scales while the fresh one lands.
+    TimelineRowCellsPainter zoomedTo(double extent) => TimelineRowCellsPainter(
       layer: editedPainter.layer,
       playbackFrameCount: 24,
       frameStartIndex: 0,
       frameEndIndexExclusive: 40,
       leadingFrameSpacerWidth: 0,
-      frameCellExtent: 12,
+      frameCellExtent: extent,
       crossAxisExtent: 28,
       exposureStateForLayer: stateFor,
       colorScheme: const ColorScheme.dark(),
       baseTextStyle: const TextStyle(fontSize: 11),
       tileStore: store,
     );
+
     expect(
       store.tileFor(
-        painter: zoomedPainter,
+        painter: zoomedTo(12),
+        spanStartIndex: 0,
+        spanEndIndexExclusive: 4,
+        devicePixelRatio: 2.0,
+      ),
+      isNotNull,
+      reason: 'a 2× zoom step keeps showing the stale tile, scaled',
+    );
+
+    // Bounded, though: an extreme jump would show mush, so that still
+    // takes the crisp classic path.
+    expect(
+      store.tileFor(
+        painter: zoomedTo(4),
         spanStartIndex: 0,
         spanEndIndexExclusive: 4,
         devicePixelRatio: 2.0,
       ),
       isNull,
-      reason: 'geometry staleness falls back to the classic paint',
+      reason: 'past the rescale band the classic paint takes over',
     );
   });
 }

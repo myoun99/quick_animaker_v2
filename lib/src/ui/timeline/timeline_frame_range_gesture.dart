@@ -265,9 +265,11 @@ class _TimelineFrameRangeGestureLayerState
           accumulatedDelta: _mainDelta,
           frameCellExtent: widget.frameCellExtent,
         );
-        final rows = commaDragFrameDelta(
+        // R27 #12: the row axis has a deadband — a horizontal sweep's
+        // wobble must not hand the step to the row-change path.
+        final rows = timelineRowStepDelta(
           accumulatedDelta: _crossDelta,
-          frameCellExtent: widget.crossAxisExtent,
+          rowExtent: widget.crossAxisExtent,
         );
         if (frames == _lastFrames && rows == _lastRows) {
           return;

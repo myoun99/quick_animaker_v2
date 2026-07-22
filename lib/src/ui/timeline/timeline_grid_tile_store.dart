@@ -128,7 +128,32 @@ class TimelineGridTileStore {
         entry.devicePixelRatio == devicePixelRatio) {
       return entry.image;
     }
+    // R27 #10: a ZOOM step changes the geometry of every visible tile at
+    // once, and dropping all of them to the classic Dart pass is what
+    // made zooming crawl. The tile covers the SAME frames either way and
+    // the painter draws it into a `dst` rect built from the CURRENT
+    // geometry — so the stale raster simply scales, the way every pro
+    // timeline shows a stretched last frame while the real one renders.
+    // Bounded so an extreme jump (a 10× slider throw) still takes the
+    // crisp path rather than showing mush.
+    if (entry != null &&
+        entry.spanEndIndexExclusive == spanEndIndexExclusive &&
+        entry.devicePixelRatio == devicePixelRatio &&
+        entry.crossAxisExtent == painter.crossAxisExtent &&
+        _withinRescaleBand(entry.frameCellExtent, painter.frameCellExtent)) {
+      return entry.image;
+    }
     return null;
+  }
+
+  /// How far a stale tile may be stretched before the classic pass is the
+  /// better answer.
+  static bool _withinRescaleBand(double from, double to) {
+    if (from <= 0 || to <= 0) {
+      return false;
+    }
+    final ratio = to / from;
+    return ratio >= 0.5 && ratio <= 2.0;
   }
 
   Future<void> _drain() async {
