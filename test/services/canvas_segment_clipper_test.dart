@@ -3,11 +3,17 @@ import 'package:quick_animaker_v2/src/models/canvas_point.dart';
 import 'package:quick_animaker_v2/src/models/canvas_size.dart';
 import 'package:quick_animaker_v2/src/services/canvas_segment_clipper.dart';
 
+/// The stroke segment clipper clips to the PASTEBOARD, not the stage:
+/// off-canvas drawing is real drawing (user feedback — the pointer must
+/// work outside the stage exactly like inside it); only the pasteboard's
+/// hard wall (one canvas size beyond every edge) cuts segments.
 void main() {
   const clipper = CanvasSegmentClipper();
   const size = CanvasSize(width: 100, height: 80);
+  // Pasteboard: x ∈ [-100, 200), y ∈ [-80, 160).
 
-  test('inside to outside fast movement clips to canvas edge', () {
+  test('crossing the STAGE edge does not clip — off-canvas travel is '
+      'drawable pasteboard', () {
     final segment = clipper.clip(
       previous: CanvasPoint(x: 50, y: 40),
       current: CanvasPoint(x: 150, y: 40),
@@ -16,43 +22,55 @@ void main() {
 
     expect(segment, isNotNull);
     expect(segment!.start.x, 50);
-    expect(segment.end.x, 100);
+    expect(segment.end.x, 150, reason: 'no cut at the stage edge (x=100)');
     expect(segment.startsNewVisibleSegment, isFalse);
   });
 
-  test('outside to inside fast movement starts at canvas edge', () {
+  test('a segment fully OUTSIDE the stage but on the pasteboard passes '
+      'through whole', () {
     final segment = clipper.clip(
-      previous: CanvasPoint(x: -50, y: 40),
-      current: CanvasPoint(x: 50, y: 40),
+      previous: CanvasPoint(x: -50, y: -40),
+      current: CanvasPoint(x: -10, y: -20),
       canvasSize: size,
     );
 
     expect(segment, isNotNull);
-    expect(segment!.start.x, 0);
-    expect(segment.end.x, 50);
+    expect(segment!.start.x, -50);
+    expect(segment.end.x, -10);
+    expect(segment.startsNewVisibleSegment, isFalse);
+  });
+
+  test('the pasteboard WALL clips: inside to beyond cuts at the wall', () {
+    final segment = clipper.clip(
+      previous: CanvasPoint(x: 50, y: 40),
+      current: CanvasPoint(x: 350, y: 40),
+      canvasSize: size,
+    );
+
+    expect(segment, isNotNull);
+    expect(segment!.start.x, 50);
+    expect(segment.end.x, 200, reason: 'pasteboard right wall = 2×width');
+    expect(segment.startsNewVisibleSegment, isFalse);
+  });
+
+  test('re-entering from beyond the wall starts a NEW visible segment at '
+      'the wall', () {
+    final segment = clipper.clip(
+      previous: CanvasPoint(x: -250, y: 40),
+      current: CanvasPoint(x: 0, y: 40),
+      canvasSize: size,
+    );
+
+    expect(segment, isNotNull);
+    expect(segment!.start.x, -100, reason: 'pasteboard left wall = -width');
+    expect(segment.end.x, 0);
     expect(segment.startsNewVisibleSegment, isTrue);
   });
 
-  test(
-    'outside to outside crossing canvas produces in-canvas segment only',
-    () {
-      final segment = clipper.clip(
-        previous: CanvasPoint(x: -50, y: 40),
-        current: CanvasPoint(x: 150, y: 40),
-        canvasSize: size,
-      );
-
-      expect(segment, isNotNull);
-      expect(segment!.start.x, 0);
-      expect(segment.end.x, 100);
-      expect(segment.startsNewVisibleSegment, isTrue);
-    },
-  );
-
-  test('outside to outside without crossing produces no segment', () {
+  test('fully beyond the wall produces no segment', () {
     final segment = clipper.clip(
-      previous: CanvasPoint(x: -50, y: -40),
-      current: CanvasPoint(x: -10, y: -20),
+      previous: CanvasPoint(x: -300, y: -200),
+      current: CanvasPoint(x: -210, y: -170),
       canvasSize: size,
     );
 

@@ -532,15 +532,21 @@ void main() {
       expect(results, isEmpty);
     });
 
-    testWidgets('pointer outside surface does not emit a result', (
+    testWidgets('an off-canvas tap on the PASTEBOARD commits — the stage '
+        'rectangle is not an input boundary (user feedback)', (
       tester,
     ) async {
       final results = <List<BrushDab>>[];
       await tester.pumpWidget(_app(_view(_sessionState(), results.add)));
 
+      // (9,9) is outside the 8×8 stage but inside its pasteboard
+      // (x,y ∈ [-8,16)).
       await tapCanvas(tester, const Offset(9, 9));
 
-      expect(results, isEmpty);
+      expect(results, hasLength(1));
+      expect(results.single, isNotEmpty);
+      expect(results.single.first.center.x, 9);
+      expect(results.single.first.center.y, 9);
     });
 
     testWidgets('clips the drawing canvas display to the viewport', (
@@ -565,7 +571,8 @@ void main() {
       );
     });
 
-    testWidgets('pointer down outside then entering commits in-canvas dabs', (
+    testWidgets('pointer down outside then entering draws the WHOLE path '
+        '(the pasteboard is drawable from the first dab)', (
       tester,
     ) async {
       final results = <List<BrushDab>>[];
@@ -594,11 +601,24 @@ void main() {
       expect(results, hasLength(1));
 
       final dabs = results.single;
-      expect(dabs.map((dab) => dab.center.x).toList(), [8, 7, 6, 5, 4, 3, 2]);
+      expect(dabs.map((dab) => dab.center.x).toList(), [
+        12,
+        11,
+        10,
+        9,
+        8,
+        7,
+        6,
+        5,
+        4,
+        3,
+        2,
+      ], reason: 'the off-canvas leg (12..9) draws too now');
       expect(dabs.map((dab) => dab.center.y).toSet(), {1});
     });
 
-    testWidgets('pointer down outside and staying outside commits nothing', (
+    testWidgets('a stroke entirely OFF-canvas commits on the pasteboard; '
+        'beyond the pasteboard wall commits nothing', (
       tester,
     ) async {
       final results = <List<BrushDab>>[];
@@ -623,10 +643,28 @@ void main() {
       await gesture.up();
       await tester.pump();
 
+      expect(results, hasLength(1));
+      expect(results.single.map((dab) => dab.center.x).toList(), [
+        12,
+        13,
+        14,
+      ]);
+
+      // Beyond the wall (x ≥ 16 for the 8×8 stage): nothing.
+      results.clear();
+      final beyond = await tester.startGesture(
+        origin + const Offset(17, 1),
+        pointer: 2,
+      );
+      await beyond.moveTo(origin + const Offset(19, 1));
+      await beyond.up();
+      await tester.pump();
+
       expect(results, isEmpty);
     });
 
-    testWidgets('leaving and re-entering does not connect across outside gap', (
+    testWidgets('leaving the stage and returning draws THROUGH the gap — '
+        'the stage edge no longer breaks strokes', (
       tester,
     ) async {
       final results = <List<BrushDab>>[];
@@ -650,7 +688,6 @@ void main() {
       await gesture.moveTo(origin + const Offset(3, 1));
       await gesture.moveTo(origin + const Offset(12, 1));
       await tester.pump();
-      expect(results, isEmpty);
 
       await gesture.moveTo(origin + const Offset(6, 1));
       await gesture.up();
@@ -660,11 +697,11 @@ void main() {
 
       final xs = results.single.map((dab) => dab.center.x).toList();
 
-      expect(xs, containsAll([1, 2, 3, 4, 5, 6, 7, 8]));
-      expect(xs, isNot(contains(9)));
-      expect(xs, isNot(contains(10)));
-      expect(xs, isNot(contains(11)));
-      expect(xs, isNot(contains(12)));
+      expect(
+        xs,
+        containsAll([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]),
+        reason: 'the off-canvas leg is real drawing on the pasteboard',
+      );
       expect(xs.last, 6);
     });
 

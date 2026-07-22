@@ -17,6 +17,7 @@ import '../../models/brush_blend_mode.dart';
 import '../../models/brush_dab.dart';
 import '../../models/brush_edit_session_state.dart';
 import '../../models/canvas_point.dart';
+import '../../models/pasteboard_bounds.dart';
 import '../../models/dirty_region.dart';
 import '../../models/canvas_viewport.dart';
 import '../../models/tile_coord.dart';
@@ -483,6 +484,9 @@ class _InteractiveBrushEditCanvasViewState
 
     final canvasPosition = _canvasPositionFromLocal(event.localPosition);
     final startsInsideSurface = _isInsideSurface(canvasPosition);
+    // The pasteboard is the STROKE's input boundary (user feedback: the
+    // picture already lives outside the stage — the pointer must too).
+    final startsInsidePasteboard = _isInsidePasteboard(canvasPosition);
 
     // Alt+click = temporary eyedropper (P5): pick, never stroke.
     final onAltPick = widget.onAltPick;
@@ -538,7 +542,7 @@ class _InteractiveBrushEditCanvasViewState
     _currentPressure = _normalizedPressure(event);
     widget.onActiveStrokeChanged?.call(true);
     _nextSequence = 0;
-    _breakCurrentVisibleSegment = !startsInsideSurface;
+    _breakCurrentVisibleSegment = !startsInsidePasteboard;
     _previousRawCanvasPosition = canvasPosition;
     _lastPenPosition = canvasPosition;
     final stabilizerStrength = strokeSettings.stabilizerStrength;
@@ -554,7 +558,7 @@ class _InteractiveBrushEditCanvasViewState
     _resetOverlay();
     _collectedDabs.clear();
     _prepareLiveRasterizer();
-    if (!startsInsideSurface) {
+    if (!startsInsidePasteboard) {
       return;
     }
     final initialDabs = _withPressureDynamics(
@@ -955,6 +959,18 @@ class _InteractiveBrushEditCanvasViewState
         localPosition.y >= 0 &&
         localPosition.x < canvasSize.width &&
         localPosition.y < canvasSize.height;
+  }
+
+  /// STROKES draw anywhere on the pasteboard (Flash-style — the stage
+  /// rectangle is a crop at composite time, not an input boundary); the
+  /// eyedropper and fill taps keep the stage gate ([_isInsideSurface]).
+  bool _isInsidePasteboard(CanvasPoint localPosition) {
+    final canvasSize =
+        widget.sessionState.canvasState.currentSurface.canvasSize;
+    return canvasSize.containsPasteboardPoint(
+      x: localPosition.x,
+      y: localPosition.y,
+    );
   }
 
   CanvasPoint _canvasPositionFromLocal(Offset localPosition) {
