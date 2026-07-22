@@ -120,6 +120,28 @@ class BitmapSurfacePainter extends CustomPainter {
     // for its decode (it lands within a few frames — the repaint hook
     // brings it in).
     var pixelFallbackBudget = 4;
+    // R27 #2: and it goes to tiles the user can actually SEE. The budget
+    // used to be spent in map order, so a stroke whose new tiles span far
+    // more than four coordinates — a 1800px brush does that in one dab —
+    // could burn it entirely off-screen and leave visible coordinates
+    // drawing NOTHING for a few frames: the reported blank-tile flash.
+    // Decode starts have prioritised by visibility since R18; the
+    // fallback simply never learned to.
+    final fallbackVisibleRect = viewport == null
+        ? (Offset.zero & size)
+        : MatrixUtils.transformRect(
+            viewportInverseTransformMatrix(viewport!),
+            Offset.zero & size,
+          );
+    bool tileIsVisible(BitmapTile tile) {
+      final tileSize = tile.size.toDouble();
+      return Rect.fromLTWH(
+        tile.coord.x * tileSize,
+        tile.coord.y * tileSize,
+        tileSize,
+        tileSize,
+      ).overlaps(fallbackVisibleRect);
+    }
     // Decode-start chunking (R18 B-1): STARTING a decode costs a
     // synchronous tile copy + 65k-pixel premultiply on the UI thread, and
     // a full-canvas commit used to start every changed tile in one paint
@@ -170,9 +192,10 @@ class BitmapSurfacePainter extends CustomPainter {
           ),
           tileImagePaint,
         );
-      } else if (pixelFallbackBudget > 0) {
+      } else if (pixelFallbackBudget > 0 && tileIsVisible(tile)) {
         // First-ever content at this coordinate and not decoded yet: draw
-        // per pixel for this frame only — within the budget.
+        // per pixel for this frame only — within the budget, and only
+        // where it shows (R27 #2).
         pixelFallbackBudget -= 1;
         _paintTilePixels(canvas, tile);
       }

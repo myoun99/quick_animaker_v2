@@ -970,6 +970,12 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
         // is the notify-free channel (R12-B: ticks never notify the
         // session).
         _session.voiceRecordPreviewLane,
+        // R27 #13: the empty-cel tint must clear the INSTANT a stroke
+        // lands. Cel pixels live outside the Layer value, so nothing in
+        // the ordinary notify path told this panel to look again — the
+        // tint sat until an unrelated rebuild. Only EMPTY↔drawn crossings
+        // bump this, so ordinary strokes cost nothing.
+        _session.brushFrameStore.celContentRevision,
       ]),
       builder: (context, _) {
         // Zoom scoping (UI-R6 #4): the toolbar widget is built ONCE per

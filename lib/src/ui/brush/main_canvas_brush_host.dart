@@ -1,4 +1,4 @@
-import 'package:flutter/gestures.dart' show kPrimaryButton;
+import 'package:flutter/gestures.dart' show PointerDeviceKind, kPrimaryButton;
 import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
 
@@ -16,6 +16,7 @@ import '../../services/canvas_selection.dart' show SelectionMaskOptions;
 import '../../services/cache_invalidation_executor.dart';
 import '../../services/history_manager.dart';
 import '../canvas/layer_pose_paint.dart';
+import '../input/app_input_settings.dart' show AppInput;
 import 'brush_canvas_panel.dart';
 import 'brush_editor_selection.dart';
 import 'canvas_selection_commands.dart';
@@ -224,6 +225,13 @@ class _MainCanvasBrushHostState extends State<MainCanvasBrushHost> {
         final tool = widget.brushToolState.tool;
         if (!canvasToolPaints(tool) && tool != CanvasTool.fill) {
           return; // Eyedropper/selection/pan have their own meaning.
+        }
+        // R27 #15: only a press that would actually DRAW earns the
+        // notice. A finger whose one-finger slot is flip/pan/none is
+        // navigating, not drawing — telling it "no frame here" was noise
+        // on every page flip.
+        if (event.kind == PointerDeviceKind.touch && !AppInput.touchDraws) {
+          return;
         }
         onDrawRefused();
       },
