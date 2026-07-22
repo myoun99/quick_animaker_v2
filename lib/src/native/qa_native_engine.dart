@@ -24,6 +24,8 @@ class QaNativeEngine {
     this._fillFinishMask,
     this._dabBlendTiles,
     this._stampBlendTiles,
+    this._strokeBlendTiles,
+    this._alphaBoundsTiles,
     this._premultiplyRgbaCopy,
     this._copyBytes,
     this._tileAlloc,
@@ -39,7 +41,9 @@ class QaNativeEngine {
   // v18: AUDIO-PRO R1 extended the AUDIO clip struct; the raster surface
   // is unchanged, but the version is one number for the whole binary.
   // v21: EX4 extended the video-export surface + added the JPG encoder.
-  static const int _abiVersion = 21;
+  // v22: BB-N1 added the stroke-blend tile kernel (the once-per-stroke
+  // brush blend) and the alpha-bounds tile scan.
+  static const int _abiVersion = 22;
 
   /// R25-③ batched fill compose: packs compose-tile items + their
   /// ordered layer blends into grow-only native arrays and fans the
@@ -382,6 +386,32 @@ class QaNativeEngine {
   )
   _stampBlendTiles;
 
+  /// BB-N1 (ABI 22): the once-per-stroke brush blend — the staged tiles
+  /// ARE the destination; C blends the stroke buffer in and reports
+  /// per-tile changed flags. Reference = `blendStrokeRegionPixels`.
+  final void Function(
+    Pointer<QaTileSpanStruct> tiles,
+    int tileCount,
+    int tileSize,
+    Pointer<Uint8> stroke,
+    int strokeWidth,
+    int strokeLeft,
+    int strokeTop,
+    int mode,
+    Pointer<Uint8> changedOut,
+  )
+  _strokeBlendTiles;
+
+  /// BB-N1 (ABI 22): whole-tile alpha bounds scan, 4 int32 per tile.
+  /// Reference = the `bitmapSurfaceContentBounds` word loop.
+  final void Function(
+    Pointer<QaTileSpanStruct> tiles,
+    int tileCount,
+    int tileSize,
+    Pointer<Int32> boundsOut,
+  )
+  _alphaBoundsTiles;
+
   final int Function(
     Pointer<Uint8> pixels,
     int tileWidth,
@@ -664,6 +694,41 @@ class QaNativeEngine {
               Pointer<Uint8>,
             )
           >('qa_stamp_blend_tiles');
+      final strokeBlendTiles = library
+          .lookupFunction<
+            Void Function(
+              Pointer<QaTileSpanStruct>,
+              Int32,
+              Int32,
+              Pointer<Uint8>,
+              Int32,
+              Int32,
+              Int32,
+              Int32,
+              Pointer<Uint8>,
+            ),
+            void Function(
+              Pointer<QaTileSpanStruct>,
+              int,
+              int,
+              Pointer<Uint8>,
+              int,
+              int,
+              int,
+              int,
+              Pointer<Uint8>,
+            )
+          >('qa_stroke_blend_tiles');
+      final alphaBoundsTiles = library
+          .lookupFunction<
+            Void Function(
+              Pointer<QaTileSpanStruct>,
+              Int32,
+              Int32,
+              Pointer<Int32>,
+            ),
+            void Function(Pointer<QaTileSpanStruct>, int, int, Pointer<Int32>)
+          >('qa_alpha_bounds_tiles');
       final premultiplyRgbaCopy = library
           .lookupFunction<
             Void Function(Pointer<Uint8>, Pointer<Uint8>, Int32),
@@ -839,6 +904,8 @@ class QaNativeEngine {
         fillFinishMask,
         dabBlendTiles,
         stampBlendTiles,
+        strokeBlendTiles,
+        alphaBoundsTiles,
         premultiplyRgbaCopy,
         copyBytes,
         tileAlloc,
@@ -1454,6 +1521,55 @@ class QaNativeEngine {
       _batchChanged,
     );
     return _batchChanged.asTypedList(count);
+  }
+
+  /// BB-N1: blends the stroke buffer into every staged span in ONE call,
+  /// fanned across the worker pool (per-pixel math is independent, so
+  /// worker count never changes a byte). [mode] is the C-side
+  /// `QA_STROKE_BLEND_*` id (`strokeBlendModeNativeId`). Returns per-tile
+  /// changed flags (valid until the next batch).
+  Uint8List strokeBlendTiles({
+    required int count,
+    required int tileSize,
+    required Pointer<Uint8> strokeBytes,
+    required int strokeWidth,
+    required int strokeLeft,
+    required int strokeTop,
+    required int mode,
+  }) {
+    _strokeBlendTiles(
+      _tileSpans,
+      count,
+      tileSize,
+      strokeBytes,
+      strokeWidth,
+      strokeLeft,
+      strokeTop,
+      mode,
+      _batchChanged,
+    );
+    return _batchChanged.asTypedList(count);
+  }
+
+  /// Grow-only out buffer for [alphaBoundsTiles] (4 int32 per tile).
+  Pointer<Int32> _alphaBoundsOut = nullptr;
+  int _alphaBoundsCapacity = 0;
+
+  /// BB-N1: scans every staged tile's ink bounds in ONE pooled call.
+  /// Returns 4 int32 per tile — minX, minY, maxX, maxY in TILE-LOCAL
+  /// pixels (empty tile: minX=0x7fffffff / maxX=-0x7fffffff). Only the
+  /// span's tilePixels is consumed; the scan is whole-tile. The view is
+  /// valid until the next call.
+  Int32List alphaBoundsTiles({required int count, required int tileSize}) {
+    if (_alphaBoundsCapacity < count * 4) {
+      if (_alphaBoundsOut != nullptr) {
+        calloc.free(_alphaBoundsOut);
+      }
+      _alphaBoundsOut = calloc<Int32>(count * 4);
+      _alphaBoundsCapacity = count * 4;
+    }
+    _alphaBoundsTiles(_tileSpans, count, tileSize, _alphaBoundsOut);
+    return _alphaBoundsOut.asTypedList(count * 4);
   }
 
   // -------------------------------------------------------------------

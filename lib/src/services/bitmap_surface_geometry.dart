@@ -7,6 +7,7 @@ import '../models/bitmap_tile.dart';
 import '../models/canvas_size.dart';
 import '../models/pasteboard_bounds.dart';
 import '../models/tile_coord.dart';
+import '../native/qa_native_engine.dart';
 
 /// Raster geometry ops for baked surfaces (R19 bake-only): canvas resize
 /// and anchored-content translation operate on PIXELS now — the raster
@@ -28,6 +29,57 @@ bitmapSurfaceContentBounds(BitmapSurface surface) {
   final tileSize = surface.tileSize;
   var minX = 0x7fffffff, minY = 0x7fffffff;
   var maxX = -0x7fffffff, maxY = -0x7fffffff;
+  // BB-N1 (ABI 22): with the engine loaded, every tile's word scan runs
+  // in C, fanned across the worker pool — the Dart loop below stays as
+  // the reference and the fallback (integer logic, so parity is
+  // structural; the parity test pins it anyway).
+  final native = QaNativeEngine.instance;
+  if (native != null && surface.tiles.isNotEmpty) {
+    final entries = surface.tiles.entries.toList();
+    native.ensureTileSpanBatch(entries.length);
+    for (var i = 0; i < entries.length; i += 1) {
+      // Only tilePixels is consumed — the scan is whole-tile.
+      native.setTileSpan(
+        i,
+        tilePixels: entries[i].value.nativePixels,
+        tileLeft: 0,
+        tileTop: 0,
+        spanLeft: 0,
+        spanRightExclusive: tileSize,
+        spanTop: 0,
+        spanBottomExclusive: tileSize,
+      );
+    }
+    final bounds = native.alphaBoundsTiles(
+      count: entries.length,
+      tileSize: tileSize,
+    );
+    for (var i = 0; i < entries.length; i += 1) {
+      final localMinX = bounds[i * 4];
+      if (localMinX == 0x7fffffff) {
+        continue; // Ink-free tile.
+      }
+      final originX = entries[i].key.x * tileSize;
+      final originY = entries[i].key.y * tileSize;
+      final tileMinX = originX + localMinX;
+      final tileMinY = originY + bounds[i * 4 + 1];
+      final tileMaxX = originX + bounds[i * 4 + 2];
+      final tileMaxY = originY + bounds[i * 4 + 3];
+      if (tileMinX < minX) minX = tileMinX;
+      if (tileMinY < minY) minY = tileMinY;
+      if (tileMaxX > maxX) maxX = tileMaxX;
+      if (tileMaxY > maxY) maxY = tileMaxY;
+    }
+    if (maxX < minX) {
+      return null;
+    }
+    return (
+      left: minX,
+      top: minY,
+      rightExclusive: maxX + 1,
+      bottomExclusive: maxY + 1,
+    );
+  }
   for (final entry in surface.tiles.entries) {
     // RGBA little-endian: alpha is the word's top byte. The native view
     // reads in place — the [BitmapTile.pixels] getter would copy every
