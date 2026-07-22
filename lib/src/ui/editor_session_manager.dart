@@ -36,6 +36,7 @@ import '../models/transform_track.dart';
 import '../models/cut_id.dart';
 import '../models/cut_metadata.dart';
 import '../models/folder_id.dart';
+import '../models/layer_folder.dart' show LayerFolderTableQueries;
 import '../models/frame.dart';
 import '../models/frame_id.dart';
 import '../models/layer.dart';
@@ -2638,8 +2639,29 @@ class EditorSessionManager extends ChangeNotifier {
       clearLaneRangeSelection();
     }
     _layerController.selectLayer(layerId);
+    // R27 #24: layer and folder selection are ONE selection — picking a
+    // row releases the folder row's highlight.
+    _activeFolderId = null;
     // The solo mode FOLLOWS the active layer (R4 #7).
     _syncVisibilitySolo();
+    notifyListeners();
+  }
+
+  /// R27 #24: the folder row the rail shows as SELECTED.
+  ///
+  /// A folder is not an editing target (it holds no cels — R27 #28), so
+  /// this is display state living beside [activeLayerId] rather than a
+  /// second kind of active layer: the canvas keeps drawing on whatever
+  /// layer was active, and the rail shows the folder as the selected row.
+  FolderId? _activeFolderId;
+
+  FolderId? get activeFolderId => _activeFolderId;
+
+  void selectFolder(FolderId folderId) {
+    if (_activeFolderId == folderId) {
+      return;
+    }
+    _activeFolderId = folderId;
     notifyListeners();
   }
 
@@ -2723,13 +2745,53 @@ class EditorSessionManager extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// R27 #29: the folder's composite blend, the layer blend's twin.
+  void setFolderBlendMode(FolderId folderId, LayerBlendMode blendMode) {
+    final cutId = _editingSession.activeCutId;
+    if (cutId == null) {
+      return;
+    }
+    _layerController.setFolderBlendMode(
+      cutId: cutId,
+      folderId: folderId,
+      blendMode: blendMode,
+    );
+    notifyListeners();
+  }
+
   void toggleFolderCollapsed(FolderId folderId) {
     final cutId = _editingSession.activeCutId;
     if (cutId == null) {
       return;
     }
+    final wasCollapsed =
+        activeCutOrNull?.folders.byId(folderId)?.collapsed ?? false;
     _layerController.toggleFolderCollapsed(cutId: cutId, folderId: folderId);
+    // R27 #24: FOLDING a folder that holds the active layer moves the
+    // selection to the folder itself. The member row used to stay on
+    // screen (the display builder keeps the active layer visible), so a
+    // fold with a member selected simply didn't look folded.
+    if (!wasCollapsed && _activeLayerIsInsideFolder(folderId)) {
+      _activeFolderId = folderId;
+    }
     notifyListeners();
+  }
+
+  bool _activeLayerIsInsideFolder(FolderId folderId) {
+    final cut = activeCutOrNull;
+    final activeId = activeLayerId;
+    if (cut == null || activeId == null) {
+      return false;
+    }
+    for (final layer in cut.layers) {
+      if (layer.id != activeId) {
+        continue;
+      }
+      return cut.folders
+          .ancestryOf(layer.folderId)
+          .any((folder) => folder.id == folderId);
+    }
+    return false;
   }
 
   /// Replaces a folder's FX transform track (L5c) — one undo step;

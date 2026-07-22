@@ -53,8 +53,8 @@ void main() {
     expect(rows[4].depth, 2, reason: 'nested member indents two levels');
   });
 
-  test('a collapsed folder keeps its header and swallows member rows — '
-      'except the ACTIVE layer', () {
+  test('R27 #24: a collapsed folder keeps its header and swallows EVERY '
+      'member row, the active layer included', () {
     final folders = [
       LayerFolder(id: const FolderId('f'), name: 'F', collapsed: true),
     ];
@@ -78,8 +78,11 @@ void main() {
       withActive.map(
         (row) => row.isFolder ? 'F' : row.layer.id.value,
       ),
-      ['F', 'b'],
-      reason: 'collapsing never hides the layer being edited',
+      ['F'],
+      reason:
+          'the old active-layer exemption meant a fold with a member '
+          'selected did not look folded at all (R27 #24); the folder row '
+          'takes the selection instead',
     );
   });
 
@@ -110,12 +113,16 @@ void main() {
     expect(rows.first.isFolder, isTrue);
     expect(
       rows.skip(1).map((row) => row.lane!.label),
-      ['Anchor Point', 'Position', 'Scale', 'Rotation', 'Opacity'],
+      // R27 #26: the LAYER's lane grammar verbatim — a Transform group
+      // header with the properties nested under it, not a bare Anchor
+      // Point row hanging off the folder.
+      ['Transform', 'Anchor Point', 'Position', 'Scale', 'Rotation', 'Opacity'],
       reason: 'collapsed members, lanes still editable — a collapsed '
           'folder still places as one',
     );
+    expect(rows[1].lane!.isGroupHeader, isTrue);
     expect(
-      parseFolderLaneId(rows[2].lane!.laneId)!.folderId,
+      parseFolderLaneId(rows[3].lane!.laneId)!.folderId,
       const FolderId('f'),
     );
   });

@@ -1,30 +1,53 @@
 import 'package:flutter/material.dart';
 
+import '../../models/app_language.dart' show AppLanguage;
 import '../../models/folder_id.dart';
+import '../../models/layer_blend_mode.dart';
 import '../../models/layer_folder.dart';
+import '../theme/app_theme.dart';
+import '../widgets/field_slider.dart';
+import '../widgets/panel_flyout.dart';
 import 'layer_label_controls.dart';
 import 'timeline_grid_metrics.dart';
 
-/// The rail row of a folder HEADER (L5): indent + collapse twirl + name +
-/// eye. The name is display/right-click only — folders are never the
-/// active editing target; their frame band is the aggregate block.
+/// The rail row of a folder HEADER (L5).
+///
+/// R27 #23/#25/#29: the folder row is a LAYER ROW that happens to hold a
+/// folder — same surface, same border, same reserved column slots in the
+/// same order, so the eye / fx / opacity / blend columns line up under
+/// the legend header exactly like every other row. Only the leading
+/// slots differ in content (fold twirl + folder glyph as the type
+/// button), and columns a folder has no meaning for stay
+/// reserved-but-empty, the rail's standing rule.
 class TimelineFolderControlsRow extends StatelessWidget {
   const TimelineFolderControlsRow({
     super.key,
     required this.folder,
     required this.depth,
     required this.metrics,
+    this.active = false,
+    this.onSelect,
     this.onToggleCollapsed,
     this.onToggleVisibility,
     this.onRename,
     this.onDissolve,
     this.lanesExpanded = false,
     this.onToggleLanes,
+    this.onOpacityChanged,
+    this.onOpacityChangeEnd,
+    this.onBlendModeSelected,
+    this.blendLanguage = AppLanguage.en,
   });
 
   final LayerFolder folder;
   final int depth;
   final TimelineGridMetrics metrics;
+
+  /// R27 #24: folders select like layers — the row wears the selection
+  /// background, the one selection language this rail speaks.
+  final bool active;
+  final ValueChanged<FolderId>? onSelect;
+
   final ValueChanged<FolderId>? onToggleCollapsed;
   final ValueChanged<FolderId>? onToggleVisibility;
   final ValueChanged<FolderId>? onRename;
@@ -33,6 +56,14 @@ class TimelineFolderControlsRow extends StatelessWidget {
   /// The folder FX lane twirl (L5c) — null hides the button.
   final bool lanesExpanded;
   final ValueChanged<FolderId>? onToggleLanes;
+
+  /// R27 #29: the folder's own opacity and blend, on the layer controls'
+  /// contract (preview per move, one write on release).
+  final void Function(FolderId folderId, double opacity)? onOpacityChanged;
+  final void Function(FolderId folderId, double opacity)? onOpacityChangeEnd;
+  final void Function(FolderId folderId, LayerBlendMode mode)?
+  onBlendModeSelected;
+  final AppLanguage blendLanguage;
 
   Future<void> _showContextMenu(
     BuildContext context,
@@ -74,109 +105,240 @@ class TimelineFolderControlsRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
     final borderColor = colorScheme.outlineVariant;
+    // R27 #25: the SAME surface and selection colours as a layer row —
+    // the old private tint made folders read as a foreign kind of row.
+    final activeColor = colorScheme.secondaryContainer.withValues(alpha: 0.55);
     return GestureDetector(
-      key: ValueKey<String>('timeline-folder-row-${folder.id}'),
       onSecondaryTapUp: (details) =>
           _showContextMenu(context, details.globalPosition),
       onLongPressStart: (details) =>
           _showContextMenu(context, details.globalPosition),
-      child: Container(
-        width: metrics.layerControlsWidth - metrics.sectionLabelGutterWidth,
-        height: metrics.layerRowHeight,
-        padding: const EdgeInsets.only(right: 8),
-        decoration: BoxDecoration(
-          // A quiet tint tells folders apart from layer rows without
-          // stealing the selection language (background = selection).
-          color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
-          border: Border(
-            left: BorderSide(color: borderColor),
-            right: BorderSide(color: borderColor),
-            bottom: BorderSide(color: borderColor),
+      child: InkWell(
+        key: ValueKey<String>('timeline-folder-row-${folder.id}'),
+        onTap: onSelect == null ? null : () => onSelect!(folder.id),
+        hoverColor: Colors.transparent,
+        child: Container(
+          width: metrics.layerControlsWidth - metrics.sectionLabelGutterWidth,
+          height: metrics.layerRowHeight,
+          padding: const EdgeInsets.only(right: 8),
+          decoration: BoxDecoration(
+            color: active ? activeColor : colorScheme.surface,
+            border: Border(
+              left: BorderSide(color: borderColor),
+              right: BorderSide(color: borderColor),
+              bottom: BorderSide(color: borderColor),
+            ),
           ),
-        ),
-        child: Row(
-          children: [
-            const LayerSectionBandCell(),
-            SizedBox(width: 8.0 + depth * 12.0),
-            InkWell(
-              key: ValueKey<String>('timeline-folder-twirl-${folder.id}'),
-              onTap: onToggleCollapsed == null
-                  ? null
-                  : () => onToggleCollapsed!(folder.id),
-              customBorder: const CircleBorder(),
-              child: SizedBox(
-                width: 20,
-                height: 24,
-                child: Icon(
-                  folder.collapsed
-                      ? Icons.arrow_right
-                      : Icons.arrow_drop_down,
-                  size: 16,
-                ),
-              ),
-            ),
-            Icon(
-              folder.collapsed ? Icons.folder : Icons.folder_open,
-              size: 15,
-              color: colorScheme.onSurfaceVariant,
-            ),
-            const SizedBox(width: 4),
-            Expanded(
-              child: Text(
-                folder.name,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(color: colorScheme.onSurfaceVariant),
-              ),
-            ),
-            // The folder FX lane twirl (L5c): the fx glyph opens the
-            // folder's own Transform lanes ("폴더째 배치" — the A-cel
-            // instancing story's last step).
-            if (onToggleLanes != null)
+          child: Row(
+            children: [
+              const LayerSectionBandCell(),
+              SizedBox(width: 8.0 + depth * 12.0),
+              // The lane-twirl column carries the FOLD twirl.
               InkWell(
-                key: ValueKey<String>('timeline-folder-lanes-${folder.id}'),
-                onTap: () => onToggleLanes!(folder.id),
+                key: ValueKey<String>('timeline-folder-twirl-${folder.id}'),
+                onTap: onToggleCollapsed == null
+                    ? null
+                    : () => onToggleCollapsed!(folder.id),
                 customBorder: const CircleBorder(),
                 child: SizedBox(
-                  width: 22,
+                  width: layerLaneToggleSlotWidth,
                   height: 24,
                   child: Icon(
-                    Icons.animation,
-                    size: 14,
-                    color: lanesExpanded
-                        ? colorScheme.primary
-                        : colorScheme.outline.withValues(alpha: 0.6),
-                  ),
-                ),
-              ),
-            if (onToggleVisibility != null)
-              SizedBox(
-                width: 26,
-                height: 26,
-                child: IconButton(
-                  key: ValueKey<String>(
-                    'timeline-folder-visibility-${folder.id}',
-                  ),
-                  tooltip: folder.isVisible
-                      ? 'Hide folder'
-                      : 'Show folder',
-                  padding: EdgeInsets.zero,
-                  constraints: const BoxConstraints.tightFor(
-                    width: 26,
-                    height: 26,
-                  ),
-                  icon: Icon(
-                    folder.isVisible
-                        ? Icons.visibility
-                        : Icons.visibility_off,
+                    folder.collapsed
+                        ? Icons.arrow_right
+                        : Icons.arrow_drop_down,
                     size: 16,
-                    color: folder.isVisible
-                        ? null
-                        : colorScheme.outline.withValues(alpha: 0.6),
                   ),
-                  onPressed: () => onToggleVisibility!(folder.id),
                 ),
               ),
-          ],
+              // Folders carry no timesheet column and no mark chip — the
+              // slots stay reserved so every later column stays aligned.
+              const SizedBox(width: layerTimesheetSlotWidth),
+              const SizedBox(width: layerControlChipGap),
+              const SizedBox(width: layerMarkSlotWidth),
+              const SizedBox(width: layerControlChipGap),
+              // The TYPE button's column: the folder glyph.
+              SizedBox(
+                width: 22,
+                height: 24,
+                child: Center(
+                  child: Icon(
+                    folder.collapsed ? Icons.folder : Icons.folder_open,
+                    key: ValueKey<String>('timeline-folder-icon-${folder.id}'),
+                    size: 16,
+                    color: colorScheme.onSurfaceVariant,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 4),
+              Expanded(
+                child: Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    folder.name,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(color: colorScheme.onSurfaceVariant),
+                  ),
+                ),
+              ),
+              const SizedBox(width: layerFillReferenceSlotWidth),
+              // R27 #26: the folder's fx column IS the layer's fx button —
+              // same glyph, same slot, same meaning (it opens the row's
+              // Transform group). The old `Icons.animation` chip read as a
+              // different feature entirely.
+              if (onToggleLanes != null)
+                SizedBox(
+                  width: layerFxSlotWidth,
+                  height: 26,
+                  child: IconButton(
+                    key: ValueKey<String>('timeline-folder-lanes-${folder.id}'),
+                    tooltip: 'Folder FX',
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints.tightFor(
+                      width: layerFxSlotWidth,
+                      height: 26,
+                    ),
+                    icon: Text(
+                      'fx',
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontStyle: FontStyle.italic,
+                        fontWeight: FontWeight.w700,
+                        color: lanesExpanded
+                            ? AppColors.accent
+                            : colorScheme.onSurface.withValues(alpha: 0.35),
+                      ),
+                    ),
+                    onPressed: () => onToggleLanes!(folder.id),
+                  ),
+                )
+              else
+                const SizedBox(width: layerFxSlotWidth),
+              const SizedBox(width: layerOnionSlotWidth),
+              SizedBox(
+                width: layerVisibilitySlotWidth,
+                height: 26,
+                child: onToggleVisibility == null
+                    ? null
+                    : IconButton(
+                        key: ValueKey<String>(
+                          'timeline-folder-visibility-${folder.id}',
+                        ),
+                        tooltip: folder.isVisible
+                            ? 'Hide folder'
+                            : 'Show folder',
+                        padding: EdgeInsets.zero,
+                        constraints: const BoxConstraints.tightFor(
+                          width: layerVisibilitySlotWidth,
+                          height: 26,
+                        ),
+                        icon: Icon(
+                          folder.isVisible
+                              ? Icons.visibility
+                              : Icons.visibility_off,
+                          size: 18,
+                        ),
+                        onPressed: () => onToggleVisibility!(folder.id),
+                      ),
+              ),
+              const SizedBox(width: layerMuteSlotWidth),
+              // R27 #29: the folder's own opacity — its composed buffer's,
+              // not each member's (LayerFolder.opacity, L3).
+              SizedBox(
+                width: layerOpacitySlotWidth,
+                child: onOpacityChanged == null
+                    ? null
+                    : FieldSlider(
+                        key: ValueKey<String>(
+                          'timeline-folder-opacity-${folder.id}',
+                        ),
+                        min: 0,
+                        max: 1,
+                        value: folder.opacity.clamp(0.0, 1.0).toDouble(),
+                        valueText: '${(folder.opacity * 100).round()}%',
+                        valueTextBuilder: (next) => '${(next * 100).round()}%',
+                        displayFactor: 100,
+                        height: 18,
+                        onChanged: (opacity) =>
+                            onOpacityChanged!(folder.id, opacity),
+                        onChangeEnd: onOpacityChangeEnd == null
+                            ? null
+                            : (opacity) =>
+                                  onOpacityChangeEnd!(folder.id, opacity),
+                      ),
+              ),
+              // ...and its blend, in the layer rows' blend column.
+              if (onBlendModeSelected != null)
+                _FolderBlendChip(
+                  folder: folder,
+                  language: blendLanguage,
+                  onSelected: onBlendModeSelected!,
+                )
+              else
+                const SizedBox(width: layerBlendSlotWidth),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _FolderBlendChip extends StatelessWidget {
+  const _FolderBlendChip({
+    required this.folder,
+    required this.language,
+    required this.onSelected,
+  });
+
+  final LayerFolder folder;
+  final AppLanguage language;
+  final void Function(FolderId folderId, LayerBlendMode mode) onSelected;
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final nonNormal = folder.blendMode != LayerBlendMode.normal;
+    return SizedBox(
+      width: layerBlendSlotWidth,
+      height: 20,
+      child: Builder(
+        builder: (anchorContext) => Tooltip(
+          message: 'Folder blend mode',
+          child: InkWell(
+            key: ValueKey<String>('timeline-folder-blend-${folder.id}'),
+            onTap: () => showPanelFlyout(
+              anchorContext,
+              entries: [
+                for (final mode in LayerBlendMode.values)
+                  PanelFlyoutItem(
+                    keyValue: 'timeline-folder-blend-option-${mode.name}',
+                    label: mode.labelFor(language),
+                    checked: mode == folder.blendMode,
+                    onSelected: () => onSelected(folder.id, mode),
+                  ),
+              ],
+            ),
+            child: Align(
+              alignment: Alignment.centerLeft,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 3),
+                child: Text(
+                  folder.blendMode.labelFor(language),
+                  maxLines: 1,
+                  softWrap: false,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 9.5,
+                    fontWeight: nonNormal ? FontWeight.w700 : FontWeight.w400,
+                    color: nonNormal
+                        ? AppColors.accent
+                        : colorScheme.onSurfaceVariant,
+                  ),
+                ),
+              ),
+            ),
+          ),
         ),
       ),
     );

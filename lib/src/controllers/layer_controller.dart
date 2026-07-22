@@ -231,6 +231,31 @@ class LayerController {
     }
   }
 
+  /// R27 #29: the folder's composite blend — mirrors like the folder eye
+  /// and static opacity (shared structure, not per-use view state).
+  void setFolderBlendMode({
+    required CutId cutId,
+    required FolderId folderId,
+    required LayerBlendMode blendMode,
+  }) {
+    final project = _repository.requireProject();
+    for (final target in folderMirrorFolderTargets(
+      project,
+      cutId: cutId,
+      folderId: folderId,
+    )) {
+      _repository.updateCutFolders(
+        cutId: target.cutId,
+        update: (folders) => [
+          for (final other in folders)
+            other.id == target.folderId
+                ? other.copyWith(blendMode: blendMode)
+                : other,
+        ],
+      );
+    }
+  }
+
   /// The layer-list twirl (L5): PER-USE view state — never mirrored
   /// ("레인만 각자" applies to display state too), persisted like CSP.
   void toggleFolderCollapsed({

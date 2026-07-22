@@ -123,7 +123,22 @@ class TimelinePanel extends StatefulWidget {
     this.onLayerBlendModeSelected,
     this.blendLanguage = AppLanguage.en,
     this.layerOpacityOverrideOf,
+    this.activeFolderId,
+    this.onSelectFolder,
+    this.onFolderOpacityChanged,
+    this.onFolderOpacityChangeEnd,
+    this.onFolderBlendModeSelected,
   });
+
+  /// R27 #24/#29: folder selection + the folder's display controls.
+  final FolderId? activeFolderId;
+  final ValueChanged<FolderId>? onSelectFolder;
+  final void Function(FolderId folderId, double opacity)?
+  onFolderOpacityChanged;
+  final void Function(FolderId folderId, double opacity)?
+  onFolderOpacityChangeEnd;
+  final void Function(FolderId folderId, LayerBlendMode mode)?
+  onFolderBlendModeSelected;
 
   final List<Layer> layers;
   final LayerId? activeLayerId;
@@ -530,6 +545,12 @@ class _TimelinePanelState extends State<TimelinePanel> {
                     onLayerBlendModeSelected: widget.onLayerBlendModeSelected,
                     blendLanguage: widget.blendLanguage,
                     layerOpacityOverrideOf: widget.layerOpacityOverrideOf,
+                    activeFolderId: widget.activeFolderId,
+                    onSelectFolder: widget.onSelectFolder,
+                    onFolderOpacityChanged: widget.onFolderOpacityChanged,
+                    onFolderOpacityChangeEnd: widget.onFolderOpacityChangeEnd,
+                    onFolderBlendModeSelected:
+                        widget.onFolderBlendModeSelected,
                   )
                 : XSheetTimelineGrid(
                     layers: xsheetLayerDisplayOrder(widget.layers),

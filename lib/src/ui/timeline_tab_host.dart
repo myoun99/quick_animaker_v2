@@ -1104,6 +1104,13 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
           folders: _session.activeCutOrNull?.folders ?? const [],
           onToggleFolderCollapsed: _session.toggleFolderCollapsed,
           onToggleFolderVisibility: _session.toggleFolderVisibility,
+          // R27 #24/#29: folders select like layers and carry their own
+          // opacity/blend, in the layer rows' columns.
+          activeFolderId: _session.activeFolderId,
+          onSelectFolder: _session.selectFolder,
+          onFolderOpacityChanged: _session.setFolderOpacity,
+          onFolderOpacityChangeEnd: _session.setFolderOpacity,
+          onFolderBlendModeSelected: _session.setFolderBlendMode,
           onRenameFolder: (folderId) => unawaited(_renameFolder(folderId)),
           onDissolveFolder: _session.dissolveFolder,
           expandedFolderLaneIds: _expandedFolderLanes,

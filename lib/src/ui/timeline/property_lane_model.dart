@@ -297,8 +297,11 @@ List<TimelineDisplayRow> buildTimelineDisplayRows({
         }
       }
     }
-    if (folders.subtreeCollapsed(layer.folderId) &&
-        layer.id != activeLayerId) {
+    // R27 #24: a collapsed folder folds ALL its members, the active layer
+    // included. The old active-layer exemption meant folding a folder
+    // whose member was selected simply didn't look folded; the folder row
+    // takes the selection instead (EditorSessionManager.selectFolder).
+    if (folders.subtreeCollapsed(layer.folderId)) {
       continue;
     }
     rows.add(

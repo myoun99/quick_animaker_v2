@@ -286,6 +286,31 @@ class TimelineActionToolbar extends StatelessWidget {
         onSelected: onImportAudio,
       ),
       const PanelFlyoutDivider(),
+      // R27 #21: the FOLDER and LINK commands reach the timeline. They
+      // only lived in the top menu bar, which is a long way from the rail
+      // where their result shows up.
+      PanelFlyoutItem(
+        keyValue: 'timeline-group-into-folder-button',
+        label: 'Group into folder',
+        icon: Icons.create_new_folder_outlined,
+        enabled: session.canGroupActiveLayerIntoFolder,
+        onSelected: session.groupActiveLayerIntoFolder,
+      ),
+      PanelFlyoutItem(
+        keyValue: 'timeline-link-duplicate-button',
+        label: 'Link duplicate layer',
+        icon: Icons.link,
+        enabled: session.canLinkDuplicateActiveLayer,
+        onSelected: session.linkDuplicateActiveLayer,
+      ),
+      PanelFlyoutItem(
+        keyValue: 'timeline-unlink-layer-button',
+        label: 'Unlink layer',
+        icon: Icons.link_off,
+        enabled: session.canUnlinkActiveLayer,
+        onSelected: session.unlinkActiveLayer,
+      ),
+      const PanelFlyoutDivider(),
       PanelFlyoutItem(
         keyValue: 'toggle-storyboard-layer-button',
         label: 'Storyboard layer',

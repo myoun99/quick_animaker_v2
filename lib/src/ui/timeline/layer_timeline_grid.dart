@@ -145,7 +145,23 @@ class LayerTimelineGrid extends StatefulWidget {
     this.onLayerBlendModeSelected,
     this.blendLanguage = AppLanguage.en,
     this.layerOpacityOverrideOf,
+    this.activeFolderId,
+    this.onSelectFolder,
+    this.onFolderOpacityChanged,
+    this.onFolderOpacityChangeEnd,
+    this.onFolderBlendModeSelected,
   });
+
+  /// R27 #24/#29: the selected folder row, and the folder's own display
+  /// controls (opacity/blend) — the layer row's contract, folder-keyed.
+  final FolderId? activeFolderId;
+  final ValueChanged<FolderId>? onSelectFolder;
+  final void Function(FolderId folderId, double opacity)?
+  onFolderOpacityChanged;
+  final void Function(FolderId folderId, double opacity)?
+  onFolderOpacityChangeEnd;
+  final void Function(FolderId folderId, LayerBlendMode mode)?
+  onFolderBlendModeSelected;
 
   final List<Layer> layers;
   final LayerId? activeLayerId;
@@ -1086,12 +1102,18 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
         folder: row.folder!,
         depth: row.depth,
         metrics: _metrics,
+        active: widget.activeFolderId == row.folder!.id,
+        onSelect: widget.onSelectFolder,
         onToggleCollapsed: widget.onToggleFolderCollapsed,
         onToggleVisibility: widget.onToggleFolderVisibility,
         onRename: widget.onRenameFolder,
         onDissolve: widget.onDissolveFolder,
         lanesExpanded: widget.expandedFolderLaneIds.contains(row.folder!.id),
         onToggleLanes: widget.onToggleFolderLanes,
+        onOpacityChanged: widget.onFolderOpacityChanged,
+        onOpacityChangeEnd: widget.onFolderOpacityChangeEnd,
+        onBlendModeSelected: widget.onFolderBlendModeSelected,
+        blendLanguage: widget.blendLanguage,
       );
     }
     if (row.isLane) {

@@ -1,4 +1,5 @@
 import '../../models/layer.dart';
+import '../../models/layer_folder.dart';
 import '../../models/layer_id.dart';
 import 'layer_timeline_display_adapter.dart';
 import 'property_lane_model.dart';
@@ -28,14 +29,19 @@ LayerId? adjacentDisplayedLayerId({
   Set<TimelineSection> hiddenSections = const {},
   TimelineRowFilter rowFilter = TimelineRowFilter.none,
   Set<LayerId> collapsedAttachBaseIds = const {},
+  List<LayerFolder> folders = const [],
   bool Function(LayerId layerId)? fxEnabledOf,
 }) {
   // Layer rows only — property lanes aren't selectable layers, so the nav
-  // skips them no matter what's twirled open.
+  // skips them no matter what's twirled open. R27 #27: FOLDERS join for
+  // the same reason the attach fold does — a collapsed folder's members
+  // are not on screen, so the walk must not stop on them ("접혀져있으면
+  // 표시된거만 선택하는 룰").
   final rows = buildTimelineDisplayRows(
     layers: horizontalLayerDisplayOrder(layers),
     expandedLayerIds: const {},
     lanesForLayer: (_) => const [],
+    folders: folders,
     hiddenSections: hiddenSections,
     rowFilter: rowFilter,
     collapsedAttachBaseIds: collapsedAttachBaseIds,
@@ -47,19 +53,33 @@ LayerId? adjacentDisplayedLayerId({
   }
   var activeIndex = -1;
   for (var index = 0; index < rows.length; index += 1) {
-    if (rows[index].layer.id == activeLayerId) {
+    if (!rows[index].isFolder && rows[index].layer.id == activeLayerId) {
       activeIndex = index;
       break;
     }
   }
+  // Folder HEADER rows are not layers: the walk steps OVER them (a header
+  // carries a representative member, so stopping there would silently
+  // select a layer the user cannot see).
+  final layerRowIndexes = [
+    for (var index = 0; index < rows.length; index += 1)
+      if (!rows[index].isFolder) index,
+  ];
+  if (layerRowIndexes.isEmpty) {
+    return null;
+  }
+  final activeSlot = layerRowIndexes.indexOf(activeIndex);
   final int targetIndex;
-  if (activeIndex == -1) {
-    targetIndex = direction > 0 ? 0 : rows.length - 1;
+  if (activeSlot == -1) {
+    targetIndex = direction > 0
+        ? layerRowIndexes.first
+        : layerRowIndexes.last;
   } else {
-    targetIndex = (activeIndex + direction).clamp(0, rows.length - 1);
-    if (targetIndex == activeIndex) {
+    final slot = (activeSlot + direction).clamp(0, layerRowIndexes.length - 1);
+    if (slot == activeSlot) {
       return null;
     }
+    targetIndex = layerRowIndexes[slot];
   }
   final target = rows[targetIndex].layer.id;
   return target == activeLayerId ? null : target;

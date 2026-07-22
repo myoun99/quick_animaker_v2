@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import 'timeline_cell_style.dart';
 import 'timeline_grid_metrics.dart';
 
 /// The folder HEADER's frame band (L5, the TVP-latest display): the
@@ -25,7 +26,6 @@ class TimelineFolderAggregateRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
     final windowFrameCount = frameEndIndexExclusive - frameStartIndex;
     return Row(
       children: [
@@ -42,10 +42,12 @@ class TimelineFolderAggregateRow extends StatelessWidget {
               frameStartIndex: frameStartIndex,
               frameEndIndexExclusive: frameEndIndexExclusive,
               frameCellWidth: metrics.frameCellWidth,
-              blockColor: colorScheme.secondaryContainer.withValues(
-                alpha: 0.75,
-              ),
-              outlineColor: colorScheme.outlineVariant,
+              // R27 #22: the aggregate reads as a FRAME BLOCK, in the
+              // frame block's paper — the old translucent accent wash
+              // made the folder band look like a different object than
+              // the blocks it summarises.
+              blockColor: timelineDrawingStartColor,
+              outlineColor: timelineDrawingStartBorderColor,
             ),
           ),
         ),
