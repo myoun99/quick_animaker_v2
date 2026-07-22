@@ -19,6 +19,8 @@ class AppStrings {
     required this.commonCancel,
     required this.commonApply,
     required this.commonRefresh,
+    required this.commonClose,
+    required this.exportNoCuts,
     required this.audioOffsetTitle,
     required this.audioOffsetHelp,
     required this.audioOffsetLabel,
@@ -105,6 +107,11 @@ class AppStrings {
   final String commonCancel;
   final String commonApply;
   final String commonRefresh;
+  final String commonClose;
+
+  /// R27 #31: the export window's empty state — the project has no cuts
+  /// at all (standing in a GAP is not this; that anchors on the first cut).
+  final String exportNoCuts;
 
   // --- The audio program's UI (Preferences ▸ Audio, 2D + AUDIO-PRO R4) ---
   final String audioOffsetTitle;
@@ -209,6 +216,8 @@ class AppStrings {
     commonCancel: 'Cancel',
     commonApply: 'Apply',
     commonRefresh: 'Refresh',
+    commonClose: 'Close',
+    exportNoCuts: 'This project has no cuts to export yet.',
     audioOffsetTitle: 'A/V offset',
     audioOffsetHelp:
         'Fine-tunes when the picture is shown relative to the sound. '
@@ -309,6 +318,8 @@ class AppStrings {
     commonCancel: 'キャンセル',
     commonApply: '適用',
     commonRefresh: '更新',
+    commonClose: '閉じる',
+    exportNoCuts: 'このプロジェクトには書き出せるカットがありません。',
     audioOffsetTitle: 'A/Vオフセット',
     audioOffsetHelp:
         '音に対して絵をいつ表示するかを微調整します。測定できる遅延は自動補正され、'
@@ -403,6 +414,8 @@ class AppStrings {
     commonCancel: '취소',
     commonApply: '적용',
     commonRefresh: '새로고침',
+    commonClose: '닫기',
+    exportNoCuts: '이 프로젝트에는 출력할 컷이 없습니다.',
     audioOffsetTitle: 'A/V 오프셋',
     audioOffsetHelp:
         '소리에 대해 그림을 언제 표시할지 미세 조정합니다. 측정 가능한 '
@@ -499,6 +512,8 @@ class AppStrings {
     commonCancel: 'Annuler',
     commonApply: 'Appliquer',
     commonRefresh: 'Actualiser',
+    commonClose: 'Fermer',
+    exportNoCuts: 'Ce projet ne contient aucun plan à exporter.',
     audioOffsetTitle: 'Décalage A/V',
     audioOffsetHelp:
         'Ajuste finement le moment où l\'image s\'affiche par rapport au '
@@ -606,6 +621,8 @@ class AppStrings {
     commonCancel: '取消',
     commonApply: '应用',
     commonRefresh: '刷新',
+    commonClose: '关闭',
+    exportNoCuts: '此项目暂无可导出的镜头。',
     audioOffsetTitle: 'A/V 偏移',
     audioOffsetHelp:
         '微调画面相对声音的显示时机。可测量的延迟会自动校正，此设置'

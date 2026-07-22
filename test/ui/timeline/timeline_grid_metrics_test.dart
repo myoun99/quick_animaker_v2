@@ -8,7 +8,8 @@ void main() {
 
       expect(metrics.minimumVisibleFrameCells, 24);
       // 312 → 340 → 372: the wider layer-name column (UI-R3 #8, UI-R4 #9).
-      expect(metrics.layerControlsWidth, 372);
+      // 372 → 434 (R27 #6): the blend-mode column joined the label.
+      expect(metrics.layerControlsWidth, 434);
       // 24×28 — the R-toolbar slim round (CSP/TVPaint density).
       expect(metrics.frameCellWidth, 24);
       expect(metrics.layerRowHeight, 28);

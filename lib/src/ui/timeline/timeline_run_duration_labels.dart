@@ -1,15 +1,20 @@
 import 'package:flutter/material.dart';
 
 import '../../models/layer.dart';
-import '../../models/timeline_repeat.dart' show gluedRunAt;
 import 'timeline_cell_style.dart';
 import 'timeline_frame_coordinate_policy.dart';
-import 'timeline_frame_range_policy.dart' show timelineSecondsLabel;
+import 'timeline_frame_range_policy.dart' show timelineDurationLabel;
 
-/// R26 #7: every frame block prints its own length at the block's END
-/// cell, bottom-right — the storyboard cut block's TIME-label idiom
-/// brought down to frame blocks, and the same shared display toggle:
-/// frames (`48f`) or seconds+frames (`2+00`).
+/// R26 #7 / R27 #3: every frame block prints ITS OWN length — one label
+/// per block, not the glued run's total (R26 #7 shipped the run total;
+/// R27 #3 corrected it: "블록 하나 하나마다 해당 블록의 길이"). The same
+/// shared display toggle picks frames (`48`) or seconds+frames (`2+00`),
+/// and no `f` suffix on either path ([timelineDurationLabel]).
+///
+/// Anchor (R27 #3): the BOTTOM-CENTER of the block's LAST cell. The
+/// positioned box still spans the whole block so a number wider than one
+/// cell can spill back over its own block (never into the neighbour) —
+/// only the alignment point rides the last cell.
 ///
 /// An overlay of positioned widgets rather than more painter work on
 /// purpose: the cells painter bakes tiles (with a native rasterizer
@@ -17,6 +22,9 @@ import 'timeline_frame_range_policy.dart' show timelineSecondsLabel;
 /// would have to join every bake key on both paths. Riding ABOVE the
 /// tiles — like the run-edge handles these are modeled on — keeps the
 /// toggle a plain rebuild.
+///
+/// Ghost blocks stay unlabeled: their timing is derived, the same rule
+/// the run-edge clusters follow.
 List<Widget> timelineRowRunDurationLabels({
   required Layer layer,
   required int frameStartIndex,
@@ -30,7 +38,6 @@ List<Widget> timelineRowRunDurationLabels({
   String keyPrefix = 'timeline',
 }) {
   final labels = <Widget>[];
-  final seenRunStarts = <int>{};
 
   double edgeX(int frameIndex) => frameVisibleX(
     frameIndex: frameIndex,
@@ -44,42 +51,59 @@ List<Widget> timelineRowRunDurationLabels({
     if (!entry.isDrawing || entry.ghost) {
       continue;
     }
-    final run = gluedRunAt(layer, key);
-    if (run == null || !seenRunStarts.add(run.startIndex)) {
+    final lengthFrames = entry.length ?? 1;
+    final startIndex = key;
+    final endIndexExclusive = key + lengthFrames;
+    if (endIndexExclusive <= frameStartIndex ||
+        startIndex >= frameEndIndexExclusive) {
       continue;
     }
-    if (run.endIndexExclusive <= frameStartIndex ||
-        run.startIndex >= frameEndIndexExclusive) {
-      continue;
-    }
-    final lengthFrames = run.endIndexExclusive - run.startIndex;
-    final text = showSeconds
-        ? timelineSecondsLabel(lengthFrames, countingBase)
-        : '${lengthFrames}f';
-    final start = edgeX(run.startIndex);
-    final extent = edgeX(run.endIndexExclusive) - start;
+    final text = timelineDurationLabel(
+      lengthFrames,
+      showSeconds: showSeconds,
+      countingBase: countingBase,
+    );
+    final start = edgeX(startIndex);
+    final extent = edgeX(endIndexExclusive) - start;
 
-    // Anchored to the run's end, allowed to reach back over the whole
-    // block (clipped at the block, never spilling into the neighbor);
-    // the fitted font keeps it readable-not-vanished at deep zoom-out
-    // (the #38 rule).
+    // The centre of the block's LAST cell, block-local.
+    final lastCellCentre = extent - frameCellExtent / 2;
+
+    final glyph = Text(
+      text,
+      textAlign: TextAlign.center,
+      maxLines: 1,
+      softWrap: false,
+      overflow: TextOverflow.clip,
+      style: TextStyle(
+        fontSize: timelineFittedGlyphFontSize(9, frameCellExtent),
+        fontWeight: FontWeight.w700,
+        color: timelineDrawingInkColor.withValues(alpha: 0.72),
+      ),
+    );
+
+    // A text box WIDER than the block, centred on the last cell, then
+    // clipped at the block: the glyph centre lands exactly on the cell
+    // centre at any width, and a number too wide for one cell spills
+    // back over its own block instead of into the neighbour's.
     final label = IgnorePointer(
       child: ClipRect(
-        child: Align(
-          alignment: Alignment.bottomRight,
-          child: Padding(
-            padding: const EdgeInsets.only(left: 2, right: 2, bottom: 1),
-            child: Text(
-              text,
-              maxLines: 1,
-              softWrap: false,
-              overflow: TextOverflow.clip,
-              style: TextStyle(
-                fontSize: timelineFittedGlyphFontSize(9, frameCellExtent),
-                color: timelineDrawingInkColor.withValues(alpha: 0.55),
-              ),
-            ),
-          ),
+        child: Stack(
+          children: [
+            axis == Axis.horizontal
+                ? Positioned(
+                    left: lastCellCentre - extent,
+                    width: 2 * extent,
+                    bottom: 1,
+                    child: glyph,
+                  )
+                : Positioned(
+                    left: 0,
+                    right: 0,
+                    bottom: 1,
+                    child: glyph,
+                  ),
+          ],
         ),
       ),
     );
@@ -87,7 +111,7 @@ List<Widget> timelineRowRunDurationLabels({
       axis == Axis.horizontal
           ? Positioned(
               key: ValueKey<String>(
-                '$keyPrefix-run-duration-${layer.id}-${run.startIndex}',
+                '$keyPrefix-run-duration-${layer.id}-$startIndex',
               ),
               left: start,
               top: 0,
@@ -97,7 +121,7 @@ List<Widget> timelineRowRunDurationLabels({
             )
           : Positioned(
               key: ValueKey<String>(
-                '$keyPrefix-run-duration-${layer.id}-${run.startIndex}',
+                '$keyPrefix-run-duration-${layer.id}-$startIndex',
               ),
               top: start,
               left: 0,

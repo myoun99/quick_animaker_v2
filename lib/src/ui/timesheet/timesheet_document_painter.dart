@@ -45,6 +45,12 @@ class TimesheetDocumentLayout {
   /// columns split this allotment into narrower cells instead.
   static const double cameraGroupWidth = cameraColumnWidth * 2;
 
+  /// R27 #32: the SE group's FIXED total width, the CAM rule applied to
+  /// the sound columns — adding SE tracks must not lengthen the B4 paper
+  /// either. Past the base two slots the extra columns split this
+  /// allotment into narrower cells.
+  static const double seGroupWidth = seColumnWidth * 2;
+
   /// Bare frame numbers print in this space LEFT of each half — no boxed
   /// rail inside the columns (removed by user direction).
   static const double frameNumberGutterWidth = 24;
@@ -62,22 +68,30 @@ class TimesheetDocumentLayout {
   static const double pageGap = 32;
   static const double documentMargin = 24;
 
-  int get _cameraColumnCount {
+  int _columnCountOf(TimesheetColumnKind kind) {
     var count = 0;
     for (final column in document.columns) {
-      if (column.kind == TimesheetColumnKind.camera) {
+      if (column.kind == kind) {
         count += 1;
       }
     }
     return count;
   }
 
-  /// Per-column width. Instance-level because CAM cells share the fixed
-  /// [cameraGroupWidth]: past the base two slots each CAM column narrows so
-  /// the paper width stays put.
+  int get _cameraColumnCount => _columnCountOf(TimesheetColumnKind.camera);
+
+  int get _seColumnCount => _columnCountOf(TimesheetColumnKind.se);
+
+  /// Per-column width. Instance-level because the CAM and SE cells share
+  /// a fixed group allotment ([cameraGroupWidth] / [seGroupWidth]): past
+  /// the base two slots each column in that group narrows so the paper
+  /// width stays put.
   double columnWidthFor(TimesheetColumnKind kind) {
     if (kind == TimesheetColumnKind.camera && _cameraColumnCount > 2) {
       return cameraGroupWidth / _cameraColumnCount;
+    }
+    if (kind == TimesheetColumnKind.se && _seColumnCount > 2) {
+      return seGroupWidth / _seColumnCount;
     }
     return switch (kind) {
       TimesheetColumnKind.action => actionColumnWidth,

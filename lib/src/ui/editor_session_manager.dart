@@ -130,6 +130,7 @@ import 'audio/audio_conform_store.dart';
 import 'brush/brush_canvas_panel.dart';
 import 'brush/brush_editor_selection.dart';
 import 'timeline/instruction_span_editing.dart';
+import 'timeline/layer_label_controls.dart' show layerKindShowsBlendControl;
 import 'timeline/layer_timeline_display_adapter.dart'
     show horizontalLayerDisplayOrder;
 import 'timeline/timeline_cell_exposure_state.dart';
@@ -1167,6 +1168,33 @@ class EditorSessionManager extends ChangeNotifier {
 
   int get activeCutPlaybackFrameCount =>
       math.max(1, activeCutOrNull?.duration ?? 1);
+
+  /// R27 #31: the cut an EXPORT anchors on. Parking the playhead in a gap
+  /// leaves no active cut, but that is a playhead position — not "no
+  /// film" — so the export window must still open (it used to throw
+  /// [requireActiveCut] straight through the dialog's build and take the
+  /// whole app down with it). Falls back to the first cut on the axis;
+  /// null only when the project genuinely has no cuts at all, which is
+  /// what disables the Export entry point.
+  Cut? get exportAnchorCutOrNull {
+    final active = activeCutOrNull;
+    if (active != null) {
+      return active;
+    }
+    for (final track in _repository.requireProject().tracks) {
+      if (track.cuts.isNotEmpty) {
+        return track.cuts.first;
+      }
+    }
+    return null;
+  }
+
+  /// Whether an export would run off [exportAnchorCutOrNull]'s FALLBACK
+  /// rather than a live selection — the window then defaults its scope to
+  /// the whole project instead of silently exporting a cut the user is
+  /// not standing on.
+  bool get exportAnchorIsFallback =>
+      activeCutOrNull == null && exportAnchorCutOrNull != null;
 
   /// The active cut, THROWING when none is selected (gap state) — every
   /// caller is a conscious decision that a cut must exist here (UI-R9 #3
@@ -2820,6 +2848,26 @@ class EditorSessionManager extends ChangeNotifier {
       }
     }
     notifyListeners();
+  }
+
+  /// R27 #6: the legend's BLEND bulk — the master opacity bar's rule for
+  /// the mode. Only rows that actually composite take it (the camera and
+  /// the sound/instruction rows have no blend), and only rows that would
+  /// change are written, so a no-op pick costs nothing.
+  void setBlendModeForLayers(Set<LayerId> layerIds, LayerBlendMode mode) {
+    var changed = false;
+    for (final layer in layers) {
+      if (!layerIds.contains(layer.id) ||
+          !layerKindShowsBlendControl(layer.kind) ||
+          layer.blendMode == mode) {
+        continue;
+      }
+      _layerController.setLayerBlendMode(layerId: layer.id, blendMode: mode);
+      changed = true;
+    }
+    if (changed) {
+      notifyListeners();
+    }
   }
 
   /// Filter-set hook (UI-R6 #3): when the active layer fails [passes], the

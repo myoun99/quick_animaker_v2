@@ -29,6 +29,7 @@ import '../services/cut_frame_composite_plan.dart' show layerIdentityPose;
 import '../services/camera_pose_resolver.dart';
 import 'text/app_strings.dart';
 import '../models/timeline_coverage.dart' show TimelineBlockEdge;
+import 'theme/app_theme.dart' show AppColors;
 import 'timeline/camera_key_edit.dart';
 import 'timeline/property_lane_model.dart';
 import 'timeline/timeline_cut_end_handle.dart';
@@ -867,39 +868,46 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
   /// session notify. Same source + same overlay state = the SAME copy.
   Layer? _cameraCopySource;
   bool? _cameraCopyVisible;
-  double? _cameraCopyOpacity;
   Layer? _cameraCopy;
 
-  Layer _cameraDisplayLayer(Layer layer, bool? visible, double? opacity) {
-    if (identical(_cameraCopySource, layer) &&
-        _cameraCopyVisible == visible &&
-        _cameraCopyOpacity == opacity) {
+  Layer _cameraDisplayLayer(Layer layer, bool visible) {
+    if (identical(_cameraCopySource, layer) && _cameraCopyVisible == visible) {
       return _cameraCopy!;
     }
-    final copy = layer.copyWith(
-      isVisible: visible ?? layer.isVisible,
-      opacity: opacity ?? layer.opacity,
-    );
+    final copy = layer.copyWith(isVisible: visible);
     _cameraCopySource = layer;
     _cameraCopyVisible = visible;
-    _cameraCopyOpacity = opacity;
     _cameraCopy = copy;
     return copy;
   }
 
+  /// R27 #9: the camera row's opacity source. The dim is a VIEW notifier,
+  /// so the slider subscribes to it directly instead of the value riding
+  /// a display-copy through a host rebuild — a drag now repaints one
+  /// slider, not the whole timeline (the "카메라레이어 불투명도 너무 느림"
+  /// report). Every other row keeps its model opacity.
+  ValueListenable<double>? _cameraDimOverrideFor(LayerId layerId) {
+    final dim = widget.cameraDimOpacity;
+    if (dim == null || _kindOf(layerId) != LayerKind.camera) {
+      return null;
+    }
+    return dim;
+  }
+
   /// Layers as DISPLAYED (unified layer controls): the camera row mirrors
-  /// the camera-view overlay state on its visibility icon and opacity
-  /// slider — the same notifiers the canvas and the camera panel share.
+  /// the camera-view overlay state on its visibility icon — the same
+  /// notifier the canvas and the camera panel share. The DIM is deliberately
+  /// not folded in here (R27 #9): it reaches the slider through
+  /// [_cameraDimOverrideFor], so a dim drag never invalidates this list.
   List<Layer> _displayLayers() {
     final view = widget.cameraViewEnabled;
-    final dim = widget.cameraDimOpacity;
-    if (view == null && dim == null) {
+    if (view == null) {
       return _session.layers;
     }
     return [
       for (final layer in _session.layers)
         layer.kind == LayerKind.camera
-            ? _cameraDisplayLayer(layer, view?.value, dim?.value)
+            ? _cameraDisplayLayer(layer, view.value)
             : layer,
     ];
   }
@@ -955,7 +963,8 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
     return ListenableBuilder(
       listenable: Listenable.merge([
         ?widget.cameraViewEnabled,
-        ?widget.cameraDimOpacity,
+        // The camera DIM is NOT here (R27 #9): its slider subscribes to it
+        // directly, so a drag repaints one control instead of the panel.
         // Live take preview (REC1-C): the armed SE lane swaps identity at
         // most once per FRAME while recording — this panel-scoped rebuild
         // is the notify-free channel (R12-B: ticks never notify the
@@ -1224,6 +1233,12 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
           // channel live; at rest the bar shows the last committed value.
           opacityDragPreview: _session.opacityDragPreview,
           masterOpacityValue: _session.lastMasterOpacity,
+          // R27 #6: the blend mode reads and commits from the LABEL now.
+          onLayerBlendModeSelected: _session.setLayerBlendMode,
+          blendLanguage: _session.languageSettings.value.programLanguage,
+          // R27 #9: the camera row's opacity IS the camera-view dim
+          // notifier — handing it to the slider keeps a drag off the host.
+          layerOpacityOverrideOf: _cameraDimOverrideFor,
           // Sounds carrying over from the previous cut (UI-R7 #6): the
           // cut start draws `~` and the spill block's start grip stands
           // down.
@@ -1268,6 +1283,8 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
             // The legend master bar (R4 #6): preview per move, one commit.
             onPreviewLayersOpacity: _session.previewLayersOpacity,
             onCommitLayersOpacity: _session.commitLayersOpacity,
+            // R27 #6: the blend column's bulk pick, same displayed set.
+            onSetBlendModeForDisplayed: _session.setBlendModeForLayers,
           ),
           sectionRail: widget.onToggleSection == null
               ? null
@@ -1346,6 +1363,29 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
             voiceRecordClipLit: _session.voiceRecordClipLit,
             resolveStrings: () => _session.uiStrings,
           ),
+          // R27 #1: the CAMERA VIEW toggle, right beside the transport.
+          // It lived only on the camera layer row, which meant scrolling
+          // the rail to it every time; the state itself is a view mode,
+          // so the command bar is its natural second home (both entrances
+          // drive the one notifier).
+          if (widget.cameraViewEnabled != null)
+            ValueListenableBuilder<bool>(
+              valueListenable: widget.cameraViewEnabled!,
+              builder: (context, enabled, _) => IconButton(
+                key: const ValueKey<String>('timeline-camera-view-button'),
+                tooltip: enabled ? 'Camera view (on)' : 'Camera view',
+                visualDensity: VisualDensity.compact,
+                onPressed: () =>
+                    widget.cameraViewEnabled!.value = !enabled,
+                icon: Icon(
+                  Icons.videocam_outlined,
+                  size: 18,
+                  color: enabled
+                      ? AppColors.accent
+                      : Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
+              ),
+            ),
           Expanded(
             child: TimelineActionToolbar(
               session: _session,

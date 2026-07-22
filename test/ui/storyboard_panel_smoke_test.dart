@@ -91,7 +91,7 @@ void main() {
         find.byKey(const ValueKey<String>('storyboard-cut-total-cut-a')),
         findsOneWidget,
       );
-      expect(find.text('24f'), findsOneWidget);
+      expect(find.text('24'), findsOneWidget);
     });
 
     testWidgets('renders current storyboard layer strip when present', (

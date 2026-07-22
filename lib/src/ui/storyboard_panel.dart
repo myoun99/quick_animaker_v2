@@ -48,7 +48,10 @@ import 'timeline/timeline_exposure_comma_drag_handle.dart'
 import 'timeline/timeline_exposure_comma_drag_policy.dart'
     show TimelineCommaDragCallbacks, commaDragFrameDelta;
 import 'timeline/timeline_frame_range_policy.dart'
-    show endlessTrailingFrames, endlessViewportFillFrames, timelineSecondsLabel;
+    show
+        endlessTrailingFrames,
+        endlessViewportFillFrames,
+        timelineDurationLabel;
 import '../models/layer_kind.dart';
 import 'timeline/timeline_frame_ruler.dart';
 import 'timeline/timeline_frame_window.dart';
@@ -1356,7 +1359,12 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
               SizedBox(
                 width: StoryboardPanel._trackLabelWidth,
                 child: TimelineLayerControlsHeader(
-                  metrics: const TimelineGridMetrics(),
+                  // The storyboard rail keeps its own width (R27 #6: the
+                  // timeline's grew for the blend column; this rail has
+                  // no blend cell, so it must not).
+                  metrics: const TimelineGridMetrics(
+                    layerControlsWidth: StoryboardPanel._trackLabelWidth,
+                  ),
                   legend: widget.legend,
                   rowFilter: TimelineRowFilter.none,
                   showRowSolos: false,
@@ -3499,9 +3507,12 @@ class _StoryboardTrackRow extends StatelessWidget {
   final ProjectFrameRate projectFrameRate;
 
   String _totalLabelFor(StoryboardTimelineLayoutEntry entry) {
-    return showSeconds
-        ? timelineSecondsLabel(entry.endFrame, projectFrameRate.countingBase)
-        : '${entry.endFrame}f';
+    // R27 #3: no `f` suffix — the shared readout, same as the timeline.
+    return timelineDurationLabel(
+      entry.endFrame,
+      showSeconds: showSeconds,
+      countingBase: projectFrameRate.countingBase,
+    );
   }
 
   /// The cut ordinal a selection-drag head at track-local [trackX] lands
@@ -4236,8 +4247,10 @@ class _StoryboardCutBlock extends StatelessWidget {
                   key: ValueKey<String>('storyboard-cut-total-${cut.id.value}'),
                   maxLines: 1,
                   softWrap: false,
+                  // R27 #3: bold — the readout was too easy to miss.
                   style: Theme.of(context).textTheme.labelSmall?.copyWith(
                     color: colorScheme.onSurfaceVariant,
+                    fontWeight: FontWeight.w700,
                   ),
                 ),
               ),

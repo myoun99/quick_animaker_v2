@@ -25,6 +25,22 @@ const _testMetrics = TimelineGridMetrics(
   layerRowHeight: 52,
 );
 
+/// A vertical scroll gesture anchored inside the FRAME GRID.
+///
+/// The rail is a sticky overlay OUTSIDE the vertical scrollable, so a
+/// gesture landing on it scrolls nothing. That never mattered while the
+/// rail was narrower than the scrollable's centre; R27 #6 widened it past
+/// that point, so these tests say where they press instead of relying on
+/// a centre that happens to miss the rail.
+Future<void> _dragFrameGridVertically(WidgetTester tester, double dy) async {
+  final area = find.byKey(const ValueKey<String>('timeline-frame-grid-area'));
+  await tester.dragFrom(
+    tester.getTopLeft(area) + const Offset(20, 20),
+    Offset(0, dy),
+  );
+  await tester.pumpAndSettle();
+}
+
 final Matcher _isInsideTestRoot = isA<Rect>()
     .having((rect) => rect.left, 'left', greaterThanOrEqualTo(0))
     .having((rect) => rect.top, 'top', greaterThanOrEqualTo(0))
@@ -98,9 +114,10 @@ void main() {
   testWidgets(
     'sticky frame ruler lays out full content width without overflow',
     (tester) async {
-      // The rail widened to 372 (R3 #8 → R4 #9); keep the frame viewport
-      // NARROW but non-degenerate so the ruler layout is still exercised.
-      await tester.binding.setSurfaceSize(const Size(452, 260));
+      // The rail widened to 372 (R3 #8 → R4 #9) then 434 (R27 #6, the
+      // blend column); keep the frame viewport NARROW but non-degenerate
+      // so the ruler layout is still exercised.
+      await tester.binding.setSurfaceSize(const Size(514, 260));
       addTearDown(() => tester.binding.setSurfaceSize(null));
 
       await tester.pumpWidget(_grid(playbackFrameCount: 96));
@@ -298,7 +315,7 @@ void main() {
     expect(leftSpacerRect.left, moreOrLessEquals(railRect.left));
     expect(leftSpacerRect.right, lessThanOrEqualTo(bottomRailRect.left));
     expect(leftSpacerRect.width, moreOrLessEquals(railRect.width));
-    expect(leftSpacerRect.width, moreOrLessEquals(372));
+    expect(leftSpacerRect.width, moreOrLessEquals(434));
     expect(verticalSlotRect.left, moreOrLessEquals(railRect.right));
     expect(verticalSlotRect.right, moreOrLessEquals(frameGridAreaRect.left));
     expect(verticalSlotRect.width, moreOrLessEquals(14));
@@ -367,11 +384,7 @@ void main() {
 
     // Layer-1's row must stay inside the virtualization window's overscan
     // for the position assertions below, so scroll less than two rows.
-    await tester.drag(
-      find.byKey(const ValueKey<String>('timeline-vertical-scroll-viewport')),
-      const Offset(0, -100),
-    );
-    await tester.pumpAndSettle();
+    await _dragFrameGridVertically(tester, -100);
 
     expect(
       tester.getTopLeft(addLayer).dy,
@@ -525,11 +538,7 @@ void main() {
       final initialTop = tester.getTopLeft(firstLayerRow).dy;
 
       // Scroll deep into the tall content...
-      await tester.drag(
-        find.byKey(const ValueKey<String>('timeline-vertical-scroll-viewport')),
-        const Offset(0, -900),
-      );
-      await tester.pumpAndSettle();
+      await _dragFrameGridVertically(tester, -900);
       expect(firstLayerRow, findsNothing, reason: 'scrolled out of window');
 
       // ...then the content SHRINKS (the lane-collapse shape: fewer rows
@@ -568,19 +577,23 @@ void main() {
       );
 
       // The layer axis is virtualized: scroll until layer-24's rows enter
-      // the window (rail and grid share the same slice).
-      await tester.scrollUntilVisible(
-        layerRow,
-        52,
-        scrollable: find
-            .descendant(
-              of: find.byKey(
-                const ValueKey<String>('timeline-vertical-scroll-viewport'),
-              ),
-              matching: find.byType(Scrollable),
-            )
-            .first,
-      );
+      // the window (rail and grid share the same slice). Driven through
+      // the position rather than a gesture — the assertion is about the
+      // SLICE the rail and grid agree on, and a fling would sail past it.
+      tester
+          .state<ScrollableState>(
+            find
+                .descendant(
+                  of: find.byKey(
+                    const ValueKey<String>('timeline-vertical-scroll-viewport'),
+                  ),
+                  matching: find.byType(Scrollable),
+                )
+                .first,
+          )
+          .position
+          .jumpTo(23 * 52.0);
+      await tester.pumpAndSettle();
 
       expect(layerRow, findsOneWidget);
       expect(frameRow, findsOneWidget);

@@ -58,9 +58,19 @@ class _TimelineBlockState extends State<TimelineBlock> {
     final borderRadius = BorderRadius.circular(
       TimelineBlock.borderRadiusValue,
     );
-    final baseColor = widget.isActive
+    // R27 #11: the hover edge alone was too quiet to notice on a 1px
+    // border, and thickening it would shove the block's contents by a
+    // pixel. A faint surface lift rides along instead — no reflow, and
+    // the pointer's block reads at a glance.
+    final restingBase = widget.isActive
         ? colorScheme.primaryContainer
         : colorScheme.surfaceContainerHighest;
+    final baseColor = _hovered && !widget.isActive
+        ? Color.alphaBlend(
+            colorScheme.onSurface.withValues(alpha: 0.10),
+            restingBase,
+          )
+        : restingBase;
 
     // R26 #8: the ACTIVE accent edge stays exactly as it was; the resting
     // edge follows the background's brightness and a hover brightens it.

@@ -80,6 +80,9 @@ class _TimelineBlockEdgeGripState extends State<TimelineBlockEdgeGrip> {
   int _lastReportedFrames = 0;
   bool _dragging = false;
 
+  /// R27 #11: pointer resting on the grip — lights the bar.
+  bool _hovered = false;
+
   void _startDrag() {
     final accepted = widget.callbacks.onBegin(
       widget.layerId,
@@ -146,14 +149,24 @@ class _TimelineBlockEdgeGripState extends State<TimelineBlockEdgeGrip> {
     final hitStart = isStartEdge
         ? widget.blockStartOffset
         : widget.blockEndOffset - widget.effectiveHitExtent;
-    final barLength = widget.crossAxisExtent * 0.55;
+    // R27 #11: hovering an edge has to READ. Resting bars are quiet ink;
+    // a hover lights the bar to full and fattens it, so a pointer resting
+    // on a frame block's or a cut block's edge announces the grip before
+    // any press. (Both surfaces mount this one widget, so the feedback is
+    // the same in the timeline and the storyboard.)
+    final barLength = widget.crossAxisExtent * (_hovered || _dragging ? 0.8 : 0.55);
     final barColor = _dragging
         ? timelineSelectedFrameBorderColor
+        : _hovered
+        ? timelineDrawingInkColor.withValues(alpha: 0.95)
         : timelineDrawingInkColor.withValues(alpha: 0.38);
+    final barThickness = _hovered || _dragging
+        ? TimelineBlockEdgeGrip._barThickness + 1
+        : TimelineBlockEdgeGrip._barThickness;
 
     final bar = Container(
-      width: horizontal ? TimelineBlockEdgeGrip._barThickness : barLength,
-      height: horizontal ? barLength : TimelineBlockEdgeGrip._barThickness,
+      width: horizontal ? barThickness : barLength,
+      height: horizontal ? barLength : barThickness,
       decoration: BoxDecoration(
         color: barColor,
         borderRadius: BorderRadius.circular(2),
@@ -164,6 +177,8 @@ class _TimelineBlockEdgeGripState extends State<TimelineBlockEdgeGrip> {
       cursor: horizontal
           ? SystemMouseCursors.resizeColumn
           : SystemMouseCursors.resizeRow,
+      onEnter: (_) => setState(() => _hovered = true),
+      onExit: (_) => setState(() => _hovered = false),
       child: GestureDetector(
         behavior: HitTestBehavior.opaque,
         // Drag-only grip: touch follows the timeline input policy

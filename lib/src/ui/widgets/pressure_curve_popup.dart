@@ -145,13 +145,24 @@ Future<void> showPressureCurvePopup(
   return showGeneralDialog<void>(
     context: anchorContext,
     barrierLabel: 'pressure-curve-popup',
-    barrierDismissible: true,
+    // R27 #5: NOT `barrierDismissible` — Flutter's modal barrier closes on
+    // a completed TAP, so a drag started outside (a slider grab, a canvas
+    // stroke) left the popup hanging. Any pointer-DOWN outside dismisses
+    // instead: "드래그든 뭐든 다른곳 조작하면 사라지도록".
+    barrierDismissible: false,
     barrierColor: Colors.transparent,
     // Flyout rule (R4 #2): the popup appears in one frame.
     transitionDuration: Duration.zero,
     pageBuilder: (context, _, _) {
       return Stack(
         children: [
+          Positioned.fill(
+            key: const ValueKey<String>('pressure-curve-popup-dismiss-field'),
+            child: Listener(
+              behavior: HitTestBehavior.opaque,
+              onPointerDown: (_) => Navigator.of(context).maybePop(),
+            ),
+          ),
           Positioned(
             left: left,
             top: top,

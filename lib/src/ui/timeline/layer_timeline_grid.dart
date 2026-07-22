@@ -3,8 +3,10 @@ import 'dart:math' as math;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
+import '../../models/app_language.dart' show AppLanguage;
 import '../../models/audio_clip.dart' show AudioFadeCurve, AudioVolumeKey;
 import '../../models/camera_instruction.dart';
+import '../../models/layer_blend_mode.dart';
 import '../text/app_strings.dart';
 import '../../models/folder_id.dart';
 import '../../models/layer.dart';
@@ -140,10 +142,27 @@ class LayerTimelineGrid extends StatefulWidget {
     this.seSpillInLayerIds = const {},
     this.cutEndDrag,
     this.memoAux = const TimelineRowMemoAux(),
+    this.onLayerBlendModeSelected,
+    this.blendLanguage = AppLanguage.en,
+    this.layerOpacityOverrideOf,
   });
 
   final List<Layer> layers;
   final LayerId? activeLayerId;
+
+  /// R27 #6: the label's blend-mode dropdown (rightmost column) and the
+  /// legend's bulk pick both commit through this.
+  final void Function(LayerId layerId, LayerBlendMode mode)?
+  onLayerBlendModeSelected;
+
+  /// PROGRAM language for the blend-mode names.
+  final AppLanguage blendLanguage;
+
+  /// R27 #9: rows whose opacity is a live VIEW notifier (the camera row's
+  /// dim) hand it over here — the slider subscribes and the drag never
+  /// touches the host.
+  final ValueListenable<double>? Function(LayerId layerId)?
+  layerOpacityOverrideOf;
 
   /// The session's edit-drag preview channel: a comma-drag step rebuilds
   /// only the dragged layer's row (its gate) and the cursor overlay —
@@ -395,6 +414,9 @@ typedef _RailRowMemoInputs = ({
   double sectionLabelGutterWidth,
   ValueListenable<({Set<LayerId> layerIds, double opacity})?>?
   opacityDragPreview,
+  // R27 #6: the blend chip prints a LANGUAGE-dependent name — a language
+  // switch must invalidate the memo like any other visible fact.
+  AppLanguage blendLanguage,
 });
 
 /// The legend header's memo token (UI-R7 #1): every legend-visible fact.
@@ -415,6 +437,10 @@ typedef _LegendMemoInputs = ({
   double masterOpacityValue,
   bool hasLaneToggles,
   bool displayedOnionSkinOn,
+  // R27 #6: the blend column's header prints language-dependent names in
+  // its flyout and gates on the bulk callback's presence.
+  AppLanguage blendLanguage,
+  bool hasBlendBulk,
 });
 
 class _LayerTimelineGridState extends State<LayerTimelineGrid> {
@@ -946,6 +972,7 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
       layerControlsWidth: _metrics.layerControlsWidth,
       sectionLabelGutterWidth: _metrics.sectionLabelGutterWidth,
       opacityDragPreview: widget.opacityDragPreview,
+      blendLanguage: widget.blendLanguage,
     );
     final cached = _railRowMemo[row.layer.id];
     if (cached != null && _railRowInputsMatch(cached.inputs, inputs)) {
@@ -972,7 +999,8 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
         a.layerRowHeight == b.layerRowHeight &&
         a.layerControlsWidth == b.layerControlsWidth &&
         a.sectionLabelGutterWidth == b.sectionLabelGutterWidth &&
-        identical(a.opacityDragPreview, b.opacityDragPreview);
+        identical(a.opacityDragPreview, b.opacityDragPreview) &&
+        a.blendLanguage == b.blendLanguage;
   }
 
   /// The legend header's memo gate (UI-R7 #1): rebuilt only when a
@@ -995,6 +1023,8 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
       masterOpacityValue: widget.masterOpacityValue,
       hasLaneToggles: widget.onToggleLayerLanes != null,
       displayedOnionSkinOn: widget.displayedOnionSkinOn,
+      blendLanguage: widget.blendLanguage,
+      hasBlendBulk: widget.legend?.onSetBlendModeForDisplayed != null,
     );
     final cached = _legendHeaderMemo;
     if (cached != null && _legendInputsMatch(cached.inputs, inputs)) {
@@ -1022,6 +1052,7 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
       onCollapseAllLanes: widget.onToggleLayerLanes == null
           ? null
           : _collapseAllLanes,
+      blendLanguage: widget.blendLanguage,
     );
     _legendHeaderMemo = (inputs: inputs, header: header);
     return header;
@@ -1041,7 +1072,9 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
         setEquals(a.displayedIds, b.displayedIds) &&
         a.masterOpacityValue == b.masterOpacityValue &&
         a.hasLaneToggles == b.hasLaneToggles &&
-        a.displayedOnionSkinOn == b.displayedOnionSkinOn;
+        a.displayedOnionSkinOn == b.displayedOnionSkinOn &&
+        a.blendLanguage == b.blendLanguage &&
+        a.hasBlendBulk == b.hasBlendBulk;
   }
 
   /// One rail row (layer controls or a lane label), extracted so the
@@ -1109,6 +1142,9 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
       onToggleAttachGroup: widget.onToggleAttachGroup,
       opacityDragPreview: widget.opacityDragPreview,
       isLinked: widget.layerIsLinkedOf?.call(row.layer.id) ?? false,
+      onLayerBlendModeSelected: widget.onLayerBlendModeSelected,
+      blendLanguage: widget.blendLanguage,
+      opacityOverride: widget.layerOpacityOverrideOf?.call(row.layer.id),
     );
   }
 

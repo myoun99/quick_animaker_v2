@@ -1,9 +1,11 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
+import '../../models/app_language.dart' show AppLanguage;
 import '../../models/audio_clip.dart' show AudioFadeCurve, AudioVolumeKey;
 import '../../models/camera_instruction.dart';
 import '../../models/folder_id.dart';
+import '../../models/layer_blend_mode.dart';
 import '../../models/layer.dart';
 import '../../models/layer_folder.dart';
 import '../../services/audio/audio_peaks_extractor.dart';
@@ -118,10 +120,22 @@ class TimelinePanel extends StatefulWidget {
     this.seSpillInLayerIds = const {},
     this.cutEndDrag,
     this.memoAux = const TimelineRowMemoAux(),
+    this.onLayerBlendModeSelected,
+    this.blendLanguage = AppLanguage.en,
+    this.layerOpacityOverrideOf,
   });
 
   final List<Layer> layers;
   final LayerId? activeLayerId;
+
+  /// R27 #6: the layer label's blend-mode column.
+  final void Function(LayerId layerId, LayerBlendMode mode)?
+  onLayerBlendModeSelected;
+  final AppLanguage blendLanguage;
+
+  /// R27 #9: live opacity source for view-state rows (the camera dim).
+  final ValueListenable<double>? Function(LayerId layerId)?
+  layerOpacityOverrideOf;
 
   /// The session's edit-drag preview channel (comma/trim drags), consumed
   /// by both grids' row gates and cursor overlays.
@@ -513,6 +527,9 @@ class _TimelinePanelState extends State<TimelinePanel> {
                     seSpillInLayerIds: widget.seSpillInLayerIds,
                     cutEndDrag: widget.cutEndDrag,
                     memoAux: widget.memoAux,
+                    onLayerBlendModeSelected: widget.onLayerBlendModeSelected,
+                    blendLanguage: widget.blendLanguage,
+                    layerOpacityOverrideOf: widget.layerOpacityOverrideOf,
                   )
                 : XSheetTimelineGrid(
                     layers: xsheetLayerDisplayOrder(widget.layers),
