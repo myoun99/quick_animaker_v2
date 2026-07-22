@@ -6,13 +6,14 @@ import 'audio_settings_section.dart';
 import 'autosave_settings_section.dart';
 import 'input_settings_dialog.dart' show InputSettingsSection;
 import 'language_settings_dialog.dart' show LanguageSettingsSection;
+import 'system_status_section.dart';
 
 /// SAVE-1: the unified Preferences dialog — Input, Autosave, Audio,
-/// Language and Accent Colors as sections of ONE window (the old
-/// per-domain Edit menu entries collapsed here; their dialogs remain as
-/// thin wrappers around the same section widgets for tests and deep
-/// links).
-enum PreferencesSection { input, autosave, audio, language, accent }
+/// Language, Accent Colors and System (the runtime-path report) as
+/// sections of ONE window (the old per-domain Edit menu entries
+/// collapsed here; their dialogs remain as thin wrappers around the same
+/// section widgets for tests and deep links).
+enum PreferencesSection { input, autosave, audio, language, accent, system }
 
 Future<void> showPreferencesDialog(
   BuildContext context, {
@@ -48,6 +49,7 @@ class _PreferencesDialogState extends State<_PreferencesDialog> {
     PreferencesSection.audio => 'Audio',
     PreferencesSection.language => 'Language',
     PreferencesSection.accent => 'Accent Colors',
+    PreferencesSection.system => 'System',
   };
 
   Widget _bodyOf(PreferencesSection section) => switch (section) {
@@ -60,6 +62,7 @@ class _PreferencesDialogState extends State<_PreferencesDialog> {
       session: widget.session,
     ),
     PreferencesSection.accent => AccentSettingsSection(session: widget.session),
+    PreferencesSection.system => const SystemStatusSection(),
   };
 
   @override
