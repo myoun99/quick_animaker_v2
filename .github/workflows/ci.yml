@@ -1,11 +1,13 @@
 name: CI
 
 # The cheap tier: analyze, the full test suite, and a portability check on
-# the native C core. Runs on every push and PR (Linux/Windows minutes are
-# free for this public repository).
+# the native C core. PRs run against the virtual merge with master; pushes
+# to master verify the merged result. Branch pushes alone don't trigger —
+# every branch goes through a PR anyway, and running both events doubled
+# every run for nothing (workflow_dispatch covers the rare PR-less case).
 on:
   push:
-    branches: ['**']
+    branches: [master]
   pull_request:
   workflow_dispatch:
 
