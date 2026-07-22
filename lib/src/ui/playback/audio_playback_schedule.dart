@@ -154,6 +154,7 @@ List<ScheduledAudioClip> buildAudioPlaybackSchedule({
   required double? Function(String filePath) durationSecondsFor,
   Set<LayerId>? soloedLayerIds,
   Set<LayerId>? mutedLayerIds,
+  List<ScheduledAudioClip>? extraClips,
 }) {
   // Solo is a MONITORING state (AUDIO-PRO R1): a non-empty set narrows
   // the audible layers to it. Export never passes one — soloing while
@@ -321,6 +322,12 @@ List<ScheduledAudioClip> buildAudioPlaybackSchedule({
         }
       }
     }
+  }
+  // Injected cues (REC1-E): already on the playlist axis, appended
+  // verbatim — the ADR beeps ride the same mixer as every other sound,
+  // which is what routes them to the CHOSEN output device.
+  if (extraClips != null) {
+    schedule.addAll(extraClips);
   }
   return schedule;
 }

@@ -39,6 +39,7 @@ class AudioDeviceTransport {
     int Function(int sampleRate)? resolveUserOffsetSamples,
     this.resolveSoloedLayerIds,
     this.resolveRecordingMutedLayerIds,
+    this.resolveCueClips,
     this.resolveOutputDeviceName,
   }) : _resolveDevice = resolveDevice ?? (() => QaAudioDevice.instance),
        _resolveUserOffsetSamples = resolveUserOffsetSamples ?? ((_) => 0);
@@ -49,6 +50,10 @@ class AudioDeviceTransport {
   /// The armed lane while a take rolls (REC1-B) — muted on top of the
   /// layers' own flags, never written into them.
   final Set<LayerId> Function()? resolveRecordingMutedLayerIds;
+
+  /// ADR cue clips joining the schedule while a take approaches its
+  /// punch-in (REC1-E); empty otherwise.
+  final List<ScheduledAudioClip> Function()? resolveCueClips;
 
   /// The chosen output device by name (AUDIO-PRO R4); null = system
   /// default. Read at each activation — a changed setting reopens the
@@ -157,6 +162,7 @@ class AudioDeviceTransport {
       durationSecondsFor: conformStore.durationSecondsFor,
       soloedLayerIds: resolveSoloedLayerIds?.call(),
       mutedLayerIds: resolveRecordingMutedLayerIds?.call(),
+      extraClips: resolveCueClips?.call(),
     );
     final mix = audioMixScheduleFrom(
       schedule: schedule,
@@ -269,6 +275,7 @@ class AudioDeviceTransport {
       durationSecondsFor: conformStore.durationSecondsFor,
       soloedLayerIds: resolveSoloedLayerIds?.call(),
       mutedLayerIds: resolveRecordingMutedLayerIds?.call(),
+      extraClips: resolveCueClips?.call(),
     );
 
     // The device opens lazily and stays open across runs (opening tears

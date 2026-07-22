@@ -22,6 +22,7 @@ import 'canvas/layer_pose_paint.dart';
 import 'canvas/layer_position_gizmo.dart';
 import 'editor_session_manager.dart';
 import 'playback/canvas_playback_view.dart';
+import 'playback/recording_streamer_overlay.dart';
 import 'playback/canvas_scrub_preview.dart';
 import 'storyboard_cut_fade_policy.dart' show cutFadeTargetColor;
 import 'text/app_strings.dart';
@@ -589,18 +590,29 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
                     )
                   : null,
               contentOverride: isPlaybackActive
-                  ? (context, viewport) => CanvasPlaybackView(
-                      controller: session.playback,
-                      compositeCache: session.cutFrameCompositeCache,
-                      qualityOf: () => session.playbackQuality,
-                      prerenderProgress: session.prerenderScheduler.progress,
-                      cameraViewEnabled: widget.cameraViewEnabled.value,
-                      cameraFrameSize: session.cameraFrameSize,
-                      cameraPoseOf: session.cameraPoseForCut,
-                      cutFxEnabledOf: session.isCutFxEnabled,
-                      cutPictureVisibleOf: session.isCutPictureVisible,
-                      viewport: viewport,
-                      background: session.projectBackground,
+                  // The streamer rides ON the picture (REC1-E): the ADR
+                  // scribe belongs over the projection, never in a side
+                  // panel. Constant two-child Stack (the overlay shrinks
+                  // itself) — the sibling-count rule.
+                  ? (context, viewport) => Stack(
+                      fit: StackFit.expand,
+                      children: [
+                        CanvasPlaybackView(
+                          controller: session.playback,
+                          compositeCache: session.cutFrameCompositeCache,
+                          qualityOf: () => session.playbackQuality,
+                          prerenderProgress:
+                              session.prerenderScheduler.progress,
+                          cameraViewEnabled: widget.cameraViewEnabled.value,
+                          cameraFrameSize: session.cameraFrameSize,
+                          cameraPoseOf: session.cameraPoseForCut,
+                          cutFxEnabledOf: session.isCutFxEnabled,
+                          cutPictureVisibleOf: session.isCutPictureVisible,
+                          viewport: viewport,
+                          background: session.projectBackground,
+                        ),
+                        RecordingStreamerOverlay(session: session),
+                      ],
                     )
                   : isScrubbing
                   ? (context, viewport) => CanvasScrubPreview(

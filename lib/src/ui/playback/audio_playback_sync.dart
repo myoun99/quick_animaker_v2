@@ -73,6 +73,7 @@ class AudioPlaybackSync {
     this.deviceCarriesPlayback,
     this.resolveSoloedLayerIds,
     this.resolveRecordingMutedLayerIds,
+    this.resolveCueClips,
   });
 
   /// The session's solo set (monitoring state); null/empty = everything
@@ -82,6 +83,10 @@ class AudioPlaybackSync {
   /// The armed lane while a take rolls (REC1-B) — muted on top of the
   /// layers' own flags, never written into them.
   final Set<LayerId> Function()? resolveRecordingMutedLayerIds;
+
+  /// ADR cue clips joining the schedule while a take approaches its
+  /// punch-in (REC1-E); empty otherwise.
+  final List<ScheduledAudioClip> Function()? resolveCueClips;
 
   /// Consulted ONCE at activation: true means the native device transport
   /// carries this run's audio, so no platform players are built — playing
@@ -152,6 +157,7 @@ class AudioPlaybackSync {
               durationSecondsFor: durationSecondsFor,
               soloedLayerIds: resolveSoloedLayerIds?.call(),
               mutedLayerIds: resolveRecordingMutedLayerIds?.call(),
+              extraClips: resolveCueClips?.call(),
             );
       _players = [for (final _ in _schedule) playerFactory()];
       for (var index = 0; index < _schedule.length; index += 1) {
