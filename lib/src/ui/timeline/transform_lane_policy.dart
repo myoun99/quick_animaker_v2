@@ -2,7 +2,9 @@ import 'dart:ui' show Offset;
 
 import '../../models/canvas_point.dart';
 import '../../models/folder_id.dart';
+import '../../models/layer_id.dart';
 import '../../models/property_track.dart';
+import '../../models/timeline_frame_range.dart' show TimelineLaneSelection;
 import '../../models/transform_track.dart';
 import 'property_lane_model.dart';
 
@@ -145,6 +147,27 @@ List<String> transformLaneSpan(String anchorLaneId, String headLaneId) {
   final low = anchor < head ? anchor : head;
   final high = anchor < head ? head : anchor;
   return transformLaneDisplayOrder.sublist(low, high + 1);
+}
+
+/// Whether the lane selection covers [laneId]'s BAND ROW on [layerId]
+/// (R26 #3) — member lanes read the span directly; the group HEADER row
+/// counts as covered when the selection spans its WHOLE member group, so
+/// the header washes, rings, and (follow-up) grabs the whole group for a
+/// move. One predicate, shared by the paint and the gesture's
+/// move-vs-select decision.
+bool laneSelectionCoversBandRow(
+  TimelineLaneSelection? selection,
+  LayerId layerId,
+  String laneId,
+) {
+  if (selection == null) {
+    return false;
+  }
+  if (laneId == transformGroupHeaderLane.laneId) {
+    return selection.layerId == layerId &&
+        transformLaneDisplayOrder.every(selection.spanLaneIds.contains);
+  }
+  return selection.coversLane(layerId, laneId);
 }
 
 /// Folder FX lanes (L5c): lane ids carry the folder ADDRESS so the

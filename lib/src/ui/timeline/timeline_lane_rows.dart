@@ -9,7 +9,7 @@ import '../../models/timeline_frame_range.dart' show TimelineLaneSelection;
 import '../theme/app_theme.dart' show AppColors, instantMenuAnimation;
 import 'layer_label_controls.dart' show LayerSectionBandCell;
 import 'property_lane_model.dart';
-import 'transform_lane_policy.dart' show transformLaneDisplayOrder;
+import 'transform_lane_policy.dart' show laneSelectionCoversBandRow;
 import 'timeline_cell_style.dart' show timelineDrawingStartColor;
 import 'timeline_frame_range_gesture.dart'
     show TimelineLaneRangeCallbacks, TimelineLaneRangeGestureLayer;
@@ -574,18 +574,10 @@ class TimelineLaneFrameRow extends StatelessWidget {
     final horizontal = axis == Axis.horizontal;
 
     // R26 #3: the header row washes when the selection spans its WHOLE
-    // member group (the header selected it, or a drag covered every
-    // lane) — visible even while the group is collapsed.
-    bool selectionCoversRow(TimelineLaneSelection? selection) {
-      if (selection == null) {
-        return false;
-      }
-      if (!lane.isGroupHeader) {
-        return selection.coversLane(layer.id, lane.laneId);
-      }
-      return selection.layerId == layer.id &&
-          transformLaneDisplayOrder.every(selection.spanLaneIds.contains);
-    }
+    // member group — the SAME predicate the gesture uses to decide
+    // move-vs-select, so what looks selected is what a drag grabs.
+    bool selectionCoversRow(TimelineLaneSelection? selection) =>
+        laneSelectionCoversBandRow(selection, layer.id, lane.laneId);
 
     List<Widget> markerChildren(TimelineLaneSelection? selection) => [
       // The lane-selection WASH (UI-R23 #3 part 2, the #4 style): a thin
