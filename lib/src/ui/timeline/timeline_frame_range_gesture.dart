@@ -12,6 +12,7 @@ import '../../models/timeline_frame_range.dart';
 import 'property_lane_model.dart';
 import 'timeline_block_move_handle.dart' show resolveBlockMoveTargetLayer;
 import 'timeline_exposure_comma_drag_policy.dart';
+import 'transform_lane_policy.dart' show laneSelectionCoversBandRow;
 
 /// Session-level hooks for the frame-range MOVE drag (UI-R8) — the grid
 /// resolves the pointer's row into [onUpdate]'s target layer before
@@ -463,9 +464,12 @@ class _TimelineLaneRangeGestureLayerState
   void _startDrag(Offset localPosition) {
     final frame = _frameAt(localPosition);
     final selection = widget.callbacks.selection.value;
+    // R26 #3 follow-up: the HEADER band counts as inside a whole-group
+    // selection, so one drag on it grabs every member lane's keys (user
+    // rule: "한번에 잡아 이동" — the shared band-row predicate).
     final insideSelection =
         selection != null &&
-        selection.coversLane(widget.layer.id, widget.laneId) &&
+        laneSelectionCoversBandRow(selection, widget.layer.id, widget.laneId) &&
         selection.contains(frame);
     if (insideSelection && widget.callbacks.onMoveBegin()) {
       _mode = _RangeDragMode.move;

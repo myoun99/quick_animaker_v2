@@ -81,6 +81,74 @@ void main() {
     });
   });
 
+  group('laneSelectionCoversBandRow (the shared paint+gesture predicate)', () {
+    const wholeGroup = TimelineLaneSelection(
+      layerId: LayerId('layer-a'),
+      laneId: 'transform-group',
+      startIndex: 0,
+      endIndexExclusive: 5,
+      laneIds: ['anchor-point', 'position', 'scale', 'rotation', 'opacity'],
+    );
+    const partial = TimelineLaneSelection(
+      layerId: LayerId('layer-a'),
+      laneId: 'position',
+      startIndex: 0,
+      endIndexExclusive: 5,
+      laneIds: ['position', 'scale'],
+    );
+
+    test('the header row counts as covered ONLY by a whole-group span '
+        '(so a header drag inside it MOVES — 한번에 잡아 이동)', () {
+      expect(
+        laneSelectionCoversBandRow(
+          wholeGroup,
+          const LayerId('layer-a'),
+          'transform-group',
+        ),
+        isTrue,
+      );
+      expect(
+        laneSelectionCoversBandRow(
+          partial,
+          const LayerId('layer-a'),
+          'transform-group',
+        ),
+        isFalse,
+      );
+      expect(
+        laneSelectionCoversBandRow(
+          wholeGroup,
+          const LayerId('layer-b'),
+          'transform-group',
+        ),
+        isFalse,
+      );
+      expect(
+        laneSelectionCoversBandRow(null, const LayerId('layer-a'), 'position'),
+        isFalse,
+      );
+    });
+
+    test('member rows keep reading the span directly', () {
+      expect(
+        laneSelectionCoversBandRow(
+          partial,
+          const LayerId('layer-a'),
+          'scale',
+        ),
+        isTrue,
+      );
+      expect(
+        laneSelectionCoversBandRow(
+          partial,
+          const LayerId('layer-a'),
+          'rotation',
+        ),
+        isFalse,
+      );
+    });
+  });
+
   group('transformTrackWithLaneSpanKeysShifted', () {
     TransformTrack track() => TransformTrack.properties(
       anchorPoint: PropertyTrack.empty(),

@@ -1048,17 +1048,30 @@ void main() {
     expect(layer().transformTrack.position.keys.keys.toSet(), {2});
     expect(layer().transformTrack.scale.keys.keys.toSet(), {3});
 
-    // The group HEADER as anchor selects the whole member group.
+    // The group HEADER as anchor selects the whole member group — and a
+    // move from that selection grabs EVERY member lane's keys at once
+    // (follow-up: 한번에 잡아 이동).
     s.updateLaneRangeSelectionDrag(
       layerId: a.id,
       laneId: 'transform-group',
       anchorIndex: 0,
-      headIndex: 2,
+      headIndex: 4,
     );
     expect(
       s.laneRangeSelection.value!.spanLaneIds,
       containsAll(['position', 'scale', 'rotation', 'opacity']),
     );
+    expect(s.beginLaneRangeMoveDrag(), isTrue);
+    s.updateLaneRangeMoveDrag(frameDelta: 3);
+    s.endLaneRangeMoveDrag();
+    expect(layer().transformTrack.position.keys.keys.toSet(), {5});
+    expect(layer().transformTrack.scale.keys.keys.toSet(), {6});
+    expect(
+      layer().transformTrack.rotation.keys.keys.toSet(),
+      {9},
+      reason: 'the rotation key at 9 sits outside the [0,5) range',
+    );
+    s.undo();
   });
 
   test('R26 #3: selecting ANOTHER layer\'s lane rows activates that layer; '
