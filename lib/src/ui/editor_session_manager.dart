@@ -105,6 +105,7 @@ import '../services/onion_skin_plan.dart';
 import '../services/persistence/project_autosave_service.dart';
 import '../services/persistence/qap_file_service.dart';
 import '../services/commands/cut_reorder_planner.dart';
+import '../native/qa_audio_native.dart' show QaAudioNative;
 import '../native/qa_audio_device.dart'
     show
         QaAudioDevice,
@@ -3338,6 +3339,7 @@ class EditorSessionManager extends ChangeNotifier {
   /// to the next one.
   int _voiceRecordGainDb = 0;
   VoiceInputChannelMode _voiceRecordChannelMode = VoiceInputChannelMode.device;
+  bool _voiceRecordDenoise = false;
   bool _lastVoiceTakeClipped = false;
 
   /// The transport's clip light (REC1-D): latches on the first post-gain
@@ -3755,6 +3757,26 @@ class EditorSessionManager extends ChangeNotifier {
   @visibleForTesting
   AudioRecorder Function()? debugVoiceRecorderFactory;
 
+  /// Test hook: stand in for the native RNNoise pass. Null result =
+  /// "declined, keep the raw take" — the same contract as the C.
+  @visibleForTesting
+  Float32List? Function(Float32List samples, int channels, int sampleRate)?
+  debugVoiceDenoiser;
+
+  /// RNNoise runs at exactly this rate; capture asks for it when the
+  /// suppression toggle is on, and the take conforms once on placement.
+  static const int voiceDenoiseCaptureRate = 48000;
+
+  static Float32List? _nativeVoiceDenoiser(
+    Float32List samples,
+    int channels,
+    int sampleRate,
+  ) => QaAudioNative.instance?.denoiseVoice(
+    samples: samples,
+    channels: channels,
+    sampleRate: sampleRate,
+  );
+
   /// The playing position on the TRACK-global axis, or null while
   /// playback is inactive. The all-cuts playlist IS the track axis
   /// (gaps included); the active-cut playlist is that cut alone, so its
@@ -3800,8 +3822,13 @@ class EditorSessionManager extends ChangeNotifier {
             device,
             audioSyncSettings.value.inputDeviceName,
           );
+    // Suppression captures at RNNoise's native 48 kHz; the take conforms
+    // ONCE on placement, like any imported rate.
+    final wantDenoise = audioSyncSettings.value.denoiseVoice;
     final rate = recorder.start(
-      sampleRate: audioConformStore.projectSampleRate,
+      sampleRate: wantDenoise
+          ? voiceDenoiseCaptureRate
+          : audioConformStore.projectSampleRate,
       deviceIndex: deviceIndex,
     );
     if (rate == 0) {
@@ -3850,6 +3877,9 @@ class EditorSessionManager extends ChangeNotifier {
       audioSyncSettings.value.micGainDb,
     );
     _voiceRecordChannelMode = audioSyncSettings.value.inputChannelMode;
+    // A device that refused 48 kHz records clean — RNNoise has no other
+    // rate, and a silently resampled pass would be a different promise.
+    _voiceRecordDenoise = wantDenoise && rate == voiceDenoiseCaptureRate;
     _lastVoiceTakeClipped = false;
     voiceRecordClipLit.value = false;
     // Live preview (REC1-C): the recorder's chunk tap feeds the growing
@@ -3992,6 +4022,7 @@ class EditorSessionManager extends ChangeNotifier {
       headTrimSamples: _voiceRecordHeadTrimSamples,
       gainDb: _voiceRecordGainDb,
       channelMode: _voiceRecordChannelMode,
+      denoise: _voiceRecordDenoise,
     );
     if (!placed) {
       return uiStrings.recordPlacementFailed;
@@ -4021,6 +4052,7 @@ class EditorSessionManager extends ChangeNotifier {
     int headTrimSamples = 0,
     int gainDb = 0,
     VoiceInputChannelMode channelMode = VoiceInputChannelMode.device,
+    bool denoise = false,
   }) {
     final lane = laneId == null ? null : trackSeGlobalLayerById(laneId);
     if (lane == null ||
@@ -4036,6 +4068,20 @@ class EditorSessionManager extends ChangeNotifier {
         return false; // Shorter than the run-up it rode on: nothing real.
       }
       samples = Float32List.sublistView(samples, trimFloats);
+    }
+    // Suppression first, on the trimmed raw capture (per channel, the
+    // OBS filter order) — the RNNoise round. A declined pass (no native
+    // engine, wrong rate) keeps the raw take: recording never fails
+    // because a denoiser is missing.
+    if (denoise) {
+      final suppressed = (debugVoiceDenoiser ?? _nativeVoiceDenoiser)(
+        samples,
+        recording.channels,
+        recording.sampleRate,
+      );
+      if (suppressed != null) {
+        samples = suppressed;
+      }
     }
     // The capture chain (REC1-D): channel fold + baked gain, applied to
     // the trimmed take — the file holds exactly what the meter showed.

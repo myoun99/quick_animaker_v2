@@ -45,6 +45,7 @@ class AppStrings {
     required this.audioInputChannelLeft,
     required this.audioInputChannelRight,
     required this.audioClippingNoticeLabel,
+    required this.audioDenoiseLabel,
     required this.audioInputMeterLabel,
     required this.audioTestSoundLabel,
     required this.audioCountInLabel,
@@ -142,6 +143,9 @@ class AppStrings {
   final String audioInputChannelLeft;
   final String audioInputChannelRight;
   final String audioClippingNoticeLabel;
+
+  /// The RNNoise toggle (voice-only by design: dialogue ON, foley OFF).
+  final String audioDenoiseLabel;
   final String audioInputMeterLabel;
   final String audioTestSoundLabel;
 
@@ -243,6 +247,7 @@ class AppStrings {
     audioInputChannelLeft: 'Left only',
     audioInputChannelRight: 'Right only',
     audioClippingNoticeLabel: 'Clipping warnings (toast + block marker)',
+    audioDenoiseLabel: 'Noise suppression (voice only — turn off for foley)',
     audioInputMeterLabel: 'Input level',
     audioTestSoundLabel: 'Test sound',
     audioCountInLabel: 'Count-in (seconds)',
@@ -339,6 +344,7 @@ class AppStrings {
     audioInputChannelLeft: '左のみ',
     audioInputChannelRight: '右のみ',
     audioClippingNoticeLabel: 'クリッピング警告（トースト＋ブロックマーカー）',
+    audioDenoiseLabel: 'ノイズ抑制（音声専用 — 効果音はオフに）',
     audioInputMeterLabel: '入力レベル',
     audioTestSoundLabel: 'テスト音を再生',
     audioCountInLabel: 'カウントイン（秒）',
@@ -433,6 +439,7 @@ class AppStrings {
     audioInputChannelLeft: '왼쪽만',
     audioInputChannelRight: '오른쪽만',
     audioClippingNoticeLabel: '클리핑 주의 안내(토스트+블록 마커)',
+    audioDenoiseLabel: '잡음 제거(음성 전용 — 효과음 녹음 시 끄기)',
     audioInputMeterLabel: '입력 레벨',
     audioTestSoundLabel: '테스트 사운드',
     audioCountInLabel: '카운트인(초)',
@@ -533,6 +540,7 @@ class AppStrings {
     audioInputChannelLeft: 'Gauche seul',
     audioInputChannelRight: 'Droit seul',
     audioClippingNoticeLabel: 'Alertes de saturation (toast + marqueur)',
+    audioDenoiseLabel: 'Réduction de bruit (voix — désactiver pour le bruitage)',
     audioInputMeterLabel: 'Niveau d\'entrée',
     audioTestSoundLabel: 'Son de test',
     audioCountInLabel: 'Décompte (secondes)',
@@ -630,6 +638,7 @@ class AppStrings {
     audioInputChannelLeft: '仅左声道',
     audioInputChannelRight: '仅右声道',
     audioClippingNoticeLabel: '削波警告（提示+块标记）',
+    audioDenoiseLabel: '降噪（仅人声 — 录拟音时请关闭）',
     audioInputMeterLabel: '输入电平',
     audioTestSoundLabel: '测试声音',
     audioCountInLabel: '倒数（秒）',

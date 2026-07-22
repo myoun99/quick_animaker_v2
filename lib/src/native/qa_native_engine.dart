@@ -43,7 +43,9 @@ class QaNativeEngine {
   // v21: EX4 extended the video-export surface + added the JPG encoder.
   // v22: BB-N1 added the stroke-blend tile kernel (the once-per-stroke
   // brush blend) and the alpha-bounds tile scan.
-  static const int _abiVersion = 22;
+  // v23: the RNNoise round added qa_audio_denoise_f32 (voice-take
+  // suppression); the raster surface is unchanged.
+  static const int _abiVersion = 23;
 
   /// The ABI this build expects — surfaced by the runtime-path report
   /// (Preferences > System) so a user can see which engine generation
