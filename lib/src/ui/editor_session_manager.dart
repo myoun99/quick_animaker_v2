@@ -9,6 +9,7 @@ import '../models/app_language.dart';
 import '../services/persistence/app_language_settings_store.dart';
 import '../services/persistence/app_accent_settings_store.dart';
 import '../services/persistence/app_input_settings_store.dart';
+import '../services/persistence/app_documents.dart' show appRecordingsDirectory;
 import '../services/persistence/app_save_settings.dart';
 import '../services/persistence/app_save_settings_store.dart';
 import '../services/persistence/audio_sync_settings_store.dart';
@@ -90,6 +91,7 @@ import '../models/multi_row_range_move.dart';
 import '../services/command.dart';
 import '../services/commands/cut_command_coordinator.dart';
 import '../services/commands/rekey_brush_frames_command.dart';
+import '../services/commands/relink_media_asset_command.dart';
 import '../services/commands/update_cut_camera_command.dart';
 import '../services/commands/update_layer_fill_reference_command.dart';
 import '../services/commands/update_layer_instructions_command.dart';
@@ -3319,7 +3321,16 @@ class EditorSessionManager extends ChangeNotifier {
   int? _voiceRecordPunchEndFrame;
   int _voiceRecordHeadTrimSamples = 0;
   bool _voiceRecordStartedRoll = false;
-  String? _voiceRecordTempDirectory;
+
+  /// REC1-B2: the take shelf for a never-saved project — pinned at the
+  /// first take so a mid-session settings change never scatters one
+  /// session's takes across folders.
+  String? _voiceRecordShelfDirectory;
+
+  /// Every WAV this session recorded onto the shelf. The FIRST save
+  /// adopts the still-referenced ones into `Media/`; undone takes stay
+  /// on the shelf, findable.
+  final Set<String> _voiceRecordShelfPaths = <String>{};
 
   /// Capture-chain settings SNAPSHOT at arm time (REC1-D): a take records
   /// with the gain/fold it started under; mid-take settings edits apply
@@ -4119,21 +4130,21 @@ class EditorSessionManager extends ChangeNotifier {
     return FrameId(_nextFrameId(layerId));
   }
 
-  /// Writes a take's WAV under the project's `Media/` folder (a session
-  /// temp folder when the project was never saved — the same degrade as
-  /// an import) and returns its path, or null when even that failed.
+  /// Writes a take's WAV under the project's `Media/` folder (the visible
+  /// Recordings shelf when the project was never saved — REC1-B2, no
+  /// hidden OS temp) and returns its path, or null when even that failed.
   ///
   /// Named `<lane>_T<n>.wav` (REC1-B): the recording-session convention —
-  /// the pool line alone says whose take it is and which pass.
+  /// the pool line alone says whose take it is and which pass. On the
+  /// shelf the walk continues past earlier sessions' takes.
   String? _writeRecordingWav(Uint8List bytes, {required String laneName}) {
     final base = laneName.replaceAll(RegExp(r'[\\/:*?"<>|.\s]+'), '_');
     final safeBase = base.isEmpty ? 'REC' : base;
     try {
       final projectPath = _projectFilePath;
-      final directory = projectPath == null
-          ? (_voiceRecordTempDirectory ??= Directory.systemTemp
-                .createTempSync('qa_recording_')
-                .path)
+      final onShelf = projectPath == null;
+      final directory = onShelf
+          ? (_voiceRecordShelfDirectory ??= appRecordingsDirectory())
           : ProjectAssetLayout(projectPath).mediaDirectory;
       Directory(directory).createSync(recursive: true);
       for (var take = 1; take < 10000; take += 1) {
@@ -4142,12 +4153,86 @@ class EditorSessionManager extends ChangeNotifier {
         );
         if (!file.existsSync()) {
           file.writeAsBytesSync(bytes);
+          if (onShelf) {
+            _voiceRecordShelfPaths.add(file.path);
+          }
           return file.path;
         }
       }
       return null;
     } on Object {
       return null; // Full disk, permissions: the take reports, not crashes.
+    }
+  }
+
+  /// REC1-B2: the FIRST save adopts this session's shelf takes — every
+  /// still-referenced WAV recorded before the project had a home MOVES
+  /// into the new project's `Media/`, and the pool entry plus every clip
+  /// follow via the relink transform, applied OUTSIDE undo history
+  /// (saving is not an edit). Undone takes stay on the shelf. Returns
+  /// the new paths so the caller can refresh conforms once the project
+  /// path is set.
+  List<String> _adoptShelfTakesForSave(String projectFilePath) {
+    if (_projectFilePath != null || _voiceRecordShelfPaths.isEmpty) {
+      return const [];
+    }
+    final mediaDirectory = ProjectAssetLayout(projectFilePath).mediaDirectory;
+    final referenced = {for (final asset in mediaAssets) asset.path};
+    final adopted = <String>[];
+    for (final oldPath in _voiceRecordShelfPaths) {
+      if (!referenced.contains(oldPath)) {
+        continue;
+      }
+      final newPath = _moveTakeIntoDirectory(oldPath, mediaDirectory);
+      if (newPath == null) {
+        continue; // The reference still plays from the shelf.
+      }
+      RelinkMediaAssetCommand(
+        repository: _repository,
+        oldPath: oldPath,
+        newPath: newPath,
+      ).execute();
+      audioConformStore.invalidate(oldPath);
+      adopted.add(newPath);
+    }
+    _voiceRecordShelfPaths.clear();
+    _voiceRecordShelfDirectory = null;
+    return adopted;
+  }
+
+  /// Moves a shelf take into [directory] under a collision-walked name.
+  /// A custom shelf may sit on another volume, where rename fails —
+  /// copy-then-retire covers that.
+  String? _moveTakeIntoDirectory(String sourcePath, String directory) {
+    try {
+      final source = File(sourcePath);
+      if (!source.existsSync()) {
+        return null;
+      }
+      Directory(directory).createSync(recursive: true);
+      final normalized = sourcePath.replaceAll('\\', '/');
+      final name = normalized.substring(normalized.lastIndexOf('/') + 1);
+      final dot = name.lastIndexOf('.');
+      final stem = dot <= 0 ? name : name.substring(0, dot);
+      final extension = dot <= 0 ? '' : name.substring(dot);
+      for (var index = 0; index < 10000; index += 1) {
+        final candidate = index == 0
+            ? '$directory/$name'
+            : '$directory/$stem-$index$extension';
+        if (File(candidate).existsSync()) {
+          continue;
+        }
+        try {
+          source.renameSync(candidate);
+        } on FileSystemException {
+          source.copySync(candidate);
+          source.deleteSync();
+        }
+        return candidate;
+      }
+      return null;
+    } on Object {
+      return null; // The save must not die on a shelf move.
     }
   }
 
@@ -8514,6 +8599,9 @@ class EditorSessionManager extends ChangeNotifier {
   /// autosave sidecar.
   Future<void> saveProjectToFile(String filePath) async {
     final previousSidecar = autosaveSidecarPath;
+    // Before serializing: the first save adopts the session's shelf
+    // takes into Media/ so the .qap carries the adopted paths.
+    final adoptedTakePaths = _adoptShelfTakesForSave(filePath);
     await _qapFileService.save(
       project: _repository.requireProject(),
       brushFrameStore: brushFrameStore,
@@ -8521,6 +8609,14 @@ class EditorSessionManager extends ChangeNotifier {
     );
     _projectFilePath = filePath;
     _hasUnsavedChanges = false;
+    if (adoptedTakePaths.isNotEmpty) {
+      // With the project path set, conforms resolve into the new
+      // `.assets` container — refresh the moved takes there.
+      for (final path in adoptedTakePaths) {
+        audioConformStore.invalidate(path);
+      }
+      audioConformStore.warmPaths(adoptedTakePaths);
+    }
     // Awaited: a still-in-flight delete could otherwise race a following
     // autosave tick and eat its fresh sidecar. EVERY candidate location
     // retires (the sidecar-directory setting may have moved since the
@@ -8551,6 +8647,10 @@ class EditorSessionManager extends ChangeNotifier {
     _layerClipboard = null;
     _editingSession.setActiveCutId(result.project.tracks.first.cuts.first.id);
     _rebuildActiveCutControllers();
+    // The replaced project's shelf takes are no longer this session's to
+    // adopt — they stay on the shelf, findable.
+    _voiceRecordShelfPaths.clear();
+    _voiceRecordShelfDirectory = null;
     _projectFilePath = recoverAs ?? filePath;
     _warmAudioConforms();
     // A recovered session stays dirty: its content differs from the real
