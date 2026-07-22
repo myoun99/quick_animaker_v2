@@ -27,7 +27,7 @@ import 'playback/canvas_scrub_preview.dart';
 import 'storyboard_cut_fade_policy.dart' show cutFadeTargetColor;
 import 'text/app_strings.dart';
 import 'timeline/layer_label_controls.dart';
-import 'timeline/timeline_section_policy.dart';
+import '../models/layer_kind.dart' show layerKindAcceptsBrushInput;
 import 'widgets/cursor_notice.dart';
 import 'timeline/transform_lane_editing.dart';
 
@@ -212,13 +212,14 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
       session.languageSettings.value.programLanguage,
     );
     final activeLayer = session.activeLayer;
+    // R27 #16: the question is whether THIS LAYER takes strokes, not
+    // which section it sits in — the CAM section is no longer uniformly
+    // undrawable in the user's model, so the refusal names the layer.
     final drawable =
-        activeLayer != null &&
-        timelineSectionForLayerKind(activeLayer.kind) ==
-            TimelineSection.drawing;
+        activeLayer != null && layerKindAcceptsBrushInput(activeLayer.kind);
     return drawable
         ? strings.noticeNoFrameHere
-        : strings.noticeActionSectionOnly;
+        : strings.noticeLayerNotDrawable;
   }
 
   Widget _buildInteractiveCanvas(

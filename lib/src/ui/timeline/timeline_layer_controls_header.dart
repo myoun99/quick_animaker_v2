@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../../models/app_language.dart' show AppLanguage;
+import '../../models/layer_blend_mode.dart';
 import '../../models/layer_id.dart';
 import '../../models/layer_kind.dart';
 import '../../models/layer_mark.dart';
@@ -37,6 +39,7 @@ class LayerLegendCallbacks {
     required this.onCommitLayersOpacity,
     this.onToggleOnionSkinForDisplayed,
     this.onRevealOnionSkinPanel,
+    this.onSetBlendModeForDisplayed,
   });
 
   final VoidCallback onShowAllLayers;
@@ -74,6 +77,12 @@ class LayerLegendCallbacks {
   /// the panel flashes in place). Null hides the onion legend cell.
   final VoidCallback? onToggleOnionSkinForDisplayed;
   final VoidCallback? onRevealOnionSkinPanel;
+
+  /// R27 #6: the BLEND column's bulk command — the master opacity bar's
+  /// rule applied to the mode: one pick sets every DISPLAYED row that
+  /// composites (the same [displayedLayerIds] set the opacity bar drags).
+  final void Function(Set<LayerId> layerIds, LayerBlendMode mode)?
+  onSetBlendModeForDisplayed;
 }
 
 /// The rail header cell, reborn as the LEGEND (R-toolbar round): the wide
@@ -100,7 +109,11 @@ class TimelineLayerControlsHeader extends StatelessWidget {
     this.displayedOpacity = 1.0,
     this.displayedOnionSkinOn = false,
     this.showRowSolos = true,
+    this.blendLanguage = AppLanguage.en,
   });
+
+  /// PROGRAM language for the blend column's mode names (R27 #6).
+  final AppLanguage blendLanguage;
 
   final TimelineGridMetrics metrics;
 
@@ -596,6 +609,40 @@ class TimelineLayerControlsHeader extends StatelessWidget {
                       tooltip: 'Opacity column',
                       child: Text(
                         'OPAC',
+                        style: TextStyle(
+                          fontSize: 8.5,
+                          letterSpacing: 0.6,
+                          fontWeight: FontWeight.w600,
+                          color: colorScheme.onSurfaceVariant,
+                        ),
+                      ),
+                    ),
+                  // R27 #6: the BLEND column header — one pick applies the
+                  // mode to every displayed compositing row, the master
+                  // opacity bar's logic in a flyout. Hosts without the
+                  // bulk callback (the storyboard rail) skip the CELL so
+                  // their row columns stay aligned (the onion precedent).
+                  if (legend?.onSetBlendModeForDisplayed != null &&
+                      displayedLayerIds != null)
+                    cell(
+                      keyValue: 'legend-blend',
+                      width: layerBlendSlotWidth,
+                      tooltip: 'Blend mode column',
+                      entriesBuilder: () => [
+                        const PanelFlyoutHeader('All displayed layers'),
+                        for (final mode in LayerBlendMode.values)
+                          PanelFlyoutItem(
+                            keyValue: 'legend-blend-${mode.name}',
+                            label: mode.labelFor(blendLanguage),
+                            onSelected: () =>
+                                legend!.onSetBlendModeForDisplayed!(
+                                  displayedLayerIds!(),
+                                  mode,
+                                ),
+                          ),
+                      ],
+                      child: Text(
+                        'BLND',
                         style: TextStyle(
                           fontSize: 8.5,
                           letterSpacing: 0.6,

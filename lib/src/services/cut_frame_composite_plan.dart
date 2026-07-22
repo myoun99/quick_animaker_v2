@@ -134,7 +134,12 @@ class CutFrameCompositeEntry {
 /// opacity × its animated Opacity sample), and the folder poses to apply
 /// outermost-first. Folder FX lanes are per-use ("레인만 각자") — this
 /// resolves THIS cut's folder table.
-({bool visible, double opacityFactor, List<LayerPoseSample> poses})
+({
+  bool visible,
+  double opacityFactor,
+  LayerBlendMode blendMode,
+  List<LayerPoseSample> poses,
+})
 resolveFolderChainAt({
   required Cut cut,
   required Layer layer,
@@ -142,15 +147,33 @@ resolveFolderChainAt({
 }) {
   final chain = cut.folders.ancestryOf(layer.folderId);
   if (chain.isEmpty) {
-    return (visible: true, opacityFactor: 1.0, poses: const []);
+    return (
+      visible: true,
+      opacityFactor: 1.0,
+      blendMode: LayerBlendMode.normal,
+      poses: const [],
+    );
   }
   var opacityFactor = 1.0;
+  // R27 #29: the nearest folder that actually sets a blend wins for the
+  // members below it. v1 limitation, shared with folder OPACITY since
+  // L3: the mode rides each member's own composite draw rather than a
+  // folder-wide saveLayer, so overlapping members blend individually.
+  var chainBlend = LayerBlendMode.normal;
   final poses = <LayerPoseSample>[];
   // ancestryOf is nearest-first; walk reversed so poses apply outermost
   // first (the outer folder moves the inner one too).
   for (final folder in chain.reversed) {
     if (!folder.isVisible) {
-      return (visible: false, opacityFactor: 0.0, poses: const []);
+      return (
+        visible: false,
+        opacityFactor: 0.0,
+        blendMode: LayerBlendMode.normal,
+        poses: const [],
+      );
+    }
+    if (folder.blendMode != LayerBlendMode.normal) {
+      chainBlend = folder.blendMode;
     }
     opacityFactor *=
         (folder.opacity *
@@ -175,6 +198,7 @@ resolveFolderChainAt({
   return (
     visible: true,
     opacityFactor: opacityFactor,
+    blendMode: chainBlend,
     poses: List.unmodifiable(poses),
   );
 }
@@ -315,8 +339,11 @@ List<CutFrameCompositeEntry> resolveCutFrameCompositeEntries({
         frame: frame,
         opacity: opacity,
         // The blend is the ROW's own (attach rows keep theirs — their
-        // pixels are independent even when timing rides the base).
-        blendMode: layer.blendMode,
+        // pixels are independent even when timing rides the base); a
+        // member that sets none inherits its folder's (R27 #29).
+        blendMode: layer.blendMode == LayerBlendMode.normal
+            ? folderChain.blendMode
+            : layer.blendMode,
         pose: combined?.pose,
         anchorPoint: combined?.anchorPoint,
       ),

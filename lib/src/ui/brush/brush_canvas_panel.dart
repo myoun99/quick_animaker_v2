@@ -304,7 +304,47 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel> {
     return _altHeld && canvasToolPaints(tool) && widget.onAltColorPick != null;
   }
 
+  /// R27 #17: the last pointer position seen on the canvas — hovers AND
+  /// button-held moves alike.
+  ///
+  /// The eyedropper's icon and swatch only appeared once a fresh hover
+  /// event reached their tracker. Entering the tool from a HELD button
+  /// (the pen's barrel / right-click mapping) captures the pointer at the
+  /// press, so no hover ever arrives — leaving the system cursor hidden
+  /// (the tracker's `MouseCursor.none` is mounted regardless) and nothing
+  /// drawn in its place: the "커서가 사라짐" report. Seeding from here on
+  /// the first frame the cursor arms gives the icon somewhere to be.
+  Offset? _lastCanvasPointer;
+
+  /// Guards the seeding to once per arming.
+  bool _eyedropperHoverSeeded = false;
+
+  void _noteCanvasPointer(Offset localPosition) {
+    _lastCanvasPointer = localPosition;
+  }
+
+  void _seedEyedropperHoverIfNeeded() {
+    if (!_eyedropperCursorActive) {
+      _eyedropperHoverSeeded = false;
+      return;
+    }
+    if (_eyedropperHoverSeeded || _eyedropperHover.value != null) {
+      return;
+    }
+    final position = _lastCanvasPointer;
+    if (position == null) {
+      return;
+    }
+    _eyedropperHoverSeeded = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted && _eyedropperCursorActive && _eyedropperHover.value == null) {
+        _updateEyedropperHover(position);
+      }
+    });
+  }
+
   void _updateEyedropperHover(Offset localPosition) {
+    _noteCanvasPointer(localPosition);
     final sample = widget.sampleColorAt;
     if (sample == null) {
       return;
@@ -494,6 +534,8 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel> {
       _viewport = widget.viewport!;
       _lastWidgetViewport = widget.viewport;
     }
+    // R27 #17: a cursor that armed mid-gesture gets a starting position.
+    _seedEyedropperHoverIfNeeded();
 
     return Padding(
       key: const ValueKey<String>('brush-canvas-panel'),
@@ -563,7 +605,20 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel> {
                       // Nothing drawn in the viewport (canvas, playback
                       // frames, camera overlay) may paint outside the panel.
                       child: ClipRect(
-                        child:
+                        // R27 #17: a passive census of where the pointer
+                        // is — button-held moves included — so a cursor
+                        // that arms mid-gesture knows where to appear.
+                        // Translucent and handler-only: it consumes
+                        // nothing.
+                        child: Listener(
+                          behavior: HitTestBehavior.translucent,
+                          onPointerHover: (event) =>
+                              _noteCanvasPointer(event.localPosition),
+                          onPointerDown: (event) =>
+                              _noteCanvasPointer(event.localPosition),
+                          onPointerMove: (event) =>
+                              _noteCanvasPointer(event.localPosition),
+                          child:
                             overlayBuilder == null &&
                                 underlayBuilder == null &&
                                 _toolTapHandler() == null &&
@@ -839,6 +894,7 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel> {
                                     ),
                                 ],
                               ),
+                        ),
                       ),
                     );
                   }

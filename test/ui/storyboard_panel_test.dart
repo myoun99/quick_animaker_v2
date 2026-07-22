@@ -268,7 +268,7 @@ void main() {
       find.byKey(const ValueKey<String>('storyboard-cut-total-cut-a')),
       findsOneWidget,
     );
-    expect(find.text('24f'), findsOneWidget);
+    expect(find.text('24'), findsOneWidget);
     expect(
       find.byKey(const ValueKey<String>('storyboard-layer-empty-cut-a')),
       findsOneWidget,
@@ -306,12 +306,12 @@ void main() {
       find.byKey(const ValueKey<String>('storyboard-cut-total-cut-short')),
       findsOneWidget,
     );
-    expect(find.text('12f'), findsOneWidget);
+    expect(find.text('12'), findsOneWidget);
     expect(
       find.byKey(const ValueKey<String>('storyboard-cut-total-cut-long')),
       findsOneWidget,
     );
-    expect(find.text('48f'), findsOneWidget);
+    expect(find.text('48'), findsOneWidget);
   });
 
   testWidgets('tapping inactive cut block calls onCutSelected with cut id', (

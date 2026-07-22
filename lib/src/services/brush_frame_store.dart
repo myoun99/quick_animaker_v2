@@ -2,6 +2,8 @@ import 'dart:io';
 import 'dart:typed_data';
 import 'dart:isolate';
 
+import 'package:flutter/foundation.dart' show ValueNotifier;
+
 import '../models/bitmap_surface.dart';
 import '../models/canvas_size.dart';
 import '../models/brush_frame_display_cache.dart';
@@ -38,6 +40,34 @@ class BrushFrameStore {
   }
 
   final Map<BrushFrameKey, BrushFrameDrawingState> _frames = {};
+
+  /// R27 #13: bumps whenever a cel crosses the EMPTY ↔ has-picture line.
+  ///
+  /// The timeline's "no picture yet" tint reads [celHasRenderableContent],
+  /// which flips on the first committed stroke — but nothing told the
+  /// timeline to look again, so the tint sat there until some unrelated
+  /// rebuild (switching layers) came along. Only the CROSSING bumps, so a
+  /// stroke on an already-drawn cel costs nothing.
+  final ValueNotifier<int> celContentRevision = ValueNotifier<int>(0);
+
+  /// Keys last seen holding a picture — the crossing detector's memory.
+  final Set<BrushFrameKey> _celsWithContent = {};
+
+  void _noteCelContent(BrushFrameKey canonicalKey) {
+    final has = _bakedSurfaces.containsKey(canonicalKey) ||
+        _coldCels.containsKey(canonicalKey) ||
+        _fileCels.containsKey(canonicalKey);
+    final had = _celsWithContent.contains(canonicalKey);
+    if (has == had) {
+      return;
+    }
+    if (has) {
+      _celsWithContent.add(canonicalKey);
+    } else {
+      _celsWithContent.remove(canonicalKey);
+    }
+    celContentRevision.value += 1;
+  }
 
   /// Derived preview caches. NOT byte-budgeted (R19 P3a): every donated or
   /// baked-seeded entry ALIASES the cel's [_bakedSurfaces] truth (the same
@@ -203,6 +233,7 @@ class BrushFrameStore {
       _hotBytes -= estimate;
     }
     _dirtySinceSave.add(key);
+    _noteCelContent(key);
   }
 
   /// Stores [surface] as the cel's baked truth (commit donations and
@@ -228,6 +259,7 @@ class BrushFrameStore {
     _fileCels.remove(key);
     _storeHot(key, surface);
     _dirtySinceSave.add(key);
+    _noteCelContent(key);
     _scheduleCooling();
   }
 
@@ -259,6 +291,12 @@ class BrushFrameStore {
     _hotBytes = 0;
     _coldBytes = 0;
     _dirtySinceSave.clear();
+    // R27 #13: a whole-store swap (project open) is one crossing for
+    // every cel there was — one bump covers the lot.
+    if (_celsWithContent.isNotEmpty) {
+      _celsWithContent.clear();
+      celContentRevision.value += 1;
+    }
   }
 
   /// Replaces the WHOLE store with loaded cels as COLD-RAM blobs (tests
@@ -272,6 +310,7 @@ class BrushFrameStore {
       );
       _coldCels[entry.key] = entry.value;
       _coldBytes += entry.value.bytes.length;
+      _noteCelContent(entry.key);
     }
   }
 
@@ -286,6 +325,7 @@ class BrushFrameStore {
         sourceRevision: 1,
       );
       _fileCels[entry.key] = entry.value;
+      _noteCelContent(entry.key);
     }
   }
 

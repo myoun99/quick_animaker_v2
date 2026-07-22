@@ -7,6 +7,7 @@ import 'package:quick_animaker_v2/src/controllers/default_cut_helpers.dart';
 import 'package:quick_animaker_v2/src/models/canvas_size.dart';
 import 'package:quick_animaker_v2/src/models/cut.dart';
 import 'package:quick_animaker_v2/src/models/cut_id.dart';
+import 'package:quick_animaker_v2/src/models/export_spec.dart';
 import 'package:quick_animaker_v2/src/models/frame.dart';
 import 'package:quick_animaker_v2/src/models/frame_id.dart';
 import 'package:quick_animaker_v2/src/models/layer.dart';
@@ -209,6 +210,26 @@ void main() {
   }
 
   group('shell', () {
+    testWidgets('R27 #31: the window OPENS while the playhead is parked in a '
+        'gap — no active cut is a position, not a crash', (tester) async {
+      final session = exportSession();
+      // Park in the leading gap by seeking a global frame the axis has no
+      // cut for: the session deselects the cut (UI-R9 #3 gap state).
+      session.selectGlobalFrame(500);
+      expect(session.activeCutOrNull, isNull);
+      expect(session.exportAnchorIsFallback, isTrue);
+
+      final state = await pumpDialog(tester, session);
+      expect(tester.takeException(), isNull);
+      expect(
+        find.byKey(const ValueKey<String>('export-dialog-no-cuts')),
+        findsNothing,
+      );
+      // Gap-anchored windows open PROJECT-scoped: "active cut" would name
+      // a cut the user is not standing on.
+      expect(state.debugSpecs.sequence.scope, ExportScopeKind.project);
+    });
+
     testWidgets('export stays disabled until a location is chosen',
         (tester) async {
       await pumpDialog(tester, exportSession());

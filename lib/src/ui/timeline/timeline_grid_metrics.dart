@@ -11,7 +11,10 @@ class TimelineGridMetrics {
     // controls need the width, cramming them under 288 overflowed.
     // 312 → 340 → 372: wider layer-name column (UI-R3 #8, UI-R4 #9; the
     // R4 hop also absorbs the legend's new kind cell).
-    this.layerControlsWidth = 372,
+    // 372 → 434 (R27 #6): the blend-mode dropdown moved from the toolbar
+    // into the label's rightmost slot — the rail pays its width, as the
+    // user directed ("레이어라벨 더 키워야겟지").
+    this.layerControlsWidth = 434,
     // 48×52 → 24×28 (R-toolbar slim round, CSP/TVPaint density): the frame
     // shell reads twice as many cells and rows in the same viewport.
     this.frameCellWidth = 24,

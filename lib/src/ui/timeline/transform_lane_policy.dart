@@ -5,6 +5,7 @@ import '../../models/folder_id.dart';
 import '../../models/layer_id.dart';
 import '../../models/property_track.dart';
 import '../../models/timeline_frame_range.dart' show TimelineLaneSelection;
+import '../../models/key_range_move.dart' show transformKeyFrameUnion;
 import '../../models/transform_track.dart';
 import 'property_lane_model.dart';
 
@@ -196,14 +197,22 @@ String folderLaneId(FolderId folderId, String base) =>
   );
 }
 
-/// The folder's Transform lanes under its header row (no group header —
-/// the folder row itself is the group). Value columns arrive later;
-/// the key diamonds and hold squares are the editing surface.
+/// The folder's Transform lanes under its header row.
+///
+/// R27 #26: the LAYER's lane grammar, verbatim — a Transform GROUP header
+/// with the properties nested under it, not a bare Anchor Point row
+/// hanging off the folder ("이런 fx시스템은 다른 레이어시스템 그대로
+/// 정확히 그대로 재사용"). The folder's fx button is what opens the
+/// group, so the header's own twirl reads expanded.
 List<PropertyLaneRow> folderTransformPropertyLanes(
   FolderId folderId,
   TransformTrack track,
 ) {
   return [
+    transformGroupHeader(
+      expanded: true,
+      keyedFrames: transformKeyFrameUnion(track),
+    ),
     _lane(
       folderLaneId(folderId, 'anchor-point'),
       'Anchor Point',

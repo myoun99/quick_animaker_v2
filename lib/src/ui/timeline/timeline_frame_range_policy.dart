@@ -55,6 +55,17 @@ String timelineSecondsLabel(int frames, int fps) {
   return '$seconds+${leftover.toString().padLeft(2, '0')}';
 }
 
+/// R27 #3: the ONE duration readout every block-length label prints —
+/// seconds+frames under the seconds toggle, otherwise the bare frame
+/// COUNT. No `f` suffix: the column reads as numbers (user: "프레임이라고
+/// 해서 뒤에 f붙이지마. 그냥 숫자만"), and the timeline and the storyboard
+/// must not drift apart on that.
+String timelineDurationLabel(
+  int frames, {
+  required bool showSeconds,
+  required int countingBase,
+}) => showSeconds ? timelineSecondsLabel(frames, countingBase) : '$frames';
+
 /// The endless frame axis' contract (UI-R12 #16, unifying the timeline,
 /// the X-sheet and the storyboard): cells exist exactly because they are
 /// (or were) VISIBLE — the rendered extent covers the scrolled view end

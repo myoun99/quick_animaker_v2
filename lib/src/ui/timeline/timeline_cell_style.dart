@@ -23,14 +23,27 @@ const Color timelineDrawingStartBorderColor = AppColors.hairlineStrong;
 /// LIVE accent read (UI-R22 #5): the selection ink follows accent 1.
 Color get timelineSelectedFrameBorderColor => AppColors.accent;
 
+/// R27 #14: the ONE range-selection band — cells and property lanes draw
+/// exactly this, so a key span cannot read as a different kind of
+/// selection than a cell span ("다른 프레임셀선택이랑 완전동일화").
+/// Non-const because the accent is live (UI-R22 #5).
+BoxDecoration get timelineRangeSelectionBandDecoration => BoxDecoration(
+  color: timelineSelectedFrameBorderColor.withValues(alpha: 0.18),
+  border: Border.all(color: timelineSelectedFrameBorderColor, width: 2),
+  borderRadius: const BorderRadius.all(Radius.circular(6)),
+);
+
 /// Ink for glyphs (frame names, marks) sitting on the near-white drawing
 /// blocks; the usual light on-surface text would vanish there.
 const Color timelineDrawingInkColor = Color(0xFF26282B);
 
-/// R26 #44: ACTION-section blocks whose cel holds NO picture yet paint a
-/// slightly grayed paper, so unworked cels read at a glance. The whole
-/// covered run (start + held cells) takes it; other sections never do.
-const Color timelineEmptyCelBlockColor = Color(0xFFD7D5D0);
+/// R26 #44 / R27 #13: ACTION-section blocks whose cel holds NO picture
+/// yet read as the paper at LOW OPACITY — the user's ask ("흰색에서 그냥
+/// 불투명도 낮추는 느낌… 투명감나게"). Against the dark lane the alpha
+/// resolves to a distinctly greyer, see-through paper, which the old
+/// near-white 0xFFD7D5D0 never managed. Painting a translucent colour
+/// costs the same as an opaque one, so this stays free.
+const Color timelineEmptyCelBlockColor = Color(0x6EE9E7E2);
 
 /// The PLAIN (non-block) frame grid's border alpha (UI-R14 #4): ONE
 /// faint value for every surface — the painterized drawing rows, the

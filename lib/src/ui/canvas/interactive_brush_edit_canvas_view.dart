@@ -593,6 +593,12 @@ class _InteractiveBrushEditCanvasViewState
   }
 
   void _handlePointerMove(PointerMoveEvent event) {
+    // R27 #17: a mapped button can also rise DURING contact — some pen
+    // drivers report the barrel bit a moment after the tip lands rather
+    // than on the down event, and the hover edge above never sees it
+    // then. Only picked up while nothing is drawing yet, so a live
+    // stroke is never hijacked mid-line.
+    _handleMappedButtonRiseDuringContact(event);
     // A held eyedropper mapping picks LIVE along the whole drag (PEN-7a:
     // '누르는 동안 해당 색을 뽑는다').
     if (event.pointer == _mappedHoldPointer && _mappedHoldIsEyedropper) {
@@ -737,6 +743,7 @@ class _InteractiveBrushEditCanvasViewState
   }
 
   void _handlePointerUp(PointerUpEvent event) {
+    _lastContactButtons.remove(event.pointer);
     _forgetTouchPointer(event.pointer);
     _releaseMappedHold(event.pointer);
     if (event.pointer != _activeDrawingPointer) {
@@ -837,6 +844,7 @@ class _InteractiveBrushEditCanvasViewState
   }
 
   void _handlePointerCancel(PointerCancelEvent event) {
+    _lastContactButtons.remove(event.pointer);
     _forgetTouchPointer(event.pointer);
     _releaseMappedHold(event.pointer);
     if (event.pointer != _activeDrawingPointer) {
@@ -941,6 +949,45 @@ class _InteractiveBrushEditCanvasViewState
           CanvasPointerAction.pan ||
           CanvasPointerAction.none:
         break;
+    }
+  }
+
+  /// Buttons last seen on a CONTACT event, per pointer — the in-contact
+  /// counterpart of [_lastHoverButtons] (R27 #17).
+  final Map<int, int> _lastContactButtons = {};
+
+  void _handleMappedButtonRiseDuringContact(PointerMoveEvent event) {
+    if (event.kind == PointerDeviceKind.touch) {
+      return;
+    }
+    final previous = _lastContactButtons[event.pointer] ?? 0;
+    final pressed = event.buttons & ~previous;
+    _lastContactButtons[event.pointer] = event.buttons;
+    if (pressed == 0 ||
+        _mappedHoldPointer != null ||
+        _hoverToolHoldActive ||
+        _activeDrawingPointer != null) {
+      return;
+    }
+    final settings = AppInput.settings.value;
+    final CanvasPointerMapping mapping;
+    if ((pressed & kSecondaryButton) != 0) {
+      mapping = settings.canvasRightClick;
+    } else if ((pressed & kTertiaryButton) != 0) {
+      mapping = settings.canvasWheelClick;
+    } else {
+      return;
+    }
+    if (mapping.action != CanvasPointerAction.eyedropper) {
+      return;
+    }
+    _mappedHoldPointer = event.pointer;
+    _mappedHoldRelease = mapping.release;
+    _mappedHoldIsEyedropper = true;
+    widget.onTemporaryToolHold?.call(CanvasTool.eyedropper);
+    final pickPosition = _canvasPositionFromLocal(event.localPosition);
+    if (_isInsidePasteboard(pickPosition)) {
+      widget.onAltPick?.call(pickPosition);
     }
   }
 

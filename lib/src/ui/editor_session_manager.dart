@@ -36,6 +36,7 @@ import '../models/transform_track.dart';
 import '../models/cut_id.dart';
 import '../models/cut_metadata.dart';
 import '../models/folder_id.dart';
+import '../models/layer_folder.dart' show LayerFolderTableQueries;
 import '../models/frame.dart';
 import '../models/frame_id.dart';
 import '../models/layer.dart';
@@ -130,6 +131,7 @@ import 'audio/audio_conform_store.dart';
 import 'brush/brush_canvas_panel.dart';
 import 'brush/brush_editor_selection.dart';
 import 'timeline/instruction_span_editing.dart';
+import 'timeline/layer_label_controls.dart' show layerKindShowsBlendControl;
 import 'timeline/layer_timeline_display_adapter.dart'
     show horizontalLayerDisplayOrder;
 import 'timeline/timeline_cell_exposure_state.dart';
@@ -1167,6 +1169,33 @@ class EditorSessionManager extends ChangeNotifier {
 
   int get activeCutPlaybackFrameCount =>
       math.max(1, activeCutOrNull?.duration ?? 1);
+
+  /// R27 #31: the cut an EXPORT anchors on. Parking the playhead in a gap
+  /// leaves no active cut, but that is a playhead position — not "no
+  /// film" — so the export window must still open (it used to throw
+  /// [requireActiveCut] straight through the dialog's build and take the
+  /// whole app down with it). Falls back to the first cut on the axis;
+  /// null only when the project genuinely has no cuts at all, which is
+  /// what disables the Export entry point.
+  Cut? get exportAnchorCutOrNull {
+    final active = activeCutOrNull;
+    if (active != null) {
+      return active;
+    }
+    for (final track in _repository.requireProject().tracks) {
+      if (track.cuts.isNotEmpty) {
+        return track.cuts.first;
+      }
+    }
+    return null;
+  }
+
+  /// Whether an export would run off [exportAnchorCutOrNull]'s FALLBACK
+  /// rather than a live selection — the window then defaults its scope to
+  /// the whole project instead of silently exporting a cut the user is
+  /// not standing on.
+  bool get exportAnchorIsFallback =>
+      activeCutOrNull == null && exportAnchorCutOrNull != null;
 
   /// The active cut, THROWING when none is selected (gap state) — every
   /// caller is a conscious decision that a cut must exist here (UI-R9 #3
@@ -2610,8 +2639,29 @@ class EditorSessionManager extends ChangeNotifier {
       clearLaneRangeSelection();
     }
     _layerController.selectLayer(layerId);
+    // R27 #24: layer and folder selection are ONE selection — picking a
+    // row releases the folder row's highlight.
+    _activeFolderId = null;
     // The solo mode FOLLOWS the active layer (R4 #7).
     _syncVisibilitySolo();
+    notifyListeners();
+  }
+
+  /// R27 #24: the folder row the rail shows as SELECTED.
+  ///
+  /// A folder is not an editing target (it holds no cels — R27 #28), so
+  /// this is display state living beside [activeLayerId] rather than a
+  /// second kind of active layer: the canvas keeps drawing on whatever
+  /// layer was active, and the rail shows the folder as the selected row.
+  FolderId? _activeFolderId;
+
+  FolderId? get activeFolderId => _activeFolderId;
+
+  void selectFolder(FolderId folderId) {
+    if (_activeFolderId == folderId) {
+      return;
+    }
+    _activeFolderId = folderId;
     notifyListeners();
   }
 
@@ -2695,13 +2745,53 @@ class EditorSessionManager extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// R27 #29: the folder's composite blend, the layer blend's twin.
+  void setFolderBlendMode(FolderId folderId, LayerBlendMode blendMode) {
+    final cutId = _editingSession.activeCutId;
+    if (cutId == null) {
+      return;
+    }
+    _layerController.setFolderBlendMode(
+      cutId: cutId,
+      folderId: folderId,
+      blendMode: blendMode,
+    );
+    notifyListeners();
+  }
+
   void toggleFolderCollapsed(FolderId folderId) {
     final cutId = _editingSession.activeCutId;
     if (cutId == null) {
       return;
     }
+    final wasCollapsed =
+        activeCutOrNull?.folders.byId(folderId)?.collapsed ?? false;
     _layerController.toggleFolderCollapsed(cutId: cutId, folderId: folderId);
+    // R27 #24: FOLDING a folder that holds the active layer moves the
+    // selection to the folder itself. The member row used to stay on
+    // screen (the display builder keeps the active layer visible), so a
+    // fold with a member selected simply didn't look folded.
+    if (!wasCollapsed && _activeLayerIsInsideFolder(folderId)) {
+      _activeFolderId = folderId;
+    }
     notifyListeners();
+  }
+
+  bool _activeLayerIsInsideFolder(FolderId folderId) {
+    final cut = activeCutOrNull;
+    final activeId = activeLayerId;
+    if (cut == null || activeId == null) {
+      return false;
+    }
+    for (final layer in cut.layers) {
+      if (layer.id != activeId) {
+        continue;
+      }
+      return cut.folders
+          .ancestryOf(layer.folderId)
+          .any((folder) => folder.id == folderId);
+    }
+    return false;
   }
 
   /// Replaces a folder's FX transform track (L5c) — one undo step;
@@ -2820,6 +2910,26 @@ class EditorSessionManager extends ChangeNotifier {
       }
     }
     notifyListeners();
+  }
+
+  /// R27 #6: the legend's BLEND bulk — the master opacity bar's rule for
+  /// the mode. Only rows that actually composite take it (the camera and
+  /// the sound/instruction rows have no blend), and only rows that would
+  /// change are written, so a no-op pick costs nothing.
+  void setBlendModeForLayers(Set<LayerId> layerIds, LayerBlendMode mode) {
+    var changed = false;
+    for (final layer in layers) {
+      if (!layerIds.contains(layer.id) ||
+          !layerKindShowsBlendControl(layer.kind) ||
+          layer.blendMode == mode) {
+        continue;
+      }
+      _layerController.setLayerBlendMode(layerId: layer.id, blendMode: mode);
+      changed = true;
+    }
+    if (changed) {
+      notifyListeners();
+    }
   }
 
   /// Filter-set hook (UI-R6 #3): when the active layer fails [passes], the
@@ -6659,6 +6769,12 @@ class EditorSessionManager extends ChangeNotifier {
   /// step leaves the last valid plan in place (UI-R23 #10).
   MultiRowRangeMovePlan? _rangeMoveMultiRowPlan;
 
+  /// R27 #8: the row the move drag GRABBED — the hop origin. The
+  /// selection's anchor row is a different thing (selecting upward makes
+  /// them differ), and using it made "this block lands on that row" come
+  /// out shifted by however far the two were apart.
+  LayerId? _rangeMoveGrabLayerId;
+
   /// KEY sources riding the range move (P3b-2, #2 second half): the
   /// camera row's keyframe snapshot and the spanned instruction rows —
   /// their keys shift with the same delta the blocks slide.
@@ -6706,11 +6822,15 @@ class EditorSessionManager extends ChangeNotifier {
   /// selected blocks slide together along the frame axis, one composite
   /// undo on release. Row-changing drops stay single-layer (the kind
   /// guard would make partial rect drops ambiguous).
-  bool beginFrameRangeMoveDrag() {
+  /// [grabLayerId] = the row the pointer went down on (R27 #8); null falls
+  /// back to the selection's anchor row (the callers that have no pointer,
+  /// e.g. tests of a single-row move).
+  bool beginFrameRangeMoveDrag([LayerId? grabLayerId]) {
     final selection = frameRangeSelection.value;
     if (selection == null || !_rangeSelectionEligible(selection.layerId)) {
       return false;
     }
+    _rangeMoveGrabLayerId = grabLayerId ?? selection.layerId;
     _rangeMoveMultiSources = null;
     _rangeMoveMultiPlans = null;
     _rangeMoveMultiRowPlan = null;
@@ -6948,6 +7068,87 @@ class EditorSessionManager extends ChangeNotifier {
     ];
   }
 
+  /// R27 #8: EVERY row the timeline shows, in the order it shows them —
+  /// drawing rows, SE rows (track clones included) and the camera /
+  /// instruction rows alike.
+  ///
+  /// A range move's row hop is a fact about what the POINTER did on
+  /// screen; deriving it from one content lattice (the old behaviour)
+  /// made the hop uncomputable whenever the drag was anchored on a row
+  /// that lattice does not contain — a camera or instruction row — and
+  /// the whole multi-row move silently died even though the selected
+  /// blocks had a perfectly legal home. Each moving row translates this
+  /// display hop into its own lattice below.
+  List<Layer> _rangeRowOrder() => sectionedLayerOrder(layers);
+
+  /// The display-row hop from [anchorId] to [targetId]; null when either
+  /// row is not on screen.
+  int? _displayRowDelta(
+    List<Layer> rows,
+    LayerId anchorId,
+    LayerId targetId,
+  ) {
+    final anchorIndex = rows.indexWhere((layer) => layer.id == anchorId);
+    final targetIndex = rows.indexWhere((layer) => layer.id == targetId);
+    if (anchorIndex == -1 || targetIndex == -1) {
+      return null;
+    }
+    return targetIndex - anchorIndex;
+  }
+
+  /// What [displayDelta] means INSIDE [lattice] for the row [layerId]:
+  /// walk the display rows by the hop, then read where the row it landed
+  /// on sits in the lattice. Null when the hop leaves the screen or lands
+  /// on a row this kind of content cannot live on.
+  int? _latticeHopFor({
+    required List<Layer> rows,
+    required List<Layer> lattice,
+    required LayerId layerId,
+    required int displayDelta,
+  }) {
+    final rowIndex = rows.indexWhere((layer) => layer.id == layerId);
+    if (rowIndex == -1) {
+      return null;
+    }
+    final landingIndex = rowIndex + displayDelta;
+    if (landingIndex < 0 || landingIndex >= rows.length) {
+      return null;
+    }
+    final landingId = rows[landingIndex].id;
+    final from = lattice.indexWhere((layer) => layer.id == layerId);
+    final to = lattice.indexWhere((layer) => layer.id == landingId);
+    if (from == -1 || to == -1) {
+      return null;
+    }
+    return to - from;
+  }
+
+  /// The one lattice hop every content-bearing row in [ids] agrees on.
+  /// `blocked` when a row cannot land, or when two rows would need
+  /// different hops (the rigid move is all-or-nothing); a null `delta`
+  /// with `blocked: false` means nothing in this lattice is moving.
+  ({bool blocked, int? delta}) _agreedLatticeHop({
+    required List<Layer> rows,
+    required List<Layer> lattice,
+    required List<LayerId> ids,
+    required int displayDelta,
+  }) {
+    int? shared;
+    for (final id in ids) {
+      final hop = _latticeHopFor(
+        rows: rows,
+        lattice: lattice,
+        layerId: id,
+        displayDelta: displayDelta,
+      );
+      if (hop == null || (shared != null && shared != hop)) {
+        return (blocked: true, delta: null);
+      }
+      shared = hop;
+    }
+    return (blocked: false, delta: shared);
+  }
+
   /// A MULTI-ROW range move step (UI-R23 #9): a multi-layer DRAWING
   /// selection dragged onto a different row shifts every selected row
   /// rigidly by the same row + frame delta. Returns true when it OWNS the
@@ -6974,12 +7175,26 @@ class EditorSessionManager extends ChangeNotifier {
           block.startIndex < selection.endIndexExclusive &&
           block.endIndexExclusive > selection.startIndex,
     );
-    // R26 #2: track-SE rows in the span are PASSENGERS of the rigid move —
-    // they shift the same row delta inside the SE lattice instead of
-    // vetoing the whole step.
+    // R27 #8: sort the span by what each row can DO with the hop. Drawing
+    // rows and track-SE rows travel across their own lattice; the camera
+    // and instruction rows have no row axis to travel, so their keys ride
+    // the FRAME delta and stay put. Empty rows contribute nothing at all.
+    //
+    // The old code made a key-carrying camera/instruction row veto the
+    // whole move ("keys ride the frame axis only" → `return false`). That
+    // is the "임시처방" the user called out: selecting a CAM row next to a
+    // sound block made the sound unmovable, even though its landing row
+    // was empty. A row that cannot change rows now simply doesn't.
+    final drawingSourceIds = <LayerId>[];
     final sePassengerIds = <LayerId>[];
+    var cameraRides = false;
+    final instructionRiders = <Layer>[];
     for (final id in selection.spanLayerIds) {
       if (_blockMoveEligible(id)) {
+        final layer = _layerById(id);
+        if (layer != null && carriesBlockInRange(layer)) {
+          drawingSourceIds.add(id);
+        }
         continue;
       }
       if (isTrackSeLayerId(id)) {
@@ -6989,8 +7204,6 @@ class EditorSessionManager extends ChangeNotifier {
         }
         continue;
       }
-      // An INELIGIBLE row may ride along only while it contributes
-      // nothing — content on it routes the whole step to the frame slide.
       final layer = _layerById(id);
       if (layer == null) {
         continue;
@@ -6998,52 +7211,70 @@ class EditorSessionManager extends ChangeNotifier {
       if (layer.kind == LayerKind.camera) {
         final keyframes = activeCutOrNull?.camera.keyframes;
         if (keyframes != null && anyKeyIn(keyframes.keys)) {
-          return false;
+          cameraRides = true;
         }
         continue;
       }
-      if (layer.kind == LayerKind.instruction &&
-          anyKeyIn(layer.instructions.keys)) {
-        return false;
+      if (layer.kind == LayerKind.instruction) {
+        if (anyKeyIn(layer.instructions.keys)) {
+          instructionRiders.add(layer);
+        }
+        continue;
       }
+      // A row that is neither move-eligible nor a known frame-axis rider
+      // (a SYNCED attach row) still routes the step to the plain slide
+      // when it carries content: its timing belongs to its base.
       if (carriesBlockInRange(layer)) {
         return false;
       }
     }
     final lattice = _blockMoveLattice();
     final seLattice = activeTrack.seLayers;
-    int? rowDeltaWithin(List<Layer> rows) {
-      final anchorIndex = rows.indexWhere((l) => l.id == selection.layerId);
-      final targetIndex = rows.indexWhere((l) => l.id == targetLayerId);
-      if (anchorIndex == -1 || targetIndex == -1) {
-        return null;
-      }
-      return targetIndex - anchorIndex;
+    final rows = _rangeRowOrder();
+    final displayDelta = _displayRowDelta(
+      rows,
+      _rangeMoveGrabLayerId ?? selection.layerId,
+      targetLayerId,
+    );
+    if (displayDelta == null) {
+      // The pointer left the rows entirely. When something in the span
+      // CAN travel, HOLD the last valid preview (UI-R23 #10); otherwise
+      // the plain slide owns the step.
+      return drawingSourceIds.isNotEmpty || sePassengerIds.isNotEmpty;
     }
-
-    final rowDelta = rowDeltaWithin(lattice) ?? rowDeltaWithin(seLattice);
-    if (rowDelta == null) {
-      // Anchor and pointer share no lattice. When the anchor row IS
-      // movable the pointer merely wandered off — HOLD the last valid
-      // preview (UI-R23 #10); otherwise the plain slide owns the step.
-      final anchorMovable =
-          lattice.any((l) => l.id == selection.layerId) ||
-          seLattice.any((l) => l.id == selection.layerId);
-      return anchorMovable;
-    }
-    if (rowDelta == 0) {
+    if (displayDelta == 0) {
       // No row change this step — the plain frame slide owns it.
       return false;
     }
-    final drawingCarriesContent = selection.spanLayerIds.any((id) {
-      if (!_blockMoveEligible(id)) {
-        return false;
-      }
-      final layer = _layerById(id);
-      return layer != null && carriesBlockInRange(layer);
-    });
+    final drawingHop = _agreedLatticeHop(
+      rows: rows,
+      lattice: lattice,
+      ids: drawingSourceIds,
+      displayDelta: displayDelta,
+    );
+    final seHop = _agreedLatticeHop(
+      rows: rows,
+      lattice: seLattice,
+      ids: sePassengerIds,
+      displayDelta: displayDelta,
+    );
+    if (drawingHop.blocked || seHop.blocked) {
+      // A content-bearing row has nowhere to land (or two rows would need
+      // different hops): all-or-nothing, HOLD the last valid preview.
+      return true;
+    }
+    // A hop of 0 alongside a non-zero one would tear the rigid move apart
+    // — the slide owns those steps instead.
+    final rowDelta = drawingHop.delta ?? seHop.delta;
+    if (rowDelta == null || rowDelta == 0) {
+      return false;
+    }
+    if ((drawingHop.delta ?? rowDelta) != rowDelta ||
+        (seHop.delta ?? rowDelta) != rowDelta) {
+      return false;
+    }
     MultiRowRangeMovePlan? plan;
-    if (drawingCarriesContent) {
+    if (drawingSourceIds.isNotEmpty) {
       plan = planMultiRowRangeMove(
         orderedLayers: lattice,
         sourceLayerIds: selection.spanLayerIds,
@@ -7072,15 +7303,44 @@ class EditorSessionManager extends ChangeNotifier {
     if (plan == null && sePlans.isEmpty) {
       return false; // Nothing to carry — the plain slide owns the step.
     }
+    // R27 #8: the frame-axis riders shift with the same frame delta. A
+    // rider that cannot shift voids the move like any other passenger.
+    Map<int, CameraPose>? cameraShifted;
+    if (cameraRides) {
+      cameraShifted = shiftCameraKeysInRange(
+        keyframes: activeCutOrNull?.camera.keyframes ?? const {},
+        rangeStartIndex: selection.startIndex,
+        rangeEndIndexExclusive: selection.endIndexExclusive,
+        frameDelta: frameDelta,
+      );
+      if (cameraShifted == null) {
+        return true;
+      }
+    }
+    final instructionShifted = <LayerId, Map<int, InstructionEvent>>{};
+    for (final layer in instructionRiders) {
+      final shifted = shiftInstructionEventsInRange(
+        events: layer.instructions,
+        rangeStartIndex: selection.startIndex,
+        rangeEndIndexExclusive: selection.endIndexExclusive,
+        frameDelta: frameDelta,
+      );
+      if (shifted == null) {
+        return true;
+      }
+      instructionShifted[layer.id] = shifted;
+    }
     // A valid rigid landing supersedes the slide / row-change plans.
     _rangeMoveMultiRowPlan = plan;
     _rangeMoveMultiSeRowChanges = sePlans.isEmpty ? null : sePlans;
     _rangeMoveMultiPlans = null;
     _rangeMoveSeRowChange = null;
     _rangeMoveInstructionRowChange = null;
-    _rangeMoveCameraShifted = null;
-    _rangeMoveInstructionShifted = null;
-    _cameraKeysDragPreview = null;
+    _rangeMoveCameraShifted = cameraShifted;
+    _rangeMoveInstructionShifted = instructionShifted.isEmpty
+        ? null
+        : instructionShifted;
+    _cameraKeysDragPreview = cameraShifted;
     dragPreview.value = BlockMoveDragPreview(
       previewLayers: {
         if (plan != null)
@@ -7093,7 +7353,19 @@ class EditorSessionManager extends ChangeNotifier {
           se.sourceId: trackSeWindow.displayLayer(se.sourceAfter),
           se.targetId: trackSeWindow.displayLayer(se.targetAfter),
         },
+        // R27 #8: the frame-axis riders preview their shifted spans in
+        // place (the cells row renders straight off layer.instructions).
+        for (final entry in instructionShifted.entries)
+          if (_layerById(entry.key) != null)
+            entry.key: _layerById(
+              entry.key,
+            )!.copyWith(instructions: entry.value),
       },
+      cameraCutId: cameraShifted == null ? null : activeCutOrNull?.id,
+      cameraKeyframes: cameraShifted,
+      cameraMarkerLayer: cameraShifted == null || _rangeMoveCameraLayerId == null
+          ? null
+          : _layerById(_rangeMoveCameraLayerId!),
     );
     // The outline rides the rigid shift to the target rows (rows that
     // carried nothing — off the lattice or shifted off it — drop out of
@@ -7401,6 +7673,7 @@ class EditorSessionManager extends ChangeNotifier {
     final landedSelection = frameRangeSelection.value;
     _rangeMoveSourceBefore = null;
     _rangeMoveSelectionBefore = null;
+    _rangeMoveGrabLayerId = null;
     _rangeMoveGroupStart = null;
     _rangeMovePlan = null;
     _rangeMoveMultiSources = null;
@@ -7518,6 +7791,31 @@ class EditorSessionManager extends ChangeNotifier {
             repository: _repository,
             before: before,
             after: after,
+          ),
+        );
+      }
+      // R27 #8: the frame-axis riders (camera keys, instruction spans)
+      // land in the SAME undo step as the rigid row move.
+      if (cut != null && instructionShifted != null) {
+        for (final entry in instructionShifted.entries) {
+          commands.add(
+            UpdateLayerInstructionsCommand(
+              repository: _repository,
+              cutId: cut.id,
+              layerId: entry.key,
+              instructions: entry.value,
+              description: 'Move instruction keys',
+            ),
+          );
+        }
+      }
+      if (cut != null && cameraShifted != null) {
+        commands.add(
+          UpdateCutCameraCommand(
+            repository: _repository,
+            cutId: cut.id,
+            camera: CutCamera(keyframes: cameraShifted),
+            description: 'Move camera keys',
           ),
         );
       }
@@ -7668,6 +7966,7 @@ class EditorSessionManager extends ChangeNotifier {
     final selection = _rangeMoveSelectionBefore;
     _rangeMoveSourceBefore = null;
     _rangeMoveSelectionBefore = null;
+    _rangeMoveGrabLayerId = null;
     _rangeMoveGroupStart = null;
     _rangeMovePlan = null;
     _rangeMoveMultiSources = null;

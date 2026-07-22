@@ -209,9 +209,10 @@ class _TimelineBlockMoveHandleState extends State<TimelineBlockMoveHandle> {
       accumulatedDelta: _mainDelta,
       frameCellExtent: widget.frameCellExtent,
     );
-    final rows = commaDragFrameDelta(
+    // R27 #12: the same row deadband the range gesture uses.
+    final rows = timelineRowStepDelta(
       accumulatedDelta: _crossDelta,
-      frameCellExtent: widget.crossAxisExtent,
+      rowExtent: widget.crossAxisExtent,
     );
     if (frames == _lastFrames && rows == _lastRows) {
       return;

@@ -433,9 +433,21 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     // 확정 lands the session as one undo entry, 되돌리기 puts the pixels
     // back exactly. Deferred post-frame: dialogs and history commands
     // must never run inside the build phase.
-    if (oldWidget.tool != widget.tool && _movePending) {
+    if (oldWidget.tool != widget.tool) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted && _movePending) {
+        if (!mounted) {
+          return;
+        }
+        // R27 #18: an open transform box must not outlive its tool. It
+        // used to stay on screen after a switch — and, worse, the stale
+        // `_transform != null` made the NEXT _beginTransform bail out at
+        // its own guard, so the second transform did nothing and the
+        // original picture just sat there. Committing folds the affine
+        // into the session (identity just closes the box).
+        if (_transform != null) {
+          _commitTransform();
+        }
+        if (_movePending) {
           _promptPendingMove();
         }
       });
@@ -489,7 +501,16 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     // non-selection tool) CONFIRMS it. The history execute defers
     // post-frame (dispose can run inside a build); the interaction hold
     // releases NOW so a leak can never lock seeks.
-    final pendingStamp = _pendingLiftStamp;
+    // R27 #18: an OPEN transform box at unmount used to drop its affine —
+    // the stamp landed back where it was LIFTED, so the transform read as
+    // "did it commit or not?". Fold the affine in first: whatever the box
+    // showed is what lands.
+    final openAffine = _transform;
+    final pendingStamp = openAffine == null || _pendingLiftStamp == null
+        ? _pendingLiftStamp
+        : (openAffine.isIdentity
+              ? _pendingLiftStamp
+              : transformStampDab(_pendingLiftStamp!, openAffine));
     final liftId = _liftToken;
     if (pendingStamp != null && liftId != null) {
       widget.onMoveSessionPendingChanged?.call(false);

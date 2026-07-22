@@ -1,4 +1,5 @@
 import 'folder_id.dart';
+import 'layer_blend_mode.dart';
 import 'transform_track.dart';
 
 /// A layer folder: a PURE ORGANIZATIONAL grouping over the cut's flat
@@ -29,6 +30,7 @@ class LayerFolder {
     this.collapsed = false,
     this.isVisible = true,
     this.opacity = 1.0,
+    this.blendMode = LayerBlendMode.normal,
     TransformTrack? transformTrack,
   }) : transformTrack = transformTrack ?? TransformTrack.empty();
 
@@ -48,6 +50,11 @@ class LayerFolder {
   /// (L3) — NOT per member, so overlapping members don't double-fade.
   final double opacity;
 
+  /// R27 #29: the folder's composite blend against everything below it —
+  /// the layer blend applied to the folder's COMPOSED buffer, so
+  /// overlapping members blend once as a group instead of one by one.
+  final LayerBlendMode blendMode;
+
   /// Folder FX lanes (position/scale/rotation/opacity over the cut's
   /// frame axis) — applied to the folder's composed buffer (L3).
   final TransformTrack transformTrack;
@@ -59,6 +66,7 @@ class LayerFolder {
     bool? collapsed,
     bool? isVisible,
     double? opacity,
+    LayerBlendMode? blendMode,
     TransformTrack? transformTrack,
   }) {
     return LayerFolder(
@@ -70,6 +78,7 @@ class LayerFolder {
       collapsed: collapsed ?? this.collapsed,
       isVisible: isVisible ?? this.isVisible,
       opacity: opacity ?? this.opacity,
+      blendMode: blendMode ?? this.blendMode,
       transformTrack: transformTrack ?? this.transformTrack,
     );
   }
@@ -83,6 +92,7 @@ class LayerFolder {
     if (collapsed) 'collapsed': collapsed,
     if (!isVisible) 'isVisible': isVisible,
     if (opacity != 1.0) 'opacity': opacity,
+    if (blendMode != LayerBlendMode.normal) 'blendMode': blendMode.toJson(),
     if (transformTrack.isNotEmpty) 'transform': transformTrack.toJson(),
   };
 
@@ -96,6 +106,7 @@ class LayerFolder {
       collapsed: json['collapsed'] as bool? ?? false,
       isVisible: json['isVisible'] as bool? ?? true,
       opacity: (json['opacity'] as num?)?.toDouble() ?? 1.0,
+      blendMode: LayerBlendMode.fromJson(json['blendMode']),
       transformTrack: json['transform'] == null
           ? null
           : TransformTrack.fromJson(json['transform'] as Map<String, dynamic>),
@@ -112,6 +123,7 @@ class LayerFolder {
           other.collapsed == collapsed &&
           other.isVisible == isVisible &&
           other.opacity == opacity &&
+          other.blendMode == blendMode &&
           other.transformTrack == transformTrack;
 
   @override
@@ -122,6 +134,7 @@ class LayerFolder {
     collapsed,
     isVisible,
     opacity,
+    blendMode,
     transformTrack,
   );
 

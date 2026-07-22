@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../../models/app_language.dart' show AppLanguage;
+import '../../models/layer_blend_mode.dart';
 import '../../models/layer_id.dart';
 import '../../models/layer_kind.dart';
 import '../../models/layer_mark.dart';
@@ -119,9 +121,92 @@ const double layerMuteSlotWidth = 18;
 // across all three panels' rails.
 const double layerOpacitySlotWidth = 42;
 
+/// R27 #6: the BLEND column — the layer's compositing mode, moved out of
+/// the timeline toolbar and into the label itself (PS/CSP reading: the
+/// mode belongs to the row, not to a far-away command bar). Rightmost
+/// slot, immediately right of the opacity bar, per the user's placement.
+const double layerBlendSlotWidth = 58;
+
 /// The per-layer onion-skin toggle column (UI-R17 #5, TVPaint style).
 const double layerOnionSlotWidth = 22;
 const double layerControlChipGap = 4;
+
+/// Whether [kind] carries a blend mode at all. Only the ACTION-section
+/// kinds composite artwork; SE/CAM/instruction rows reserve the slot so
+/// the control columns and the legend header stay aligned.
+bool layerKindShowsBlendControl(LayerKind kind) =>
+    kind == LayerKind.animation ||
+    kind == LayerKind.art ||
+    kind == LayerKind.storyboard;
+
+/// R27 #6: the row's blend-mode dropdown. Reads the current mode's name;
+/// accent while non-normal (selection style: color only, no check glyph
+/// in the row itself).
+class LayerBlendModeChip extends StatelessWidget {
+  const LayerBlendModeChip({
+    super.key,
+    required this.keyPrefix,
+    required this.layerId,
+    required this.blendMode,
+    required this.language,
+    required this.onBlendModeSelected,
+  });
+
+  final String keyPrefix;
+  final LayerId layerId;
+  final LayerBlendMode blendMode;
+  final AppLanguage language;
+  final void Function(LayerId layerId, LayerBlendMode mode) onBlendModeSelected;
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final nonNormal = blendMode != LayerBlendMode.normal;
+    return SizedBox(
+      width: layerBlendSlotWidth,
+      height: 20,
+      child: Builder(
+        builder: (anchorContext) => Tooltip(
+          message: 'Layer blend mode',
+          child: InkWell(
+            key: ValueKey<String>('$keyPrefix-layer-blend-$layerId'),
+            onTap: () => showPanelFlyout(
+              anchorContext,
+              entries: [
+                for (final mode in LayerBlendMode.values)
+                  PanelFlyoutItem(
+                    keyValue: '$keyPrefix-layer-blend-option-${mode.name}',
+                    label: mode.labelFor(language),
+                    checked: mode == blendMode,
+                    onSelected: () => onBlendModeSelected(layerId, mode),
+                  ),
+              ],
+            ),
+            child: Align(
+              alignment: Alignment.centerLeft,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 3),
+                child: Text(
+                  blendMode.labelFor(language),
+                  maxLines: 1,
+                  softWrap: false,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 9.5,
+                    fontWeight: nonNormal ? FontWeight.w700 : FontWeight.w400,
+                    color: nonNormal
+                        ? AppColors.accent
+                        : colorScheme.onSurfaceVariant,
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
 
 /// Every layer kind carries the timesheet-output toggle — one entrance for
 /// every row (unified layer controls, user rule): cel/art/SE gate their

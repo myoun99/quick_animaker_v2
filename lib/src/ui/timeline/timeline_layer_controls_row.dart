@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import '../../models/app_language.dart' show AppLanguage;
 import '../../models/attached_placement.dart';
 import '../../models/layer.dart';
+import '../../models/layer_blend_mode.dart';
 import '../../models/layer_kind.dart';
 import '../../models/layer_id.dart';
 import '../../models/layer_mark.dart';
@@ -76,6 +77,9 @@ class TimelineLayerControlsRow extends StatelessWidget {
     this.onToggleLayerOnionSkin,
     this.opacityDragPreview,
     this.isLinked = false,
+    this.onLayerBlendModeSelected,
+    this.blendLanguage = AppLanguage.en,
+    this.opacityOverride,
   });
 
   final Layer layer;
@@ -150,6 +154,21 @@ class TimelineLayerControlsRow extends StatelessWidget {
   /// Link badge (L4): this layer's pictures are shared with a link group
   /// ("이름이 같으면 같은 그림") — a small chain icon after the name.
   final bool isLinked;
+
+  /// R27 #6: the blend-mode dropdown lives in the LABEL now (rightmost
+  /// slot, past the opacity bar) instead of the timeline toolbar. Null
+  /// keeps the slot reserved but inert (passive hosts).
+  final void Function(LayerId layerId, LayerBlendMode mode)?
+  onLayerBlendModeSelected;
+
+  /// PROGRAM language for the blend-mode name.
+  final AppLanguage blendLanguage;
+
+  /// R27 #9: a live opacity source that OUTRANKS `layer.opacity` for this
+  /// row's slider. The camera row's opacity is a view notifier, not model
+  /// state — reading it here lets the drag repaint just this slider
+  /// instead of rebuilding the whole timeline host per move.
+  final ValueListenable<double>? opacityOverride;
 
   @override
   Widget build(BuildContext context) {
@@ -501,6 +520,21 @@ class TimelineLayerControlsRow extends StatelessWidget {
                 SizedBox(width: layerOpacitySlotWidth, child: _opacityField())
               else
                 const SizedBox(width: layerOpacitySlotWidth),
+              // R27 #6: the blend mode, RIGHTMOST — the user's placement.
+              // Within a host that HAS the column, non-compositing kinds
+              // keep the slot so rows and the legend header stay aligned;
+              // hosts without it (the storyboard's track rail) skip the
+              // column outright, exactly like the onion cell.
+              if (onLayerBlendModeSelected != null)
+                layerKindShowsBlendControl(layer.kind)
+                    ? LayerBlendModeChip(
+                        keyPrefix: 'timeline',
+                        layerId: layer.id,
+                        blendMode: layer.blendMode,
+                        language: blendLanguage,
+                        onBlendModeSelected: onLayerBlendModeSelected!,
+                      )
+                    : const SizedBox(width: layerBlendSlotWidth),
             ],
           ),
         ),
@@ -530,6 +564,17 @@ class TimelineLayerControlsRow extends StatelessWidget {
           ? null
           : (opacity) => onLayerOpacityChangeEnd!(layer.id, opacity),
     );
+
+    // R27 #9: a row whose opacity IS a view notifier (the camera row)
+    // reads it here — the slider follows the drag by itself, no host
+    // rebuild in the loop.
+    final override = opacityOverride;
+    if (override != null) {
+      return ValueListenableBuilder<double>(
+        valueListenable: override,
+        builder: (context, value, _) => slider(value.clamp(0.0, 1.0)),
+      );
+    }
 
     final preview = opacityDragPreview;
     final resting = layer.opacity.clamp(0.0, 1.0).toDouble();

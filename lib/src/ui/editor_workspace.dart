@@ -452,6 +452,9 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
       hiddenSections: _hiddenTimelineSections.value,
       rowFilter: _timelineRowFilter.value,
       collapsedAttachBaseIds: _collapsedAttachBaseIds.value,
+      // R27 #27: a collapsed folder's members are off screen, so the walk
+      // must step over them like it does a folded attach group.
+      folders: session.activeCutOrNull?.folders ?? const [],
       fxEnabledOf: session.isLayerFxEnabled,
     );
     if (target != null) {

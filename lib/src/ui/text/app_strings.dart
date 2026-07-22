@@ -14,11 +14,13 @@ class AppStrings {
     required this.pageLabel,
     required this.continuousLabel,
     required this.noticeNoFrameHere,
-    required this.noticeActionSectionOnly,
+    required this.noticeLayerNotDrawable,
     required this.noticeNothingToTransform,
     required this.commonCancel,
     required this.commonApply,
     required this.commonRefresh,
+    required this.commonClose,
+    required this.exportNoCuts,
     required this.audioOffsetTitle,
     required this.audioOffsetHelp,
     required this.audioOffsetLabel,
@@ -97,7 +99,9 @@ class AppStrings {
   /// R26 #35/#13 — the shared CURSOR NOTICES: every refused action says
   /// why, right where the user is looking.
   final String noticeNoFrameHere;
-  final String noticeActionSectionOnly;
+  /// R27 #16: the refusal is about the LAYER, not the section — the CAM
+  /// section is no longer uniformly undrawable in the user's model.
+  final String noticeLayerNotDrawable;
   final String noticeNothingToTransform;
 
   /// Shared dialog verbs — tabled once, reused by every dialog that
@@ -105,6 +109,11 @@ class AppStrings {
   final String commonCancel;
   final String commonApply;
   final String commonRefresh;
+  final String commonClose;
+
+  /// R27 #31: the export window's empty state — the project has no cuts
+  /// at all (standing in a GAP is not this; that anchors on the first cut).
+  final String exportNoCuts;
 
   // --- The audio program's UI (Preferences ▸ Audio, 2D + AUDIO-PRO R4) ---
   final String audioOffsetTitle;
@@ -204,11 +213,13 @@ class AppStrings {
     pageLabel: 'Page',
     continuousLabel: 'Continuous',
     noticeNoFrameHere: 'No frame here',
-    noticeActionSectionOnly: 'Only the Action section can be drawn on',
+    noticeLayerNotDrawable: 'This layer cannot be drawn on',
     noticeNothingToTransform: 'Nothing to transform',
     commonCancel: 'Cancel',
     commonApply: 'Apply',
     commonRefresh: 'Refresh',
+    commonClose: 'Close',
+    exportNoCuts: 'This project has no cuts to export yet.',
     audioOffsetTitle: 'A/V offset',
     audioOffsetHelp:
         'Fine-tunes when the picture is shown relative to the sound. '
@@ -304,11 +315,13 @@ class AppStrings {
     pageLabel: 'ページ',
     continuousLabel: '連続表示',
     noticeNoFrameHere: 'フレームがありません',
-    noticeActionSectionOnly: 'アクション欄でのみ描けます',
+    noticeLayerNotDrawable: 'このレイヤーには描けません',
     noticeNothingToTransform: '変形する絵がありません',
     commonCancel: 'キャンセル',
     commonApply: '適用',
     commonRefresh: '更新',
+    commonClose: '閉じる',
+    exportNoCuts: 'このプロジェクトには書き出せるカットがありません。',
     audioOffsetTitle: 'A/Vオフセット',
     audioOffsetHelp:
         '音に対して絵をいつ表示するかを微調整します。測定できる遅延は自動補正され、'
@@ -398,11 +411,13 @@ class AppStrings {
     pageLabel: '페이지',
     continuousLabel: '콘티너스',
     noticeNoFrameHere: '프레임이 존재하지 않습니다',
-    noticeActionSectionOnly: '액션 섹션에서만 그릴 수 있습니다',
+    noticeLayerNotDrawable: '드로잉이 허용되지 않은 레이어입니다',
     noticeNothingToTransform: '변형할 그림이 없습니다',
     commonCancel: '취소',
     commonApply: '적용',
     commonRefresh: '새로고침',
+    commonClose: '닫기',
+    exportNoCuts: '이 프로젝트에는 출력할 컷이 없습니다.',
     audioOffsetTitle: 'A/V 오프셋',
     audioOffsetHelp:
         '소리에 대해 그림을 언제 표시할지 미세 조정합니다. 측정 가능한 '
@@ -493,12 +508,13 @@ class AppStrings {
     pageLabel: 'Page',
     continuousLabel: 'Continu',
     noticeNoFrameHere: 'Aucune image ici',
-    noticeActionSectionOnly:
-        'Dessin possible uniquement dans la section Action',
+    noticeLayerNotDrawable: 'Ce calque n\'accepte pas le dessin',
     noticeNothingToTransform: 'Rien a transformer',
     commonCancel: 'Annuler',
     commonApply: 'Appliquer',
     commonRefresh: 'Actualiser',
+    commonClose: 'Fermer',
+    exportNoCuts: 'Ce projet ne contient aucun plan à exporter.',
     audioOffsetTitle: 'Décalage A/V',
     audioOffsetHelp:
         'Ajuste finement le moment où l\'image s\'affiche par rapport au '
@@ -601,11 +617,13 @@ class AppStrings {
     pageLabel: '页',
     continuousLabel: '连续视图',
     noticeNoFrameHere: '此处没有帧',
-    noticeActionSectionOnly: '只能在动作区绘制',
+    noticeLayerNotDrawable: '该图层不可绘制',
     noticeNothingToTransform: '没有可变形的内容',
     commonCancel: '取消',
     commonApply: '应用',
     commonRefresh: '刷新',
+    commonClose: '关闭',
+    exportNoCuts: '此项目暂无可导出的镜头。',
     audioOffsetTitle: 'A/V 偏移',
     audioOffsetHelp:
         '微调画面相对声音的显示时机。可测量的延迟会自动校正，此设置'
