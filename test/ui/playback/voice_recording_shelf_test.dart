@@ -18,18 +18,20 @@ import 'package:quick_animaker_v2/src/ui/playback/audio_recorder.dart';
 void main() {
   late Directory directory;
   late String shelf;
+  String? previousDocumentsPath;
 
   setUp(() async {
     directory = await Directory.systemTemp.createTemp('qa-voice-shelf-test');
-    // The app documents home resolves through the channel override, so
-    // the shelf lands inside this test's sandbox on every platform.
+    // A FRESH documents home per test (the corpus-wide sandbox is shared,
+    // and these tests pin exact take numbers) — restored afterwards.
+    previousDocumentsPath = AppStorage.channelDocumentsPath;
     AppStorage.channelDocumentsPath =
         '${directory.path.replaceAll('\\', '/')}/docs';
     shelf = appRecordingsDirectory();
   });
 
   tearDown(() {
-    AppStorage.channelDocumentsPath = null;
+    AppStorage.channelDocumentsPath = previousDocumentsPath;
     AppSave.settings.value = const AppSaveSettings();
     return directory.delete(recursive: true);
   });
