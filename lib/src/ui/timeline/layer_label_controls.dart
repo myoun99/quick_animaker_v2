@@ -132,12 +132,11 @@ const double layerOnionSlotWidth = 22;
 const double layerControlChipGap = 4;
 
 /// Whether [kind] carries a blend mode at all. Only the ACTION-section
-/// kinds composite artwork; SE/CAM/instruction rows reserve the slot so
-/// the control columns and the legend header stay aligned.
+/// kinds composite artwork — plus FOLDERS, which blend their whole group
+/// (R27 #29); SE/CAM/instruction rows reserve the slot so the control
+/// columns and the legend header stay aligned.
 bool layerKindShowsBlendControl(LayerKind kind) =>
-    kind == LayerKind.animation ||
-    kind == LayerKind.art ||
-    kind == LayerKind.storyboard;
+    layerKindIsDrawingCel(kind) || layerKindGroupsLayers(kind);
 
 /// R27 #6 / R28 #2: the row's blend-mode BUTTON. Reads the current mode's
 /// name; accent while non-normal (selection style: color only, no check
@@ -211,10 +210,13 @@ class LayerBlendModeChip extends StatelessWidget {
   }
 }
 
-/// Every layer kind carries the timesheet-output toggle — one entrance for
-/// every row (unified layer controls, user rule): cel/art/SE gate their
-/// sheet columns and the CAMERA layer gates the printed CAM column.
-bool layerKindEligibleForTimesheetToggle(LayerKind kind) => true;
+/// Every layer kind that PRINTS carries the timesheet-output toggle — one
+/// entrance for every row (unified layer controls, user rule): cel/art/SE
+/// gate their sheet columns and the CAMERA layer gates the printed CAM
+/// column. A folder prints nothing of its own, so its slot stays reserved
+/// but empty.
+bool layerKindEligibleForTimesheetToggle(LayerKind kind) =>
+    !layerKindGroupsLayers(kind);
 
 /// Every layer kind shows the opacity slider (unified layer controls —
 /// "레이어는 싹 다 공통화"): compositing cels use it directly, the CAMERA
@@ -415,6 +417,7 @@ IconData layerKindIcon(LayerKind kind) {
     LayerKind.se => Icons.music_note_outlined,
     LayerKind.instruction => Icons.theaters_outlined,
     LayerKind.camera => Icons.videocam_outlined,
+    LayerKind.folder => Icons.folder_outlined,
   };
 }
 
@@ -427,6 +430,7 @@ String layerKindDisplayName(LayerKind kind) {
     LayerKind.se => 'SE',
     LayerKind.instruction => 'Instruction',
     LayerKind.camera => 'Camera',
+    LayerKind.folder => 'Folder',
   };
 }
 

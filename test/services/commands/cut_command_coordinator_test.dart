@@ -820,34 +820,29 @@ void main() {
         Cut cut() => _cutById(fixture.project, const CutId('cut-1'));
         Layer layerOf(String id) =>
             cut().layers.firstWhere((layer) => layer.id.value == id);
-        expect(cut().folders.single.id, folderId);
-        expect(cut().folders.single.name, 'Folder 1');
+        expect(cut().layers.folderLayers.single.id, folderId);
+        expect(cut().layers.folderLayers.single.name, 'Folder 1');
         expect(layerOf('base').folderId, folderId);
         expect(layerOf('color').folderId, folderId);
         expect(layerOf('unrelated').folderId, isNull);
-        expect(
-          folderStructureProblem(
-            folders: cut().folders,
-            layerFolderIdsInStackOrder: [
-              for (final layer in cut().layers) layer.folderId,
-            ],
-          ),
-          isNull,
-        );
+        // The folder ROW sits directly above its member run — the stack
+        // position the group buffer walks.
+        expect(folderStructureProblem(cut().layers), isNull);
 
         fixture.coordinator.dissolveFolder(
           cutId: const CutId('cut-1'),
           folderId: folderId,
         );
-        expect(cut().folders, isEmpty);
+        expect(cut().layers.folderLayers, isEmpty);
         expect(layerOf('base').folderId, isNull);
 
         fixture.historyManager.undo();
-        expect(cut().folders.single.id, folderId);
+        expect(cut().layers.folderLayers.single.id, folderId);
         expect(layerOf('base').folderId, folderId);
+        expect(folderStructureProblem(cut().layers), isNull);
 
         fixture.historyManager.undo();
-        expect(cut().folders, isEmpty);
+        expect(cut().layers.folderLayers, isEmpty);
         expect(layerOf('base').folderId, isNull);
       });
 
@@ -880,40 +875,46 @@ void main() {
         Cut linked() => _cutById(fixture.project, linkedCutId);
         Layer linkedBase() =>
             linked().layers.firstWhere((layer) => layer.name == 'base');
-        expect(origin().folders.single.id, folderId);
-        final mirrored = linked().folders.single;
+        expect(origin().layers.folderLayers.single.id, folderId);
+        final mirrored = linked().layers.folderLayers.single;
         expect(mirrored.id, isNot(folderId), reason: 'folder ids are per-cut');
         expect(mirrored.name, 'Folder 1');
         expect(linkedBase().folderId, mirrored.id,
             reason: 'the counterpart member sits in the mirrored folder');
+        expect(folderStructureProblem(linked().layers), isNull);
 
-        fixture.coordinator.renameFolder(
+        // Renaming a folder is renaming a LAYER — no folder-shaped command
+        // survives, and the mirror rides the folder rows' link group.
+        fixture.coordinator.renameLayer(
           cutId: const CutId('cut-1'),
-          folderId: folderId,
+          layerId: folderId,
           name: 'Cel A',
         );
-        expect(origin().folders.single.name, 'Cel A');
-        expect(linked().folders.single.name, 'Cel A');
+        expect(origin().layers.folderLayers.single.name, 'Cel A');
+        expect(linked().layers.folderLayers.single.name, 'Cel A');
         fixture.historyManager.undo();
-        expect(linked().folders.single.name, 'Folder 1');
+        expect(linked().layers.folderLayers.single.name, 'Folder 1');
         fixture.historyManager.redo();
 
         fixture.coordinator.dissolveFolder(
           cutId: const CutId('cut-1'),
           folderId: folderId,
         );
-        expect(origin().folders, isEmpty);
-        expect(linked().folders, isEmpty);
+        expect(origin().layers.folderLayers, isEmpty);
+        expect(linked().layers.folderLayers, isEmpty);
         expect(linkedBase().folderId, isNull);
 
         fixture.historyManager.undo();
-        expect(origin().folders.single.name, 'Cel A');
-        expect(linked().folders.single.name, 'Cel A');
-        expect(linkedBase().folderId, linked().folders.single.id);
+        expect(origin().layers.folderLayers.single.name, 'Cel A');
+        expect(linked().layers.folderLayers.single.name, 'Cel A');
+        expect(
+          linkedBase().folderId,
+          linked().layers.folderLayers.single.id,
+        );
       });
 
-      test('updateFolderTransformTrack replaces the folder FX track in one '
-          'undo (per-use — the 겸용 counterpart keeps its own)', () {
+      test('a folder FX track rides updateLayerTransformTrack in one undo '
+          '(per-use — the 겸용 counterpart keeps its own)', () {
         final fixture = _fixture(
           _project(
             tracks: [
@@ -940,14 +941,14 @@ void main() {
             0: TransformPose(center: CanvasPoint(x: 5, y: 5), zoom: 2),
           },
         );
-        fixture.coordinator.updateFolderTransformTrack(
+        fixture.coordinator.updateLayerTransformTrack(
           cutId: const CutId('cut-1'),
-          folderId: folderId,
+          layerId: folderId,
           transformTrack: track,
         );
 
-        LayerFolder folderOf(CutId cutId) =>
-            _cutById(fixture.project, cutId).folders.single;
+        Layer folderOf(CutId cutId) =>
+            _cutById(fixture.project, cutId).layers.folderLayers.single;
         expect(folderOf(const CutId('cut-1')).transformTrack, track);
         expect(
           folderOf(linkedCutId).transformTrack.isNotEmpty,

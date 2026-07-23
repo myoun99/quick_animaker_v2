@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:quick_animaker_v2/src/models/folder_id.dart';
 import 'package:quick_animaker_v2/src/models/frame.dart';
 import 'package:quick_animaker_v2/src/models/frame_id.dart';
 import 'package:quick_animaker_v2/src/models/layer.dart';
@@ -14,57 +13,60 @@ import 'package:quick_animaker_v2/src/ui/timeline/timeline_grid_metrics.dart';
 
 /// R28 #11/#12: the folder row stops behaving like a second kind of row.
 ///
-/// #11 — selection is ONE thing (a folder and a layer could both read as
-/// selected), and the folder's frame band carries the empty-cel grey as
-/// the UNION of its members.
-/// #12 — a folder header row carries its first member as a REPRESENTATIVE
-/// layer, which is why the block outline drew on the folder instead of
-/// the member; row lookups must skip folder rows the way they skip lanes.
+/// #11 — selection is ONE thing, and the folder's frame band carries the
+/// empty-cel grey as the UNION of its members.
+/// #12 — the folder header used to carry its first member as a
+/// REPRESENTATIVE layer, which is why the block outline drew on the folder
+/// instead of the member, and why three separate row walks each needed
+/// their own "skip the header" clause. The absorption removes the concept:
+/// the folder row's layer IS the folder.
 void main() {
-  Layer member(String id, {bool drawn = true}) => Layer(
+  Layer member(String id) => Layer(
     id: LayerId(id),
     name: id,
     kind: LayerKind.animation,
-    folderId: const FolderId('f'),
+    folderId: const LayerId('f'),
     frames: [Frame(id: FrameId('$id-f0'), duration: 1, strokes: const [])],
     timeline: {0: TimelineExposure.drawing(FrameId('$id-f0'), length: 4)},
   );
 
-  test('R28 #12: display rows put the folder header BEFORE its members, so '
-      'a lookup that matches the representative layer lands on the folder', () {
-    final layers = [member('a'), member('b')];
+  final folderRow = createFolderLayer(id: const LayerId('f'), name: 'F');
+
+  test('R28 #12: no representative layer — the folder row carries the '
+      'FOLDER, so a row lookup by layer id can never land on it', () {
     final rows = buildTimelineDisplayRows(
-      layers: layers,
+      layers: [folderRow, member('a'), member('b')],
       expandedLayerIds: const {},
       lanesForLayer: (_) => const [],
-      folders: [LayerFolder(id: const FolderId('f'), name: 'F')],
     );
 
     final folderIndex = rows.indexWhere((row) => row.isFolder);
     expect(folderIndex, isNot(-1));
-    // The header's representative IS the first member — the exact shape
-    // that made the naive "first row whose layer.id matches" search wrong.
-    expect(rows[folderIndex].layer.id, const LayerId('a'));
-
-    final memberIndex = rows.indexWhere(
-      (row) => !row.isFolder && !row.isLane && row.layer.id == const LayerId('a'),
-    );
     expect(
-      memberIndex,
-      greaterThan(folderIndex),
-      reason: 'the member row sits BELOW its folder header — a search that '
-          'does not skip folder rows selects the wrong row offset',
+      rows[folderIndex].layer.id,
+      const LayerId('f'),
+      reason: 'the header used to hold member "a" as a stand-in',
     );
+
+    final matches = [
+      for (var i = 0; i < rows.length; i += 1)
+        if (rows[i].layer.id == const LayerId('a')) i,
+    ];
+    expect(
+      matches,
+      hasLength(1),
+      reason: 'exactly one row answers to a member id, so "the first row '
+          'whose layer.id matches" is finally the right row',
+    );
+    expect(matches.single, greaterThan(folderIndex));
   });
 
-  test('R28 #11: the folder header carries its subtree members, so the band '
+  test('R28 #11: the folder row carries its subtree members, so the band '
       'can grey frames no member has drawn', () {
-    final layers = [member('a'), member('b')];
     final rows = buildTimelineDisplayRows(
-      layers: layers,
+      layers: [folderRow, member('a'), member('b')],
       expandedLayerIds: const {},
       lanesForLayer: (_) => const [],
-      folders: [LayerFolder(id: const FolderId('f'), name: 'F')],
     );
     final header = rows.firstWhere((row) => row.isFolder);
     expect(

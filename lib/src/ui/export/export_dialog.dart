@@ -2308,10 +2308,7 @@ class ExportDialogState extends State<ExportDialog> {
       for (final layer in _activeCut.layers)
         if (!includedIds.contains(layer.id) &&
             !_isAttachedRow(layer) &&
-            (layer.kind == LayerKind.instruction ||
-                layerKindHoldsDrawings(layer.kind)) &&
-            layer.kind != LayerKind.se &&
-            layer.kind != LayerKind.camera)
+            layerKindExportsCels(layer.kind))
           layer,
     ];
 

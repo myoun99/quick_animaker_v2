@@ -32,11 +32,7 @@ bool isSyncedAttachedLayer(Layer layer) =>
 /// Whether [layer] can carry attach layers (v1: drawing kinds only, no
 /// nesting — an attach layer is never itself a base).
 bool canCarryAttachedLayers(Layer layer) =>
-    !isAttachedLayer(layer) &&
-    switch (layer.kind) {
-      LayerKind.animation || LayerKind.storyboard || LayerKind.art => true,
-      LayerKind.camera || LayerKind.se || LayerKind.instruction => false,
-    };
+    !isAttachedLayer(layer) && layerKindIsDrawingCel(layer.kind);
 
 /// The base layer [attached] rides, looked up in [layers]; null when the
 /// link dangles (base deleted out from under it — display/composite skip

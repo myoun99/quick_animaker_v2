@@ -13,9 +13,12 @@ enum TimelineSection { drawing, se, camera }
 
 TimelineSection timelineSectionForLayerKind(LayerKind kind) {
   return switch (kind) {
+    // Folders group drawing rows, so their header sits in the drawing
+    // section with them.
     LayerKind.animation ||
     LayerKind.storyboard ||
-    LayerKind.art => TimelineSection.drawing,
+    LayerKind.art ||
+    LayerKind.folder => TimelineSection.drawing,
     LayerKind.se => TimelineSection.se,
     LayerKind.instruction || LayerKind.camera => TimelineSection.camera,
   };

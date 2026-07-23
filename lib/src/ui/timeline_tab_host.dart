@@ -5,7 +5,6 @@ import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
 
 import '../models/camera_instruction.dart';
-import '../models/folder_id.dart';
 import '../models/layer.dart';
 import '../models/layer_folder.dart';
 import '../models/layer_id.dart';
@@ -24,9 +23,7 @@ import 'dialogs/se_instance_dialog.dart';
 import 'editor_session_manager.dart';
 import 'playback/canvas_playback_controller.dart';
 import 'playback/playback_transport_controls.dart';
-import '../models/canvas_point.dart';
 import '../models/transform_track.dart';
-import '../services/cut_frame_composite_plan.dart' show layerIdentityPose;
 import '../services/camera_pose_resolver.dart';
 import 'text/app_strings.dart';
 import '../models/timeline_coverage.dart' show TimelineBlockEdge;
@@ -143,10 +140,6 @@ class TimelineTabHost extends StatefulWidget {
 
 class _TimelineTabHostState extends State<TimelineTabHost> {
   EditorSessionManager get _session => widget.session;
-
-  /// Folder FX lane twirl state (L5c) — host-local like the storyboard's
-  /// rail twirls; lost on tab switch for now.
-  final Set<FolderId> _expandedFolderLanes = {};
 
   /// The frame cursor the panel's cursor-driven widgets subscribe to
   /// (playhead, rulers, lane values, frame counter). Playback ticks and
@@ -277,6 +270,9 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
       case LayerKind.art:
       case LayerKind.storyboard:
       case LayerKind.instruction:
+      // A folder's FX lanes ARE layer lanes (R27 #26 asked for the layer
+      // lane grammar verbatim; now it is literally the same code path).
+      case LayerKind.folder:
         return _collapsibleTransformGroup(layer, _layerTransformLanes(layer));
     }
   }
@@ -348,58 +344,15 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
     );
   }
 
-  /// Folder FX lanes (L5c) route through the lane id's folder ADDRESS —
-  /// the carrier layer on those rows is only a representative. Returns
-  /// true when the lane was a folder lane (handled or swallowed-stale).
-  bool _routeFolderLaneEdit(
-    PropertyLaneRow lane,
-    TransformTrack? Function(TransformTrack track, String baseLaneId) edit,
-    String description,
-  ) {
-    final address = parseFolderLaneId(lane.laneId);
-    if (address == null) {
-      return false;
-    }
-    final folder = _session.activeCutOrNull?.folders.byId(address.folderId);
-    if (folder == null) {
-      return true;
-    }
-    final next = edit(folder.transformTrack, address.baseLaneId);
-    if (next != null) {
-      _session.updateFolderTransformTrack(
-        address.folderId,
-        next,
-        description: description,
-      );
-    }
-    return true;
-  }
+  // A folder's FX lanes used to need their own routing here: the lane id
+  // carried a `folder-fx:<folderId>` ADDRESS because the carrier layer on
+  // those rows was only a representative member, and the commit had to
+  // reach a folder table the layer path could not see. A folder is a layer
+  // now — the carrier IS the folder, so every lane edit below takes the
+  // one path.
 
   PropertyLaneEditCallbacks get _laneEdit => PropertyLaneEditCallbacks(
     onToggleKeyAt: (layer, lane, frameIndex) {
-      if (_routeFolderLaneEdit(lane, (track, base) {
-        final canvasSize = _session.requireActiveCut.canvasSize;
-        return transformTrackWithLaneKeyToggled(
-          track,
-          laneId: base,
-          frameIndex: frameIndex,
-          // Freeze the folder track's CURRENT resolved value (identity
-          // when unkeyed — the folder starts unmoved).
-          resolvedPose: track.resolveAt(
-            frameIndex: frameIndex,
-            orElse: () => layerIdentityPose(canvasSize),
-          ),
-          resolvedAnchorPoint:
-              resolveAnchorTrackAt(track.anchorPoint, frameIndex) ??
-              CanvasPoint(
-                x: canvasSize.width / 2,
-                y: canvasSize.height / 2,
-              ),
-          resolvedOpacity: resolveOpacityTrackAt(track.opacity, frameIndex),
-        );
-      }, '${lane.label} keyframe at frame ${frameIndex + 1}')) {
-        return;
-      }
       final isCamera = layer.kind == LayerKind.camera;
       _commitLaneEdit(
         layer,
@@ -424,18 +377,6 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
     },
     onMoveKey: (layer, lane, fromFrame, toFrame) {
       final description = 'Move ${lane.label} keyframe to frame ${toFrame + 1}';
-      if (_routeFolderLaneEdit(
-        lane,
-        (track, base) => transformTrackWithLaneKeyMoved(
-          track,
-          laneId: base,
-          fromFrame: fromFrame,
-          toFrame: toFrame,
-        ),
-        description,
-      )) {
-        return;
-      }
       _commitLaneEdit(
         layer,
         transformTrackWithLaneKeyMoved(
@@ -449,17 +390,6 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
     },
     onRemoveKey: (layer, lane, frameIndex) {
       final description = 'Delete ${lane.label} keyframe';
-      if (_routeFolderLaneEdit(
-        lane,
-        (track, base) => transformTrackWithLaneKeyRemoved(
-          track,
-          laneId: base,
-          frameIndex: frameIndex,
-        ),
-        description,
-      )) {
-        return;
-      }
       _commitLaneEdit(
         layer,
         transformTrackWithLaneKeyRemoved(
@@ -472,17 +402,6 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
     },
     onToggleHold: (layer, lane, frameIndex) {
       final description = 'Toggle hold on ${lane.label} keyframe';
-      if (_routeFolderLaneEdit(
-        lane,
-        (track, base) => transformTrackWithLaneHoldToggled(
-          track,
-          laneId: base,
-          frameIndex: frameIndex,
-        ),
-        description,
-      )) {
-        return;
-      }
       _commitLaneEdit(
         layer,
         transformTrackWithLaneHoldToggled(
@@ -506,18 +425,6 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
         return;
       }
       final description = 'Set ${lane.label} at frame ${frameIndex + 1}';
-      if (_routeFolderLaneEdit(
-        lane,
-        (track, base) => transformTrackWithLaneValueEdited(
-          track,
-          laneId: base,
-          frameIndex: frameIndex,
-          input: input,
-        ),
-        description,
-      )) {
-        return;
-      }
       _commitLaneEdit(
         layer,
         transformTrackWithLaneValueEdited(
@@ -565,8 +472,8 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
     _session.renameActiveLayer(nextName);
   }
 
-  Future<void> _renameFolder(FolderId folderId) async {
-    final folder = _session.activeCutOrNull?.folders.byId(folderId);
+  Future<void> _renameFolder(LayerId folderId) async {
+    final folder = _session.activeCutOrNull?.layers.folderById(folderId);
     if (folder == null) {
       return;
     }
@@ -577,7 +484,8 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
     if (!mounted || nextName == null) {
       return;
     }
-    _session.renameFolder(folderId, nextName);
+    // A folder renames like any other row.
+    _session.renameLayer(folderId, nextName);
   }
 
   /// THE unified instance-edit entrance (double-tap on any cell, and the
@@ -596,6 +504,10 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
         await _editInstructionEvent(layerId, frameIndex);
       case LayerKind.camera:
         await _editCameraKeys(frameIndex);
+      case LayerKind.folder:
+        // A folder's band is the members' aggregate: nothing of its own
+        // to edit at a cell.
+        break;
       case LayerKind.animation || LayerKind.storyboard || LayerKind.art:
         await _renameSelectedFrame();
     }
@@ -633,6 +545,9 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
         _session.createSeEntryAtCurrentFrame(name: '', lengthFrames: 1);
       case LayerKind.instruction:
         _session.createDefaultInstructionEventAtCurrentFrame();
+      case LayerKind.folder:
+        // Nothing to create on a folder row — it holds rows, not cels.
+        break;
       case LayerKind.animation || LayerKind.storyboard || LayerKind.art:
         _session.createDrawingAtCurrentFrame();
     }
@@ -1099,29 +1014,12 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
           // every composite route (session view state).
           layerFxEnabledOf: _session.isLayerFxEnabled,
           layerIsLinkedOf: _session.isLayerLinked,
-          // Folder rows (L5): tree indent + twirl + eye on the rail, the
-          // aggregate block on the frame band.
-          folders: _session.activeCutOrNull?.folders ?? const [],
-          onToggleFolderCollapsed: _session.toggleFolderCollapsed,
-          onToggleFolderVisibility: _session.toggleFolderVisibility,
-          // R27 #24/#29: folders select like layers and carry their own
-          // opacity/blend, in the layer rows' columns.
-          activeFolderId: _session.activeFolderId,
-          onSelectFolder: _session.selectFolder,
-          onFolderOpacityChanged: _session.setFolderOpacity,
-          onFolderOpacityChangeEnd: _session.setFolderOpacity,
-          onFolderBlendModeSelected: _session.setFolderBlendMode,
+          // Folder rows are layer rows: their eye, opacity, blend, fx
+          // switch, FX lanes and selection all ride the layer hooks
+          // already threaded above. Only the structural verbs land here.
+          onToggleLayerCollapsed: _session.toggleLayerCollapsed,
           onRenameFolder: (folderId) => unawaited(_renameFolder(folderId)),
           onDissolveFolder: _session.dissolveFolder,
-          expandedFolderLaneIds: _expandedFolderLanes,
-          onToggleFolderLanes: (folderId) => setState(() {
-            if (!_expandedFolderLanes.add(folderId)) {
-              _expandedFolderLanes.remove(folderId);
-            }
-          }),
-          // R28 #13: folder fx = BYPASS, the layer switch's twin.
-          folderFxEnabledOf: _session.isFolderFxEnabled,
-          onToggleFolderFx: _session.toggleFolderFx,
           onToggleLayerFx: _session.toggleLayerFx,
           // Per-layer onion skin (UI-R17 #5, TVPaint style).
           layerOnionSkinEnabledOf: _session.isLayerOnionSkinEnabled,

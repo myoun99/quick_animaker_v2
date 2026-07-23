@@ -1,16 +1,17 @@
 import '../../models/cut_id.dart';
-import '../../models/folder_id.dart';
+import '../../models/layer.dart';
 import '../../models/layer_folder.dart';
 import '../../models/layer_id.dart';
+import '../../models/layer_link_registry.dart';
 import '../command.dart';
 import '../project_lookup.dart';
 import '../project_repository.dart';
-import 'folder_mirror.dart';
 
-/// 폴더 해산 (L5): removes the folder, releasing direct member layers and
-/// child folders to its parent (the layers themselves stay). Mirrors over
-/// 겸용 cuts through the members' link groups; one undo restores the
-/// folder (and its counterparts) with every membership.
+/// 폴더 해산: removes the folder ROW, releasing its direct members (layers
+/// and nested folders alike) to its parent. The members themselves stay
+/// where they are in the stack. Mirrors over 겸용 cuts through the folder
+/// row's own link group — the same registry every other layer uses — and
+/// one undo restores the rows, their memberships and the group.
 class DissolveFolderCommand implements Command {
   DissolveFolderCommand({
     required this.repository,
@@ -20,17 +21,18 @@ class DissolveFolderCommand implements Command {
 
   final ProjectRepository repository;
   final CutId cutId;
-  final FolderId folderId;
+  final LayerId folderId;
 
   List<
     ({
       CutId cutId,
-      LayerFolder folder,
-      List<({LayerId layerId, FolderId previousFolderId})> releasedLayers,
-      List<({FolderId childId, FolderId previousParentId})> releasedChildren,
+      Layer folder,
+      int index,
+      List<LayerId> releasedLayerIds,
     })
   >?
   _dissolved;
+  LayerLinkRegistry? _registryBefore;
 
   @override
   String get description => 'Dissolve folder $folderId';
@@ -38,65 +40,50 @@ class DissolveFolderCommand implements Command {
   @override
   void execute() {
     final project = repository.requireProject();
-    // Resolve every counterpart folder BEFORE touching anything (member
-    // links are the identity).
-    final targets = folderMirrorFolderTargets(
-      project,
-      cutId: cutId,
-      folderId: folderId,
-    );
+    _registryBefore ??= project.linkRegistry;
+    // Every counterpart folder row, resolved BEFORE anything moves.
+    final targets = <({CutId cutId, LayerId folderId})>[
+      (cutId: cutId, folderId: folderId),
+      for (final member
+          in project.linkRegistry
+                  .groupOf(cutId: cutId, layerId: folderId)
+                  ?.members ??
+              const <LayerLinkMember>[])
+        if (member.cutId != cutId)
+          (cutId: member.cutId, folderId: member.layerId),
+    ];
 
     final dissolved =
         <({
           CutId cutId,
-          LayerFolder folder,
-          List<({LayerId layerId, FolderId previousFolderId})> releasedLayers,
-          List<({FolderId childId, FolderId previousParentId})>
-          releasedChildren,
+          Layer folder,
+          int index,
+          List<LayerId> releasedLayerIds,
         })>[];
     for (final target in targets) {
       final cut = requireCut(project, target.cutId);
-      final folder = cut.folders.byId(target.folderId);
+      final folder = cut.layers.folderById(target.folderId);
       if (folder == null) {
         continue;
       }
-      final releasedLayers = <({LayerId layerId, FolderId previousFolderId})>[];
+      final index = cut.layers.indexWhere((layer) => layer.id == folder.id);
+      final releasedLayerIds = <LayerId>[];
       for (final layer in cut.layers) {
         if (layer.folderId == folder.id) {
-          releasedLayers.add((
-            layerId: layer.id,
-            previousFolderId: folder.id,
-          ));
+          releasedLayerIds.add(layer.id);
           repository.updateLayerFolderId(
             cutId: target.cutId,
             layerId: layer.id,
-            folderId: folder.parentId,
+            folderId: folder.folderId,
           );
         }
       }
-      final releasedChildren =
-          <({FolderId childId, FolderId previousParentId})>[];
-      repository.updateCutFolders(
-        cutId: target.cutId,
-        update: (folders) => [
-          for (final other in folders)
-            if (other.id != folder.id)
-              other.parentId == folder.id
-                  ? () {
-                      releasedChildren.add((
-                        childId: other.id,
-                        previousParentId: folder.id,
-                      ));
-                      return other.copyWith(parentId: folder.parentId);
-                    }()
-                  : other,
-        ],
-      );
+      repository.deleteLayer(cutId: target.cutId, layerId: folder.id);
       dissolved.add((
         cutId: target.cutId,
         folder: folder,
-        releasedLayers: releasedLayers,
-        releasedChildren: releasedChildren,
+        index: index,
+        releasedLayerIds: releasedLayerIds,
       ));
     }
     _dissolved ??= dissolved;
@@ -105,29 +92,26 @@ class DissolveFolderCommand implements Command {
   @override
   void undo() {
     final dissolved = _dissolved;
-    if (dissolved == null) {
+    final registryBefore = _registryBefore;
+    if (dissolved == null || registryBefore == null) {
       throw StateError('Command has not been executed.');
     }
     for (final entry in dissolved) {
-      repository.updateCutFolders(
+      repository.insertLayer(
         cutId: entry.cutId,
-        update: (folders) => [
-          for (final folder in folders)
-            entry.releasedChildren.any(
-                  (child) => child.childId == folder.id,
-                )
-                ? folder.copyWith(parentId: entry.folder.id)
-                : folder,
-          entry.folder,
-        ],
+        layer: entry.folder,
+        index: entry.index,
       );
-      for (final released in entry.releasedLayers) {
+      for (final layerId in entry.releasedLayerIds) {
         repository.updateLayerFolderId(
           cutId: entry.cutId,
-          layerId: released.layerId,
-          folderId: released.previousFolderId,
+          layerId: layerId,
+          folderId: entry.folder.id,
         );
       }
     }
+    repository.updateProject(
+      (current) => current.copyWith(linkRegistry: registryBefore),
+    );
   }
 }

@@ -1,7 +1,7 @@
 import '../../models/attached_layer_resolve.dart';
 import '../../models/cut.dart';
 import '../../models/cut_id.dart';
-import '../../models/folder_id.dart';
+import '../../models/layer_folder.dart';
 import '../../models/frame_id.dart';
 import '../../models/layer.dart';
 import '../../models/layer_id.dart';
@@ -216,19 +216,27 @@ class CreateLinkedCutCommandInputPlan {
   const CreateLinkedCutCommandInputPlan({
     required this.newCutId,
     required this.layerIdMap,
-    required this.folderIdMap,
     required this.newGroupIdBySource,
   });
 
   final CutId newCutId;
+
+  /// Source row → linked copy's id, FOLDER ROWS INCLUDED (a folder is a
+  /// layer, so it needs no id map of its own — [Layer.folderId] maps
+  /// through this one).
   final Map<LayerId, LayerId> layerIdMap;
-  final Map<FolderId, FolderId> folderIdMap;
   final Map<LayerId, String> newGroupIdBySource;
 }
 
-/// Plans a 겸용컷 생성 (L2): a new cut id, one linked-copy id per DRAWING
-/// layer of [sourceCut], copied folder ids, and registry group ids.
-/// FrameIds are NOT mapped — identity is the link.
+/// Whether a row of [kind] copies into a 겸용컷: the drawing layers whose
+/// pictures are shared, plus the folder rows that hold them ("폴더 존재/
+/// 멤버십은 공유 구조"). SE/instruction/camera rows are per-use fixtures.
+bool _linksIntoLinkedCut(LayerKind kind) =>
+    kind == LayerKind.animation || layerKindGroupsLayers(kind);
+
+/// Plans a 겸용컷 생성 (L2): a new cut id, one linked-copy id per linked
+/// row of [sourceCut] (drawing layers and their folders), and registry
+/// group ids. FrameIds are NOT mapped — identity is the link.
 CreateLinkedCutCommandInputPlan planCreateLinkedCutCommandInput({
   required Project project,
   required Cut sourceCut,
@@ -239,7 +247,7 @@ CreateLinkedCutCommandInputPlan planCreateLinkedCutCommandInput({
 
   final layerIdMap = <LayerId, LayerId>{};
   for (final layer in sourceCut.layers) {
-    if (layer.kind != LayerKind.animation) {
+    if (!_linksIntoLinkedCut(layer.kind)) {
       continue;
     }
     final copyId = LayerId(
@@ -249,26 +257,12 @@ CreateLinkedCutCommandInputPlan planCreateLinkedCutCommandInput({
     layerIdMap[layer.id] = copyId;
   }
 
-  final usedFolderIds = <String>{
-    for (final track in project.tracks)
-      for (final cut in track.cuts)
-        for (final folder in cut.folders) folder.id.value,
-  };
-  final folderIdMap = <FolderId, FolderId>{};
-  for (final folder in sourceCut.folders) {
-    final copyId = FolderId(
-      _firstAvailableId(prefix: 'folder', usedIds: usedFolderIds),
-    );
-    usedFolderIds.add(copyId.value);
-    folderIdMap[folder.id] = copyId;
-  }
-
   final usedGroupIds = <String>{
     for (final group in project.linkRegistry.groups) group.id,
   };
   final newGroupIdBySource = <LayerId, String>{};
   for (final layer in sourceCut.layers) {
-    if (layer.kind != LayerKind.animation) {
+    if (!_linksIntoLinkedCut(layer.kind)) {
       continue;
     }
     final groupId = _firstAvailableId(prefix: 'link', usedIds: usedGroupIds);
@@ -279,7 +273,6 @@ CreateLinkedCutCommandInputPlan planCreateLinkedCutCommandInput({
   return CreateLinkedCutCommandInputPlan(
     newCutId: newCutId,
     layerIdMap: layerIdMap,
-    folderIdMap: folderIdMap,
     newGroupIdBySource: newGroupIdBySource,
   );
 }
@@ -405,30 +398,34 @@ LinkDuplicateLayerCommandInputPlan planLinkDuplicateLayerCommandInput({
 }
 
 class CreateFolderCommandInputPlan {
-  const CreateFolderCommandInputPlan({required this.folderIdByCut});
+  const CreateFolderCommandInputPlan({
+    required this.folderIdByCut,
+    required this.folderGroupId,
+  });
 
-  /// Planned new folder id for the origin cut AND each 겸용 mirror cut
-  /// (folder ids are per-cut; planned up front so redo reuses them).
-  final Map<CutId, FolderId> folderIdByCut;
+  /// Planned new folder-LAYER id for the origin cut AND each 겸용 mirror
+  /// cut (ids are per-cut; planned up front so redo reuses them).
+  final Map<CutId, LayerId> folderIdByCut;
+
+  /// Planned registry group id tying those folder rows together, so the
+  /// folder's shared properties mirror through the ordinary layer path.
+  final String folderGroupId;
 }
 
-/// Plans a 폴더 생성 (L5): one fresh folder id per cut the command will
-/// touch (the origin plus every mirror cut of [memberLayerIds]).
+/// Plans a 폴더 생성: one fresh folder-layer id per cut the command will
+/// touch (the origin plus every mirror cut of [memberLayerIds]), plus the
+/// link group they join.
 CreateFolderCommandInputPlan planCreateFolderCommandInput({
   required Project project,
   required CutId cutId,
   required List<LayerId> memberLayerIds,
 }) {
-  final usedFolderIds = <String>{
-    for (final track in project.tracks)
-      for (final cut in track.cuts)
-        for (final folder in cut.folders) folder.id.value,
-  };
-  FolderId next() {
-    final id = FolderId(
-      _firstAvailableId(prefix: 'folder', usedIds: usedFolderIds),
+  final ids = _ProjectIdSnapshot.fromProject(project);
+  LayerId next() {
+    final id = LayerId(
+      _firstAvailableId(prefix: 'folder', usedIds: ids.layerIds),
     );
-    usedFolderIds.add(id.value);
+    ids.layerIds.add(id.value);
     return id;
   }
 
@@ -442,12 +439,16 @@ CreateFolderCommandInputPlan planCreateFolderCommandInput({
       ))
         mirror.cutId: next(),
     },
+    folderGroupId: _firstAvailableId(
+      prefix: 'link',
+      usedIds: {for (final group in project.linkRegistry.groups) group.id},
+    ),
   );
 }
 
-/// "Folder N" with the first free N in [cut]'s folder table.
+/// "Folder N" with the first free N among [cut]'s folder rows.
 String nextFolderName(Cut cut) {
-  final used = {for (final folder in cut.folders) folder.name};
+  final used = {for (final folder in cut.layers.folderLayers) folder.name};
   var number = 1;
   while (used.contains('Folder $number')) {
     number += 1;

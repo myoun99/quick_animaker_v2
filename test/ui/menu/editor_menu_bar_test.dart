@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:quick_animaker_v2/src/models/layer_folder.dart';
 import 'package:quick_animaker_v2/src/services/project_repository.dart';
 import 'package:quick_animaker_v2/src/ui/debug/input_inspector.dart';
 import 'package:quick_animaker_v2/src/ui/home_page.dart';
@@ -140,8 +141,8 @@ void main() {
     await tester.pumpAndSettle();
 
     final cut = repository.requireProject().tracks.first.cuts.first;
-    expect(cut.folders, hasLength(1));
-    final folderId = cut.folders.single.id;
+    expect(cut.layers.folderLayers, hasLength(1));
+    final folderId = cut.layers.folderLayers.single.id;
     expect(
       find.byKey(ValueKey<String>('timeline-folder-row-$folderId')),
       findsOneWidget,
@@ -162,15 +163,16 @@ void main() {
           .first
           .cuts
           .first
-          .folders
+          .layers
+          .folderLayers
           .single
           .collapsed,
       isTrue,
     );
 
-    // The folder eye writes the model too.
+    // The folder eye is the LAYER eye — same button, same key.
     await tester.tap(
-      find.byKey(ValueKey<String>('timeline-folder-visibility-$folderId')),
+      find.byKey(ValueKey<String>('timeline-layer-visibility-$folderId')),
     );
     await tester.pumpAndSettle();
     expect(
@@ -180,7 +182,8 @@ void main() {
           .first
           .cuts
           .first
-          .folders
+          .layers
+          .folderLayers
           .single
           .isVisible,
       isFalse,

@@ -1,5 +1,4 @@
 import '../../models/layer.dart';
-import '../../models/layer_folder.dart';
 import '../../models/layer_id.dart';
 import 'layer_timeline_display_adapter.dart';
 import 'property_lane_model.dart';
@@ -29,41 +28,39 @@ LayerId? adjacentDisplayedLayerId({
   Set<TimelineSection> hiddenSections = const {},
   TimelineRowFilter rowFilter = TimelineRowFilter.none,
   Set<LayerId> collapsedAttachBaseIds = const {},
-  List<LayerFolder> folders = const [],
   bool Function(LayerId layerId)? fxEnabledOf,
 }) {
   // Layer rows only — property lanes aren't selectable layers, so the nav
-  // skips them no matter what's twirled open. R27 #27: FOLDERS join for
-  // the same reason the attach fold does — a collapsed folder's members
-  // are not on screen, so the walk must not stop on them ("접혀져있으면
-  // 표시된거만 선택하는 룰").
+  // skips them no matter what's twirled open. R27 #27: a collapsed
+  // folder's members are not on screen, so the walk must not stop on them
+  // ("접혀져있으면 표시된거만 선택하는 룰") — the row builder already
+  // drops them. FOLDER rows themselves are ordinary stops now: they are
+  // layers, so the old "step OVER the header, it only carries a
+  // representative member" special case is gone.
   final rows = buildTimelineDisplayRows(
     layers: horizontalLayerDisplayOrder(layers),
     expandedLayerIds: const {},
     lanesForLayer: (_) => const [],
-    folders: folders,
     hiddenSections: hiddenSections,
     rowFilter: rowFilter,
     collapsedAttachBaseIds: collapsedAttachBaseIds,
     activeLayerId: activeLayerId,
     fxEnabledOf: fxEnabledOf,
+    stack: layers,
   );
   if (rows.isEmpty || direction == 0) {
     return null;
   }
   var activeIndex = -1;
   for (var index = 0; index < rows.length; index += 1) {
-    if (!rows[index].isFolder && rows[index].layer.id == activeLayerId) {
+    if (!rows[index].isLane && rows[index].layer.id == activeLayerId) {
       activeIndex = index;
       break;
     }
   }
-  // Folder HEADER rows are not layers: the walk steps OVER them (a header
-  // carries a representative member, so stopping there would silently
-  // select a layer the user cannot see).
   final layerRowIndexes = [
     for (var index = 0; index < rows.length; index += 1)
-      if (!rows[index].isFolder) index,
+      if (!rows[index].isLane) index,
   ];
   if (layerRowIndexes.isEmpty) {
     return null;

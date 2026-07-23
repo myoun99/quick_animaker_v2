@@ -6,7 +6,6 @@ import '../models/cut.dart';
 import '../models/frame.dart';
 import '../models/layer.dart';
 import '../models/layer_blend_mode.dart';
-import '../models/folder_id.dart';
 import '../models/layer_folder.dart';
 import '../models/layer_id.dart';
 import '../models/layer_kind.dart';
@@ -30,14 +29,15 @@ class CutFrameCompositeLayer {
   final LayerBlendMode blendMode;
 
   /// The layer's EFFECTIVE opacity: static layer opacity × animated
-  /// Opacity sample × every enclosing folder's effective opacity (L3 —
-  /// folded per member; overlapping members inside one translucent
-  /// folder double-blend, the exact buffered group is a later slice).
+  /// Opacity sample × every enclosing folder's effective opacity (folded
+  /// per member; overlapping members inside one translucent folder
+  /// double-blend — see [resolveFolderChainAt] for why the exact buffered
+  /// group is still a later slice).
   final double opacity;
 
   /// The layer's transform at this frame — WITH every enclosing folder's
-  /// FX composed outside it (L3, 폴더째 이동); null = identity (no
-  /// transform work — the overwhelmingly common case skips the canvas
+  /// FX composed outside it (폴더째 이동); null = identity (no transform
+  /// work — the overwhelmingly common case skips the canvas
   /// save/restore).
   final TransformPose? pose;
 
@@ -134,7 +134,10 @@ class CutFrameCompositeEntry {
 /// subtree shows at all, the folded opacity factor (each folder's static
 /// opacity × its animated Opacity sample), and the folder poses to apply
 /// outermost-first. Folder FX lanes are per-use ("레인만 각자") — this
-/// resolves THIS cut's folder table.
+/// resolves THIS cut's folder rows.
+///
+/// Folder rows sit in [fxBypassedLayerIds] like any other row: the folder
+/// fx switch IS the layer fx switch now.
 ({
   bool visible,
   double opacityFactor,
@@ -145,9 +148,9 @@ resolveFolderChainAt({
   required Cut cut,
   required Layer layer,
   required int frameIndex,
-  Set<FolderId> fxBypassedFolderIds = const {},
+  Set<LayerId> fxBypassedLayerIds = const {},
 }) {
-  final chain = cut.folders.ancestryOf(layer.folderId);
+  final chain = cut.layers.ancestryOf(layer.folderId);
   if (chain.isEmpty) {
     return (
       visible: true,
@@ -181,7 +184,7 @@ resolveFolderChainAt({
     // opacity — the layer fx switch's exact contract. Its static opacity
     // and blend are display properties, not FX, so they stay (matching a
     // bypassed layer, whose static opacity also survives).
-    final fxEnabled = !fxBypassedFolderIds.contains(folder.id);
+    final fxEnabled = !fxBypassedLayerIds.contains(folder.id);
     opacityFactor *=
         (folder.opacity *
                 (fxEnabled
@@ -262,15 +265,23 @@ LayerPoseSample? composeFolderAndLayerPose({
 /// Layers in [fxBypassedLayerIds] compose with their FX ignored — identity
 /// pose and no animated opacity (the layer-label fx switch, session view
 /// state).
+///
+/// Enclosing FOLDERS fold into the entry: a folder's opacity multiplies
+/// into the member's, its blend substitutes for a member that sets none,
+/// and its FX poses compose outside the member's. That is a flat
+/// APPROXIMATION of the group buffer R27 #29 asks for — see
+/// [resolveFolderChainAt].
 List<CutFrameCompositeEntry> resolveCutFrameCompositeEntries({
   required Cut cut,
   required int frameIndex,
   Set<LayerId> fxBypassedLayerIds = const {},
-  Set<FolderId> fxBypassedFolderIds = const {},
 }) {
   final entries = <CutFrameCompositeEntry>[];
   for (final layer in cut.layers) {
-    if (layer.kind == LayerKind.camera) {
+    // Folder rows composite their MEMBERS, not a surface of their own —
+    // their eye/opacity/blend/FX reach the picture through
+    // [resolveFolderChainAt] (flat) or [CutFrameCompositeGroup] (tree).
+    if (!layerKindPaintsArtwork(layer.kind)) {
       continue;
     }
     final base = isAttachedLayer(layer)
@@ -286,13 +297,13 @@ List<CutFrameCompositeEntry> resolveCutFrameCompositeEntries({
     if (!layer.isVisible || layer.opacity <= 0) {
       continue;
     }
-    // Folder gates (L3): a hidden ancestor hides the subtree; folder
-    // opacity folds into the member's, folder poses ride the entry.
+    // Folder gates: a hidden ancestor hides the subtree; folder opacity
+    // folds into the member's, folder poses ride the entry.
     final folderChain = resolveFolderChainAt(
       cut: cut,
       layer: layer,
       frameIndex: frameIndex,
-      fxBypassedFolderIds: fxBypassedFolderIds,
+      fxBypassedLayerIds: fxBypassedLayerIds,
     );
     if (!folderChain.visible) {
       continue;
@@ -377,14 +388,12 @@ List<CutFrameCompositeLayer> planCutFrameComposite({
   required int frameIndex,
   required LayerFrameSurfaceResolver surfaceResolver,
   Set<LayerId> fxBypassedLayerIds = const {},
-  Set<FolderId> fxBypassedFolderIds = const {},
 }) {
   final plan = <CutFrameCompositeLayer>[];
   for (final entry in resolveCutFrameCompositeEntries(
     cut: cut,
     frameIndex: frameIndex,
     fxBypassedLayerIds: fxBypassedLayerIds,
-    fxBypassedFolderIds: fxBypassedFolderIds,
   )) {
     final surface = surfaceResolver(entry.layer, entry.frame);
     if (surface == null) {

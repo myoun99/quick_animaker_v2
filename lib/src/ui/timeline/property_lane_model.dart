@@ -1,9 +1,9 @@
 import 'dart:ui' show Offset;
 
-import '../../models/folder_id.dart';
 import '../../models/layer.dart';
 import '../../models/layer_folder.dart';
 import '../../models/layer_id.dart';
+import '../../models/layer_kind.dart';
 import 'timeline_row_filter.dart';
 import 'timeline_section_policy.dart';
 
@@ -69,35 +69,22 @@ class TimelineDisplayRow {
     this.layer, {
     required this.layerIndex,
     this.depth = 0,
-  }) : lane = null,
-       folder = null,
-       aggregateRuns = const [],
-       members = const [];
+    this.aggregateRuns = const [],
+    this.members = const [],
+  }) : lane = null;
 
   const TimelineDisplayRow.lane(
     this.layer,
     PropertyLaneRow this.lane, {
     required this.layerIndex,
-  }) : folder = null,
-       depth = 0,
+  }) : depth = 0,
        aggregateRuns = const [],
        members = const [];
 
-  /// A folder HEADER row (L5): sits above its first member; its frame band
-  /// renders the aggregate block (member exposure union — pure display).
-  /// [layer] carries the first member as a representative so every
-  /// row consumer (virtualization, memo keys) keeps a real layer.
-  const TimelineDisplayRow.folder(
-    this.layer,
-    LayerFolder this.folder, {
-    required this.layerIndex,
-    this.depth = 0,
-    this.aggregateRuns = const [],
-    this.members = const [],
-  }) : lane = null;
-
-  /// The owning layer (lane and folder rows carry a layer too — for
-  /// folder rows it is the first member, a representative only).
+  /// The owning layer. A FOLDER row is just a layer row whose layer is a
+  /// folder — there is no representative-member hack any more, which is
+  /// what let three separate row walks (nav, frame cursor, grid memo)
+  /// forget to skip the header and land on the wrong row.
   final Layer layer;
 
   /// The layer's index in the DISPLAY layer list — section dividers keep
@@ -106,26 +93,23 @@ class TimelineDisplayRow {
 
   final PropertyLaneRow? lane;
 
-  /// Set on folder header rows only.
-  final LayerFolder? folder;
-
-  /// Folder header rows only: the SUBTREE members' exposure union as
-  /// merged display runs (the TVP-latest aggregate block — nameless,
-  /// no comma edits, no moves; holds included through exposure lengths).
+  /// Folder rows only: the SUBTREE members' exposure union as merged
+  /// display runs (the TVP-latest aggregate block — nameless, no comma
+  /// edits, no moves; holds included through exposure lengths).
   final List<({int start, int endExclusive})> aggregateRuns;
 
-  /// Folder header rows only: the SUBTREE members themselves. R28 #11 —
-  /// the aggregate band tints a frame grey when NO member has artwork
-  /// there, so it needs the members, not just their exposure union.
+  /// Folder rows only: the SUBTREE members themselves. R28 #11 — the
+  /// aggregate band tints a frame grey when NO member has artwork there,
+  /// so it needs the members, not just their exposure union.
   final List<Layer> members;
 
   /// Folder nesting depth (0 = top level) — drives the rail indent for
-  /// both folder headers and member layer rows.
+  /// both folder rows and member rows.
   final int depth;
 
   bool get isLane => lane != null;
 
-  bool get isFolder => folder != null;
+  bool get isFolder => lane == null && layerKindGroupsLayers(layer.kind);
 }
 
 /// Lane key edit hooks — layer-generic on purpose: the camera routes them
@@ -185,9 +169,9 @@ class PropertyLaneEditCallbacks {
 /// filter can never hide the layer you're editing. [fxEnabledOf] resolves
 /// the session-level fx state the filter's fx-only facet reads.
 ///
-/// The folder header row's aggregate band (L5, the TVP-latest display):
-/// the UNION of the subtree members' exposure intervals merged into runs.
-/// Pure display — nameless, no comma edits, no moves.
+/// The folder row's aggregate band (the TVP-latest display): the UNION of
+/// the subtree members' exposure intervals merged into runs. Pure display
+/// — nameless, no comma edits, no moves.
 List<({int start, int endExclusive})> folderAggregateRuns(
   Iterable<Layer> members,
 ) {
@@ -221,14 +205,15 @@ List<TimelineDisplayRow> buildTimelineDisplayRows({
   required List<Layer> layers,
   required Set<LayerId> expandedLayerIds,
   required List<PropertyLaneRow> Function(Layer layer) lanesForLayer,
-  List<LayerFolder> folders = const [],
-  Set<FolderId> expandedFolderLaneIds = const {},
-  List<PropertyLaneRow> Function(LayerFolder folder)? lanesForFolder,
   Set<TimelineSection> hiddenSections = const {},
   TimelineRowFilter rowFilter = TimelineRowFilter.none,
   Set<LayerId> collapsedAttachBaseIds = const {},
   LayerId? activeLayerId,
   bool Function(LayerId layerId)? fxEnabledOf,
+  /// The MODEL stack, when [layers] is a display-ordered copy: folder
+  /// membership is resolved against it so nesting reads the same in every
+  /// orientation. Defaults to [layers].
+  List<Layer>? stack,
 }) {
   final rows = <TimelineDisplayRow>[];
   // R26 #36: the attach group is unsplittable — a base's transform lanes
@@ -244,11 +229,10 @@ List<TimelineDisplayRow> buildTimelineDisplayRows({
     pendingLaneBaseId = null;
   }
 
-  // Folder HEADER rows (L5) go above their first displayed member —
-  // outermost first for nesting. Collapsed folders keep their header (its
-  // band shows the aggregate block) and swallow member rows (the active
-  // layer stays visible, like the attach fold).
-  final emittedFolderIds = <FolderId>{};
+  // Folder rows need no synthesis: they are IN the stack, already sitting
+  // directly above their members. All that is left is the nesting indent,
+  // the collapse fold and the aggregate band the folder row paints.
+  final modelStack = stack ?? layers;
   for (var index = 0; index < layers.length; index += 1) {
     final layer = layers[index];
     // The attach run ends at the first layer that is NOT an attach of the
@@ -275,50 +259,26 @@ List<TimelineDisplayRow> buildTimelineDisplayRows({
         )) {
       continue;
     }
-    final ancestry = folders.ancestryOf(layer.folderId);
-    for (var depth = 0; depth < ancestry.length; depth += 1) {
-      // ancestry is nearest-first; emit outermost-first.
-      final folder = ancestry[ancestry.length - 1 - depth];
-      if (emittedFolderIds.add(folder.id)) {
-        final subtreeMembers = [
-          for (final member in layers)
-            if (folders
-                .ancestryOf(member.folderId)
-                .any((ancestor) => ancestor.id == folder.id))
-              member,
-        ];
-        rows.add(
-          TimelineDisplayRow.folder(
-            layer,
-            folder,
-            layerIndex: index,
-            depth: depth,
-            aggregateRuns: folderAggregateRuns(subtreeMembers),
-            members: subtreeMembers,
-          ),
-        );
-        // Folder FX lanes (L5c) twirl under the header — independent of
-        // the member collapse (a collapsed folder still places as one).
-        if (lanesForFolder != null &&
-            expandedFolderLaneIds.contains(folder.id)) {
-          for (final lane in lanesForFolder(folder)) {
-            rows.add(TimelineDisplayRow.lane(layer, lane, layerIndex: index));
-          }
-        }
-      }
-    }
     // R27 #24: a collapsed folder folds ALL its members, the active layer
     // included. The old active-layer exemption meant folding a folder
     // whose member was selected simply didn't look folded; the folder row
-    // takes the selection instead (EditorSessionManager.selectFolder).
-    if (folders.subtreeCollapsed(layer.folderId)) {
+    // takes the selection instead (EditorSessionManager.toggleLayerCollapsed).
+    if (modelStack.subtreeCollapsed(layer.folderId)) {
       continue;
     }
+    final isFolder = layerKindGroupsLayers(layer.kind);
+    final subtreeMembers = isFolder
+        ? modelStack.subtreeMembersOf(layer.id)
+        : const <Layer>[];
     rows.add(
       TimelineDisplayRow.layer(
         layer,
         layerIndex: index,
-        depth: ancestry.length,
+        depth: modelStack.ancestryOf(layer.folderId).length,
+        aggregateRuns: isFolder
+            ? folderAggregateRuns(subtreeMembers)
+            : const [],
+        members: subtreeMembers,
       ),
     );
     if (!expandedLayerIds.contains(layer.id)) {

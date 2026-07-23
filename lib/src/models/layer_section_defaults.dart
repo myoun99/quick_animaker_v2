@@ -136,9 +136,7 @@ List<Layer> withEnsuredSectionLayers(CutId cutId, List<Layer> layers) {
     );
   }
 
-  final cameraIndex = layers.indexWhere(
-    (layer) => layer.kind == LayerKind.camera,
-  );
+  final cameraIndex = layers.cameraIndex;
   final result = List<Layer>.of(layers);
   result.insertAll(cameraIndex < 0 ? result.length : cameraIndex, additions);
   return result;

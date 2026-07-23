@@ -3,7 +3,6 @@ import 'package:quick_animaker_v2/src/controllers/layer_controller.dart';
 import 'package:quick_animaker_v2/src/models/canvas_size.dart';
 import 'package:quick_animaker_v2/src/models/cut.dart';
 import 'package:quick_animaker_v2/src/models/cut_id.dart';
-import 'package:quick_animaker_v2/src/models/folder_id.dart';
 import 'package:quick_animaker_v2/src/models/frame.dart';
 import 'package:quick_animaker_v2/src/models/frame_id.dart';
 import 'package:quick_animaker_v2/src/models/layer.dart';
@@ -136,39 +135,24 @@ void main() {
       );
     });
 
-    test('folder eye, static opacity (clamped) and the collapse twirl '
-        '(L5) write the cut folder table', () {
+    test('a folder row rides the LAYER eye, static opacity (clamped) and '
+        'the twirl — no folder-shaped methods at all', () {
       final fixture = _createFixture();
-      const folderId = FolderId('folder-1');
-      fixture.repository.updateCutFolders(
+      const folderId = LayerId('folder-1');
+      fixture.repository.insertLayer(
         cutId: const CutId('cut-1'),
-        update: (folders) => [
-          ...folders,
-          LayerFolder(id: folderId, name: 'F'),
-        ],
+        layer: createFolderLayer(id: folderId, name: 'F'),
       );
-      LayerFolder folder() => _findCut(
-        fixture.repository,
-        const CutId('cut-1'),
-      ).folders.single;
+      Layer folder() =>
+          _findLayer(fixture.repository, folderId);
 
-      fixture.controller.toggleFolderVisibility(
-        cutId: const CutId('cut-1'),
-        folderId: folderId,
-      );
+      fixture.controller.toggleLayerVisibility(folderId);
       expect(folder().isVisible, isFalse);
 
-      fixture.controller.setFolderOpacity(
-        cutId: const CutId('cut-1'),
-        folderId: folderId,
-        opacity: 1.7,
-      );
+      fixture.controller.setLayerOpacity(layerId: folderId, opacity: 1.7);
       expect(folder().opacity, 1.0, reason: 'clamped');
 
-      fixture.controller.toggleFolderCollapsed(
-        cutId: const CutId('cut-1'),
-        folderId: folderId,
-      );
+      fixture.controller.toggleLayerCollapsed(folderId);
       expect(folder().collapsed, isTrue);
     });
 
