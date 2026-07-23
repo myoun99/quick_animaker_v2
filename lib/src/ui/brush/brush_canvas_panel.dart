@@ -23,7 +23,6 @@ import '../../services/cache_invalidation_executor.dart';
 import '../../services/history_manager.dart';
 import '../canvas/canvas_selection_layer.dart';
 import '../canvas/canvas_viewport_gesture_layer.dart';
-import '../theme/app_theme.dart' show AppColors;
 import '../canvas/interactive_brush_edit_canvas_view.dart';
 import '../canvas/layer_pose_paint.dart';
 import 'brush_canvas_defaults.dart';
@@ -33,6 +32,7 @@ import 'canvas_selection_commands.dart';
 import 'selection_shape_history_command.dart';
 import 'canvas_view_commands.dart';
 import 'canvas_viewport_pan_metrics.dart';
+import '../widgets/app_icon_button.dart';
 import '../widgets/app_scrollbar.dart';
 import '../widgets/drag_value_label.dart';
 
@@ -96,6 +96,8 @@ class BrushCanvasPanel extends StatefulWidget {
     this.onSelectionInteractionChanged,
     this.allowViewRotation = true,
     this.statusStripActions = const <Widget>[],
+    this.bottomBarLeading = const <Widget>[],
+    this.bottomBarLeadingToken,
   }) : assert(
          coordinator != null || contentOverride != null,
          'Without a coordinator the panel needs a content override.',
@@ -117,6 +119,18 @@ class BrushCanvasPanel extends StatefulWidget {
   /// Host commands rendered right-aligned in the panel's status strip
   /// (UI-R10 #18); always visible — the title ellipsizes first.
   final List<Widget> statusStripActions;
+
+  /// R26 #41: host controls that live at the FAR LEFT of the bottom bar,
+  /// immediately before the horizontal panbar (the timesheet's sheet-mode
+  /// and page navigation). They share the bar's row, so they scroll with
+  /// it in the slim-dock fallback like every other control.
+  final List<Widget> bottomBarLeading;
+
+  /// Equality token for [bottomBarLeading] — the bottom bar is memoized by
+  /// its inputs (R13-3) and widget instances are rebuilt per host build,
+  /// so the host names what its leading controls actually DEPEND on. Null
+  /// with a non-empty leading list means "rebuild the bar every time".
+  final Object? bottomBarLeadingToken;
 
   /// Optional layer stacked over the canvas inside the editor viewport,
   /// receiving the live viewport so it can transform canvas coordinates
@@ -464,6 +478,7 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel> {
     CanvasSize canvasSize,
     bool rotation,
     String title,
+    Object? leading,
   })?
   _shellBarsToken;
   Widget? _memoRightStripBar;
@@ -476,8 +491,14 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel> {
       canvasSize: widget.canvasSize,
       rotation: widget.allowViewRotation,
       title: widget.selectionLabels.title,
+      leading: widget.bottomBarLeadingToken,
     );
-    if (token == _shellBarsToken &&
+    // A leading list without a token can't be memoized (see
+    // [bottomBarLeadingToken]) — rebuild rather than serve a stale bar.
+    final memoizable =
+        widget.bottomBarLeading.isEmpty || widget.bottomBarLeadingToken != null;
+    if (memoizable &&
+        token == _shellBarsToken &&
         _memoRightStripBar != null &&
         _memoBottomBar != null) {
       return;
@@ -491,6 +512,7 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel> {
       onViewportChangeEnd: _syncViewportParent,
     );
     _memoBottomBar = _CanvasViewportBottomBar(
+      leading: widget.bottomBarLeading,
       viewport: _viewport,
       editorViewportSize: _resolvedEditorViewportSize(),
       canvasSize: widget.canvasSize,
@@ -1507,7 +1529,15 @@ class _CanvasViewportBottomBar extends StatelessWidget {
   /// scrollable instead of overflowing (slim edge docks land here).
   static const double _scrollFallbackWidth = 200;
 
+  /// What one host control in [leading] adds to that threshold: the widest
+  /// control in the shared vocabulary (a [DragValueLabel] readout) plus
+  /// breathing room. The bar cannot measure widgets it did not build, so
+  /// it budgets generously on purpose — over-budgeting only makes the bar
+  /// scroll a little sooner, while under-budgeting OVERFLOWS.
+  static const double _leadingControlBudget = 44;
+
   const _CanvasViewportBottomBar({
+    this.leading = const <Widget>[],
     required this.viewport,
     required this.editorViewportSize,
     required this.canvasSize,
@@ -1525,6 +1555,9 @@ class _CanvasViewportBottomBar extends StatelessWidget {
     required this.onFlipHorizontal,
     required this.onFlipVertical,
   });
+
+  /// R26 #41: host controls at the far left, before the panbar.
+  final List<Widget> leading;
 
   final CanvasViewport viewport;
   final Size editorViewportSize;
@@ -1682,11 +1715,30 @@ class _CanvasViewportBottomBar extends StatelessWidget {
       onViewportChangeEnd: onViewportChangeEnd,
     );
 
+    // Non-empty clusters joined by hairlines — so a host that supplies no
+    // leading controls (or a rotation-disabled host with no view controls)
+    // never shows a divider with nothing on one side.
+    List<Widget> joined(List<List<Widget>> clusters) {
+      final row = <Widget>[];
+      for (final cluster in clusters) {
+        if (cluster.isEmpty) {
+          continue;
+        }
+        if (row.isNotEmpty) {
+          row.add(divider());
+        }
+        row.addAll(cluster);
+      }
+      return row;
+    }
+
     return SizedBox(
       height: height,
       child: LayoutBuilder(
         builder: (context, constraints) {
-          if (constraints.maxWidth < _scrollFallbackWidth) {
+          final scrollFallbackWidth =
+              _scrollFallbackWidth + leading.length * _leadingControlBudget;
+          if (constraints.maxWidth < scrollFallbackWidth) {
             // Too tight for an Expanded scrollbar between the controls —
             // scroll the whole bar so nothing overflows (slim edge docks).
             return SingleChildScrollView(
@@ -1695,24 +1747,29 @@ class _CanvasViewportBottomBar extends StatelessWidget {
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   const SizedBox(width: 4),
-                  ...viewControls,
-                  divider(),
-                  SizedBox(width: 80, child: scrollbar()),
-                  divider(),
-                  ...zoomCluster,
+                  ...joined([
+                    leading,
+                    viewControls,
+                    [SizedBox(width: 80, child: scrollbar())],
+                    zoomCluster,
+                  ]),
                   const SizedBox(width: 4),
                 ],
               ),
             );
           }
-          final wide = constraints.maxWidth >= _wideLayoutMinWidth;
+          final wide =
+              constraints.maxWidth >=
+              _wideLayoutMinWidth + leading.length * _leadingControlBudget;
           return Row(
             children: [
               const SizedBox(width: 4),
-              // Narrow panels drop the rotation cluster; the ZOOM cluster
+              // Host controls first (R26 #41), then the view controls —
+              // narrow panels drop the rotation cluster; the ZOOM cluster
               // (fit/1:1/−/%/+, UI-R18 #17/#20) always shows on the right.
-              if (wide) ...viewControls,
-              if (wide) divider(),
+              ...joined([leading, if (wide) viewControls]),
+              if (leading.isNotEmpty || (wide && viewControls.isNotEmpty))
+                divider(),
               Expanded(child: scrollbar()),
               divider(),
               ...zoomCluster,
@@ -1724,6 +1781,8 @@ class _CanvasViewportBottomBar extends StatelessWidget {
     );
   }
 
+  /// R26 #42: this bar's button style is now the app-wide default, so it
+  /// lives in [AppIconButton] — this is just the local spelling.
   Widget _barIconButton({
     required String keyValue,
     required String tooltip,
@@ -1731,23 +1790,12 @@ class _CanvasViewportBottomBar extends StatelessWidget {
     required VoidCallback? onPressed,
     bool isSelected = false,
   }) {
-    return IconButton(
-      key: ValueKey<String>(keyValue),
+    return AppIconButton(
+      keyValue: keyValue,
       tooltip: tooltip,
+      icon: icon,
       onPressed: onPressed,
       isSelected: isSelected,
-      style: IconButton.styleFrom(
-        minimumSize: const Size(26, 24),
-        maximumSize: const Size(30, 24),
-        padding: EdgeInsets.zero,
-        iconSize: 18,
-        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-        // UI-R21 #1: the state accent is EXPLICIT ink — the M3 isSelected
-        // default was invisible in this theme, so a rotated/flipped view
-        // never showed on its button. Color only (the selection rule).
-        foregroundColor: isSelected ? AppColors.accent : null,
-      ),
-      icon: icon,
     );
   }
 }

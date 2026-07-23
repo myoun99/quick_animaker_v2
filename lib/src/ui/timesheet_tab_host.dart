@@ -11,6 +11,8 @@ import 'brush/brush_edit_cache_invalidation_sink.dart';
 import 'brush/brush_tool_state.dart';
 import 'dialogs/timesheet_info_dialog.dart';
 import 'editor_session_manager.dart';
+import 'widgets/app_icon_button.dart';
+import 'widgets/drag_value_label.dart';
 import 'timesheet/timesheet_document_painter.dart';
 import 'timesheet/timesheet_header_edit_layer.dart';
 import 'timesheet/timesheet_notation.dart';
@@ -30,6 +32,8 @@ class TimesheetTabHost extends StatefulWidget {
     required this.session,
     required this.continuous,
     required this.onContinuousChanged,
+    this.page = 0,
+    this.onPageChanged,
     this.viewport,
     this.onViewportChanged,
     this.inkController,
@@ -43,6 +47,14 @@ class TimesheetTabHost extends StatefulWidget {
   /// Page-split (false, paper default) ⟷ continuous view.
   final bool continuous;
   final ValueChanged<bool> onContinuousChanged;
+
+  /// R26 #41: the sheet of paper on screen in page view — one at a time,
+  /// turned by the bottom bar's ◀ / n/N / ▶ cluster (and by playback,
+  /// which turns the page as it crosses into it). Owned above the tab
+  /// group with the viewport so a tab switch doesn't lose the reader's
+  /// place. Ignored in continuous view (one strip).
+  final int page;
+  final ValueChanged<int>? onPageChanged;
 
   /// Owned above the tab group so zoom/pan survive tab switches.
   final CanvasViewport? viewport;
@@ -91,6 +103,7 @@ class _TimesheetTabHostState extends State<TimesheetTabHost> {
   int? _documentFps;
   bool? _documentDataSheet;
   bool? _layoutContinuous;
+  int? _layoutPage;
 
   /// DATA-sheet mode (UI-R24 #1): the sheet prints the EXPORT-SOURCE data
   /// (ghost chains verbatim, the labels XDTS/TDTS write) instead of the
@@ -142,17 +155,39 @@ class _TimesheetTabHostState extends State<TimesheetTabHost> {
       _layout = null;
       _pagedLayout = null;
     }
-    if (_layout == null || _layoutContinuous != widget.continuous) {
+    if (_layout == null ||
+        _layoutContinuous != widget.continuous ||
+        _layoutPage != widget.page) {
       _layoutContinuous = widget.continuous;
+      _layoutPage = widget.page;
       _layout = TimesheetDocumentLayout(
         document: _document!,
         continuous: widget.continuous,
+        // R26 #41: page view is ONE sheet of paper at a time.
+        singlePage: widget.continuous ? null : widget.page,
       );
-      _pagedLayout = widget.continuous
-          ? TimesheetDocumentLayout(document: _document!)
-          : _layout;
+      // The ink geometry reference stays the FULL paged form: surfaces are
+      // sized per page/band, so turning pages must not resize them.
+      _pagedLayout = TimesheetDocumentLayout(document: _document!);
     }
     return _layout!;
+  }
+
+  /// The page actually on screen: the stored page, clamped to the document
+  /// (a shorter cut must not strand the reader past the last sheet).
+  int _visiblePage(TimesheetDocumentLayout layout) =>
+      layout.resolvedSinglePage ?? 0;
+
+  void _turnToPage(int page) {
+    final onPageChanged = widget.onPageChanged;
+    final document = _document;
+    if (onPageChanged == null || document == null) {
+      return;
+    }
+    final next = page.clamp(0, document.pages.length - 1);
+    if (next != widget.page) {
+      onPageChanged(next);
+    }
   }
 
   /// Raised while an ink stroke is in progress so the panel gesture layer
@@ -217,75 +252,118 @@ class _TimesheetTabHostState extends State<TimesheetTabHost> {
   }
 
   /// The sheet commands living IN the panel's status strip (UI-R10 #18 —
-  /// the old toolbar row above the sheet retired): ink toggle / sheet
-  /// info / page-continuous toggle, right-aligned, always visible (the
-  /// strip's title text ellipsizes first when the panel narrows).
+  /// the old toolbar row above the sheet retired): ink toggle and sheet
+  /// info, right-aligned, always visible (the strip's title text
+  /// ellipsizes first when the panel narrows).
+  ///
+  /// The sheet-MODE commands (notation/data, page/continuous) moved out to
+  /// the bottom bar with the page navigation (R26 #41), and what stayed
+  /// wears the app's standard icon button (R26 #42) instead of the
+  /// hand-rolled InkWell this strip used to grow its own.
   List<Widget> _statusStripActions() {
-    Widget action({
-      required String keyValue,
-      required String tooltip,
-      required IconData icon,
-      VoidCallback? onPressed,
-      bool selected = false,
-    }) {
-      final colorScheme = Theme.of(context).colorScheme;
-      return Tooltip(
-        message: tooltip,
-        child: InkWell(
-          key: ValueKey<String>(keyValue),
-          onTap: onPressed,
-          child: SizedBox(
-            width: 24,
-            height: 20,
-            child: Icon(
-              icon,
-              size: 14,
-              color: selected
-                  ? colorScheme.primary
-                  : colorScheme.onSurfaceVariant,
-            ),
-          ),
-        ),
-      );
-    }
-
     return [
       if (widget.onInkEnabledChanged != null)
-        action(
+        AppIconButton(
           keyValue: 'timesheet-ink-toggle-button',
           tooltip: widget.inkEnabled ? 'Block Sheet Ink' : 'Allow Sheet Ink',
-          icon: widget.inkEnabled ? Icons.draw : Icons.edit_off,
-          selected: widget.inkEnabled,
+          icon: Icon(widget.inkEnabled ? Icons.draw : Icons.edit_off),
+          isSelected: widget.inkEnabled,
+          size: AppIconButtonSize.strip,
           onPressed: () => widget.onInkEnabledChanged!(!widget.inkEnabled),
         ),
-      action(
+      AppIconButton(
         keyValue: 'timesheet-info-button',
         tooltip: 'Sheet Info',
-        icon: Icons.edit_note,
+        icon: const Icon(Icons.edit_note),
+        size: AppIconButtonSize.strip,
         onPressed: _editSheetInfo,
       ),
+    ];
+  }
+
+  /// R26 #41 — the sheet's bottom-bar cluster, sitting at the far left of
+  /// the panel's bottom bar, immediately before the horizontal panbar:
+  ///
+  ///   [notation/data] [page/continuous] [◀] [n/N] [▶] │ ═══ panbar ═══
+  ///
+  /// The page readout is the app's shared drag readout ([DragValueLabel],
+  /// UI-R18 #21) — drag it to flip through the sheets, double-tap to type
+  /// a page number. In continuous view there is one strip and no pages, so
+  /// the three navigation controls stay MOUNTED but disabled (a bar that
+  /// changes width with the view toggle reads as a layout jump).
+  /// [layout] is null in the GAP state (no cut): the mode toggles still
+  /// work, the page cluster has nothing to turn.
+  List<Widget> _bottomBarLeading(TimesheetDocumentLayout? layout) {
+    final pageCount = layout?.document.pages.length ?? 0;
+    final page = layout == null ? 0 : _visiblePage(layout);
+    final paged = !widget.continuous && pageCount > 1;
+    return [
       // Notation ↔ DATA sheet (UI-R24 #1): data prints the export-source
       // labels (ghost chains verbatim, exactly what XDTS/TDTS write) so
       // the output data can be audited on the sheet itself.
-      action(
+      AppIconButton(
         keyValue: 'timesheet-data-mode-toggle-button',
         tooltip: _dataSheet
             ? 'Notation Sheet (repeat/hold words)'
             : 'Data Sheet (as exported)',
-        icon: Icons.receipt_long_outlined,
-        selected: _dataSheet,
+        icon: const Icon(Icons.receipt_long_outlined),
+        isSelected: _dataSheet,
         onPressed: () => setState(() => _dataSheet = !_dataSheet),
       ),
-      action(
+      AppIconButton(
         keyValue: 'timesheet-page-mode-toggle-button',
         tooltip: widget.continuous ? 'Page View' : 'Continuous View',
-        icon: widget.continuous
-            ? Icons.auto_stories_outlined
-            : Icons.view_agenda_outlined,
+        icon: Icon(
+          widget.continuous
+              ? Icons.auto_stories_outlined
+              : Icons.view_agenda_outlined,
+        ),
+        isSelected: !widget.continuous,
         onPressed: () => widget.onContinuousChanged(!widget.continuous),
+      ),
+      AppIconButton(
+        keyValue: 'timesheet-page-prev-button',
+        tooltip: 'Previous Page',
+        icon: const Icon(Icons.chevron_left),
+        onPressed: paged && page > 0 ? () => _turnToPage(page - 1) : null,
+      ),
+      DragValueLabel(
+        keyValue: 'timesheet-page-label',
+        inputKeyValue: 'timesheet-page-input',
+        text: layout?.pageLabel(page) ?? '-',
+        tooltip: 'Page (drag / double-tap)',
+        width: 40,
+        textStyle: const TextStyle(fontSize: 11),
+        // One page per 8px of drag: the readout is 40px wide, so a
+        // 1px-per-page rate flipped whole documents on a twitch.
+        unitsPerPixel: 1 / 8,
+        onDragDelta: paged
+            ? (units) => _turnToPage(page + units.round())
+            : _noDrag,
+        onEditSubmit: (text) {
+          if (!paged) {
+            return;
+          }
+          // '3' and '3/7' both mean page three (the readout's own
+          // spelling round-trips).
+          final parsed = int.tryParse(text.split('/').first.trim());
+          if (parsed != null) {
+            _turnToPage(parsed - 1);
+          }
+        },
+      ),
+      AppIconButton(
+        keyValue: 'timesheet-page-next-button',
+        tooltip: 'Next Page',
+        icon: const Icon(Icons.chevron_right),
+        onPressed: paged && page < pageCount - 1
+            ? () => _turnToPage(page + 1)
+            : null,
       ),
     ];
   }
+
+  static void _noDrag(double units) {}
 
   @override
   Widget build(BuildContext context) {
@@ -332,6 +410,8 @@ class _TimesheetTabHostState extends State<TimesheetTabHost> {
             ),
             allowViewRotation: false,
             statusStripActions: _statusStripActions(),
+            bottomBarLeading: _bottomBarLeading(null),
+            bottomBarLeadingToken: (widget.continuous, _dataSheet, 0, 0),
             contentOverride: (context, viewport) => Container(
               key: const ValueKey<String>('timesheet-empty-no-cut'),
               color: colorScheme.surfaceContainerHighest,
@@ -363,14 +443,28 @@ class _TimesheetTabHostState extends State<TimesheetTabHost> {
                         0,
                         document.pages.length - 1,
                       );
-                  // Playback follows the sheet (③): page view turns to the
-                  // playhead's page like flipping paper; continuous view
-                  // scrolls the playhead row into view without touching
-                  // the zoom. Idle keeps the viewport fully user-owned.
-                  final autoFrame = playbackGlobalFrame == null
+                  final visiblePage = _visiblePage(layout);
+                  // Playback follows the sheet (③): page view TURNS THE
+                  // PAGE to the playhead's (R26 #41 — the paper swaps
+                  // under a viewport that never moves, where the pre-#41
+                  // sheet scrolled the stack); continuous view scrolls the
+                  // playhead row into view without touching the zoom. Idle
+                  // keeps both the viewport and the page user-owned.
+                  if (playbackGlobalFrame != null &&
+                      !widget.continuous &&
+                      playheadPage != visiblePage) {
+                    // Out of build: the turn writes the page notifier that
+                    // this very subtree reads.
+                    WidgetsBinding.instance.addPostFrameCallback((_) {
+                      if (mounted) {
+                        _turnToPage(playheadPage);
+                      }
+                    });
+                  }
+                  final autoFrame =
+                      playbackGlobalFrame == null || !widget.continuous
                       ? null
-                      : widget.continuous
-                      ? CanvasAutoFrameRequest(
+                      : CanvasAutoFrameRequest(
                           token: (
                             'timesheet-reveal',
                             session.requireActiveCut.id,
@@ -383,14 +477,6 @@ class _TimesheetTabHostState extends State<TimesheetTabHost> {
                             TimesheetDocumentLayout.rowHeight,
                           ),
                           panOnly: true,
-                        )
-                      : CanvasAutoFrameRequest(
-                          token: (
-                            'timesheet-page',
-                            session.requireActiveCut.id,
-                            playheadPage,
-                          ),
-                          rect: layout.pageRect(playheadPage),
                         );
                   return BrushCanvasPanel(
                     coordinator: null,
@@ -410,12 +496,19 @@ class _TimesheetTabHostState extends State<TimesheetTabHost> {
                       // redundant 'Timesheet'.
                       layerLabel: widget.continuous
                           ? strings.continuousLabel
-                          : '${strings.pageLabel} ${playheadPage + 1}',
+                          : '${strings.pageLabel} ${visiblePage + 1}',
                       frameLabel: '${playheadFrame + 1}',
                     ),
                     statusStripActions: _statusStripActions(),
-                    // Fit frames the page the playhead is on.
-                    fitFocusRect: layout.pageRect(playheadPage),
+                    bottomBarLeading: _bottomBarLeading(layout),
+                    bottomBarLeadingToken: (
+                      widget.continuous,
+                      _dataSheet,
+                      visiblePage,
+                      document.pages.length,
+                    ),
+                    // Fit frames the page on screen.
+                    fitFocusRect: layout.pageRect(visiblePage),
                     autoFrame: autoFrame,
                     // The sheet's ink/header overlays speak zoom/pan only —
                     // the paper never rotates (P8 is the drawing canvas's).

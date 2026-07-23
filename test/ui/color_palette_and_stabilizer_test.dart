@@ -5,6 +5,19 @@ import 'package:quick_animaker_v2/src/ui/brush/brush_tool_state.dart';
 import 'package:quick_animaker_v2/src/ui/brush/tools_panel.dart';
 import 'package:quick_animaker_v2/src/ui/home_page.dart';
 
+/// The left dock stacks TWO sections by default now (R26 #31: the Tool
+/// Library over the Tool Settings), so each gets about half the dock's
+/// height — and the Color panel's adaptive layout drops its control strip
+/// (the hex readout included) rather than overflow a squat panel. The
+/// default 800×600 test surface is smaller than any real window; give
+/// these tests a realistic one so they exercise the layout users see.
+Future<void> _pumpWorkspace(WidgetTester tester) async {
+  await tester.binding.setSurfaceSize(const Size(1400, 1000));
+  addTearDown(() => tester.binding.setSurfaceSize(null));
+  await tester.pumpWidget(const MaterialApp(home: HomePage()));
+  await tester.pumpAndSettle();
+}
+
 /// P4 (palette rows in the Color tab) + P7 (stabilizer setting) wiring.
 void main() {
   test('the stabilizer strength is HAND-FEEL state: presets neither carry '
@@ -25,8 +38,7 @@ void main() {
 
   testWidgets('the Color tab shows the palette rows: tapping a swatch '
       'drives the brush color; + pins the current color', (tester) async {
-    await tester.pumpWidget(const MaterialApp(home: HomePage()));
-    await tester.pumpAndSettle();
+    await _pumpWorkspace(tester);
 
     final tab = find.byKey(const ValueKey<String>('panel-tab-color-wheel'));
     await tester.ensureVisible(tab);
@@ -56,8 +68,7 @@ void main() {
   testWidgets('picking a color KEEPS the active tool (R18 UI-1: the sliced '
       'color tab must write through the live notifier, never a stale '
       'captured state)', (tester) async {
-    await tester.pumpWidget(const MaterialApp(home: HomePage()));
-    await tester.pumpAndSettle();
+    await _pumpWorkspace(tester);
 
     // Open the Color tab first so its (sliced) subtree is built...
     final tab = find.byKey(const ValueKey<String>('panel-tab-color-wheel'));
@@ -88,8 +99,7 @@ void main() {
   });
 
   testWidgets('the Stabilizer slider lives in Brush Settings', (tester) async {
-    await tester.pumpWidget(const MaterialApp(home: HomePage()));
-    await tester.pumpAndSettle();
+    await _pumpWorkspace(tester);
 
     final tab = find.byKey(const ValueKey<String>('panel-tab-brush-settings'));
     await tester.ensureVisible(tab);

@@ -1,8 +1,9 @@
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:quick_animaker_v2/src/ui/canvas/interactive_brush_edit_canvas_view.dart';
 import 'package:quick_animaker_v2/src/ui/home_page.dart';
+
+import '../helpers/panel_finders.dart';
 
 /// Full-pipeline accumulation microbenchmark (not a correctness test): the
 /// REAL app (HomePage — session, history, caches, prerender scheduler,
@@ -30,7 +31,9 @@ void main() {
       await tester.tap(addButton);
       await tester.pumpAndSettle();
 
-      final canvas = find.byType(InteractiveBrushEditCanvasView);
+      // PANEL-SCOPED (R26 #31): the docked timesheet's ink planes are
+      // interactive views too — the benchmark strokes the DRAWING canvas.
+      final canvas = mainCanvasView();
       expect(canvas, findsOneWidget, reason: 'authored cel must be drawable');
 
       const strokesPerBucket = 30;
