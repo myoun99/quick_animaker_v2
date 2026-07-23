@@ -109,6 +109,8 @@ class LayerTimelineGrid extends StatefulWidget {
     this.onDissolveFolder,
     this.expandedFolderLaneIds = const {},
     this.onToggleFolderLanes,
+    this.folderFxEnabledOf,
+    this.onToggleFolderFx,
     this.layerOnionSkinEnabledOf,
     this.onToggleLayerOnionSkin,
     this.displayedOnionSkinOn = false,
@@ -319,6 +321,11 @@ class LayerTimelineGrid extends StatefulWidget {
   /// Folder FX lane twirl state + toggle (L5c); null hides the twirl.
   final Set<FolderId> expandedFolderLaneIds;
   final ValueChanged<FolderId>? onToggleFolderLanes;
+
+  /// R28 #13: the folder fx BYPASS switch — the layer row's contract,
+  /// folder-keyed. Null = the button hides (hosts without the state).
+  final bool Function(FolderId folderId)? folderFxEnabledOf;
+  final ValueChanged<FolderId>? onToggleFolderFx;
 
   /// Per-layer onion skin (UI-R17 #5): the row toggles + the legend cell's
   /// engaged state. Null hides the onion column entirely.
@@ -965,6 +972,16 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
   /// rebuild that didn't touch the row) skips its whole Material subtree.
   /// Lane label rows stay unmemoized: they subscribe to the frame cursor
   /// themselves and their lane models churn identity per build.
+  /// R28 #11: ONE selection. A folder and a layer used to be able to read
+  /// as selected at the same time — `selectLayer` released the folder but
+  /// `selectFolder` left the layer's row lit, so picking a folder while a
+  /// layer was active highlighted two rows. Selection is exclusive here by
+  /// construction: while a folder owns the selection, no layer row wears
+  /// it. (The canvas still edits whatever layer was active — a folder
+  /// holds no cels — but that is EDIT TARGET, not selection.)
+  bool _layerRowIsActive(Layer layer) =>
+      widget.activeFolderId == null && layer.id == widget.activeLayerId;
+
   Widget _railRowMemoized(TimelineDisplayRow row) {
     if (row.isLane || row.isFolder) {
       // Folder rows stay unmemoized like lanes: their inputs (folder
@@ -973,7 +990,7 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
     }
     final inputs = (
       layer: row.layer,
-      active: row.layer.id == widget.activeLayerId,
+      active: _layerRowIsActive(row.layer),
       hasLanes: _lanesFor(row.layer).isNotEmpty,
       lanesExpanded: widget.expandedLaneLayerIds.contains(row.layer.id),
       hasAttachGroup: _hasAttachGroup(row.layer),
@@ -1110,6 +1127,9 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
         onDissolve: widget.onDissolveFolder,
         lanesExpanded: widget.expandedFolderLaneIds.contains(row.folder!.id),
         onToggleLanes: widget.onToggleFolderLanes,
+        // R28 #13: the fx button is a BYPASS switch now, like a layer's.
+        fxEnabled: widget.folderFxEnabledOf?.call(row.folder!.id) ?? true,
+        onToggleFx: widget.onToggleFolderFx,
         onOpacityChanged: widget.onFolderOpacityChanged,
         onOpacityChangeEnd: widget.onFolderOpacityChangeEnd,
         onBlendModeSelected: widget.onFolderBlendModeSelected,
@@ -1135,7 +1155,7 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
     }
     return TimelineLayerControlsRow(
       layer: row.layer,
-      active: row.layer.id == widget.activeLayerId,
+      active: _layerRowIsActive(row.layer),
       metrics: _metrics,
       onSelectLayer: widget.onSelectLayer,
       onToggleLayerVisibility: widget.onToggleLayerVisibility,

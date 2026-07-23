@@ -142,8 +142,9 @@ void main() {
         surfaceResolver: (_, _) => surface,
         point: CanvasPoint(x: 3, y: 3),
       );
-      // r = 255·0.5 + 237·0.5 = 246; g = b = 237·0.5 = 118.5 → 119.
-      expect(color, 0xFFF67777);
+      // R28 #9: the paper is pure white now.
+      // r = 255·0.5 + 255·0.5 = 255; g = b = 255·0.5 = 127.5 → 128.
+      expect(color, 0xFFFF8080);
     });
 
     test('pixel alpha blends over the paper', () {
@@ -156,8 +157,8 @@ void main() {
         surfaceResolver: (_, _) => surface,
         point: CanvasPoint(x: 3, y: 3),
       );
-      // α = 128/255: r = 255·α + 237·(1−α) ≈ 246, g = b ≈ 118.
-      expect(color, 0xFFF67676);
+      // α = 128/255: r = 255·α + 255·(1−α) = 255, g = b = 255·(1−α) ≈ 127.
+      expect(color, 0xFFFF7F7F);
     });
 
     test('the top layer wins where opaque', () {

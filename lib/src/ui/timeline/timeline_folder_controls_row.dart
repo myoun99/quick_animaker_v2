@@ -33,6 +33,8 @@ class TimelineFolderControlsRow extends StatelessWidget {
     this.onDissolve,
     this.lanesExpanded = false,
     this.onToggleLanes,
+    this.fxEnabled = true,
+    this.onToggleFx,
     this.onOpacityChanged,
     this.onOpacityChangeEnd,
     this.onBlendModeSelected,
@@ -53,9 +55,15 @@ class TimelineFolderControlsRow extends StatelessWidget {
   final ValueChanged<FolderId>? onRename;
   final ValueChanged<FolderId>? onDissolve;
 
-  /// The folder FX lane twirl (L5c) — null hides the button.
+  /// The folder FX lane twirl (L5c) — null hides the button. R28 #13:
+  /// this lives in the LEADING twirl slot now, exactly like a layer's.
   final bool lanesExpanded;
   final ValueChanged<FolderId>? onToggleLanes;
+
+  /// R28 #13: the fx BYPASS switch, the layer row's contract — whether
+  /// this folder's FX apply at all. Null hides the button.
+  final bool fxEnabled;
+  final ValueChanged<FolderId>? onToggleFx;
 
   /// R27 #29: the folder's own opacity and blend, on the layer controls'
   /// contract (preview per move, one write on release).
@@ -133,24 +141,27 @@ class TimelineFolderControlsRow extends StatelessWidget {
             children: [
               const LayerSectionBandCell(),
               SizedBox(width: 8.0 + depth * 12.0),
-              // The lane-twirl column carries the FOLD twirl.
-              InkWell(
-                key: ValueKey<String>('timeline-folder-twirl-${folder.id}'),
-                onTap: onToggleCollapsed == null
-                    ? null
-                    : () => onToggleCollapsed!(folder.id),
-                customBorder: const CircleBorder(),
-                child: SizedBox(
-                  width: layerLaneToggleSlotWidth,
-                  height: 24,
-                  child: Icon(
-                    folder.collapsed
-                        ? Icons.arrow_right
-                        : Icons.arrow_drop_down,
-                    size: 16,
+              // R28 #13: the leftmost twirl opens the FX LANES, exactly as
+              // it does on a layer row. It used to carry the FOLD, which is
+              // why the folder's fx button had to open the lanes instead —
+              // and why "폴더 fx버튼 누르면 트랜스폼이 열린다". The fold moved
+              // beside the name (the attach-group twirl's home).
+              if (onToggleLanes != null)
+                InkWell(
+                  key: ValueKey<String>('timeline-folder-lanes-${folder.id}'),
+                  onTap: () => onToggleLanes!(folder.id),
+                  customBorder: const CircleBorder(),
+                  child: SizedBox(
+                    width: layerLaneToggleSlotWidth,
+                    height: 24,
+                    child: Icon(
+                      lanesExpanded ? Icons.arrow_drop_down : Icons.arrow_right,
+                      size: 16,
+                    ),
                   ),
-                ),
-              ),
+                )
+              else
+                const SizedBox(width: layerLaneToggleSlotWidth),
               // Folders carry no timesheet column and no mark chip — the
               // slots stay reserved so every later column stays aligned.
               const SizedBox(width: layerTimesheetSlotWidth),
@@ -174,43 +185,53 @@ class TimelineFolderControlsRow extends StatelessWidget {
               Expanded(
                 child: Align(
                   alignment: Alignment.centerLeft,
-                  child: Text(
-                    folder.name,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(color: colorScheme.onSurfaceVariant),
+                  child: Row(
+                    children: [
+                      Flexible(
+                        child: Text(
+                          folder.name,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(color: colorScheme.onSurfaceVariant),
+                        ),
+                      ),
+                      // R28 #13: the FOLD twirl sits right of the name, the
+                      // attach-group twirl's position on a layer row —
+                      // "일단은 통일해서 이름 오른쪽에". Same chevron pair.
+                      if (onToggleCollapsed != null)
+                        InkWell(
+                          key: ValueKey<String>(
+                            'timeline-folder-twirl-${folder.id}',
+                          ),
+                          onTap: () => onToggleCollapsed!(folder.id),
+                          customBorder: const CircleBorder(),
+                          child: SizedBox(
+                            width: layerLaneToggleSlotWidth,
+                            height: 24,
+                            child: Icon(
+                              folder.collapsed
+                                  ? Icons.arrow_right
+                                  : Icons.arrow_drop_down,
+                              size: 16,
+                            ),
+                          ),
+                        ),
+                    ],
                   ),
                 ),
               ),
               const SizedBox(width: layerFillReferenceSlotWidth),
-              // R27 #26: the folder's fx column IS the layer's fx button —
-              // same glyph, same slot, same meaning (it opens the row's
-              // Transform group). The old `Icons.animation` chip read as a
-              // different feature entirely.
-              if (onToggleLanes != null)
-                SizedBox(
-                  width: layerFxSlotWidth,
-                  height: 26,
-                  child: IconButton(
-                    key: ValueKey<String>('timeline-folder-lanes-${folder.id}'),
-                    tooltip: 'Folder FX',
-                    padding: EdgeInsets.zero,
-                    constraints: const BoxConstraints.tightFor(
-                      width: layerFxSlotWidth,
-                      height: 26,
-                    ),
-                    icon: Text(
-                      'fx',
-                      style: TextStyle(
-                        fontSize: 13,
-                        fontStyle: FontStyle.italic,
-                        fontWeight: FontWeight.w700,
-                        color: lanesExpanded
-                            ? AppColors.accent
-                            : colorScheme.onSurface.withValues(alpha: 0.35),
-                      ),
-                    ),
-                    onPressed: () => onToggleLanes!(folder.id),
-                  ),
+              // R28 #13: the fx button MEANS the same thing it means on a
+              // layer row — apply this row's FX or bypass them. It used to
+              // twirl the Transform lanes open, which is a different verb
+              // entirely and is why the user asked why folders were wired
+              // differently at all. The lanes open from the leftmost
+              // twirl now, like everywhere else.
+              if (onToggleFx != null)
+                FolderFxToggleButton(
+                  keyPrefix: 'timeline',
+                  folderId: folder.id,
+                  fxEnabled: fxEnabled,
+                  onToggle: onToggleFx!,
                 )
               else
                 const SizedBox(width: layerFxSlotWidth),

@@ -9,6 +9,7 @@ import '../models/brush_stamp_image.dart';
 import '../models/brush_tip_shape.dart';
 import '../models/canvas_point.dart';
 import '../models/cut.dart';
+import '../models/folder_id.dart';
 import '../models/layer_id.dart';
 import '../models/tile_coord.dart';
 import '../native/qa_native_engine.dart';
@@ -127,6 +128,7 @@ class LazyCanvasRasterRgb {
     required int frameIndex,
     required LayerFrameSurfaceResolver surfaceResolver,
     Set<LayerId> fxBypassedLayerIds = const {},
+    Set<FolderId> fxBypassedFolderIds = const {},
     int paperColor = canvasPaperColor,
     bool extendBeyondCanvas = false,
   }) {
@@ -151,6 +153,7 @@ class LazyCanvasRasterRgb {
       frameIndex: frameIndex,
       surfaceResolver: surfaceResolver,
       fxBypassedLayerIds: fxBypassedLayerIds,
+      fxBypassedFolderIds: fxBypassedFolderIds,
       paperColor: paperColor,
       handles: handles,
       originX: -marginX,
@@ -165,6 +168,7 @@ class LazyCanvasRasterRgb {
     required int frameIndex,
     required LayerFrameSurfaceResolver surfaceResolver,
     required Set<LayerId> fxBypassedLayerIds,
+    required Set<FolderId> fxBypassedFolderIds,
     required int paperColor,
     required QaFloodNativeHandles? handles,
     required this.originX,
@@ -191,6 +195,7 @@ class LazyCanvasRasterRgb {
         cut: cut,
         frameIndex: frameIndex,
         fxBypassedLayerIds: fxBypassedLayerIds,
+        fxBypassedFolderIds: fxBypassedFolderIds,
       ))
         if (entry.pose == null) entry,
     ];
@@ -1046,6 +1051,7 @@ BrushDab? buildFillDab({
   required CanvasPoint point,
   required int color,
   Set<LayerId> fxBypassedLayerIds = const {},
+  Set<FolderId> fxBypassedFolderIds = const {},
   FloodFillOptions options = const FloodFillOptions(),
   int paperColor = canvasPaperColor,
   void Function()? onOpenRegion,
@@ -1057,6 +1063,7 @@ BrushDab? buildFillDab({
       frameIndex: frameIndex,
       surfaceResolver: surfaceResolver,
       fxBypassedLayerIds: fxBypassedLayerIds,
+      fxBypassedFolderIds: fxBypassedFolderIds,
       paperColor: paperColor,
       extendBeyondCanvas: options.extendBeyondCanvas,
     ),

@@ -10,6 +10,7 @@ import '../controllers/default_project_helpers.dart';
 import '../models/project.dart';
 import '../services/persistence/app_language_settings_store.dart';
 import '../services/persistence/app_accent_settings_store.dart';
+import '../services/persistence/app_workspace_colors_store.dart';
 import '../services/persistence/app_input_settings_store.dart';
 import '../services/persistence/app_save_settings.dart';
 import '../services/persistence/app_save_settings_store.dart';
@@ -135,6 +136,10 @@ class _HomePageState extends State<HomePage> {
       audioSyncSettingsStore: Platform.environment.containsKey('FLUTTER_TEST')
           ? null
           : AudioSyncSettingsStore(),
+      // R28 #9: the pasteboard color, on the accents' app-state idiom.
+      workspaceColorsStore: Platform.environment.containsKey('FLUTTER_TEST')
+          ? null
+          : AppWorkspaceColorsStore(),
     );
     // R16-①: undo/redo over a PENDING move session adopts it into history
     // first — an undo never pops out from under the unadopted lift.

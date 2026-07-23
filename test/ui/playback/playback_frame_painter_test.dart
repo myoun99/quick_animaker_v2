@@ -13,7 +13,9 @@ import 'package:quick_animaker_v2/src/ui/playback/playback_frame_painter.dart';
 /// paper included — moving inside the output frame, like the MP4 bake.)
 void main() {
   const canvasSize = CanvasSize(width: 8, height: 8);
-  const paper = Color(0xFFEDEDED);
+  // R28 #9: the painter's default paper — pure white, from the one
+  // ProjectBackground constant.
+  const paper = Color(0xFFFFFFFF);
   const red = Color(0xFFFF0000);
 
   Future<ui.Image> solidComposite() async {

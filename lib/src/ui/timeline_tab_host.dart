@@ -1119,6 +1119,9 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
               _expandedFolderLanes.remove(folderId);
             }
           }),
+          // R28 #13: folder fx = BYPASS, the layer switch's twin.
+          folderFxEnabledOf: _session.isFolderFxEnabled,
+          onToggleFolderFx: _session.toggleFolderFx,
           onToggleLayerFx: _session.toggleLayerFx,
           // Per-layer onion skin (UI-R17 #5, TVPaint style).
           layerOnionSkinEnabledOf: _session.isLayerOnionSkinEnabled,

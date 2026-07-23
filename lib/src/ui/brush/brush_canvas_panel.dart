@@ -23,7 +23,10 @@ import '../../services/cache_invalidation_executor.dart';
 import '../../services/history_manager.dart';
 import '../canvas/canvas_selection_layer.dart';
 import '../canvas/canvas_viewport_gesture_layer.dart';
+import '../../models/project_background.dart';
 import '../theme/app_theme.dart' show AppColors;
+import '../theme/app_workspace_colors.dart';
+import '../widgets/color_swatch_button.dart';
 import '../canvas/interactive_brush_edit_canvas_view.dart';
 import '../canvas/layer_pose_paint.dart';
 import 'brush_canvas_defaults.dart';
@@ -80,6 +83,10 @@ class BrushCanvasPanel extends StatefulWidget {
     this.autoFrame,
     this.contentStrokeActive,
     this.sampleColorAt,
+    this.paperColor = ProjectBackground.defaultPaperArgb,
+    this.onPaperColorChanged,
+    this.pasteboardColor = AppWorkspaceColors.defaultPasteboardArgb,
+    this.onPasteboardColorChanged,
     this.onTemporaryToolHold,
     this.onTemporaryToolRelease,
     this.onInvokeAction,
@@ -167,6 +174,15 @@ class BrushCanvasPanel extends StatefulWidget {
   /// Samples the VISIBLE composite color at a canvas point (P5); null
   /// disables the eyedropper tool and Alt-picks.
   final int? Function(CanvasPoint point)? sampleColorAt;
+
+  /// R28 #9: the surface colors and their commit handlers. The paper is
+  /// the PROJECT's (it goes out in exports); the pasteboard is app state
+  /// (the working environment around the stage). Null handlers hide the
+  /// respective swatch.
+  final int paperColor;
+  final ValueChanged<int>? onPaperColorChanged;
+  final int pasteboardColor;
+  final ValueChanged<int>? onPasteboardColorChanged;
 
   /// A committed eyedropper pick (switches back to the painting tool).
   final ValueChanged<int>? onEyedropperPick;
@@ -511,6 +527,10 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel> {
       viewport: _viewport,
       editorViewportSize: _resolvedEditorViewportSize(),
       canvasSize: widget.canvasSize,
+      paperColor: widget.paperColor,
+      onPaperColorChanged: widget.onPaperColorChanged,
+      pasteboardColor: widget.pasteboardColor,
+      onPasteboardColorChanged: widget.onPasteboardColorChanged,
       onViewportChanged: _setViewportDuringPanbarDrag,
       onViewportChangeEnd: _syncViewportParent,
       onZoomIn: _zoomInFromBar,
@@ -622,6 +642,13 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel> {
                       // Nothing drawn in the viewport (canvas, playback
                       // frames, camera overlay) may paint outside the panel.
                       child: ClipRect(
+                        // R28 #9: the PASTEBOARD — the surface the stage
+                        // floats on. It is the user's working environment,
+                        // never artwork, so it is an app setting rather
+                        // than project data and it is painted here rather
+                        // than by the canvas painter.
+                        child: ColoredBox(
+                        color: Color(widget.pasteboardColor),
                         // R27 #17: a passive census of where the pointer
                         // is — button-held moves included — so a cursor
                         // that arms mid-gesture knows where to appear.
@@ -925,6 +952,7 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel> {
                                     ),
                                 ],
                               ),
+                        ),
                         ),
                       ),
                     );
@@ -1542,6 +1570,10 @@ class _CanvasViewportBottomBar extends StatelessWidget {
     required this.viewport,
     required this.editorViewportSize,
     required this.canvasSize,
+    required this.paperColor,
+    required this.onPaperColorChanged,
+    required this.pasteboardColor,
+    required this.onPasteboardColorChanged,
     required this.onViewportChanged,
     required this.onViewportChangeEnd,
     required this.onZoomIn,
@@ -1560,6 +1592,15 @@ class _CanvasViewportBottomBar extends StatelessWidget {
   final CanvasViewport viewport;
   final Size editorViewportSize;
   final CanvasSize canvasSize;
+
+  /// R28 #9: the surface colors, right of the horizontal scrollbar where
+  /// the user placed them. Null handlers hide the pair (hosts that own
+  /// neither, e.g. the timesheet ink layer).
+  final int paperColor;
+  final ValueChanged<int>? onPaperColorChanged;
+  final int pasteboardColor;
+  final ValueChanged<int>? onPasteboardColorChanged;
+
   final ValueChanged<CanvasViewport> onViewportChanged;
   final VoidCallback onViewportChangeEnd;
   final VoidCallback onZoomIn;
@@ -1713,6 +1754,34 @@ class _CanvasViewportBottomBar extends StatelessWidget {
       onViewportChangeEnd: onViewportChangeEnd,
     );
 
+    // R28 #9: the surface colors sit immediately right of the scrollbar
+    // ("색 바꾸는 버튼 위치는 밑의 가로스크롤바의 바로오른쪽에"). Both use the
+    // shared round-swatch control, so the picker looks and behaves the
+    // same here as anywhere else the app asks for a color.
+    final onPaper = onPaperColorChanged;
+    final onPasteboard = onPasteboardColorChanged;
+    final colorControls = <Widget>[
+      if (onPaper != null)
+        ColorSwatchButton(
+          keyValue: 'canvas-paper-color-button',
+          title: 'Canvas',
+          tooltip: 'Canvas color',
+          color: paperColor,
+          onChanged: onPaper,
+        ),
+      if (onPasteboard != null) ...[
+        const SizedBox(width: 4),
+        ColorSwatchButton(
+          keyValue: 'canvas-pasteboard-color-button',
+          title: 'Pasteboard',
+          tooltip: 'Pasteboard color',
+          color: pasteboardColor,
+          onChanged: onPasteboard,
+        ),
+      ],
+      if (onPaper != null || onPasteboard != null) const SizedBox(width: 2),
+    ];
+
     return SizedBox(
       height: height,
       child: LayoutBuilder(
@@ -1729,6 +1798,7 @@ class _CanvasViewportBottomBar extends StatelessWidget {
                   ...viewControls,
                   divider(),
                   SizedBox(width: 80, child: scrollbar()),
+                  ...colorControls,
                   divider(),
                   ...zoomCluster,
                   const SizedBox(width: 4),
@@ -1745,6 +1815,7 @@ class _CanvasViewportBottomBar extends StatelessWidget {
               if (wide) ...viewControls,
               if (wide) divider(),
               Expanded(child: scrollbar()),
+              ...colorControls,
               divider(),
               ...zoomCluster,
               const SizedBox(width: 4),

@@ -434,6 +434,9 @@ class _TimelineFrameRowsScrollBodyState
                 leadingFrameSpacerWidth: widget.leadingFrameSpacerWidth,
                 trailingFrameSpacerWidth: widget.trailingFrameSpacerWidth,
                 metrics: widget.metrics,
+                // R28 #11: the empty-cel grey reaches the folder band.
+                members: row.members,
+                memberHasContentAt: widget.celHasContentForLayer,
               )
             : row.isLane
             ? _buildLaneRow(row, layer)

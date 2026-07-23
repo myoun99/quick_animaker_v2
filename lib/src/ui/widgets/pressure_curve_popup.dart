@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../models/brush_pressure_curve.dart';
 import '../theme/app_theme.dart';
+import 'anchored_popup.dart';
 
 /// BB-3 (R26 #11): the shared pen-pressure curve editor — a CSP-style
 /// 筆圧設定 popup. One [PressureCurveButton] sits at the right of each
@@ -117,65 +118,19 @@ Future<void> showPressureCurvePopup(
   required BrushPressureCurve? curve,
   required ValueChanged<BrushPressureCurve?> onChanged,
 }) {
-  final button = anchorContext.findRenderObject()! as RenderBox;
-  final overlay =
-      Navigator.of(anchorContext).overlay!.context.findRenderObject()!
-          as RenderBox;
-  final anchorBottomRight = button.localToGlobal(
-    button.size.bottomRight(Offset.zero),
-    ancestor: overlay,
-  );
-  final anchorTopRight = button.localToGlobal(
-    Offset(button.size.width, 0),
-    ancestor: overlay,
-  );
-  const popupWidth = 216.0;
-  const popupHeight = 236.0;
-  final left = (anchorBottomRight.dx - popupWidth).clamp(
-    4.0,
-    overlay.size.width - popupWidth - 4.0,
-  );
-  final below = anchorBottomRight.dy + popupHeight <= overlay.size.height - 4;
-  final top = below
-      ? anchorBottomRight.dy + 2
-      : (anchorTopRight.dy - popupHeight - 2).clamp(
-          4.0,
-          overlay.size.height - popupHeight - 4.0,
-        );
-  return showGeneralDialog<void>(
-    context: anchorContext,
-    barrierLabel: 'pressure-curve-popup',
-    // R27 #5: NOT `barrierDismissible` — Flutter's modal barrier closes on
-    // a completed TAP, so a drag started outside (a slider grab, a canvas
-    // stroke) left the popup hanging. Any pointer-DOWN outside dismisses
-    // instead: "드래그든 뭐든 다른곳 조작하면 사라지도록".
-    barrierDismissible: false,
-    barrierColor: Colors.transparent,
-    // Flyout rule (R4 #2): the popup appears in one frame.
-    transitionDuration: Duration.zero,
-    pageBuilder: (context, _, _) {
-      return Stack(
-        children: [
-          Positioned.fill(
-            key: const ValueKey<String>('pressure-curve-popup-dismiss-field'),
-            child: Listener(
-              behavior: HitTestBehavior.opaque,
-              onPointerDown: (_) => Navigator.of(context).maybePop(),
-            ),
-          ),
-          Positioned(
-            left: left,
-            top: top,
-            width: popupWidth,
-            child: _PressureCurveEditor(
-              title: title,
-              initialCurve: curve,
-              onChanged: onChanged,
-            ),
-          ),
-        ],
-      );
-    },
+  // R28 #9: placement and dismissal now live in the SHARED sub-window
+  // shell — this popup is where that behaviour was designed, and every
+  // other anchored window in the app opens through the same function.
+  return showAnchoredPopup<void>(
+    anchorContext,
+    label: 'pressure-curve-popup',
+    width: 216,
+    height: 236,
+    builder: (context) => _PressureCurveEditor(
+      title: title,
+      initialCurve: curve,
+      onChanged: onChanged,
+    ),
   );
 }
 

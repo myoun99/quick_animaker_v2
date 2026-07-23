@@ -6,6 +6,8 @@ import 'package:flutter/material.dart';
 import '../models/canvas_size.dart';
 import '../models/canvas_viewport.dart';
 import '../models/layer_id.dart';
+import '../models/project_background.dart';
+import 'theme/app_workspace_colors.dart';
 import '../services/canvas_color_sampler.dart';
 import '../services/canvas_flood_fill.dart';
 import '../services/canvas_selection.dart' show SelectionMaskOptions;
@@ -143,6 +145,10 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
         widget.cameraViewEnabled,
         widget.cameraDimOpacity,
         ?widget.expandedLaneLayerIds,
+        // R28 #9: the pasteboard color is app state — the backdrop and
+        // the swatch both read it, so the area follows it the way it
+        // follows camera view.
+        AppWorkspaceColors.settings,
       ]),
       builder: (context, _) {
         // Playback swaps only the viewport CONTENT (via the panel's
@@ -356,12 +362,21 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
                 surfaceResolver: session.brushSurfaceForLayerFrame,
                 point: point,
                 fxBypassedLayerIds: session.fxBypassedLayerIds,
+                fxBypassedFolderIds: session.fxBypassedFolderIds,
                 paperColor: session.projectBackground.argb,
                 source:
                     widget.eyedropperSource?.value ??
                     CanvasColorSampleSource.display,
                 activeLayerId: session.activeLayer?.id,
               ),
+              // R28 #9: the canvas paper is PROJECT data (it goes out in
+              // exports, so it undoes with everything else); the
+              // pasteboard is app state that outlives the project.
+              paperColor: session.projectBackground.argb,
+              onPaperColorChanged: (argb) =>
+                  session.setProjectBackground(ProjectBackground.color(argb)),
+              pasteboardColor: AppWorkspaceColors.settings.value.pasteboardArgb,
+              onPasteboardColorChanged: session.setPasteboardColor,
               onEyedropperPick: (color) => widget.onBrushToolStateChanged?.call(
                 widget.brushToolState.value.copyWith(color: color),
               ),
@@ -421,6 +436,7 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
                 point: point,
                 color: color,
                 fxBypassedLayerIds: session.fxBypassedLayerIds,
+                fxBypassedFolderIds: session.fxBypassedFolderIds,
                 options: widget.fillOptions?.value ?? const FloodFillOptions(),
                 paperColor: session.projectBackground.argb,
                 // Extended fills refuse OPEN regions (the flood reached

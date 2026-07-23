@@ -71,7 +71,8 @@ class TimelineDisplayRow {
     this.depth = 0,
   }) : lane = null,
        folder = null,
-       aggregateRuns = const [];
+       aggregateRuns = const [],
+       members = const [];
 
   const TimelineDisplayRow.lane(
     this.layer,
@@ -79,7 +80,8 @@ class TimelineDisplayRow {
     required this.layerIndex,
   }) : folder = null,
        depth = 0,
-       aggregateRuns = const [];
+       aggregateRuns = const [],
+       members = const [];
 
   /// A folder HEADER row (L5): sits above its first member; its frame band
   /// renders the aggregate block (member exposure union — pure display).
@@ -91,6 +93,7 @@ class TimelineDisplayRow {
     required this.layerIndex,
     this.depth = 0,
     this.aggregateRuns = const [],
+    this.members = const [],
   }) : lane = null;
 
   /// The owning layer (lane and folder rows carry a layer too — for
@@ -110,6 +113,11 @@ class TimelineDisplayRow {
   /// merged display runs (the TVP-latest aggregate block — nameless,
   /// no comma edits, no moves; holds included through exposure lengths).
   final List<({int start, int endExclusive})> aggregateRuns;
+
+  /// Folder header rows only: the SUBTREE members themselves. R28 #11 —
+  /// the aggregate band tints a frame grey when NO member has artwork
+  /// there, so it needs the members, not just their exposure union.
+  final List<Layer> members;
 
   /// Folder nesting depth (0 = top level) — drives the rail indent for
   /// both folder headers and member layer rows.
@@ -272,19 +280,21 @@ List<TimelineDisplayRow> buildTimelineDisplayRows({
       // ancestry is nearest-first; emit outermost-first.
       final folder = ancestry[ancestry.length - 1 - depth];
       if (emittedFolderIds.add(folder.id)) {
+        final subtreeMembers = [
+          for (final member in layers)
+            if (folders
+                .ancestryOf(member.folderId)
+                .any((ancestor) => ancestor.id == folder.id))
+              member,
+        ];
         rows.add(
           TimelineDisplayRow.folder(
             layer,
             folder,
             layerIndex: index,
             depth: depth,
-            aggregateRuns: folderAggregateRuns([
-              for (final member in layers)
-                if (folders
-                    .ancestryOf(member.folderId)
-                    .any((ancestor) => ancestor.id == folder.id))
-                  member,
-            ]),
+            aggregateRuns: folderAggregateRuns(subtreeMembers),
+            members: subtreeMembers,
           ),
         );
         // Folder FX lanes (L5c) twirl under the header — independent of

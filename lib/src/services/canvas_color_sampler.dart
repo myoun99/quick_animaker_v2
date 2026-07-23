@@ -3,17 +3,22 @@ import '../models/bitmap_surface.dart';
 import '../models/canvas_point.dart';
 import '../models/canvas_size.dart';
 import '../models/cut.dart';
+import '../models/folder_id.dart';
 import '../models/layer_id.dart';
 import '../models/pasteboard_bounds.dart';
+import '../models/project_background.dart';
 import '../models/tile_coord.dart';
 import '../ui/canvas/layer_pose_paint.dart' show layerPoseMatrix;
 import 'cut_frame_composite_plan.dart';
 
-/// The classic paper color — the default blend base when the caller does
-/// not thread the project background (R10-⑥: production passes the
-/// project's paper; a transparent background blends over its opaque
-/// export-fallback color).
-const int canvasPaperColor = 0xFFEDEDED;
+/// The default blend base when the caller does not thread the project
+/// background (R10-⑥: production passes the project's paper; a
+/// transparent background blends over its opaque export-fallback color).
+///
+/// R28 #9: aliases the ONE paper constant rather than repeating a
+/// literal — the near-white the user caught was spelled out separately in
+/// five files, so they could drift.
+const int canvasPaperColor = ProjectBackground.defaultPaperArgb;
 
 /// The straight-alpha RGBA of [surface] at integer canvas coords, or null
 /// beyond the PASTEBOARD wall (missing tiles are fully transparent).
@@ -103,6 +108,7 @@ int sampleCompositeColor({
   required LayerFrameSurfaceResolver surfaceResolver,
   required CanvasPoint point,
   Set<LayerId> fxBypassedLayerIds = const {},
+  Set<FolderId> fxBypassedFolderIds = const {},
   int paperColor = canvasPaperColor,
   CanvasColorSampleSource source = CanvasColorSampleSource.display,
   LayerId? activeLayerId,
@@ -115,6 +121,7 @@ int sampleCompositeColor({
     cut: cut,
     frameIndex: frameIndex,
     fxBypassedLayerIds: fxBypassedLayerIds,
+    fxBypassedFolderIds: fxBypassedFolderIds,
   )) {
     if (source == CanvasColorSampleSource.layer &&
         entry.layer.id != activeLayerId) {

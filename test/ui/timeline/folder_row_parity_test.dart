@@ -30,6 +30,7 @@ void main() {
     void Function(FolderId, double)? onOpacity,
     void Function(FolderId, LayerBlendMode)? onBlend,
     ValueChanged<FolderId>? onSelect,
+    ValueChanged<FolderId>? onToggleFx,
   }) => MaterialApp(
     home: Scaffold(
       body: TimelineFolderControlsRow(
@@ -41,6 +42,7 @@ void main() {
         onToggleCollapsed: (_) {},
         onToggleVisibility: (_) {},
         onToggleLanes: (_) {},
+        onToggleFx: onToggleFx,
         onOpacityChanged: onOpacity,
         onOpacityChangeEnd: onOpacity,
         onBlendModeSelected: onBlend,
@@ -51,13 +53,19 @@ void main() {
   testWidgets('R27 #23/#29: the row carries the layer columns — fx, eye, '
       'opacity and blend, in the layer rows\' slots', (tester) async {
     await tester.pumpWidget(
-      host(folder(), onOpacity: (_, _) {}, onBlend: (_, _) {}),
+      host(
+        folder(),
+        onOpacity: (_, _) {},
+        onBlend: (_, _) {},
+        onToggleFx: (_) {},
+      ),
     );
 
     for (final key in [
       'timeline-folder-twirl-f',
       'timeline-folder-icon-f',
       'timeline-folder-lanes-f',
+      'timeline-folder-fx-f',
       'timeline-folder-visibility-f',
       'timeline-folder-opacity-f',
       'timeline-folder-blend-f',
@@ -71,6 +79,67 @@ void main() {
     // R27 #26: the fx column reads `fx`, exactly like a layer row's.
     expect(find.text('fx'), findsOneWidget);
     expect(find.text('Normal'), findsOneWidget);
+  });
+
+  testWidgets('R28 #13: fx BYPASSES, the leading twirl opens the lanes, and '
+      'the fold twirl sits right of the name', (tester) async {
+    final fxToggles = <FolderId>[];
+    final laneToggles = <FolderId>[];
+    final foldToggles = <FolderId>[];
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: TimelineFolderControlsRow(
+            folder: folder(),
+            depth: 0,
+            metrics: TimelineGridMetrics.defaults,
+            onToggleCollapsed: foldToggles.add,
+            onToggleLanes: laneToggles.add,
+            onToggleFx: fxToggles.add,
+          ),
+        ),
+      ),
+    );
+
+    // The fx button is a SWITCH — it must not open anything.
+    await tester.tap(find.byKey(const ValueKey<String>('timeline-folder-fx-f')));
+    await tester.pump();
+    expect(fxToggles, [const FolderId('f')]);
+    expect(
+      laneToggles,
+      isEmpty,
+      reason: 'R28 #13: fx no longer twirls the Transform lanes open — that '
+          'is what made folders read as wired differently from layers',
+    );
+
+    // The LEADING twirl opens the lanes, like a layer row's.
+    await tester.tap(
+      find.byKey(const ValueKey<String>('timeline-folder-lanes-f')),
+    );
+    await tester.pump();
+    expect(laneToggles, [const FolderId('f')]);
+
+    // The fold twirl sits RIGHT of the name (the attach-group twirl's
+    // position), not in the leading slot.
+    await tester.tap(
+      find.byKey(const ValueKey<String>('timeline-folder-twirl-f')),
+    );
+    await tester.pump();
+    expect(foldToggles, [const FolderId('f')]);
+    expect(
+      tester
+          .getRect(find.byKey(const ValueKey<String>('timeline-folder-twirl-f')))
+          .left,
+      greaterThan(
+        tester
+            .getRect(
+              find.byKey(const ValueKey<String>('timeline-folder-lanes-f')),
+            )
+            .right,
+      ),
+      reason: 'the fold moved out of the leading slot to beside the name',
+    );
   });
 
   testWidgets('R27 #24: the row selects, and the selected row wears the '

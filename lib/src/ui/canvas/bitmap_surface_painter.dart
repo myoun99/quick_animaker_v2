@@ -6,6 +6,7 @@ import '../../models/bitmap_surface.dart';
 import '../../models/bitmap_tile.dart';
 import '../../models/canvas_viewport.dart';
 import '../../models/pasteboard_bounds.dart';
+import '../../models/project_background.dart';
 import 'active_stroke_overlay.dart';
 import 'bitmap_tile_image_cache.dart';
 import 'viewport_canvas_transform.dart';
@@ -78,7 +79,9 @@ class BitmapSurfacePainter extends CustomPainter {
     canvas.clipRect(pasteboardRect);
 
     if (showTransparentBackground) {
-      final backgroundPaint = Paint()..color = const Color(0xFFEDEDED);
+      // R28 #9: the one paper constant, not a repeated literal.
+      final backgroundPaint = Paint()
+        ..color = const Color(ProjectBackground.defaultPaperArgb);
       canvas.drawRect(
         Rect.fromLTWH(0, 0, canvasWidth, canvasHeight),
         backgroundPaint,

@@ -9,6 +9,8 @@ import '../../models/brush_history_policy.dart';
 import '../../models/canvas_point.dart';
 import '../../models/canvas_size.dart';
 import '../../models/canvas_viewport.dart';
+import '../../models/project_background.dart';
+import '../theme/app_workspace_colors.dart';
 import '../../services/brush_frame_edit_session_store.dart';
 import '../../services/brush_frame_store.dart';
 import '../../services/brush_frame_editing_coordinator.dart';
@@ -51,6 +53,10 @@ class MainCanvasBrushHost extends StatefulWidget {
     this.contentOverride,
     this.fitFocusRect,
     this.sampleColorAt,
+    this.paperColor = ProjectBackground.defaultPaperArgb,
+    this.onPaperColorChanged,
+    this.pasteboardColor = AppWorkspaceColors.defaultPasteboardArgb,
+    this.onPasteboardColorChanged,
     this.onTemporaryToolHold,
     this.onTemporaryToolRelease,
     this.onInvokeAction,
@@ -117,6 +123,13 @@ class MainCanvasBrushHost extends StatefulWidget {
   /// Forwarded to [BrushCanvasPanel]: the P5 eyedropper's composite sampler
   /// and pick handlers, and the P6 fill dab builder.
   final int? Function(CanvasPoint point)? sampleColorAt;
+
+  /// R28 #9 pass-through: the canvas paper (project) and the pasteboard
+  /// (app setting), with their commit handlers.
+  final int paperColor;
+  final ValueChanged<int>? onPaperColorChanged;
+  final int pasteboardColor;
+  final ValueChanged<int>? onPasteboardColorChanged;
 
   /// PEN-7a mapped-hold pass-through (canvas right/wheel mappings).
   final void Function(CanvasTool tool)? onTemporaryToolHold;
@@ -262,6 +275,10 @@ class _MainCanvasBrushHostState extends State<MainCanvasBrushHost> {
       contentOverride: contentOverride,
       fitFocusRect: widget.fitFocusRect,
       sampleColorAt: widget.sampleColorAt,
+      paperColor: widget.paperColor,
+      onPaperColorChanged: widget.onPaperColorChanged,
+      pasteboardColor: widget.pasteboardColor,
+      onPasteboardColorChanged: widget.onPasteboardColorChanged,
       onTemporaryToolHold: widget.onTemporaryToolHold,
       onTemporaryToolRelease: widget.onTemporaryToolRelease,
       onInvokeAction: widget.onInvokeAction,

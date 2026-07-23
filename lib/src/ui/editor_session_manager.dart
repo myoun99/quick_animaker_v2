@@ -8,6 +8,7 @@ import '../controllers/default_layer_helpers.dart';
 import '../models/app_language.dart';
 import '../services/persistence/app_language_settings_store.dart';
 import '../services/persistence/app_accent_settings_store.dart';
+import '../services/persistence/app_workspace_colors_store.dart';
 import '../services/persistence/app_input_settings_store.dart';
 import '../services/persistence/app_documents.dart' show appRecordingsDirectory;
 import '../services/persistence/app_save_settings.dart';
@@ -16,6 +17,7 @@ import '../services/persistence/audio_sync_settings_store.dart';
 import 'input/app_input_settings.dart';
 import 'theme/app_accents.dart';
 import 'theme/app_theme.dart' show AppColors;
+import 'theme/app_workspace_colors.dart';
 import '../controllers/editing_session_state.dart';
 import '../controllers/layer_controller.dart';
 import '../controllers/timeline_controller.dart';
@@ -172,6 +174,7 @@ class EditorSessionManager extends ChangeNotifier {
     AppInputSettingsStore? inputSettingsStore,
     AppSaveSettingsStore? saveSettingsStore,
     AudioSyncSettingsStore? audioSyncSettingsStore,
+    AppWorkspaceColorsStore? workspaceColorsStore,
   }) : _editingSession = EditingSessionState.forProject(initialProject),
        _injectedAudioConformStore = audioConformStore,
        _audioSyncSettingsStore = audioSyncSettingsStore,
@@ -179,9 +182,11 @@ class EditorSessionManager extends ChangeNotifier {
        _accentSettingsStore = accentSettingsStore,
        _inputSettingsStore = inputSettingsStore,
        _saveSettingsStore = saveSettingsStore,
+       _workspaceColorsStore = workspaceColorsStore,
        _repository = ProjectRepository(initialProject: initialProject) {
     unawaited(_restoreLanguageSettings());
     unawaited(_restoreAccentSettings());
+    unawaited(_restoreWorkspaceColors());
     unawaited(_restoreInputSettings());
     unawaited(_restoreSaveSettings());
     unawaited(_restoreAudioSyncSettings());
@@ -272,6 +277,35 @@ class EditorSessionManager extends ChangeNotifier {
     final store = _accentSettingsStore;
     if (store != null) {
       unawaited(store.save(settings));
+    }
+  }
+
+  // --- Workspace colors (R28 #9) --------------------------------------------
+
+  /// Injectable persistence; null (tests) keeps the in-memory defaults.
+  final AppWorkspaceColorsStore? _workspaceColorsStore;
+
+  /// The PASTEBOARD color is app state (the accents' idiom): it is the
+  /// working environment around the stage, never part of the artwork.
+  /// The canvas paper is the project's, through [setProjectBackground].
+  Future<void> _restoreWorkspaceColors() async {
+    final restored = await _workspaceColorsStore?.load();
+    if (restored != null) {
+      AppWorkspaceColors.settings.value = restored;
+    }
+  }
+
+  void setPasteboardColor(int argb) {
+    final next = AppWorkspaceColors.settings.value.copyWith(
+      pasteboardArgb: argb,
+    );
+    if (next == AppWorkspaceColors.settings.value) {
+      return;
+    }
+    AppWorkspaceColors.settings.value = next;
+    final store = _workspaceColorsStore;
+    if (store != null) {
+      unawaited(store.save(next));
     }
   }
 
@@ -1419,6 +1453,7 @@ class EditorSessionManager extends ChangeNotifier {
         cut: stackCut,
         frameIndex: frameIndex,
         fxBypassedLayerIds: fxBypassedLayerIds,
+        fxBypassedFolderIds: fxBypassedFolderIds,
       ))
         entry.layer.id: entry,
     };
@@ -1807,6 +1842,23 @@ class EditorSessionManager extends ChangeNotifier {
   void toggleLayerFx(LayerId layerId) {
     if (!_fxBypassedLayerIds.remove(layerId)) {
       _fxBypassedLayerIds.add(layerId);
+    }
+    notifyListeners();
+  }
+
+  /// R28 #13: the FOLDER fx switch — the same view state, folder-keyed.
+  /// A bypassed folder composes its members with no folder pose and no
+  /// animated folder opacity, exactly as a bypassed layer does.
+  final Set<FolderId> _fxBypassedFolderIds = {};
+
+  Set<FolderId> get fxBypassedFolderIds => _fxBypassedFolderIds;
+
+  bool isFolderFxEnabled(FolderId folderId) =>
+      !_fxBypassedFolderIds.contains(folderId);
+
+  void toggleFolderFx(FolderId folderId) {
+    if (!_fxBypassedFolderIds.remove(folderId)) {
+      _fxBypassedFolderIds.add(folderId);
     }
     notifyListeners();
   }

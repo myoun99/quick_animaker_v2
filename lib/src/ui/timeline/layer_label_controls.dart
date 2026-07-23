@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../models/app_language.dart' show AppLanguage;
+import '../../models/folder_id.dart';
 import '../../models/layer_blend_mode.dart';
 import '../../models/layer_id.dart';
 import '../../models/layer_kind.dart';
@@ -222,6 +223,56 @@ bool layerKindShowsFxToggle(LayerKind kind) => true;
 /// The AE-style layer fx switch: bypasses the layer's FX (transform +
 /// animated opacity) on EVERY composite route while off — session view
 /// state, not persisted.
+/// R28 #13: the FOLDER's fx switch — the layer switch's twin, folder-keyed.
+///
+/// Folders wired fx to the lane twirl, so pressing fx opened Transform
+/// instead of bypassing it. The verb is the same for both row kinds now:
+/// fx says whether this row's FX apply, and the leading twirl opens them.
+class FolderFxToggleButton extends StatelessWidget {
+  const FolderFxToggleButton({
+    super.key,
+    required this.keyPrefix,
+    required this.folderId,
+    required this.fxEnabled,
+    required this.onToggle,
+  });
+
+  final String keyPrefix;
+  final FolderId folderId;
+  final bool fxEnabled;
+  final ValueChanged<FolderId> onToggle;
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    return SizedBox(
+      width: layerFxSlotWidth,
+      height: 26,
+      child: IconButton(
+        key: ValueKey<String>('$keyPrefix-folder-fx-$folderId'),
+        tooltip: fxEnabled ? 'Bypass folder FX' : 'Apply folder FX',
+        padding: EdgeInsets.zero,
+        constraints: const BoxConstraints.tightFor(
+          width: layerFxSlotWidth,
+          height: 26,
+        ),
+        icon: Text(
+          'fx',
+          style: TextStyle(
+            fontSize: 13,
+            fontStyle: FontStyle.italic,
+            fontWeight: FontWeight.w700,
+            color: fxEnabled
+                ? AppColors.accent
+                : colorScheme.onSurface.withValues(alpha: 0.35),
+          ),
+        ),
+        onPressed: () => onToggle(folderId),
+      ),
+    );
+  }
+}
+
 class LayerFxToggleButton extends StatelessWidget {
   const LayerFxToggleButton({
     super.key,

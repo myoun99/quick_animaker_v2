@@ -292,9 +292,19 @@ class TimelineCursorLayer extends StatelessWidget {
         int? activeRowIndex;
         Layer? activeLayer;
         for (var index = 0; index < rows.length; index += 1) {
-          if (!rows[index].isLane && rows[index].layer.id == activeLayerId) {
+          final row = rows[index];
+          // R28 #12: FOLDER header rows carry their first member as a
+          // REPRESENTATIVE layer, not as their own row. Matching them here
+          // meant that selecting a folder's first member found the folder's
+          // row index first (the header sits above the member), so the
+          // block's selection outline drew one row too high — on the
+          // folder. Lane rows were already excluded for the same reason.
+          if (row.isLane || row.isFolder) {
+            continue;
+          }
+          if (row.layer.id == activeLayerId) {
             activeRowIndex = index;
-            activeLayer = rows[index].layer;
+            activeLayer = row.layer;
             break;
           }
         }

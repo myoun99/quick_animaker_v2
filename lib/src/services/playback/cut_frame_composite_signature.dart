@@ -4,6 +4,7 @@ import '../../models/canvas_size.dart';
 import '../../models/cut.dart';
 import '../../models/frame_id.dart';
 import '../../models/layer_blend_mode.dart';
+import '../../models/folder_id.dart';
 import '../../models/layer_id.dart';
 import '../../models/playback_quality.dart';
 import '../../models/transform_track.dart';
@@ -132,15 +133,20 @@ CutFrameCompositeSignature computeCutFrameCompositeSignature({
   required PlaybackQuality quality,
   required BrushFrameRevisionResolver revisionOf,
   Set<LayerId> fxBypassedLayerIds = const {},
+  Set<FolderId> fxBypassedFolderIds = const {},
 }) {
   return CutFrameCompositeSignature(
     canvasSize: cut.canvasSize,
     quality: quality,
     layers: [
+      // R28 #13: the folder bypass rides the ENTRIES (poses and opacity
+      // resolve through it), so the signature self-invalidates on a
+      // folder fx toggle exactly as it does on a layer's.
       for (final entry in resolveCutFrameCompositeEntries(
         cut: cut,
         frameIndex: frameIndex,
         fxBypassedLayerIds: fxBypassedLayerIds,
+        fxBypassedFolderIds: fxBypassedFolderIds,
       ))
         CompositeLayerSignature(
           layerId: entry.layer.id,

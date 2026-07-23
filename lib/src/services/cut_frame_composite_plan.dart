@@ -6,6 +6,7 @@ import '../models/cut.dart';
 import '../models/frame.dart';
 import '../models/layer.dart';
 import '../models/layer_blend_mode.dart';
+import '../models/folder_id.dart';
 import '../models/layer_folder.dart';
 import '../models/layer_id.dart';
 import '../models/layer_kind.dart';
@@ -144,6 +145,7 @@ resolveFolderChainAt({
   required Cut cut,
   required Layer layer,
   required int frameIndex,
+  Set<FolderId> fxBypassedFolderIds = const {},
 }) {
   final chain = cut.folders.ancestryOf(layer.folderId);
   if (chain.isEmpty) {
@@ -175,10 +177,23 @@ resolveFolderChainAt({
     if (folder.blendMode != LayerBlendMode.normal) {
       chainBlend = folder.blendMode;
     }
+    // R28 #13: a BYPASSED folder contributes no FX — no pose, no animated
+    // opacity — the layer fx switch's exact contract. Its static opacity
+    // and blend are display properties, not FX, so they stay (matching a
+    // bypassed layer, whose static opacity also survives).
+    final fxEnabled = !fxBypassedFolderIds.contains(folder.id);
     opacityFactor *=
         (folder.opacity *
-                resolveOpacityTrackAt(folder.transformTrack.opacity, frameIndex))
+                (fxEnabled
+                    ? resolveOpacityTrackAt(
+                        folder.transformTrack.opacity,
+                        frameIndex,
+                      )
+                    : 1.0))
             .clamp(0.0, 1.0);
+    if (!fxEnabled) {
+      continue;
+    }
     final track = folder.transformTrack;
     final hasGeometry =
         track.anchorPoint.isNotEmpty ||
@@ -251,6 +266,7 @@ List<CutFrameCompositeEntry> resolveCutFrameCompositeEntries({
   required Cut cut,
   required int frameIndex,
   Set<LayerId> fxBypassedLayerIds = const {},
+  Set<FolderId> fxBypassedFolderIds = const {},
 }) {
   final entries = <CutFrameCompositeEntry>[];
   for (final layer in cut.layers) {
@@ -276,6 +292,7 @@ List<CutFrameCompositeEntry> resolveCutFrameCompositeEntries({
       cut: cut,
       layer: layer,
       frameIndex: frameIndex,
+      fxBypassedFolderIds: fxBypassedFolderIds,
     );
     if (!folderChain.visible) {
       continue;
@@ -360,12 +377,14 @@ List<CutFrameCompositeLayer> planCutFrameComposite({
   required int frameIndex,
   required LayerFrameSurfaceResolver surfaceResolver,
   Set<LayerId> fxBypassedLayerIds = const {},
+  Set<FolderId> fxBypassedFolderIds = const {},
 }) {
   final plan = <CutFrameCompositeLayer>[];
   for (final entry in resolveCutFrameCompositeEntries(
     cut: cut,
     frameIndex: frameIndex,
     fxBypassedLayerIds: fxBypassedLayerIds,
+    fxBypassedFolderIds: fxBypassedFolderIds,
   )) {
     final surface = surfaceResolver(entry.layer, entry.frame);
     if (surface == null) {

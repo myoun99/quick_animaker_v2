@@ -109,7 +109,8 @@ void main() {
         height: 1,
       );
 
-      expect(_rgbaAt(pixels, width: 1, x: 0, y: 0), [237, 237, 237, 255]);
+      // R28 #9: the paper is PURE white now, from the one constant.
+      expect(_rgbaAt(pixels, width: 1, x: 0, y: 0), [255, 255, 255, 255]);
     });
   });
 
