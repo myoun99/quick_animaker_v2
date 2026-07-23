@@ -159,7 +159,13 @@ class BrushLiveStrokeRasterizer implements ActiveStrokePixelSource {
     final tileLeft = tileX * tileSize;
     final tileTop = tileY * tileSize;
     final byteLength = tileSize * tileSize * 4;
-    final staged = native.acquireTileBuffer(byteLength, zeroed: true);
+    // R27 #4c: the memset is only needed where the base cannot fill the
+    // rect — with every overlapped base tile present, the row copies
+    // overwrite the whole buffer anyway.
+    final staged = native.acquireTileBuffer(
+      byteLength,
+      zeroed: !_baseCoversRect(base, tileLeft, tileTop),
+    );
     try {
       _copyBaseRectInto(staged.view, base, tileLeft, tileTop);
       native.ensureTileSpanBatch(1);
@@ -213,6 +219,24 @@ class BrushLiveStrokeRasterizer implements ActiveStrokePixelSource {
     } finally {
       native.releaseTileBuffer(staged);
     }
+  }
+
+  /// Whether every base tile overlapping the 128-rect at ([left], [top])
+  /// exists — the row copies then fill the whole staged buffer.
+  bool _baseCoversRect(BitmapSurface base, int left, int top) {
+    final baseTileSize = base.tileSize;
+    final tileX0 = floorDiv(left, baseTileSize);
+    final tileY0 = floorDiv(top, baseTileSize);
+    final tileX1 = floorDiv(left + tileSize - 1, baseTileSize);
+    final tileY1 = floorDiv(top + tileSize - 1, baseTileSize);
+    for (var tileY = tileY0; tileY <= tileY1; tileY += 1) {
+      for (var tileX = tileX0; tileX <= tileX1; tileX += 1) {
+        if (base.tileAt(TileCoord(x: tileX, y: tileY)) == null) {
+          return false;
+        }
+      }
+    }
+    return true;
   }
 
   /// Copies [base]'s straight bytes for the 128-rect at ([left], [top])
