@@ -86,7 +86,7 @@ class ExportFrameRenderer {
       // The fx-bypass switches apply here too (AE semantics: the layer fx
       // switch affects the render) — WYSIWYG with playback. The dialog's
       // 'Apply layer FX' master toggle bypasses every layer at once.
-      layers: planCutFrameComposite(
+      nodes: planCutFrameCompositeTree(
         cut: cut,
         frameIndex: task.frameIndex,
         surfaceResolver: (layer, frame) => _surfaceFor(cut, layer, frame),

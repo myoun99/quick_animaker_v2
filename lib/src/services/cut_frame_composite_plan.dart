@@ -130,6 +130,98 @@ class CutFrameCompositeEntry {
   final CanvasPoint? anchorPoint;
 }
 
+/// One node of a cut frame's composite TREE, bottom → top: an entry that
+/// paints, or a FOLDER's group buffer holding the ones inside it.
+///
+/// Built by [resolveCutFrameCompositeTree] and mapped — never rebuilt —
+/// into the shapes the routes need: surfaces for the paint routes
+/// ([planCutFrameComposite]) and identities for the playback cache
+/// ([computeCutFrameCompositeSignature]). One structure, so playback,
+/// export and the editing canvas cannot drift.
+sealed class CutFrameCompositeEntryNode {
+  const CutFrameCompositeEntryNode();
+}
+
+final class CutFrameCompositeEntryLeaf extends CutFrameCompositeEntryNode {
+  const CutFrameCompositeEntryLeaf(this.entry);
+
+  final CutFrameCompositeEntry entry;
+}
+
+/// A FOLDER's GROUP BUFFER (R27 #29, 유저 확정: "그룹 한번합쳐서 한번
+/// 블렌드"). [children] compose into one buffer, and only then does the
+/// folder's [opacity] and [blendMode] apply — once, to that buffer. So
+/// overlapping members inside a multiply folder read as one picture
+/// instead of darkening where they cross.
+///
+/// Only a folder that NEEDS a buffer becomes one of these
+/// ([folderNeedsCompositeBuffer]); a plain pass-through folder leaves no
+/// node at all and its members sit directly in the parent's list.
+final class CutFrameCompositeEntryGroup extends CutFrameCompositeEntryNode {
+  const CutFrameCompositeEntryGroup({
+    required this.folder,
+    required this.children,
+    required this.opacity,
+    required this.blendMode,
+  });
+
+  final Layer folder;
+
+  /// Bottom → top; may hold nested groups.
+  final List<CutFrameCompositeEntryNode> children;
+
+  /// The FOLDER's effective opacity (static × animated sample).
+  final double opacity;
+
+  /// The FOLDER's blend against everything below the group.
+  final LayerBlendMode blendMode;
+}
+
+/// Whether [folder] must compose into its own buffer at [frameIndex].
+///
+/// Two things, and only two, fail to distribute over compositing:
+/// - a BLEND other than pass-through (there is nothing to blend until the
+///   group exists), and
+/// - an OPACITY below 1 — `0.5·(A over B)` is not `(0.5·A) over (0.5·B)`
+///   where A and B overlap, which is exactly the double-darkening the
+///   per-member fold produced.
+///
+/// A POSE is deliberately NOT in the list: an affine transform DOES
+/// distribute (`T(A over B) == T(A) over T(B)`), so folder FX keeps riding
+/// each member's pose and costs no buffer. A plain organizing folder
+/// therefore allocates nothing at all — the Photoshop/CSP 통과 default.
+bool folderNeedsCompositeBuffer({
+  required Layer folder,
+  required int frameIndex,
+  Set<LayerId> fxBypassedLayerIds = const {},
+}) {
+  if (folder.blendMode.isolatesGroup) {
+    return true;
+  }
+  return resolveFolderOpacityAt(
+        folder: folder,
+        frameIndex: frameIndex,
+        fxBypassedLayerIds: fxBypassedLayerIds,
+      ) <
+      1.0;
+}
+
+/// A folder's own effective opacity at [frameIndex]: static × the animated
+/// Opacity sample (1 while the row's fx switch is off).
+double resolveFolderOpacityAt({
+  required Layer folder,
+  required int frameIndex,
+  Set<LayerId> fxBypassedLayerIds = const {},
+}) {
+  final fxEnabled = !fxBypassedLayerIds.contains(folder.id);
+  return (folder.opacity *
+          (fxEnabled
+              ? resolveOpacityTrackAt(folder.transformTrack.opacity, frameIndex)
+              : 1.0))
+      .clamp(0.0, 1.0)
+      .toDouble();
+}
+
 /// A folder chain's composite-relevant state at [frameIndex]: whether the
 /// subtree shows at all, the folded opacity factor (each folder's static
 /// opacity × its animated Opacity sample), and the folder poses to apply
@@ -149,6 +241,10 @@ resolveFolderChainAt({
   required Layer layer,
   required int frameIndex,
   Set<LayerId> fxBypassedLayerIds = const {},
+  /// When false, a BUFFERING folder's opacity and blend are left out —
+  /// they belong to its [CutFrameCompositeEntryGroup] instead. Poses fold
+  /// either way (see [folderNeedsCompositeBuffer] for why).
+  bool foldBufferedFolders = true,
 }) {
   final chain = cut.layers.ancestryOf(layer.folderId);
   if (chain.isEmpty) {
@@ -160,10 +256,11 @@ resolveFolderChainAt({
     );
   }
   var opacityFactor = 1.0;
-  // R27 #29: the nearest folder that actually sets a blend wins for the
-  // members below it. v1 limitation, shared with folder OPACITY since
-  // L3: the mode rides each member's own composite draw rather than a
-  // folder-wide saveLayer, so overlapping members blend individually.
+  // R27 #29: the nearest ISOLATING folder wins for the members below it.
+  // A pass-through folder contributes no blend at all — that is the whole
+  // meaning of 통과. Flat-path limitation: an isolating folder's mode
+  // rides each member's own composite draw rather than a folder-wide
+  // buffer, so overlapping members blend individually.
   var chainBlend = LayerBlendMode.normal;
   final poses = <LayerPoseSample>[];
   // ancestryOf is nearest-first; walk reversed so poses apply outermost
@@ -177,7 +274,18 @@ resolveFolderChainAt({
         poses: const [],
       );
     }
-    if (folder.blendMode != LayerBlendMode.normal) {
+    // A folder that owns a BUFFER carries its own opacity and blend on
+    // that buffer; folding them here as well would apply them twice.
+    final buffered =
+        !foldBufferedFolders &&
+        folderNeedsCompositeBuffer(
+          folder: folder,
+          frameIndex: frameIndex,
+          fxBypassedLayerIds: fxBypassedLayerIds,
+        );
+    if (!buffered &&
+        folder.blendMode.isolatesGroup &&
+        folder.blendMode != LayerBlendMode.normal) {
       chainBlend = folder.blendMode;
     }
     // R28 #13: a BYPASSED folder contributes no FX — no pose, no animated
@@ -185,15 +293,17 @@ resolveFolderChainAt({
     // and blend are display properties, not FX, so they stay (matching a
     // bypassed layer, whose static opacity also survives).
     final fxEnabled = !fxBypassedLayerIds.contains(folder.id);
-    opacityFactor *=
-        (folder.opacity *
-                (fxEnabled
-                    ? resolveOpacityTrackAt(
-                        folder.transformTrack.opacity,
-                        frameIndex,
-                      )
-                    : 1.0))
-            .clamp(0.0, 1.0);
+    if (!buffered) {
+      opacityFactor *=
+          (folder.opacity *
+                  (fxEnabled
+                      ? resolveOpacityTrackAt(
+                          folder.transformTrack.opacity,
+                          frameIndex,
+                        )
+                      : 1.0))
+              .clamp(0.0, 1.0);
+    }
     if (!fxEnabled) {
       continue;
     }
@@ -275,6 +385,7 @@ List<CutFrameCompositeEntry> resolveCutFrameCompositeEntries({
   required Cut cut,
   required int frameIndex,
   Set<LayerId> fxBypassedLayerIds = const {},
+  bool foldBufferedFolders = true,
 }) {
   final entries = <CutFrameCompositeEntry>[];
   for (final layer in cut.layers) {
@@ -304,6 +415,7 @@ List<CutFrameCompositeEntry> resolveCutFrameCompositeEntries({
       layer: layer,
       frameIndex: frameIndex,
       fxBypassedLayerIds: fxBypassedLayerIds,
+      foldBufferedFolders: foldBufferedFolders,
     );
     if (!folderChain.visible) {
       continue;
@@ -380,9 +492,99 @@ List<CutFrameCompositeEntry> resolveCutFrameCompositeEntries({
   return entries;
 }
 
+/// The cut's picture at [frameIndex] as a TREE, bottom → top: every
+/// visible entry, with each BUFFERING folder's members wrapped in a
+/// [CutFrameCompositeEntryGroup] so the folder's opacity and blend apply
+/// ONCE to their composed buffer (R27 #29).
+///
+/// The stack list IS the structure: a folder's members occupy a
+/// contiguous run with the folder row directly above it, so this single
+/// bottom-to-top pass has already collected every child by the time it
+/// reaches the folder. A plain pass-through folder leaves no node — its
+/// members simply belong to the parent, which is what makes an organizing
+/// folder cost exactly nothing.
+List<CutFrameCompositeEntryNode> resolveCutFrameCompositeTree({
+  required Cut cut,
+  required int frameIndex,
+  Set<LayerId> fxBypassedLayerIds = const {},
+}) {
+  final entryByLayerId = {
+    for (final entry in resolveCutFrameCompositeEntries(
+      cut: cut,
+      frameIndex: frameIndex,
+      fxBypassedLayerIds: fxBypassedLayerIds,
+      foldBufferedFolders: false,
+    ))
+      entry.layer.id: entry,
+  };
+
+  // folder id (null = top level) → the nodes gathered under it so far.
+  final childrenOf = <LayerId?, List<CutFrameCompositeEntryNode>>{};
+  void addTo(LayerId? folderId, CutFrameCompositeEntryNode node) =>
+      (childrenOf[folderId] ??= <CutFrameCompositeEntryNode>[]).add(node);
+
+  for (final layer in cut.layers) {
+    if (layerKindGroupsLayers(layer.kind)) {
+      final children = childrenOf.remove(layer.id);
+      if (children == null || children.isEmpty) {
+        continue;
+      }
+      if (!layer.isVisible) {
+        continue; // A hidden folder drops its whole subtree.
+      }
+      final opacity = resolveFolderOpacityAt(
+        folder: layer,
+        frameIndex: frameIndex,
+        fxBypassedLayerIds: fxBypassedLayerIds,
+      );
+      if (opacity <= 0) {
+        continue;
+      }
+      if (!folderNeedsCompositeBuffer(
+        folder: layer,
+        frameIndex: frameIndex,
+        fxBypassedLayerIds: fxBypassedLayerIds,
+      )) {
+        // 통과, fully opaque: the folder is pure structure. Its members
+        // belong to the parent exactly as if it were not there — no
+        // buffer, no node, no cost.
+        for (final child in children) {
+          addTo(layer.folderId, child);
+        }
+        continue;
+      }
+      addTo(
+        layer.folderId,
+        CutFrameCompositeEntryGroup(
+          folder: layer,
+          children: List.unmodifiable(children),
+          opacity: opacity,
+          // A translucent PASS-THROUGH folder buffers for the opacity
+          // alone; the buffer itself blends plainly.
+          blendMode: layer.blendMode.isolatesGroup
+              ? layer.blendMode
+              : LayerBlendMode.normal,
+        ),
+      );
+      continue;
+    }
+    final entry = entryByLayerId[layer.id];
+    if (entry != null) {
+      addTo(layer.folderId, CutFrameCompositeEntryLeaf(entry));
+    }
+  }
+  return List.unmodifiable(
+    childrenOf[null] ?? const <CutFrameCompositeEntryNode>[],
+  );
+}
+
 /// Plans which surfaces make up the cut's picture at [frameIndex] — the
 /// shared [resolveCutFrameCompositeEntries] visit with surfaces resolved
 /// (entries whose frame has no artwork drop out).
+///
+/// FLAT: folder opacity/blend fold into the members. The paint routes use
+/// [planCutFrameCompositeTree] instead; this stays for the consumers that
+/// cannot nest (a pixel sample, a fill raster).
 List<CutFrameCompositeLayer> planCutFrameComposite({
   required Cut cut,
   required int frameIndex,
@@ -410,6 +612,93 @@ List<CutFrameCompositeLayer> planCutFrameComposite({
     );
   }
   return plan;
+}
+
+/// One node of a PAINTABLE composite tree — [resolveCutFrameCompositeTree]
+/// with surfaces resolved.
+sealed class CutFrameCompositeSurfaceNode {
+  const CutFrameCompositeSurfaceNode();
+}
+
+final class CutFrameCompositeSurfaceLeaf extends CutFrameCompositeSurfaceNode {
+  const CutFrameCompositeSurfaceLeaf(this.layer);
+
+  final CutFrameCompositeLayer layer;
+}
+
+final class CutFrameCompositeSurfaceGroup extends CutFrameCompositeSurfaceNode {
+  const CutFrameCompositeSurfaceGroup({
+    required this.children,
+    required this.opacity,
+    required this.blendMode,
+  });
+
+  final List<CutFrameCompositeSurfaceNode> children;
+  final double opacity;
+  final LayerBlendMode blendMode;
+}
+
+/// [resolveCutFrameCompositeTree] with each leaf's surface resolved;
+/// entries whose frame has no artwork drop out, and a group left empty by
+/// that drops with them (an empty buffer is a wasted saveLayer).
+List<CutFrameCompositeSurfaceNode> planCutFrameCompositeTree({
+  required Cut cut,
+  required int frameIndex,
+  required LayerFrameSurfaceResolver surfaceResolver,
+  Set<LayerId> fxBypassedLayerIds = const {},
+}) {
+  List<CutFrameCompositeSurfaceNode> mapNodes(
+    List<CutFrameCompositeEntryNode> nodes,
+  ) {
+    final out = <CutFrameCompositeSurfaceNode>[];
+    for (final node in nodes) {
+      switch (node) {
+        case CutFrameCompositeEntryLeaf(:final entry):
+          final surface = surfaceResolver(entry.layer, entry.frame);
+          if (surface == null) {
+            continue;
+          }
+          out.add(
+            CutFrameCompositeSurfaceLeaf(
+              CutFrameCompositeLayer(
+                surface: surface,
+                opacity: entry.opacity,
+                blendMode: entry.blendMode,
+                pose: entry.pose,
+                anchorPoint: entry.anchorPoint,
+              ),
+            ),
+          );
+        case CutFrameCompositeEntryGroup(
+          :final children,
+          :final opacity,
+          :final blendMode,
+        ):
+          final mapped = mapNodes(children);
+          if (mapped.isEmpty) {
+            continue;
+          }
+          out.add(
+            CutFrameCompositeSurfaceGroup(
+              children: List.unmodifiable(mapped),
+              opacity: opacity,
+              blendMode: blendMode,
+            ),
+          );
+      }
+    }
+    return out;
+  }
+
+  return List.unmodifiable(
+    mapNodes(
+      resolveCutFrameCompositeTree(
+        cut: cut,
+        frameIndex: frameIndex,
+        fxBypassedLayerIds: fxBypassedLayerIds,
+      ),
+    ),
+  );
 }
 
 /// The frame exposed at [frameIndex]: the drawing block covering the index

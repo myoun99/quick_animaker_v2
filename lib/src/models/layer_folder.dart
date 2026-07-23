@@ -1,4 +1,5 @@
 import 'layer.dart';
+import 'layer_blend_mode.dart';
 import 'layer_id.dart';
 import 'layer_kind.dart';
 
@@ -103,6 +104,10 @@ Layer createFolderLayer({
     frames: const [],
     timeline: const {},
     kind: LayerKind.folder,
+    // PASS THROUGH by default, like Photoshop and CSP: a folder you made
+    // to tidy the stack must not change one pixel. Buffering is what you
+    // opt into by giving the folder a real mode.
+    blendMode: LayerBlendMode.passThrough,
     // Folders print nothing on the sheet — the toggle would be a dead
     // control on the row.
     onTimesheet: false,

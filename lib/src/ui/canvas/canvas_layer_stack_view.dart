@@ -16,6 +16,54 @@ import 'layer_pose_paint.dart';
 import 'paper_background.dart';
 import 'viewport_canvas_transform.dart';
 
+/// One node of the editing canvas's composite tree.
+///
+/// The stack used to be two FLAT lists — below the active layer and above
+/// it — painted by two sibling widgets with the interactive view between
+/// them. A folder's group buffer is one `saveLayer`, and a saveLayer
+/// cannot span three sibling painters, so drawing inside a blended folder
+/// could never match playback. The tree (with the ACTIVE layer as a node
+/// of its own, [CanvasActiveLayerNode]) is what lets one painter close the
+/// buffer it opened.
+sealed class CanvasLayerStackNode {
+  const CanvasLayerStackNode();
+}
+
+/// A cached layer image.
+final class CanvasLayerImageNode extends CanvasLayerStackNode {
+  const CanvasLayerImageNode(this.request);
+
+  final CanvasLayerImageRequest request;
+}
+
+/// The ACTIVE layer's live surface — the one the brush is drawing into.
+/// The painter delegates to the surface painter here, in place, so the
+/// stroke lands inside whatever group buffer encloses it.
+final class CanvasActiveLayerNode extends CanvasLayerStackNode {
+  const CanvasActiveLayerNode({required this.opacity, this.pose,
+      this.anchorPoint});
+
+  /// The active row's effective opacity (the interactive view used to
+  /// apply this itself, through the panel's content-opacity wrap).
+  final double opacity;
+  final TransformPose? pose;
+  final CanvasPoint? anchorPoint;
+}
+
+/// A FOLDER's group buffer: [children] compose into one buffer, then the
+/// folder's opacity/blend land on it once (R27 #29).
+final class CanvasLayerGroupNode extends CanvasLayerStackNode {
+  const CanvasLayerGroupNode({
+    required this.children,
+    required this.opacity,
+    required this.blendMode,
+  });
+
+  final List<CanvasLayerStackNode> children;
+  final double opacity;
+  final LayerBlendMode blendMode;
+}
+
 /// One non-active layer to composite around the interactive canvas.
 class CanvasLayerImageRequest {
   const CanvasLayerImageRequest({

@@ -56,17 +56,17 @@ class BitmapSurfacePainter extends CustomPainter {
 
   final BitmapTileImageCache tileImageCache;
 
+  /// The pasteboard rect in canvas space — the clip this painter works
+  /// within (artwork past the canvas edge stays visible while editing).
+  Rect get pasteboardRect => Rect.fromLTRB(
+    surface.canvasSize.pasteboardLeft.toDouble(),
+    surface.canvasSize.pasteboardTop.toDouble(),
+    surface.canvasSize.pasteboardRightExclusive.toDouble(),
+    surface.canvasSize.pasteboardBottomExclusive.toDouble(),
+  );
+
   @override
   void paint(Canvas canvas, Size size) {
-    final canvasWidth = surface.canvasSize.width.toDouble();
-    final canvasHeight = surface.canvasSize.height.toDouble();
-    final pasteboardRect = Rect.fromLTRB(
-      surface.canvasSize.pasteboardLeft.toDouble(),
-      surface.canvasSize.pasteboardTop.toDouble(),
-      surface.canvasSize.pasteboardRightExclusive.toDouble(),
-      surface.canvasSize.pasteboardBottomExclusive.toDouble(),
-    );
-
     canvas.save();
     final resolvedViewport = viewport;
     if (resolvedViewport != null) {
@@ -76,6 +76,22 @@ class BitmapSurfacePainter extends CustomPainter {
     // visible while editing (dimmed below); composite/export raster at
     // canvas size, so output still crops to the stage.
     canvas.clipRect(pasteboardRect);
+    paintContentInto(canvas, size);
+    canvas.restore();
+  }
+
+  /// The surface + live overlay, onto a canvas the CALLER has already
+  /// viewport-transformed and clipped to [pasteboardRect].
+  ///
+  /// Split out so the editing canvas's merged stack painter can draw the
+  /// ACTIVE layer inside the composite tree — a folder's group buffer is
+  /// one `saveLayer`, and a saveLayer cannot span three sibling painters.
+  /// [paint] above is this same body with the transform/clip around it, so
+  /// the standalone route is byte-identical.
+  void paintContentInto(Canvas canvas, Size size) {
+    final canvasWidth = surface.canvasSize.width.toDouble();
+    final canvasHeight = surface.canvasSize.height.toDouble();
+    final pasteboardRect = this.pasteboardRect;
 
     if (showTransparentBackground) {
       // R28 #9: the one paper constant, not a repeated literal.
@@ -302,8 +318,6 @@ class BitmapSurfacePainter extends CustomPainter {
     // No pasteboard dim (user decision, Flash-style): off-canvas artwork
     // shows at full brightness — the paper edge against the backdrop is
     // the stage boundary.
-
-    canvas.restore();
   }
 
   /// Maximum decode STARTS per paint. Completions notify → repaint → the
