@@ -17,7 +17,7 @@ void main() {
   Layer folder({
     bool collapsed = false,
     double opacity = 1,
-    LayerBlendMode blend = LayerBlendMode.normal,
+    LayerBlendMode blend = LayerBlendMode.passThrough,
   }) => createFolderLayer(id: const LayerId('f'), name: 'F').copyWith(
     collapsed: collapsed,
     opacity: opacity,
@@ -79,7 +79,11 @@ void main() {
       );
     }
     expect(find.text('fx'), findsOneWidget);
-    expect(find.text('Normal'), findsOneWidget);
+    expect(
+      find.text('Pass Through'),
+      findsOneWidget,
+      reason: 'a fresh folder buffers nothing — PS/CSP\'s default',
+    );
   });
 
   testWidgets('a folder prints nothing, so its sheet toggle stays an empty '
@@ -208,7 +212,12 @@ void main() {
 
   test('R27 #29: the folder blend rides the LAYER blend commit', () {
     final plain = folder();
-    expect(plain.toJson().containsKey('blendMode'), isFalse);
+    expect(
+      plain.toJson()['blendMode'],
+      'passThrough',
+      reason: 'a folder always writes its mode — its default is not the '
+          'omitted-from-JSON `normal`',
+    );
     final blended = plain.copyWith(blendMode: LayerBlendMode.screen);
     expect(
       Layer.fromJson(blended.toJson()).blendMode,

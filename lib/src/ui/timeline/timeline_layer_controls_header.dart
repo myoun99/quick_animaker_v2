@@ -628,7 +628,11 @@ class TimelineLayerControlsHeader extends StatelessWidget {
                       tooltip: 'Blend mode column',
                       entriesBuilder: () => [
                         const PanelFlyoutHeader('All displayed layers'),
-                        for (final mode in LayerBlendMode.values)
+                        // The bulk set writes DRAWING rows; pass-through is
+                        // a group-only answer, so it never appears here.
+                        for (final mode in LayerBlendMode.optionsFor(
+                          isGroup: false,
+                        ))
                           PanelFlyoutItem(
                             keyValue: 'legend-blend-${mode.name}',
                             label: mode.labelFor(blendLanguage),

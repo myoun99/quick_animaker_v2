@@ -179,80 +179,124 @@ class CutFrameCompositeCache {
     final raster = scaledCanvasSize(cut.canvasSize, signature.quality);
     final recorder = ui.PictureRecorder();
     final canvas = ui.Canvas(recorder);
-    for (final layer in signature.layers) {
-      if (shouldAbort?.call() ?? false) {
-        recorder.endRecording().dispose();
-        return null;
-      }
-      final layerImage = await layerImages.prepare(
-        key: frameKeyOf(cut, layer.layerId, layer.frameId),
-        canvasSize: cut.canvasSize,
-        quality: signature.quality,
-        shouldAbort: shouldAbort,
-      );
-      if (layerImage == null) {
-        // Null is EITHER an empty frame (skip the layer) or an abort from
-        // inside the layer build — disambiguate and bail on abort.
-        if (shouldAbort?.call() ?? false) {
-          recorder.endRecording().dispose();
-          return null;
+    final scale = raster.width / cut.canvasSize.width;
+    final rasterBounds = ui.Rect.fromLTWH(
+      0,
+      0,
+      raster.width.toDouble(),
+      raster.height.toDouble(),
+    );
+    var aborted = false;
+
+    Future<void> paintNodes(List<CompositeNodeSignature> nodes) async {
+      for (final node in nodes) {
+        if (aborted) {
+          return;
         }
-        continue;
+        if (shouldAbort?.call() ?? false) {
+          aborted = true;
+          return;
+        }
+        switch (node) {
+          case CompositeGroupSignature(
+            :final children,
+            :final opacity,
+            :final blendMode,
+          ):
+            // R27 #29: the members compose into ONE buffer and the
+            // folder's opacity/blend land on it once — overlapping
+            // members inside a multiply folder stop darkening where they
+            // cross. Only a folder that NEEDS this ever becomes a group
+            // node, so a plain 통과 folder costs no saveLayer at all.
+            canvas.saveLayer(
+              rasterBounds,
+              ui.Paint()
+                ..color = ui.Color.fromRGBO(0, 0, 0, opacity)
+                ..blendMode = blendMode.paintBlendMode,
+            );
+            await paintNodes(children);
+            canvas.restore();
+          case CompositeLeafSignature(:final layer):
+            final layerImage = await layerImages.prepare(
+              key: frameKeyOf(cut, layer.layerId, layer.frameId),
+              canvasSize: cut.canvasSize,
+              quality: signature.quality,
+              shouldAbort: shouldAbort,
+            );
+            if (layerImage == null) {
+              // Null is EITHER an empty frame (skip the layer) or an abort
+              // from inside the layer build — disambiguate and bail on
+              // abort.
+              if (shouldAbort?.call() ?? false) {
+                aborted = true;
+                return;
+              }
+              continue;
+            }
+            // Layer transforms apply at composite time; the pose is
+            // canvas-space, adapted to this quality tier's raster scale.
+            // Folder FX is already COMPOSED into this pose by the shared
+            // visit (an affine transform distributes over compositing, so
+            // it needs no buffer) — one pose, every route identical.
+            final layerPose = layer.pose;
+            if (layerPose != null) {
+              canvas.save();
+              applyLayerPoseTransform(
+                canvas,
+                layerPose,
+                cut.canvasSize,
+                anchorPoint: layer.anchorPoint,
+                rasterScale: scale,
+              );
+            }
+            final layerPaint = ui.Paint()
+              ..filterQuality = ui.FilterQuality.low
+              ..color = ui.Color.fromRGBO(0, 0, 0, layer.opacity)
+              // R26 #30: the layer blend applies at composite time,
+              // exactly like every other route.
+              ..blendMode = layer.blendMode.paintBlendMode;
+            final worldRect = layerImage.worldRect;
+            if (worldRect.left == 0 &&
+                worldRect.top == 0 &&
+                layerImage.image.width == (worldRect.width * scale).round() &&
+                layerImage.image.height ==
+                    (worldRect.height * scale).round()) {
+              // Canvas-extent image at this raster's resolution — the exact
+              // legacy draw (bytes pinned by the composite parity suites).
+              canvas.drawImage(layerImage.image, ui.Offset.zero, layerPaint);
+            } else {
+              // Pasteboard-extent image: map src onto its world rect
+              // (raster scale applied). The canvas-sized toImage below
+              // crops the off-canvas remainder, so playback/export stay
+              // stage-only.
+              canvas.drawImageRect(
+                layerImage.image,
+                ui.Rect.fromLTWH(
+                  0,
+                  0,
+                  layerImage.image.width.toDouble(),
+                  layerImage.image.height.toDouble(),
+                ),
+                ui.Rect.fromLTWH(
+                  worldRect.left * scale,
+                  worldRect.top * scale,
+                  worldRect.width * scale,
+                  worldRect.height * scale,
+                ),
+                layerPaint,
+              );
+            }
+            if (layerPose != null) {
+              canvas.restore();
+            }
+        }
       }
-      // Layer transforms apply at composite time; the pose is canvas-space,
-      // adapted to this quality tier's raster scale. Folder FX (L3) is
-      // already COMPOSED into this pose by the shared visit — one pose,
-      // every route identical.
-      final layerPose = layer.pose;
-      if (layerPose != null) {
-        canvas.save();
-        applyLayerPoseTransform(
-          canvas,
-          layerPose,
-          cut.canvasSize,
-          anchorPoint: layer.anchorPoint,
-          rasterScale: raster.width / cut.canvasSize.width,
-        );
-      }
-      final layerPaint = ui.Paint()
-        ..filterQuality = ui.FilterQuality.low
-        ..color = ui.Color.fromRGBO(0, 0, 0, layer.opacity)
-        // R26 #30: the layer blend applies at composite time, exactly
-        // like every other route.
-        ..blendMode = layer.blendMode.paintBlendMode;
-      final scale = raster.width / cut.canvasSize.width;
-      final worldRect = layerImage.worldRect;
-      if (worldRect.left == 0 &&
-          worldRect.top == 0 &&
-          layerImage.image.width == (worldRect.width * scale).round() &&
-          layerImage.image.height == (worldRect.height * scale).round()) {
-        // Canvas-extent image at this raster's resolution — the exact
-        // legacy draw (bytes pinned by the composite parity suites).
-        canvas.drawImage(layerImage.image, ui.Offset.zero, layerPaint);
-      } else {
-        // Pasteboard-extent image: map src onto its world rect (raster
-        // scale applied). The canvas-sized toImage below crops the
-        // off-canvas remainder, so playback/export stay stage-only.
-        canvas.drawImageRect(
-          layerImage.image,
-          ui.Rect.fromLTWH(
-            0,
-            0,
-            layerImage.image.width.toDouble(),
-            layerImage.image.height.toDouble(),
-          ),
-          ui.Rect.fromLTWH(
-            worldRect.left * scale,
-            worldRect.top * scale,
-            worldRect.width * scale,
-            worldRect.height * scale,
-          ),
-          layerPaint,
-        );
-      }
-      if (layerPose != null) {
-        canvas.restore();
-      }
+    }
+
+    await paintNodes(signature.nodes);
+    if (aborted) {
+      recorder.endRecording().dispose();
+      return null;
     }
     final picture = recorder.endRecording();
     try {

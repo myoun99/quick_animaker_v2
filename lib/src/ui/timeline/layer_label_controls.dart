@@ -157,6 +157,7 @@ class LayerBlendModeChip extends StatelessWidget {
     required this.language,
     required this.onBlendModeSelected,
     this.subject = 'Layer',
+    this.isGroup = false,
   });
 
   /// The full widget key string ('timeline-layer-blend-a').
@@ -172,6 +173,10 @@ class LayerBlendModeChip extends StatelessWidget {
 
   /// Names the row kind in the tooltip ('Layer', 'Folder').
   final String subject;
+
+  /// GROUP rows get [LayerBlendMode.passThrough] in the list; a drawing
+  /// layer has no members to pass through, so it never sees the option.
+  final bool isGroup;
 
   @override
   Widget build(BuildContext context) {
@@ -196,7 +201,7 @@ class LayerBlendModeChip extends StatelessWidget {
               : colorScheme.onSurfaceVariant,
           padding: const EdgeInsets.symmetric(horizontal: 3, vertical: 2),
           entriesBuilder: () => [
-            for (final mode in LayerBlendMode.values)
+            for (final mode in LayerBlendMode.optionsFor(isGroup: isGroup))
               PanelFlyoutItem(
                 keyValue: '$optionKeyPrefix${mode.name}',
                 label: mode.labelFor(language),

@@ -533,6 +533,10 @@ class TimelineLayerControlsRow extends StatelessWidget {
                         optionKeyPrefix: 'timeline-layer-blend-option-',
                         blendMode: layer.blendMode,
                         language: blendLanguage,
+                        isGroup: layerKindGroupsLayers(layer.kind),
+                        subject: layerKindGroupsLayers(layer.kind)
+                            ? 'Folder'
+                            : 'Layer',
                         onBlendModeSelected: (mode) =>
                             onLayerBlendModeSelected!(layer.id, mode),
                       )
