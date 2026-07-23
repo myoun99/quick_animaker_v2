@@ -716,6 +716,21 @@ void main() {
             committedDisplay,
             '${mode.name}: live display == committed display',
           );
+
+          // R27 #4c: BOTH replacement routes must hold the parity — the
+          // difference-clip route above, and the strip-cap FALLBACK
+          // (isolation layer + BlendMode.src) that long scribbles take.
+          final defaultCap = BitmapSurfacePainter.maxReplacementClipStrips;
+          BitmapSurfacePainter.maxReplacementClipStrips = 0;
+          try {
+            _expectExact(
+              await paintedCanvasBytes(model, baseSurface: base),
+              committedDisplay,
+              '${mode.name}: saveLayer fallback route == committed display',
+            );
+          } finally {
+            BitmapSurfacePainter.maxReplacementClipStrips = defaultCap;
+          }
         }
       },
     );

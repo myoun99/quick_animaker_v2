@@ -104,25 +104,38 @@ class BitmapSurfacePainter extends CustomPainter {
     // after pen-up. This removes the per-frame saveLayer the unification
     // added to plain strokes, and the one the ERASER has paid since
     // R14-⑤ (its strokes pre-blend now too).
+    //
+    // BOUNDED, though: overlay tiles accumulate for the stroke's whole
+    // life, so a long scribble's strip count grows without limit — and
+    // saveLayer's cost is CONSTANT. Past the cap the painter falls back
+    // to the isolation layer + src-replacement (the 4b path); both
+    // routes are display-parity-pinned.
     final preBlendedOverlay =
         overlayModel != null &&
         overlayModel!.preBlended &&
         overlayModel!.hasStrokeContent;
+    final replacementStrips = preBlendedOverlay
+        ? _overlayReplacementStrips(overlayModel!)
+        : const <Rect>[];
+    final clipsReplaceOverlay =
+        preBlendedOverlay &&
+        replacementStrips.length <= maxReplacementClipStrips;
     final overlayBlendsInLayer =
         overlayModel != null &&
-        !preBlendedOverlay &&
+        !clipsReplaceOverlay &&
         overlayModel!.hasStrokeContent &&
-        (overlayModel!.erase ||
+        (overlayModel!.preBlended ||
+            overlayModel!.erase ||
             overlayModel!.blendMode.previewBlendMode != BlendMode.srcOver);
     if (overlayBlendsInLayer) {
       canvas.saveLayer(pasteboardRect, Paint());
     }
-    if (preBlendedOverlay) {
+    if (clipsReplaceOverlay) {
       // Row-coalesced difference clips: adjacent overlay tiles merge into
       // strips, so a stroke excludes ~its tile-row count in clip ops, not
       // its tile count.
       canvas.save();
-      for (final rect in _overlayReplacementStrips(overlayModel!)) {
+      for (final rect in replacementStrips) {
         // Hard edges: an antialiased clip would soften the boundary
         // pixels and break the byte-exact display parity.
         canvas.clipRect(rect, clipOp: ui.ClipOp.difference, doAntiAlias: false);
@@ -229,7 +242,7 @@ class BitmapSurfacePainter extends CustomPainter {
     if (pendingDecodes != null) {
       _startPrioritizedDecodes(pendingDecodes, size);
     }
-    if (preBlendedOverlay) {
+    if (clipsReplaceOverlay) {
       // The base pass painted around the overlay's rects; the result
       // tiles below draw with the clip released.
       canvas.restore();
@@ -246,14 +259,20 @@ class BitmapSurfacePainter extends CustomPainter {
       // stroke draws destination-out instead: the accumulated stroke alpha
       // removes committed pixels exactly like the commit pass will.
       // R27 #4c: pre-blended tiles carry the COMMIT's finished pixels for
-      // their rect (base included). The base pass already left those
-      // rects EMPTY (difference clips), so plain srcOver here composes
-      // them over the paper exactly like the committed tiles will after
-      // pen-up — no isolation layer, no blend paint. The erase/blend
-      // paints below serve only overlays that don't pre-blend (the fill
-      // stamp, and hosts driving the model directly).
+      // their rect (base included). On the clip route the base pass left
+      // those rects EMPTY, so plain srcOver composes them over the paper
+      // exactly like the committed tiles will after pen-up; past the
+      // strip cap the isolation layer is back and the tiles REPLACE
+      // (BlendMode.src) instead. The erase/blend paints below serve only
+      // overlays that don't pre-blend (the fill stamp, and hosts driving
+      // the model directly).
       final overlayPaint = overlay.preBlended
-          ? tileImagePaint
+          ? (clipsReplaceOverlay
+                ? tileImagePaint
+                : (Paint()
+                    ..filterQuality = FilterQuality.none
+                    ..isAntiAlias = false
+                    ..blendMode = BlendMode.src))
           : overlay.erase
           ? (Paint()
               ..filterQuality = FilterQuality.none
@@ -293,6 +312,13 @@ class BitmapSurfacePainter extends CustomPainter {
 
     canvas.restore();
   }
+
+  /// Strip-count cap for the clip route (R27 #4c): saveLayer costs the
+  /// same however long the stroke gets, difference clips grow with it —
+  /// past this many strips the constant-cost layer wins. Mutable for
+  /// tests (forcing the fallback route through the parity suite).
+  @visibleForTesting
+  static int maxReplacementClipStrips = 64;
 
   /// The pixel rects a pre-blended overlay REPLACES, coalesced into row
   /// STRIPS (adjacent same-row tiles merge) so the base pass excludes
