@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import '../theme/app_theme.dart' show AppColors;
+import '../widgets/app_icon_button.dart';
 
 /// The CAMERA VIEW toggle that sits beside a command bar's transport
 /// (R27 #1, unified across panels by R28 #1).
@@ -32,18 +32,14 @@ class CameraViewToggleButton extends StatelessWidget {
     }
     return ValueListenableBuilder<bool>(
       valueListenable: notifier,
-      builder: (context, isOn, _) => IconButton(
-        key: ValueKey<String>(keyValue),
+      // R26 #42: the app's standard icon button — its accent IS the
+      // on-state, so no hand-mixed color lives here.
+      builder: (context, isOn, _) => AppIconButton(
+        keyValue: keyValue,
         tooltip: isOn ? 'Camera view (on)' : 'Camera view',
-        visualDensity: VisualDensity.compact,
+        isSelected: isOn,
         onPressed: () => notifier.value = !isOn,
-        icon: Icon(
-          Icons.videocam_outlined,
-          size: 18,
-          color: isOn
-              ? AppColors.accent
-              : Theme.of(context).colorScheme.onSurfaceVariant,
-        ),
+        icon: const Icon(Icons.videocam_outlined),
       ),
     );
   }

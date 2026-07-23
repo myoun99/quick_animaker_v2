@@ -1,12 +1,12 @@
-import 'dart:ui' as ui show ClipOp;
-
 import 'package:flutter/material.dart';
 
 import '../../models/bitmap_surface.dart';
 import '../../models/bitmap_tile.dart';
+
 import '../../models/canvas_viewport.dart';
 import '../../models/pasteboard_bounds.dart';
 import '../../models/project_background.dart';
+import '../../services/canvas_selection_region.dart';
 import 'active_stroke_overlay.dart';
 import 'bitmap_tile_image_cache.dart';
 import 'viewport_canvas_transform.dart';
@@ -30,6 +30,7 @@ class BitmapSurfacePainter extends CustomPainter {
     this.overlayModel,
     this.showTransparentBackground = true,
     this.staleScope,
+    this.strokeClipRegion,
     BitmapTileImageCache? tileImageCache,
   }) : tileImageCache = tileImageCache ?? BitmapTileImageCache.instance,
        super(
@@ -54,6 +55,13 @@ class BitmapSurfacePainter extends CustomPainter {
   /// tile fallback never shows another frame's artwork; see
   /// [BitmapTileImageCache.latestImageForCoord].
   final Object? staleScope;
+
+  /// R26 #18: the live selection, in CANVAS coordinates. Non-null clips
+  /// the in-progress stroke to it — the commit clips the same stroke on
+  /// its own buffer, so what the pen shows is what lands. Null (every
+  /// no-selection path, and the display-parity suites) leaves the overlay
+  /// pipeline byte-for-byte as it was.
+  final CanvasSelectionRegion? strokeClipRegion;
 
   final BitmapTileImageCache tileImageCache;
 
@@ -100,49 +108,43 @@ class BitmapSurfacePainter extends CustomPainter {
     // mode must blend against the CEL's pixels only, never the paper or
     // panel chrome below.
     //
-    // R27 #4c: PRE-BLENDED overlays need NO layer at all. Their tiles
-    // carry the commit's finished pixels for their rects, so the painter
-    // CLIPS those rects out of the base pass and lays the result tiles
-    // with plain srcOver — exactly how the committed surface will draw
-    // after pen-up. This removes the per-frame saveLayer the unification
-    // added to plain strokes, and the one the ERASER has paid since
-    // R14-⑤ (its strokes pre-blend now too).
-    //
-    // BOUNDED, though: overlay tiles accumulate for the stroke's whole
-    // life, so a long scribble's strip count grows without limit — and
-    // saveLayer's cost is CONSTANT. Past the cap the painter falls back
-    // to the isolation layer + src-replacement (the 4b path); both
+    // PROMOTION round: a PRE-BLENDED overlay on the SAME grid as the
+    // surface needs neither a layer nor a clip. A result tile carries
+    // the commit's finished pixels for its whole coordinate (base
+    // included), so the base pass simply SKIPS the committed tile where
+    // an overlay image exists and the overlay pass lays the result tile
+    // with plain srcOver — one draw per coordinate, structurally the
+    // idle frame's cost however long the stroke gets. The isolation
+    // layer + src-replacement route stays for pre-blended overlays on a
+    // MISMATCHED grid (hosts/tests with their own tile sizes); both
     // routes are display-parity-pinned.
-    final preBlendedOverlay =
-        overlayModel != null &&
-        overlayModel!.preBlended &&
-        overlayModel!.hasStrokeContent;
-    final replacementStrips = preBlendedOverlay
-        ? _overlayReplacementStrips(overlayModel!)
-        : const <Rect>[];
-    final clipsReplaceOverlay =
-        preBlendedOverlay &&
-        replacementStrips.length <= maxReplacementClipStrips;
+    // R26 #18: the selection as a canvas-space path — the live stroke only
+    // shows inside it, hard-edged to match the commit's scanline mask.
+    final clipPath = strokeClipRegion?.pathIn(
+      (point) => Offset(point.x, point.y),
+    );
+    final overlay = overlayModel;
+    final overlayReplacesCoords =
+        overlay != null &&
+        overlay.preBlended &&
+        overlay.hasStrokeContent &&
+        overlay.tileSize == surface.tileSize &&
+        // A CLIPPED overlay cannot own whole coordinates: outside the
+        // selection its tile must not show, and the base pass has already
+        // skipped that coordinate — the result would be a hole in the
+        // artwork. With a selection the painter takes the isolation-layer
+        // route instead, where the base keeps painting underneath and the
+        // overlay REPLACES only inside the clip.
+        clipPath == null;
     final overlayBlendsInLayer =
-        overlayModel != null &&
-        !clipsReplaceOverlay &&
-        overlayModel!.hasStrokeContent &&
-        (overlayModel!.preBlended ||
-            overlayModel!.erase ||
-            overlayModel!.blendMode.previewBlendMode != BlendMode.srcOver);
+        overlay != null &&
+        !overlayReplacesCoords &&
+        overlay.hasStrokeContent &&
+        (overlay.preBlended ||
+            overlay.erase ||
+            overlay.blendMode.previewBlendMode != BlendMode.srcOver);
     if (overlayBlendsInLayer) {
       canvas.saveLayer(pasteboardRect, Paint());
-    }
-    if (clipsReplaceOverlay) {
-      // Row-coalesced difference clips: adjacent overlay tiles merge into
-      // strips, so a stroke excludes ~its tile-row count in clip ops, not
-      // its tile count.
-      canvas.save();
-      for (final rect in replacementStrips) {
-        // Hard edges: an antialiased clip would soften the boundary
-        // pixels and break the byte-exact display parity.
-        canvas.clipRect(rect, clipOp: ui.ClipOp.difference, doAntiAlias: false);
-      }
     }
 
     final tileImagePaint = Paint()
@@ -198,6 +200,14 @@ class BitmapSurfacePainter extends CustomPainter {
       if (tileImageCache.needsDecodeStart(tile)) {
         (pendingDecodes ??= <BitmapTile>[]).add(tile);
       }
+      // The overlay's result tile REPLACES this coordinate outright (it
+      // already contains the committed pixels blended with the stroke) —
+      // the committed tile is not drawn at all. Decode starts above still
+      // run, so a freshly adopted tile's image is ready by the time the
+      // override releases.
+      if (overlayReplacesCoords && overlay.tileImages.containsKey(tile.coord)) {
+        continue;
+      }
       if (settleHold != null && settleHold.containsKey(tile.coord)) {
         final preTile = settleHold[tile.coord];
         if (preTile != null) {
@@ -245,13 +255,7 @@ class BitmapSurfacePainter extends CustomPainter {
     if (pendingDecodes != null) {
       _startPrioritizedDecodes(pendingDecodes, size);
     }
-    if (clipsReplaceOverlay) {
-      // The base pass painted around the overlay's rects; the result
-      // tiles below draw with the clip released.
-      canvas.restore();
-    }
 
-    final overlay = overlayModel;
     if (overlay != null) {
       // The live stroke renders through the EXACT pipeline the committed
       // tiles use — premultiplied bytes decoded to images, drawn with
@@ -261,16 +265,17 @@ class BitmapSurfacePainter extends CustomPainter {
       // never overlap, so plain source-over per tile is exact. An ERASE
       // stroke draws destination-out instead: the accumulated stroke alpha
       // removes committed pixels exactly like the commit pass will.
-      // R27 #4c: pre-blended tiles carry the COMMIT's finished pixels for
-      // their rect (base included). On the clip route the base pass left
-      // those rects EMPTY, so plain srcOver composes them over the paper
-      // exactly like the committed tiles will after pen-up; past the
-      // strip cap the isolation layer is back and the tiles REPLACE
-      // (BlendMode.src) instead. The erase/blend paints below serve only
-      // overlays that don't pre-blend (the fill stamp, and hosts driving
-      // the model directly).
+      // PROMOTION round: pre-blended tiles carry the COMMIT's finished
+      // pixels for their whole coordinate (base included). On the
+      // aligned-grid route the base pass SKIPPED those coordinates, so
+      // plain srcOver composes them over the paper exactly like the
+      // committed tiles will after pen-up; on a mismatched grid the
+      // isolation layer is up and the tiles REPLACE (BlendMode.src)
+      // instead. The erase/blend paints below serve only overlays that
+      // don't pre-blend (the fill stamp, and hosts driving the model
+      // directly).
       final overlayPaint = overlay.preBlended
-          ? (clipsReplaceOverlay
+          ? (overlayReplacesCoords
                 ? tileImagePaint
                 : (Paint()
                     ..filterQuality = FilterQuality.none
@@ -289,6 +294,13 @@ class BitmapSurfacePainter extends CustomPainter {
               ..isAntiAlias = false
               ..blendMode = overlay.blendMode.previewBlendMode)
           : tileImagePaint;
+      // R26 #18: with a live selection the stroke only shows INSIDE it —
+      // hard-edged, matching the commit's hard scanline mask, so the pen
+      // preview and the landed pixels agree at the boundary.
+      if (clipPath != null) {
+        canvas.save();
+        canvas.clipPath(clipPath, doAntiAlias: false);
+      }
       final overlayTileSize = overlay.tileSize.toDouble();
       for (final entry in overlay.tileImages.entries) {
         canvas.drawImage(
@@ -303,6 +315,9 @@ class BitmapSurfacePainter extends CustomPainter {
       if (stampImage != null) {
         canvas.drawImage(stampImage, overlay.stampOffset, overlayPaint);
       }
+      if (clipPath != null) {
+        canvas.restore();
+      }
     }
 
     if (overlayBlendsInLayer) {
@@ -314,57 +329,6 @@ class BitmapSurfacePainter extends CustomPainter {
     // the stage boundary.
 
     canvas.restore();
-  }
-
-  /// Strip-count cap for the clip route (R27 #4c): saveLayer costs the
-  /// same however long the stroke gets, difference clips grow with it —
-  /// past this many strips the constant-cost layer wins. Mutable for
-  /// tests (forcing the fallback route through the parity suite).
-  @visibleForTesting
-  static int maxReplacementClipStrips = 64;
-
-  /// The pixel rects a pre-blended overlay REPLACES, coalesced into row
-  /// STRIPS (adjacent same-row tiles merge) so the base pass excludes
-  /// them in ~tile-row-count clip ops rather than tile-count. Rect sizes
-  /// come from the decoded images — pasteboard-edge tiles are partial,
-  /// and their exact drawn rect is what must be excluded.
-  static List<Rect> _overlayReplacementStrips(
-    ActiveStrokeOverlayModel overlay,
-  ) {
-    final tileSize = overlay.tileSize.toDouble();
-    final entries = overlay.tileImages.entries.toList()
-      ..sort((a, b) {
-        final y = a.key.y.compareTo(b.key.y);
-        return y != 0 ? y : a.key.x.compareTo(b.key.x);
-      });
-    final strips = <Rect>[];
-    Rect? open;
-    int? openTileY;
-    for (final entry in entries) {
-      final rect = Rect.fromLTWH(
-        entry.key.x * tileSize,
-        entry.key.y * tileSize,
-        entry.value.width.toDouble(),
-        entry.value.height.toDouble(),
-      );
-      if (open != null &&
-          openTileY == entry.key.y &&
-          open.right == rect.left &&
-          open.top == rect.top &&
-          open.bottom == rect.bottom) {
-        open = Rect.fromLTRB(open.left, open.top, rect.right, open.bottom);
-      } else {
-        if (open != null) {
-          strips.add(open);
-        }
-        open = rect;
-        openTileY = entry.key.y;
-      }
-    }
-    if (open != null) {
-      strips.add(open);
-    }
-    return strips;
   }
 
   /// Maximum decode STARTS per paint. Completions notify → repaint → the
@@ -463,6 +427,7 @@ class BitmapSurfacePainter extends CustomPainter {
     return !identical(oldDelegate.surface, surface) ||
         oldDelegate.showTransparentBackground != showTransparentBackground ||
         oldDelegate.viewport != viewport ||
+        oldDelegate.strokeClipRegion != strokeClipRegion ||
         !identical(oldDelegate.overlayModel, overlayModel);
   }
 }

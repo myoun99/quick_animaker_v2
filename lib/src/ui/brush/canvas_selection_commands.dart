@@ -2,7 +2,8 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 
-import '../../services/canvas_selection.dart';
+
+import '../../services/canvas_selection_region.dart';
 
 /// The live transform box's numeric state (R17-U tool settings inputs).
 typedef SelectionTransformValues = ({
@@ -22,6 +23,48 @@ typedef SelectionTransformValues = ({
 /// fields track handle drags live (notification is coalesced and deferred
 /// a microtask: mutations fire inside build/gesture phases).
 class CanvasSelectionCommands extends ChangeNotifier {
+  /// R28-S (R26 #18 / R27 #19): the live selection REGION lives here, not
+  /// inside the selection layer's State.
+  ///
+  /// The layer only mounts for the selection tools, so a layer-owned
+  /// region evaporated the moment the user picked the brush — which is
+  /// why "선택하고 다른 툴" had nothing to act on and the selection tool
+  /// read as doing nothing at all. Owning it at the app level makes the
+  /// region a DOCUMENT-level fact: it survives tool switches, the ants
+  /// keep showing under every tool, and painting can clip to it.
+  CanvasSelectionRegion? _region;
+
+  /// The mode a fresh marquee/lasso combines with [region] (R26 #16).
+  /// Default = 추가 (the user's stated default).
+  SelectionCombineMode _combineMode = SelectionCombineMode.defaultMode;
+
+  CanvasSelectionRegion? get region => _region;
+
+  /// True when a region is selected — the single truth the shortcuts, the
+  /// paint clip and the ants all read.
+  bool get hasRegion => _region != null;
+
+  SelectionCombineMode get combineMode => _combineMode;
+
+  set combineMode(SelectionCombineMode mode) {
+    if (_combineMode == mode) {
+      return;
+    }
+    _combineMode = mode;
+    notifySessionChanged();
+  }
+
+  /// Installs [region] as the live selection. The mounted layer pushes
+  /// every committed change through here, and the history command's
+  /// execute/undo does the same — one write path, one truth.
+  void setRegion(CanvasSelectionRegion? region) {
+    if (_region == region) {
+      return;
+    }
+    _region = region;
+    notifySessionChanged();
+  }
+
   bool Function()? _hasSelection;
   void Function(double dx, double dy)? _nudge;
   VoidCallback? _deselect;
@@ -30,7 +73,7 @@ class CanvasSelectionCommands extends ChangeNotifier {
   VoidCallback? _beginMeshTransform;
   VoidCallback? _commitTransform;
   VoidCallback? _cancelTransform;
-  void Function(CanvasSelectionShape? shape)? _applyShape;
+  void Function(CanvasSelectionRegion? region)? _applyRegion;
   bool Function()? _movePending;
   VoidCallback? _confirmPendingMove;
   VoidCallback? _revertPendingMove;
@@ -54,7 +97,7 @@ class CanvasSelectionCommands extends ChangeNotifier {
     VoidCallback? beginMeshTransform,
     VoidCallback? commitTransform,
     VoidCallback? cancelTransform,
-    void Function(CanvasSelectionShape? shape)? applyShape,
+    void Function(CanvasSelectionRegion? region)? applyRegion,
     bool Function()? movePending,
     VoidCallback? confirmPendingMove,
     VoidCallback? revertPendingMove,
@@ -75,7 +118,7 @@ class CanvasSelectionCommands extends ChangeNotifier {
     _beginMeshTransform = beginMeshTransform;
     _commitTransform = commitTransform;
     _cancelTransform = cancelTransform;
-    _applyShape = applyShape;
+    _applyRegion = applyRegion;
     _movePending = movePending;
     _confirmPendingMove = confirmPendingMove;
     _revertPendingMove = revertPendingMove;
@@ -93,7 +136,7 @@ class CanvasSelectionCommands extends ChangeNotifier {
     _beginMeshTransform = null;
     _commitTransform = null;
     _cancelTransform = null;
-    _applyShape = null;
+    _applyRegion = null;
     _movePending = null;
     _confirmPendingMove = null;
     _revertPendingMove = null;
@@ -116,10 +159,16 @@ class CanvasSelectionCommands extends ChangeNotifier {
     });
   }
 
-  /// Pushes a committed region into the mounted layer — the
-  /// selection-shape history command's execute/undo path (R11-⑧). A no-op
-  /// while no selection layer is mounted (view state simply skips).
-  void applyShape(CanvasSelectionShape? shape) => _applyShape?.call(shape);
+  /// Adopts a committed region — the selection history command's
+  /// execute/undo path (R11-⑧), and the layer's own commit path.
+  ///
+  /// The region lands here FIRST (so it holds even with no layer
+  /// mounted — R28-S), then reaches the mounted layer so an open
+  /// move/transform session can react.
+  void applyRegion(CanvasSelectionRegion? region) {
+    setRegion(region);
+    _applyRegion?.call(region);
+  }
 
   /// Whether a live selection exists — arrow keys NUDGE instead of
   /// flipping frames while true (Photoshop arbitration).
@@ -128,7 +177,34 @@ class CanvasSelectionCommands extends ChangeNotifier {
   /// Moves the selection by canvas pixels (one undo entry per call).
   void nudge(double dx, double dy) => _nudge?.call(dx, dy);
 
-  void deselect() => _deselect?.call();
+  /// Records a region change as ONE undoable step. Set by the canvas
+  /// panel (it owns the history manager); null applies changes directly.
+  void Function(CanvasSelectionRegion? before, CanvasSelectionRegion? after)?
+  regionHistoryRecorder;
+
+  /// Ctrl+D. With a selection layer mounted it runs the layer's own
+  /// deselect (which also ends any pending move session); with none —
+  /// the brush is armed and the region is just showing its ants — the
+  /// channel clears the region itself, through the same history recorder
+  /// the layer uses. Ctrl+D never becomes a dead key just because the
+  /// active tool is not a selection tool (R28-S).
+  void deselect() {
+    final layerDeselect = _deselect;
+    if (layerDeselect != null) {
+      layerDeselect();
+      return;
+    }
+    final before = _region;
+    if (before == null) {
+      return;
+    }
+    final record = regionHistoryRecorder;
+    if (record != null) {
+      record(before, null);
+      return;
+    }
+    setRegion(null);
+  }
 
   /// Whether a free-transform session is open (Enter/Escape then
   /// commit/cancel it instead of their usual meanings).

@@ -161,6 +161,19 @@ class EditorWorkspace extends StatefulWidget {
 class _EditorWorkspaceState extends State<EditorWorkspace> {
   /// The factory-default arrangement (also the validation baseline when a
   /// saved layout is restored: it names every known tab and its home dock).
+  ///
+  /// R26 #31 — the user's working arrangement: the TIMESHEET takes the
+  /// right vertical dock (a B4 sheet wants height, not a bottom strip),
+  /// the Tool Library keeps the top of the wide left dock and the Tool
+  /// SETTINGS get their own section under it (the two panels a stroke
+  /// alternates between, both open at once), and the frame-axis panels
+  /// keep the bottom.
+  ///
+  /// The sheet being VISIBLE by default is what makes this change cost a
+  /// test round: it mounts its own ink views and cells, so any finder that
+  /// looks for a canvas widget app-wide now matches twice. The fix is
+  /// always to scope the finder to its panel — never to hide the sheet
+  /// again.
   static Map<String, List<DockSection>> _defaultDocks() => {
     EditorWorkspace.toolLeftGroupId: [
       DockSection(tabs: [EditorWorkspace.toolsTabId]),
@@ -170,7 +183,6 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
       DockSection(
         tabs: [
           EditorWorkspace.brushesTabId,
-          EditorWorkspace.brushSettingsTabId,
           EditorWorkspace.colorWheelTabId,
           // The camera PANEL retired (R11-⑤): the canvas overlay handles
           // pose editing, the timeline camera row its eye/opacity, and the
@@ -182,8 +194,11 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
         ],
         activeTabId: EditorWorkspace.brushesTabId,
       ),
+      DockSection(tabs: [EditorWorkspace.brushSettingsTabId]),
     ],
-    EditorWorkspace.rightGroupId: <DockSection>[],
+    EditorWorkspace.rightGroupId: [
+      DockSection(tabs: [EditorWorkspace.timesheetTabId]),
+    ],
     EditorWorkspace.centerGroupId: [
       DockSection(tabs: [EditorWorkspace.canvasTabId]),
     ],
@@ -192,7 +207,6 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
         tabs: [
           EditorWorkspace.timelineTabId,
           EditorWorkspace.storyboardTabId,
-          EditorWorkspace.timesheetTabId,
         ],
         activeTabId: EditorWorkspace.timelineTabId,
       ),
@@ -390,9 +404,10 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
   }
 
   /// Timesheet tab view state: paper page-split ⟷ continuous, the sheet
-  /// viewport (zoom/pan) and the sheet-ink allow toggle — owned here so
-  /// they survive tab switches.
+  /// on screen in page view (R26 #41), the sheet viewport (zoom/pan) and
+  /// the sheet-ink allow toggle — owned here so they survive tab switches.
   final ValueNotifier<bool> _timesheetContinuous = ValueNotifier(false);
+  final ValueNotifier<int> _timesheetPage = ValueNotifier(0);
   final ValueNotifier<CanvasViewport?> _timesheetViewport = ValueNotifier(null);
   final ValueNotifier<bool> _timesheetInkEnabled = ValueNotifier(true);
 
@@ -611,6 +626,7 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
     _timelineRowFilter.dispose();
     _panelFlash.dispose();
     _timesheetContinuous.dispose();
+    _timesheetPage.dispose();
     _timesheetViewport.dispose();
     _timesheetInkEnabled.dispose();
     _timesheetInk.dispose();
@@ -1094,6 +1110,7 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
             // its own boundary builder inside the host.
             listenable: Listenable.merge([
               _timesheetContinuous,
+              _timesheetPage,
               _timesheetViewport,
               _timesheetInkEnabled,
               // The notation language reprints the sheet (UI-R10 #7).
@@ -1104,6 +1121,10 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
               continuous: _timesheetContinuous.value,
               onContinuousChanged: (continuous) {
                 _timesheetContinuous.value = continuous;
+              },
+              page: _timesheetPage.value,
+              onPageChanged: (page) {
+                _timesheetPage.value = page;
               },
               viewport: _timesheetViewport.value,
               onViewportChanged: (viewport) {

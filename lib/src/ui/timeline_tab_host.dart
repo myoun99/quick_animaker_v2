@@ -1384,7 +1384,9 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
           // the rail to it every time; the state itself is a view mode,
           // so the command bar is its natural second home (both entrances
           // drive the one notifier). R28 #1 moved the button itself into
-          // a shared widget the storyboard's command bar mounts too.
+          // a shared widget the storyboard's command bar mounts too — and
+          // that widget wears R26 #42's standard AppIconButton, so both
+          // panels get the same button in the same style.
           CameraViewToggleButton(
             enabled: widget.cameraViewEnabled,
             keyValue: 'timeline-camera-view-button',

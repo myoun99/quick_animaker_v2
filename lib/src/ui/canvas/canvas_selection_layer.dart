@@ -17,7 +17,9 @@ import 'dart:math' as math;
 import '../../native/qa_native_engine.dart';
 import '../../services/bitmap_surface_brush_commit.dart';
 import '../../services/canvas_selection.dart';
+import '../../services/canvas_selection_region.dart';
 import '../brush/canvas_selection_commands.dart';
+import 'selection_ants_painter.dart';
 import 'bitmap_surface_painter.dart';
 import 'viewport_canvas_transform.dart';
 
@@ -83,8 +85,8 @@ class CanvasSelectionLayer extends StatefulWidget {
   /// history command (R11-⑧: selecting is undoable). Null applies changes
   /// directly with no history (focused tests).
   final void Function(
-    CanvasSelectionShape? before,
-    CanvasSelectionShape? after,
+    CanvasSelectionRegion? before,
+    CanvasSelectionRegion? after,
   )?
   onShapeCommitted;
 
@@ -104,7 +106,7 @@ class CanvasSelectionLayer extends StatefulWidget {
   /// session lifts fresh from the CURRENT raster (a confirmed move's next
   /// move re-lifts the landed pixels — byte-identical by construction).
   final ({int liftToken, BrushDab stampDab})? Function(
-    CanvasSelectionShape shape,
+    CanvasSelectionRegion region,
   )?
   onLiftRequested;
 
@@ -180,7 +182,18 @@ CanvasPoint? _handleLocal(_TransformHandle handle, double w, double h) {
 
 class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     with SingleTickerProviderStateMixin {
-  CanvasSelectionShape? _shape;
+  /// The live selection, mirrored from [CanvasSelectionCommands.region]
+  /// (R28-S: the channel OWNS it, so it survives this layer unmounting on
+  /// a tool switch — see the channel's own note).
+  CanvasSelectionRegion? _region;
+
+  /// Assigns the region and pushes it to the app-level channel. Callers
+  /// wrap in setState; the channel's setter is idempotent, so the round
+  /// trip back through [applyCommittedRegion] settles immediately.
+  void _setRegion(CanvasSelectionRegion? region) {
+    _region = region;
+    widget.selectionCommands?.setRegion(region);
+  }
 
   /// True whenever the shape's pixels are NOT already floating: from a
   /// USER selection (marquee commit, shape channel apply) until a Move
@@ -188,7 +201,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
   /// model — the next move re-lifts the landed raster, byte-identical).
   bool _shapeNeedsLift = false;
 
-  /// R26 #13: true while [_shape] is the IMPLICIT whole-canvas target the
+  /// R26 #13: true while [_region] is the IMPLICIT whole-canvas target the
   /// MOVE tool synthesized because no selection existed ("선택하지 않은
   /// 상황이어도 그림 전체를 이동"). The session's end — confirm or revert
   /// — returns to NO selection, and the implicit shape never records a
@@ -229,13 +242,14 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
 
   /// Installs [shape] as the live implicit whole-picture selection.
   /// Callers wrap in setState.
-  CanvasSelectionShape _adoptImplicitWholePictureShape(
+  CanvasSelectionRegion _adoptImplicitWholePictureShape(
     CanvasSelectionShape shape,
   ) {
-    _shape = shape;
+    final region = CanvasSelectionRegion.shape(shape);
+    _setRegion(region);
     _shapeNeedsLift = true;
     _shapeIsImplicitWholePicture = true;
-    return shape;
+    return region;
   }
 
   /// An implicit shape whose lift found nothing rolls back to
@@ -244,7 +258,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     if (!_shapeIsImplicitWholePicture) {
       return;
     }
-    _shape = null;
+    _setRegion(null);
     _shapeNeedsLift = false;
     _shapeIsImplicitWholePicture = false;
   }
@@ -266,8 +280,8 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
   /// confirm (green = confirmed / untouched).
   bool _moveSessionDirty = false;
 
-  /// The shape as the session found it — the revert restores it.
-  CanvasSelectionShape? _moveSessionStartShape;
+  /// The region as the session found it — the revert restores it.
+  CanvasSelectionRegion? _moveSessionStartShape;
 
   bool get _movePending => _pendingLiftStamp != null;
 
@@ -286,12 +300,12 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
         // R26 #13: an implicit whole-picture session reverts to NO
         // selection — the user never selected anything.
         if (_shapeIsImplicitWholePicture) {
-          _shape = null;
+          _setRegion(null);
           _shapeIsImplicitWholePicture = false;
           _shapeNeedsLift = false;
         } else {
           if (startShape != null) {
-            _shape = startShape;
+            _setRegion(startShape);
           }
           _shapeNeedsLift = true;
         }
@@ -346,7 +360,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
         // R26 #13: a confirmed implicit whole-picture session lands and
         // simply ends — back to no selection.
         if (_shapeIsImplicitWholePicture) {
-          _shape = null;
+          _setRegion(null);
           _shapeIsImplicitWholePicture = false;
           _shapeNeedsLift = false;
         }
@@ -361,7 +375,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
       _moveSessionStartShape = null;
       _shapeNeedsLift = true;
       if (_shapeIsImplicitWholePicture) {
-        _shape = null;
+        _setRegion(null);
         _shapeIsImplicitWholePicture = false;
         _shapeNeedsLift = false;
       }
@@ -372,7 +386,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
 
   /// The committed region as it stood when a marquee drag started — the
   /// undo record's BEFORE (a cancelled drag restores it).
-  CanvasSelectionShape? _shapeBeforeMarquee;
+  CanvasSelectionRegion? _shapeBeforeMarquee;
 
   _DragMode _dragMode = _DragMode.none;
   int? _activePointer;
@@ -409,12 +423,42 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     duration: const Duration(milliseconds: 600),
   );
 
-  bool get _hasSelection => _shape != null;
+  bool get _hasSelection => _region != null;
 
   @override
   void initState() {
     super.initState();
+    // R28-S: adopt whatever the app already has selected — the region
+    // outlives this layer (tool switches unmount it), so mounting must
+    // pick it back up instead of starting empty.
+    _region = widget.selectionCommands?.region;
+    _shapeNeedsLift = _region != null;
     _bindCommands();
+    widget.selectionCommands?.addListener(_adoptChannelRegion);
+  }
+
+  /// The channel is the region's OWNER (R28-S), so a write that did not
+  /// come from this layer — a host installing a region, a history command
+  /// executing while another tool was armed — must land here too. Writes
+  /// that DID come from this layer echo back equal and stop at the guard.
+  void _adoptChannelRegion() {
+    if (!mounted) {
+      return;
+    }
+    final channelRegion = widget.selectionCommands?.region;
+    if (channelRegion == _region) {
+      return;
+    }
+    setState(() {
+      _region = channelRegion;
+      _shapeNeedsLift = channelRegion != null;
+      _shapeIsImplicitWholePicture = false;
+      _clearLiftState();
+      if (channelRegion == null) {
+        _clearTransform();
+      }
+    });
+    _syncAnts();
   }
 
   @override
@@ -422,7 +466,11 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     super.didUpdateWidget(oldWidget);
     if (!identical(oldWidget.selectionCommands, widget.selectionCommands)) {
       oldWidget.selectionCommands?.unbind();
+      oldWidget.selectionCommands?.removeListener(_adoptChannelRegion);
+      _region = widget.selectionCommands?.region;
+      _shapeNeedsLift = _region != null;
       _bindCommands();
+      widget.selectionCommands?.addListener(_adoptChannelRegion);
     }
     if (oldWidget.frameToken != widget.frameToken) {
       // Build-phase safety (R15-⑤): this runs inside didUpdateWidget —
@@ -493,6 +541,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
 
   @override
   void dispose() {
+    widget.selectionCommands?.removeListener(_adoptChannelRegion);
     widget.selectionCommands?.unbind();
     if (_dragMode != _DragMode.none) {
       widget.onDragActiveChanged?.call(false);
@@ -546,7 +595,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
         }
       },
       cancelTransform: _cancelTransform,
-      applyShape: applyCommittedShape,
+      applyRegion: applyCommittedRegion,
       movePending: () => _movePending,
       confirmPendingMove: _confirmMoveSession,
       revertPendingMove: _revertMoveSession,
@@ -617,7 +666,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
       _foldOpenTransformIntoPendingStamp();
       _landPendingLiftStamp();
       _cancelDrag(notify: wasDragging && !deferDragNotify);
-      _shape = null;
+      _setRegion(null);
       _shapeIsImplicitWholePicture = false; // R26 #13
       _clearLiftState();
       _clearTransform();
@@ -832,44 +881,35 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
   /// pixel model: the session lifts the shape's raster and the box
   /// manipulates the FLOAT; Enter resamples the stamp and confirms).
   void _beginTransform() {
-    var shape = _shape;
+    var region = _region;
     // R26 #13: the MOVE tool with no selection opens the box on the
     // WHOLE picture (the Ctrl+T-family entrances included).
-    if (shape == null &&
+    if (region == null &&
         widget.tool == CanvasSelectionTool.move &&
         widget.onLiftRequested != null) {
       setState(() {
-        shape = _adoptImplicitWholePictureShape(_wholeCanvasShape());
+        region = _adoptImplicitWholePictureShape(_wholeCanvasShape());
       });
     }
-    final targetShape = shape;
-    if (targetShape == null || _transform != null) {
+    final targetRegion = region;
+    if (targetRegion == null || _transform != null) {
       return;
     }
     if (widget.onLiftRequested == null) {
       return;
     }
     final hadPendingLift = _pendingLiftStamp != null;
-    if (!_ensureLifted(targetShape)) {
+    if (!_ensureLifted(targetRegion)) {
       setState(_clearFailedImplicitShape);
       _syncAnts();
       return;
     }
-    var minX = targetShape.points.first.x, maxX = targetShape.points.first.x;
-    var minY = targetShape.points.first.y, maxY = targetShape.points.first.y;
-    for (final point in targetShape.points.skip(1)) {
-      minX = math.min(minX, point.x);
-      maxX = math.max(maxX, point.x);
-      minY = math.min(minY, point.y);
-      maxY = math.max(maxY, point.y);
-    }
+    final box = _regionBounds(targetRegion);
     setState(() {
       _transformOpenedLift = !hadPendingLift;
-      _baseBoxWidth = math.max(maxX - minX, 1);
-      _baseBoxHeight = math.max(maxY - minY, 1);
-      _transform = SelectionAffine(
-        pivot: CanvasPoint(x: (minX + maxX) / 2, y: (minY + maxY) / 2),
-      );
+      _baseBoxWidth = box.width;
+      _baseBoxHeight = box.height;
+      _transform = SelectionAffine(pivot: box.center);
       _floatSurface = _buildFloatSurface();
     });
     _syncAnts();
@@ -880,9 +920,9 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
   /// entry; identity closes the box with the session still pending.
   void _commitTransform() {
     final affine = _transform;
-    final shape = _shape;
+    final region = _region;
     final pending = _pendingLiftStamp;
-    if (affine == null || shape == null) {
+    if (affine == null || region == null) {
       return;
     }
     // R20-D3: an open mesh resamples through the triangulated warp.
@@ -902,7 +942,12 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
       final boundary = _meshBoundary(meshPoints);
       setState(() {
         _pendingLiftStamp = warped;
-        _shape = CanvasSelectionShape(boundary);
+        // A warped region collapses to its boundary polygon: the mesh
+        // maps the LIFTED pixels, so what is selected afterwards is the
+        // warped outline, not the old step list.
+        _setRegion(
+          CanvasSelectionRegion.shape(CanvasSelectionShape(boundary)),
+        );
         _moveSessionDirty = true;
         _clearTransform();
       });
@@ -923,11 +968,13 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
       final h = base == null ? null : solveHomography(base, warpCorners);
       setState(() {
         _pendingLiftStamp = warped;
-        _shape = h == null
-            ? CanvasSelectionShape(warpCorners)
-            : CanvasSelectionShape([
-                for (final point in shape.points) _applyHomography(h, point),
-              ]);
+        _setRegion(
+          h == null
+              ? CanvasSelectionRegion.shape(
+                  CanvasSelectionShape(warpCorners),
+                )
+              : region.mapped((point) => _applyHomography(h, point)),
+        );
         _moveSessionDirty = true;
         _clearTransform();
       });
@@ -937,7 +984,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     if (!affine.isIdentity && pending != null) {
       setState(() {
         _pendingLiftStamp = transformStampDab(pending, affine);
-        _shape = transformShape(shape, affine);
+        _setRegion(region.mapped(affine.apply));
         _moveSessionDirty = true;
         _clearTransform();
       });
@@ -980,7 +1027,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     if (!_hasSelection && _dragMode == _DragMode.none) {
       return;
     }
-    final before = _shape;
+    final before = _region;
     // R26 #13: the implicit whole-picture shape was never a user
     // selection — dropping it records no history.
     final wasImplicit = _shapeIsImplicitWholePicture;
@@ -1008,11 +1055,11 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
       });
       return;
     }
-    final shape = _shape;
-    if (shape == null || widget.onLiftRequested == null) {
+    final region = _region;
+    if (region == null || widget.onLiftRequested == null) {
       return;
     }
-    if (!_ensureLifted(shape)) {
+    if (!_ensureLifted(region)) {
       return;
     }
     _commitMove(dx: dx, dy: dy);
@@ -1022,11 +1069,11 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
   /// — the host commits the ERASE (origin vanishes) and hands back the
   /// stamp, which floats until the session confirms. False = nothing
   /// under the shape to move.
-  bool _ensureLifted(CanvasSelectionShape shape) {
+  bool _ensureLifted(CanvasSelectionRegion region) {
     if (!_shapeNeedsLift) {
       return _pendingLiftStamp != null;
     }
-    final lift = widget.onLiftRequested!(shape);
+    final lift = widget.onLiftRequested!(region);
     _shapeNeedsLift = false;
     if (lift == null) {
       _clearLiftState();
@@ -1035,7 +1082,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     _liftToken = lift.liftToken;
     _pendingLiftStamp = lift.stampDab;
     _moveSessionDirty = false;
-    _moveSessionStartShape = shape;
+    _moveSessionStartShape = region;
     widget.onMoveSessionPendingChanged?.call(true);
     return true;
   }
@@ -1054,7 +1101,10 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
       return;
     }
     _pendingLiftStamp = transformStampDab(pending, affine);
-    _shape = transformShape(_shape!, affine);
+    final region = _region;
+    if (region != null) {
+      _setRegion(region.mapped(affine.apply));
+    }
   }
 
   /// Abandon fallback: land the floating stamp at its CURRENT pending
@@ -1101,18 +1151,23 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
       // R26 #13: with NO selection the always-on box frames the WHOLE
       // picture — grabbing one of its handles opens the session on the
       // implicit whole-canvas shape.
-      final implicitShape = _shape ?? _wholeCanvasShape();
-      final box = _shapeBounds(implicitShape);
+      final implicitRegion =
+          _region ?? CanvasSelectionRegion.shape(_wholeCanvasShape());
+      final box = _regionBounds(implicitRegion);
       _baseBoxWidth = box.width;
       _baseBoxHeight = box.height;
       final implicit = SelectionAffine(pivot: box.center);
       final handle = _hitTestTransformHandle(event.localPosition, implicit);
       if (handle != null && handle != _TransformHandle.inside) {
-        if (_shape == null) {
-          setState(() => _adoptImplicitWholePictureShape(implicitShape));
+        if (_region == null) {
+          setState(
+            () => _adoptImplicitWholePictureShape(
+              implicitRegion.steps.first.shape,
+            ),
+          );
         }
         final hadPendingLift = _pendingLiftStamp != null;
-        if (!_ensureLifted(implicitShape)) {
+        if (!_ensureLifted(implicitRegion)) {
           _baseBoxWidth = 0;
           _baseBoxHeight = 0;
           setState(_clearFailedImplicitShape);
@@ -1217,13 +1272,13 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
       widget.onDragActiveChanged?.call(true);
       return;
     }
-    final shape = _shape;
+    final region = _region;
     if (widget.tool == CanvasSelectionTool.move) {
       // The MOVE tool drags the selected content; outside a REAL region
       // it does nothing (R11-⑧). R26 #13 revises the no-selection half:
       // with no region at all, a press inside the canvas targets the
       // WHOLE picture through the implicit whole-canvas shape.
-      var targetShape = shape;
+      var targetShape = region;
       if (targetShape == null) {
         // A press anywhere ON CANVAS grabs the whole picture (PS move
         // grammar) — the implicit shape itself may be the tighter ink
@@ -1260,17 +1315,18 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
         _floatSurface = _buildFloatSurface();
       });
     } else {
-      // The marquee tools ALWAYS draw a new region — even starting inside
-      // the current one (moving lives on the Move tool). The old region
-      // hides during the drag; the RELEASE records the change as one
-      // undoable step (a cancelled drag restores it). A pending move
+      // The marquee tools ALWAYS draw a NEW polygon — even starting
+      // inside the current region (moving lives on the Move tool). The
+      // region already selected STAYS on screen through the drag (R26
+      // #16: with add/subtract/intersect the user must see what the new
+      // polygon is about to fold into — the PS/CSP read), and the RELEASE
+      // records the combination as one undoable step. A pending move
       // session confirms first (R16-①: never revert, always confirm).
       _confirmMoveSession();
       _activePointer = event.pointer;
       setState(() {
         _dragMode = _DragMode.marquee;
-        _shapeBeforeMarquee = _shape;
-        _shape = null;
+        _shapeBeforeMarquee = _region;
         _marqueeStart = canvasPoint;
         _marqueeCurrent = canvasPoint;
         _lassoPoints = [canvasPoint];
@@ -1494,10 +1550,10 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     final wasDragging = _dragMode != _DragMode.none;
     // R16-①: the move SESSION survives the gesture — the float keeps
     // rendering at its pending position until the user confirms.
-    // A CANCELLED marquee restores the region it hid at drag start (a
-    // finished one consumed the stash in _finishMarquee).
+    // A CANCELLED marquee leaves the region exactly as the drag found it
+    // (a finished one consumed the stash in _finishMarquee).
     if (_dragMode == _DragMode.marquee && _shapeBeforeMarquee != null) {
-      _shape = _shapeBeforeMarquee;
+      _setRegion(_shapeBeforeMarquee);
       _shapeNeedsLift = true;
     }
     _shapeBeforeMarquee = null;
@@ -1518,12 +1574,43 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     }
   }
 
+  /// The mode this drag folds under (R26 #16): the tool setting, unless
+  /// the PS/CSP modifier chord overrides it for this one drag — Shift
+  /// adds, Alt subtracts, Shift+Alt intersects. The modifiers are read at
+  /// RELEASE, matching how both apps behave when you change your mind
+  /// mid-drag. (Neither key means anything else on a marquee: Alt's
+  /// temporary eyedropper is gated to painting tools, and Shift/Alt only
+  /// steer an OPEN transform box, never a marquee.)
+  SelectionCombineMode _marqueeMode() {
+    final keyboard = HardwareKeyboard.instance;
+    final shift = keyboard.isShiftPressed;
+    final alt = keyboard.isAltPressed;
+    if (shift && alt) {
+      return SelectionCombineMode.intersect;
+    }
+    if (shift) {
+      return SelectionCombineMode.add;
+    }
+    if (alt) {
+      return SelectionCombineMode.subtract;
+    }
+    return widget.selectionCommands?.combineMode ??
+        SelectionCombineMode.defaultMode;
+  }
+
   void _finishMarquee() {
     final before = _shapeBeforeMarquee;
     _shapeBeforeMarquee = null;
-    // A click (degenerate region) deselects — Photoshop's click-away.
-    final after = _marqueeShape();
+    // R26 #16: the drawn polygon FOLDS into the region under the active
+    // mode. A click (degenerate polygon) still deselects in 갱신 mode —
+    // Photoshop's click-away — and is inert in the other three.
+    final drawn = _marqueeShape();
+    final after = CanvasSelectionRegion.combine(before, drawn, _marqueeMode());
     if (before == null && after == null) {
+      return;
+    }
+    if (before == after) {
+      // Nothing folded (a click in add/subtract/intersect): no history.
       return;
     }
     // The change routes through ONE undoable step (R11-⑧: selecting is
@@ -1532,24 +1619,24 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     if (commit != null) {
       commit(before, after);
     } else {
-      applyCommittedShape(after);
+      applyCommittedRegion(after);
     }
   }
 
-  /// Adopts a committed region — called by the selection-shape history
-  /// command on execute/undo/redo (and directly without a history host).
-  void applyCommittedShape(CanvasSelectionShape? shape) {
+  /// Adopts a committed region — called by the selection history command
+  /// on execute/undo/redo (and directly without a history host).
+  void applyCommittedRegion(CanvasSelectionRegion? region) {
     if (!mounted) {
       return;
     }
     // A committed region change over a pending move confirms it first
-    // (deselect, Ctrl+D, a new shape from undo/redo — R16-①).
+    // (deselect, Ctrl+D, a new region from undo/redo — R16-①).
     _confirmMoveSession();
     setState(() {
-      _shape = shape;
-      _shapeNeedsLift = shape != null;
+      _setRegion(region);
+      _shapeNeedsLift = region != null;
       _clearLiftState();
-      if (shape == null) {
+      if (region == null) {
         _clearTransform();
       }
     });
@@ -1592,9 +1679,9 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
   }
 
   void _commitMove({required double dx, required double dy}) {
-    final shape = _shape;
+    final region = _region;
     final pending = _pendingLiftStamp;
-    if (shape == null || pending == null || (dx == 0 && dy == 0)) {
+    if (region == null || pending == null || (dx == 0 && dy == 0)) {
       return;
     }
     // R16-① TVP move session: a drag/nudge only moves the FLOAT — nothing
@@ -1605,7 +1692,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
       );
       _moveSessionDirty = true;
       _floatSurface = _buildFloatSurface();
-      _shape = shape.translated(dx: dx, dy: dy);
+      _setRegion(region.translated(dx: dx, dy: dy));
     });
     _syncAnts();
   }
@@ -1720,23 +1807,19 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     ]);
   }
 
-  /// The shape's axis-aligned bounds (box geometry for the transform
+  /// The region's axis-aligned bounds (box geometry for the transform
   /// chrome — R17-U always-on handles use it without opening a session).
-  ({double width, double height, CanvasPoint center}) _shapeBounds(
-    CanvasSelectionShape shape,
+  ({double width, double height, CanvasPoint center}) _regionBounds(
+    CanvasSelectionRegion region,
   ) {
-    var minX = shape.points.first.x, maxX = shape.points.first.x;
-    var minY = shape.points.first.y, maxY = shape.points.first.y;
-    for (final point in shape.points.skip(1)) {
-      minX = math.min(minX, point.x);
-      maxX = math.max(maxX, point.x);
-      minY = math.min(minY, point.y);
-      maxY = math.max(maxY, point.y);
-    }
+    final bounds = region.bounds;
     return (
-      width: math.max(maxX - minX, 1),
-      height: math.max(maxY - minY, 1),
-      center: CanvasPoint(x: (minX + maxX) / 2, y: (minY + maxY) / 2),
+      width: math.max(bounds.right - bounds.left, 1),
+      height: math.max(bounds.bottom - bounds.top, 1),
+      center: CanvasPoint(
+        x: (bounds.left + bounds.right) / 2,
+        y: (bounds.top + bounds.bottom) / 2,
+      ),
     );
   }
 
@@ -1801,27 +1884,27 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
   Widget build(BuildContext context) {
     final floatSurface = _floatSurface;
     final transform = _transform;
-    final shape = _shape;
+    final region = _region;
     final warpCorners = _warpCorners;
     // With an open Ctrl+T session the ants show the TRANSFORMED region
     // and the box chrome renders around the transformed base box. An
     // open QUAD (R20-D2) maps the region through the homography instead.
-    var displayShape = transform != null && shape != null
-        ? transformShape(shape, transform)
-        : shape;
-    if (warpCorners != null && shape != null) {
+    var displayShape = transform != null && region != null
+        ? region.mapped(transform.apply)
+        : region;
+    if (warpCorners != null && region != null) {
       final base = _stampRectCorners();
       final h = base == null ? null : solveHomography(base, warpCorners);
       displayShape = h == null
-          ? CanvasSelectionShape(warpCorners)
-          : CanvasSelectionShape([
-              for (final point in shape.points) _applyHomography(h, point),
-            ]);
+          ? CanvasSelectionRegion.shape(CanvasSelectionShape(warpCorners))
+          : region.mapped((point) => _applyHomography(h, point));
     }
     final meshPoints = _meshPoints;
     if (meshPoints != null) {
       // Mesh session: the ants trace the grid's warped boundary.
-      displayShape = CanvasSelectionShape(_meshBoundary(meshPoints));
+      displayShape = CanvasSelectionRegion.shape(
+        CanvasSelectionShape(_meshBoundary(meshPoints)),
+      );
     }
     // R17-U 핸들 상시: with the Move tool a selection shows its box
     // chrome even before any session opens (identity affine around the
@@ -1835,7 +1918,9 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
         _dragMode == _DragMode.none) {
       // R26 #13: no selection = the box frames the WHOLE picture (the
       // canvas rect) — grabbing a handle opens the implicit session.
-      final bounds = _shapeBounds(shape ?? _wholeCanvasShape());
+      final bounds = _regionBounds(
+        region ?? CanvasSelectionRegion.shape(_wholeCanvasShape()),
+      );
       chromeAffine = SelectionAffine(pivot: bounds.center);
       chromeWidth = bounds.width;
       chromeHeight = bounds.height;
@@ -1949,10 +2034,10 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
           Positioned.fill(
             child: IgnorePointer(
               child: CustomPaint(
-                painter: _SelectionAntsPainter(
+                painter: SelectionAntsPainter(
                   repaint: _ants,
                   viewport: widget.viewport,
-                  committedShape: displayShape,
+                  committedRegion: displayShape,
                   screenOffset: _dragMode == _DragMode.move
                       ? _moveScreenDelta
                       : Offset.zero,
@@ -2001,14 +2086,11 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
 
   /// Confirm button anchor: just outside the selection bbox's top-right,
   /// following the live drag offset.
-  Offset _confirmButtonOffset(CanvasSelectionShape shape) {
-    var maxX = shape.points.first.x;
-    var minY = shape.points.first.y;
-    for (final point in shape.points.skip(1)) {
-      maxX = math.max(maxX, point.x);
-      minY = math.min(minY, point.y);
-    }
-    final mapped = _mapCanvasToViewportOffset(CanvasPoint(x: maxX, y: minY));
+  Offset _confirmButtonOffset(CanvasSelectionRegion region) {
+    final bounds = region.bounds;
+    final mapped = _mapCanvasToViewportOffset(
+      CanvasPoint(x: bounds.right, y: bounds.top),
+    );
     final dragOffset = _dragMode == _DragMode.move
         ? _moveScreenDelta
         : Offset.zero;
@@ -2020,15 +2102,6 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     return Offset(mapped.x, mapped.y);
   }
 }
-
-/// The Ctrl+T box chrome in viewport space: the transformed box outline,
-/// the scale handles and the rotate knob (null in QUAD mode — a free
-/// quadrilateral has no rotation lever).
-typedef _TransformChrome = ({
-  List<Offset> box,
-  List<Offset> handles,
-  Offset? knob,
-});
 
 /// The mesh session's LIVE warp preview (R21): the float stamp as a
 /// textured triangle mesh — destination positions are the control grid
@@ -2105,158 +2178,3 @@ class _MeshWarpPainter extends CustomPainter {
       oldDelegate.rows != rows;
 }
 
-/// Marching ants: dashed outlines whose dash phase rides the animation.
-class _SelectionAntsPainter extends CustomPainter {
-  _SelectionAntsPainter({
-    required Animation<double> repaint,
-    required this.viewport,
-    required this.committedShape,
-    required this.screenOffset,
-    required this.marqueeShape,
-    required this.lassoTrail,
-    this.transformChrome,
-    this.movePendingDirty = false,
-  }) : _phase = repaint,
-       super(repaint: repaint);
-
-  final Animation<double> _phase;
-  final CanvasViewport viewport;
-  final CanvasSelectionShape? committedShape;
-  final Offset screenOffset;
-  final CanvasSelectionShape? marqueeShape;
-  final List<CanvasPoint> lassoTrail;
-  final _TransformChrome? transformChrome;
-
-  /// R16-① TVP grammar: RED silhouette while the move session holds
-  /// unconfirmed changes, GREEN when confirmed/untouched.
-  final bool movePendingDirty;
-
-  static const Color _chromeColor = Color(0xFF40C4FF);
-  static const Color _confirmedAntsColor = Color(0xFF2ECC71);
-  static const Color _pendingAntsColor = Color(0xFFFF4444);
-
-  static const double _dashOn = 5;
-  static const double _dashOff = 4;
-
-  Offset _map(CanvasPoint point) {
-    final mapped = viewport.canvasToViewport(point);
-    return Offset(mapped.x, mapped.y);
-  }
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    canvas.clipRect(Offset.zero & size);
-    final phase = _phase.value * (_dashOn + _dashOff);
-
-    void paintShape(CanvasSelectionShape shape, Offset offset) {
-      final path = Path();
-      final points = shape.points;
-      path.moveTo(
-        _map(points.first).dx + offset.dx,
-        _map(points.first).dy + offset.dy,
-      );
-      for (final point in points.skip(1)) {
-        final mapped = _map(point);
-        path.lineTo(mapped.dx + offset.dx, mapped.dy + offset.dy);
-      }
-      path.close();
-      _paintAnts(canvas, path, phase);
-    }
-
-    final committed = committedShape;
-    if (committed != null) {
-      paintShape(committed, screenOffset);
-    }
-    final marquee = marqueeShape;
-    if (marquee != null) {
-      paintShape(marquee, Offset.zero);
-    } else if (lassoTrail.length >= 2) {
-      // Lasso still too short to close: show the raw trail.
-      final path = Path()
-        ..moveTo(_map(lassoTrail.first).dx, _map(lassoTrail.first).dy);
-      for (final point in lassoTrail.skip(1)) {
-        final mapped = _map(point);
-        path.lineTo(mapped.dx, mapped.dy);
-      }
-      _paintAnts(canvas, path, phase);
-    }
-
-    final chrome = transformChrome;
-    if (chrome != null) {
-      _paintTransformChrome(canvas, chrome);
-    }
-  }
-
-  void _paintTransformChrome(Canvas canvas, _TransformChrome chrome) {
-    final stroke = Paint()
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 1.5
-      ..color = _chromeColor;
-    final fill = Paint()..color = _chromeColor;
-
-    canvas.drawPath(Path()..addPolygon(chrome.box, true), stroke);
-    for (final handle in chrome.handles) {
-      canvas.drawRect(
-        Rect.fromCenter(center: handle, width: 9, height: 9),
-        Paint()..color = Colors.white,
-      );
-      canvas.drawRect(
-        Rect.fromCenter(center: handle, width: 9, height: 9),
-        stroke,
-      );
-    }
-    // The rotate lever: line from the top edge midpoint to the knob.
-    // Quad mode carries no knob (R20-D2).
-    final knob = chrome.knob;
-    if (knob != null) {
-      final topMid = Offset(
-        (chrome.box[0].dx + chrome.box[1].dx) / 2,
-        (chrome.box[0].dy + chrome.box[1].dy) / 2,
-      );
-      canvas.drawLine(topMid, knob, stroke);
-      canvas.drawCircle(knob, 5, fill);
-    }
-  }
-
-  /// White under-stroke + phase-offset colored dashes: GREEN for a
-  /// confirmed/untouched selection, RED while a move session holds
-  /// unconfirmed changes (R16-①, TVP grammar) — readable on any artwork.
-  void _paintAnts(Canvas canvas, Path path, double phase) {
-    final white = Paint()
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 1
-      ..color = Colors.white;
-    final dashes = Paint()
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 1
-      ..color = movePendingDirty ? _pendingAntsColor : _confirmedAntsColor;
-    canvas.drawPath(path, white);
-    canvas.drawPath(_dashPath(path, phase), dashes);
-  }
-
-  Path _dashPath(Path source, double phase) {
-    final dashed = Path();
-    for (final metric in source.computeMetrics()) {
-      var distance = -phase % (_dashOn + _dashOff);
-      while (distance < metric.length) {
-        final start = distance.clamp(0.0, metric.length);
-        final end = (distance + _dashOn).clamp(0.0, metric.length);
-        if (end > start) {
-          dashed.addPath(metric.extractPath(start, end), Offset.zero);
-        }
-        distance += _dashOn + _dashOff;
-      }
-    }
-    return dashed;
-  }
-
-  @override
-  bool shouldRepaint(covariant _SelectionAntsPainter oldDelegate) =>
-      oldDelegate.viewport != viewport ||
-      oldDelegate.committedShape != committedShape ||
-      oldDelegate.screenOffset != screenOffset ||
-      oldDelegate.marqueeShape != marqueeShape ||
-      oldDelegate.lassoTrail != lassoTrail ||
-      oldDelegate.transformChrome != transformChrome ||
-      oldDelegate.movePendingDirty != movePendingDirty;
-}

@@ -19,6 +19,8 @@ import 'package:quick_animaker_v2/src/ui/canvas/interactive_brush_edit_canvas_vi
 import 'package:quick_animaker_v2/src/ui/editor_workspace.dart';
 import 'package:quick_animaker_v2/src/ui/home_page.dart';
 
+import '../helpers/panel_finders.dart';
+
 /// R13-4: flipping frames WHILE a stroke is in progress used to throw
 /// "setState during build" (the mid-stroke red screen) and could land the
 /// stroke on the wrong cel. The stroke now PINS to its original cel — the
@@ -83,10 +85,11 @@ void main() {
     frameId: frameId,
   );
 
+  // PANEL-SCOPED (R26 #31): the timesheet docks open by default and its
+  // ink planes are interactive views too — this test means the DRAWING
+  // canvas's.
   InteractiveBrushEditCanvasView viewOf(WidgetTester tester) =>
-      tester.widget<InteractiveBrushEditCanvasView>(
-        find.byType(InteractiveBrushEditCanvasView),
-      );
+      tester.widget<InteractiveBrushEditCanvasView>(mainCanvasView());
 
   testWidgets('a selection interaction blocks seeks until it ends (R15-⑤)', (
     tester,
@@ -127,7 +130,7 @@ void main() {
     expect(viewOf(tester).frameId, frameA);
 
     final center = tester.getCenter(
-      find.byType(InteractiveBrushEditCanvasView),
+      mainCanvasView(),
     );
     final gesture = await tester.startGesture(
       center,
@@ -200,7 +203,7 @@ void main() {
     expect(viewOf(tester).frameId, frameA);
 
     final center = tester.getCenter(
-      find.byType(InteractiveBrushEditCanvasView),
+      mainCanvasView(),
     );
     final gesture = await tester.startGesture(
       center,

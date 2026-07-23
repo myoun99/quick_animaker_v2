@@ -32,6 +32,7 @@ import '../../services/brush_pressure_dynamics.dart';
 import '../../services/brush_stroke_commit_data.dart';
 import '../../native/qa_native_engine.dart';
 import '../../services/canvas_segment_clipper.dart';
+import '../../services/canvas_selection_region.dart';
 import '../../services/stroke_stabilizer.dart';
 import 'active_stroke_overlay.dart';
 import 'bitmap_tile_image_cache.dart';
@@ -111,6 +112,7 @@ class InteractiveBrushEditCanvasView extends StatefulWidget {
     this.onTemporaryToolRelease,
     this.onInvokeAction,
     this.fillDabAt,
+    this.strokeClipRegion,
     CanvasViewport? viewport,
   }) : viewport = viewport ?? CanvasViewport();
 
@@ -148,6 +150,11 @@ class InteractiveBrushEditCanvasView extends StatefulWidget {
   /// until the committed tiles decode (the settling contract) — no more
   /// tile-by-tile reveal on big fills.
   final BrushDab? Function(CanvasPoint point, int color)? fillDabAt;
+
+  /// R26 #18: the live selection region (canvas coordinates). Non-null
+  /// clips the LIVE stroke display to it — the panel clips the same
+  /// stroke's buffer at commit, so pen preview and landed pixels agree.
+  final CanvasSelectionRegion? strokeClipRegion;
 
   /// Zoom/pan applied to the canvas display and input mapping. Viewport
   /// GESTURES (middle-drag pan, wheel zoom) live on the panel's
@@ -365,6 +372,7 @@ class _InteractiveBrushEditCanvasViewState
                 showTransparentBackground: widget.showTransparentBackground,
                 overlayModel: _overlayModel,
                 staleScope: (widget.layerId, widget.frameId),
+                strokeClipRegion: widget.strokeClipRegion,
               ),
             ),
           ),
@@ -547,19 +555,6 @@ class _InteractiveBrushEditCanvasViewState
           )
         : widget.inputSettings;
     _activeStrokeInputSettings = strokeSettings;
-    // The overlay must display in the stroke's blend mode (paint vs erase)
-    // from the first dab through settling.
-    _overlayModel.erase = strokeSettings.erase;
-    _overlayModel.blendMode = strokeSettings.blendMode;
-    // R27 #4: EVERY stroke pre-blends its live tiles with the commit's
-    // own kernels against the cel as it stands (user rule 07-23: ONE
-    // display pipeline for all modes — color included). The GPU never
-    // computes a pixel of the stroke composite, so pen-up cannot move a
-    // byte in any mode. Revert switch if stroke feel regresses on
-    // device: gate this on `blendMode != color` to give plain strokes
-    // their classic stroke-only GPU-srcOver overlay back.
-    _overlayModel.preBlendBase =
-        widget.sessionState.canvasState.currentSurface;
     _currentPressure = _normalizedPressure(event);
     widget.onActiveStrokeChanged?.call(true);
     _nextSequence = 0;
@@ -577,6 +572,24 @@ class _InteractiveBrushEditCanvasViewState
     _lastDirectionDegrees = null;
     _previousBaseDab = null;
     _resetOverlay();
+    // Overlay stroke configuration AFTER the reset — reset() clears
+    // preBlendBase, so setting it earlier silently disabled the whole
+    // pre-blend pipeline for real pointer strokes (the R27 #4 ordering
+    // bug: every parity test staged the model manually and never caught
+    // it). The overlay must display in the stroke's blend mode from the
+    // first dab.
+    final strokeSurface = widget.sessionState.canvasState.currentSurface;
+    _overlayModel.configureTileSize(strokeSurface.tileSize);
+    _overlayModel.erase = strokeSettings.erase;
+    _overlayModel.blendMode = strokeSettings.blendMode;
+    // R27 #4: EVERY stroke pre-blends its live tiles with the commit's
+    // own kernels against the cel as it stands (user rule 07-23: ONE
+    // display pipeline for all modes — color included). The GPU never
+    // computes a pixel of the stroke composite, so pen-up cannot move a
+    // byte in any mode. Revert switch if stroke feel regresses on
+    // device: gate this on `blendMode != color` to give plain strokes
+    // their classic stroke-only GPU-srcOver overlay back.
+    _overlayModel.preBlendBase = strokeSurface;
     _collectedDabs.clear();
     _prepareLiveRasterizer();
     if (!startsInsidePasteboard) {

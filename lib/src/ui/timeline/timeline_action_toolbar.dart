@@ -8,6 +8,7 @@ import '../../models/project_frame_rate.dart';
 import '../cut_command_group.dart';
 import '../dialogs/fps_audio_choice_dialog.dart';
 import '../editor_session_manager.dart';
+import '../widgets/app_icon_button.dart';
 import '../widgets/panel_flyout.dart';
 import '../widgets/split_icon_button.dart';
 import 'timeline_section_policy.dart';
@@ -479,21 +480,19 @@ class TimelineActionToolbar extends StatelessWidget {
     ];
   }
 
+  /// R26 #42: the app's standard icon button (the canvas bottom bar's
+  /// style, promoted) — this toolbar used to size its own.
   Widget _iconButton({
     required ValueKey<String> key,
     required String tooltip,
     required IconData icon,
     required VoidCallback? onPressed,
   }) {
-    return IconButton(
-      key: key,
+    return AppIconButton(
+      keyValue: key.value,
       tooltip: tooltip,
       onPressed: onPressed,
       icon: Icon(icon),
-      iconSize: 18,
-      padding: const EdgeInsets.all(5),
-      constraints: const BoxConstraints(minWidth: 30, minHeight: 30),
-      visualDensity: VisualDensity.compact,
     );
   }
 

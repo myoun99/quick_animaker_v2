@@ -37,6 +37,12 @@ void main() {
       'switch is gone); the panel chips and mode drive the settings', (
     tester,
   ) async {
+    // R26 #31: the left dock stacks Tool Library over Tool Settings, so
+    // each section gets about half the dock — on the 800×600 default
+    // surface the onion panel's chips fall outside its section's clip.
+    // A realistic window keeps them reachable.
+    await tester.binding.setSurfaceSize(const Size(1400, 1000));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
     await tester.pumpWidget(const MaterialApp(home: HomePage()));
     await tester.pumpAndSettle();
 

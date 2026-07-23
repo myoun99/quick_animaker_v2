@@ -48,7 +48,15 @@ class BrushLiveStrokeRasterizer implements ActiveStrokePixelSource {
   BrushLiveStrokeRasterizer({required this.canvasSize});
 
   /// Edge length of a sparse stroke tile in canvas pixels.
-  static const int tileSize = 128;
+  ///
+  /// PROMOTION round: equal to the committed surface's tile size, so a
+  /// stroke tile, its pre-blended result tile and the committed tile at
+  /// the same coordinate are ONE grid — the display replaces per
+  /// coordinate (no clips, no isolation layer) and pen-up ADOPTS the
+  /// result buffers as the committed tiles outright. (128 bounded the
+  /// per-move upload a little tighter, but forced quadrant bookkeeping
+  /// everywhere the grids met; the ~1.6× upload is the accepted cost.)
+  static const int tileSize = 256;
 
   final CanvasSize canvasSize;
 

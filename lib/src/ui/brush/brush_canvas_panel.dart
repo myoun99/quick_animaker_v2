@@ -12,6 +12,8 @@ import '../../models/bitmap_surface.dart';
 import '../../models/brush_dab.dart';
 import '../../models/brush_frame_key.dart';
 import '../../services/canvas_selection.dart';
+import '../../services/canvas_selection_paint_clip.dart';
+import '../../services/canvas_selection_region.dart';
 import '../../models/canvas_point.dart';
 import '../../models/canvas_size.dart';
 import '../../models/canvas_viewport.dart';
@@ -22,9 +24,9 @@ import '../../services/commands/brush_stroke_history_command.dart';
 import '../../services/cache_invalidation_executor.dart';
 import '../../services/history_manager.dart';
 import '../canvas/canvas_selection_layer.dart';
+import '../canvas/selection_ants_painter.dart';
 import '../canvas/canvas_viewport_gesture_layer.dart';
 import '../../models/project_background.dart';
-import '../theme/app_theme.dart' show AppColors;
 import '../theme/app_workspace_colors.dart';
 import '../widgets/color_swatch_button.dart';
 import '../canvas/interactive_brush_edit_canvas_view.dart';
@@ -36,6 +38,7 @@ import 'canvas_selection_commands.dart';
 import 'selection_shape_history_command.dart';
 import 'canvas_view_commands.dart';
 import 'canvas_viewport_pan_metrics.dart';
+import '../widgets/app_icon_button.dart';
 import '../widgets/app_scrollbar.dart';
 import '../widgets/drag_value_label.dart';
 
@@ -103,6 +106,8 @@ class BrushCanvasPanel extends StatefulWidget {
     this.onSelectionInteractionChanged,
     this.allowViewRotation = true,
     this.statusStripActions = const <Widget>[],
+    this.bottomBarLeading = const <Widget>[],
+    this.bottomBarLeadingToken,
   }) : assert(
          coordinator != null || contentOverride != null,
          'Without a coordinator the panel needs a content override.',
@@ -124,6 +129,18 @@ class BrushCanvasPanel extends StatefulWidget {
   /// Host commands rendered right-aligned in the panel's status strip
   /// (UI-R10 #18); always visible — the title ellipsizes first.
   final List<Widget> statusStripActions;
+
+  /// R26 #41: host controls that live at the FAR LEFT of the bottom bar,
+  /// immediately before the horizontal panbar (the timesheet's sheet-mode
+  /// and page navigation). They share the bar's row, so they scroll with
+  /// it in the slim-dock fallback like every other control.
+  final List<Widget> bottomBarLeading;
+
+  /// Equality token for [bottomBarLeading] — the bottom bar is memoized by
+  /// its inputs (R13-3) and widget instances are rebuilt per host build,
+  /// so the host names what its leading controls actually DEPEND on. Null
+  /// with a non-empty leading list means "rebuild the bar every time".
+  final Object? bottomBarLeadingToken;
 
   /// Optional layer stacked over the canvas inside the editor viewport,
   /// receiving the live viewport so it can transform canvas coordinates
@@ -238,7 +255,8 @@ class BrushCanvasPanel extends StatefulWidget {
   State<BrushCanvasPanel> createState() => _BrushCanvasPanelState();
 }
 
-class _BrushCanvasPanelState extends State<BrushCanvasPanel> {
+class _BrushCanvasPanelState extends State<BrushCanvasPanel>
+    with SingleTickerProviderStateMixin {
   late CanvasViewport _viewport = widget.viewport ?? CanvasViewport();
   CanvasViewport? _lastWidgetViewport;
   Size? _editorViewportSize;
@@ -266,12 +284,88 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel> {
   /// sample nothing (the fill bucket).
   final ValueNotifier<Offset?> _toolCursorHover = ValueNotifier<Offset?>(null);
 
+  /// R28-S: the dash phase for the ants the panel paints when NO selection
+  /// layer is mounted — the region belongs to the document, so it keeps
+  /// showing while the brush/eraser/fill is armed (R26 #18).
+  late final AnimationController _idleAnts = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 600),
+  );
+
   @override
   void initState() {
     super.initState();
     _bindViewCommands();
     _altHeld = HardwareKeyboard.instance.isAltPressed;
     HardwareKeyboard.instance.addHandler(_handleKeyEvent);
+    widget.selectionCommands?.addListener(_handleSelectionChannelChanged);
+    _bindSelectionHistoryRecorder();
+    _syncIdleAnts();
+  }
+
+  /// One undoable selection step (R11-⑧) — the layer's marquee commits and
+  /// the channel's layer-less Ctrl+D both land here, so a selection change
+  /// is recorded the same way whatever tool is armed. Null while this
+  /// panel has no history host (focused tests apply directly).
+  void Function(CanvasSelectionRegion? before, CanvasSelectionRegion? after)?
+  get _recordSelectionChange {
+    final history = widget.historyManager;
+    final commands = widget.selectionCommands;
+    if (history == null || commands == null) {
+      return null;
+    }
+    return (before, after) => history.execute(
+      SelectionShapeHistoryCommand(
+        channel: commands,
+        before: before,
+        after: after,
+      ),
+    );
+  }
+
+  void _bindSelectionHistoryRecorder() {
+    widget.selectionCommands?.regionHistoryRecorder = _recordSelectionChange;
+  }
+
+  /// The region this panel last painted ants for — the rebuild guard.
+  CanvasSelectionRegion? _paintedIdleRegion;
+
+  void _handleSelectionChannelChanged() {
+    if (!mounted) {
+      return;
+    }
+    // The channel pings on EVERY selection mutation, including each step
+    // of a marquee/move drag. Those all happen with a selection tool
+    // armed, where the mounted layer draws and this panel has nothing to
+    // redraw — so the guard keeps the notify structure (R27 #7/#20) out
+    // of the drag loop and only rebuilds when the ants this panel owns
+    // actually change.
+    final next = _idleSelectionRegion;
+    if (next == _paintedIdleRegion) {
+      return;
+    }
+    setState(_syncIdleAnts);
+  }
+
+  /// The idle ants animate only when they are the ones on screen: the
+  /// mounted selection layer runs its own ticker.
+  void _syncIdleAnts() {
+    _paintedIdleRegion = _idleSelectionRegion;
+    final show = _paintedIdleRegion != null;
+    if (show && !_idleAnts.isAnimating) {
+      _idleAnts.repeat();
+    } else if (!show && _idleAnts.isAnimating) {
+      _idleAnts.stop();
+    }
+  }
+
+  /// The region to paint when no selection layer is mounted (null while
+  /// one is — it draws its own, session state included).
+  CanvasSelectionRegion? get _idleSelectionRegion {
+    if (canvasToolSelects(widget.brushToolState.tool)) {
+      return null;
+    }
+    return widget.selectionCommands?.region;
   }
 
   @override
@@ -286,6 +380,9 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel> {
       widget.onSelectionInteractionChanged?.call(false);
     }
     HardwareKeyboard.instance.removeHandler(_handleKeyEvent);
+    widget.selectionCommands?.removeListener(_handleSelectionChannelChanged);
+    widget.selectionCommands?.regionHistoryRecorder = null;
+    _idleAnts.dispose();
     _eyedropperHover.dispose();
     _toolCursorHover.dispose();
     widget.viewCommands?.unbind();
@@ -408,6 +505,14 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel> {
       oldWidget.viewCommands?.unbind();
       _bindViewCommands();
     }
+    if (!identical(oldWidget.selectionCommands, widget.selectionCommands)) {
+      oldWidget.selectionCommands?.removeListener(
+        _handleSelectionChannelChanged,
+      );
+      widget.selectionCommands?.addListener(_handleSelectionChannelChanged);
+    }
+    _bindSelectionHistoryRecorder();
+    _syncIdleAnts();
     final request = widget.autoFrame;
     if (request == null || request.token == oldWidget.autoFrame?.token) {
       return;
@@ -497,6 +602,7 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel> {
     CanvasSize canvasSize,
     bool rotation,
     String title,
+    Object? leading,
   })?
   _shellBarsToken;
   Widget? _memoRightStripBar;
@@ -509,8 +615,14 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel> {
       canvasSize: widget.canvasSize,
       rotation: widget.allowViewRotation,
       title: widget.selectionLabels.title,
+      leading: widget.bottomBarLeadingToken,
     );
-    if (token == _shellBarsToken &&
+    // A leading list without a token can't be memoized (see
+    // [bottomBarLeadingToken]) — rebuild rather than serve a stale bar.
+    final memoizable =
+        widget.bottomBarLeading.isEmpty || widget.bottomBarLeadingToken != null;
+    if (memoizable &&
+        token == _shellBarsToken &&
         _memoRightStripBar != null &&
         _memoBottomBar != null) {
       return;
@@ -524,6 +636,7 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel> {
       onViewportChangeEnd: _syncViewportParent,
     );
     _memoBottomBar = _CanvasViewportBottomBar(
+      leading: widget.bottomBarLeading,
       viewport: _viewport,
       editorViewportSize: _resolvedEditorViewportSize(),
       canvasSize: widget.canvasSize,
@@ -622,6 +735,10 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel> {
                   final selectionLayerActive = canvasToolSelects(
                     widget.brushToolState.tool,
                   );
+                  // R28-S: with a painting tool armed the panel paints the
+                  // committed region's ants itself (the interaction layer
+                  // is not mounted, but the selection still exists).
+                  final idleSelection = _idleSelectionRegion;
 
                   Widget gestureLayer(bool contentStrokeIsActive) {
                     return CanvasViewportGestureLayer(
@@ -670,6 +787,7 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel> {
                                 underlayBuilder == null &&
                                 _toolTapHandler() == null &&
                                 !selectionLayerActive &&
+                                idleSelection == null &&
                                 !_eyedropperCursorActive
                             ? canvasView
                             : Stack(
@@ -895,19 +1013,7 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel> {
                                             widget.brushToolState.tool ==
                                             CanvasTool.move,
                                         onShapeCommitted:
-                                            widget.historyManager == null ||
-                                                widget.selectionCommands == null
-                                            ? null
-                                            : (before, after) => widget
-                                                  .historyManager!
-                                                  .execute(
-                                                    SelectionShapeHistoryCommand(
-                                                      channel: widget
-                                                          .selectionCommands!,
-                                                      before: before,
-                                                      after: after,
-                                                    ),
-                                                  ),
+                                            _recordSelectionChange,
                                         viewport: _viewport,
                                         canvasSize: widget.canvasSize,
                                         // No frame = a stable sentinel:
@@ -948,6 +1054,31 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel> {
                                         // viewport navigation.
                                         onMoveSessionPendingChanged: widget
                                             .onSelectionInteractionChanged,
+                                      ),
+                                    ),
+                                  // R28-S: the selection is a DOCUMENT
+                                  // fact, so its ants stay on screen under
+                                  // every other tool too — that is what
+                                  // makes "선택하고 다른 툴" legible (R26
+                                  // #18). Purely decorative: the layer
+                                  // above owns all interaction.
+                                  if (idleSelection != null)
+                                    Positioned.fill(
+                                      key: const ValueKey<String>(
+                                        'canvas-idle-selection-ants',
+                                      ),
+                                      child: IgnorePointer(
+                                        child: CustomPaint(
+                                          painter: SelectionAntsPainter(
+                                            repaint: _idleAnts,
+                                            viewport: _viewport,
+                                            committedRegion: idleSelection,
+                                            screenOffset: Offset.zero,
+                                            marqueeShape: null,
+                                            lassoTrail: const [],
+                                          ),
+                                          child: const SizedBox.expand(),
+                                        ),
                                       ),
                                     ),
                                 ],
@@ -1018,6 +1149,9 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel> {
       fillDabAt: widget.brushToolState.tool == CanvasTool.fill
           ? widget.fillDabAt
           : null,
+      // R26 #18: the live stroke shows clipped to the selection, exactly
+      // as the commit will clip it.
+      strokeClipRegion: widget.selectionCommands?.region,
       onActiveStrokeChanged: (active) {
         if (_strokeActive != active) {
           widget.onStrokeInputActiveChanged?.call(active);
@@ -1251,7 +1385,7 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel> {
 
   /// shape covers no pixels.
   ({int liftToken, BrushDab stampDab})? _handleSelectionLift(
-    CanvasSelectionShape shape,
+    CanvasSelectionRegion region,
   ) {
     final coordinator = widget.coordinator;
     if (coordinator == null) {
@@ -1259,7 +1393,7 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel> {
     }
     final preLift = coordinator.currentSurfaceOf(coordinator.activeFrameKey);
     final lift = buildSelectionLiftDabs(
-      shape: shape,
+      region: region,
       surface: preLift,
       liftId: '${DateTime.now().microsecondsSinceEpoch}',
       options: widget.selectionMaskOptions?.value ?? SelectionMaskOptions.none,
@@ -1370,10 +1504,67 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel> {
     }
   }
 
-  void _commitSourceStroke(BrushStrokeCommitData strokeData) {
+  /// R26 #18 ("선택하고 그리면 선택 내부만 그려진다"): a stroke that lands
+  /// with a live selection is CLIPPED to it before it reaches the commit.
+  ///
+  /// The clip runs on the stroke's own straight-alpha buffer, where alpha
+  /// 0 is every commit kernel's "leave the destination alone" input — so
+  /// one pass covers brush, eraser, fill and every brush blend mode with
+  /// no per-mode branches. Null return = the whole stroke fell outside
+  /// the selection and there is nothing to commit.
+  BrushStrokeCommitData? _clipStrokeToSelection(BrushStrokeCommitData data) {
+    final region = widget.selectionCommands?.region;
+    if (region == null) {
+      return data;
+    }
+    var pixels = data.strokePixels;
+    var bounds = data.strokeBounds;
+    if (pixels == null || bounds == null) {
+      // No live raster (programmatic strokes, a redo replaying dabs):
+      // rasterize the coverage first so the clip has bytes to work on.
+      final rasterized = rasterizeStrokeForClipping(
+        dabs: data.sourceDabs,
+        canvasSize: widget.canvasSize,
+        tileSize: widget.coordinator == null
+            ? BitmapSurface(canvasSize: widget.canvasSize).tileSize
+            : widget.coordinator!
+                  .currentSurfaceOf(widget.coordinator!.activeFrameKey)
+                  .tileSize,
+      );
+      if (rasterized == null) {
+        return null;
+      }
+      pixels = rasterized.pixels;
+      bounds = rasterized.bounds;
+    }
+    final clipped = clipStrokePixelsToSelection(
+      pixels: pixels,
+      bounds: bounds,
+      region: region,
+    );
+    if (clipped == null) {
+      return null;
+    }
+    return BrushStrokeCommitData(
+      sourceDabs: data.sourceDabs,
+      strokePixels: clipped.pixels,
+      strokeBounds: clipped.bounds,
+      blendMode: data.blendMode,
+    );
+  }
+
+  void _commitSourceStroke(BrushStrokeCommitData rawStrokeData) {
     // Only reachable from the interactive canvas, which requires the
     // coordinator to exist.
     final coordinator = widget.coordinator!;
+    final strokeData = _clipStrokeToSelection(rawStrokeData);
+    if (strokeData == null) {
+      // Entirely outside the selection: nothing lands, nothing undoes.
+      // The live overlay already showed it clipped, so the pen-up is
+      // simply the overlay clearing.
+      setState(() {});
+      return;
+    }
     setState(() {
       final historyManager = widget.historyManager;
       if (historyManager == null) {
@@ -1566,7 +1757,15 @@ class _CanvasViewportBottomBar extends StatelessWidget {
   /// scrollable instead of overflowing (slim edge docks land here).
   static const double _scrollFallbackWidth = 200;
 
+  /// What one host control in [leading] adds to that threshold: the widest
+  /// control in the shared vocabulary (a [DragValueLabel] readout) plus
+  /// breathing room. The bar cannot measure widgets it did not build, so
+  /// it budgets generously on purpose — over-budgeting only makes the bar
+  /// scroll a little sooner, while under-budgeting OVERFLOWS.
+  static const double _leadingControlBudget = 44;
+
   const _CanvasViewportBottomBar({
+    this.leading = const <Widget>[],
     required this.viewport,
     required this.editorViewportSize,
     required this.canvasSize,
@@ -1588,6 +1787,9 @@ class _CanvasViewportBottomBar extends StatelessWidget {
     required this.onFlipHorizontal,
     required this.onFlipVertical,
   });
+
+  /// R26 #41: host controls at the far left, before the panbar.
+  final List<Widget> leading;
 
   final CanvasViewport viewport;
   final Size editorViewportSize;
@@ -1782,11 +1984,30 @@ class _CanvasViewportBottomBar extends StatelessWidget {
       if (onPaper != null || onPasteboard != null) const SizedBox(width: 2),
     ];
 
+    // Non-empty clusters joined by hairlines — so a host that supplies no
+    // leading controls (or a rotation-disabled host with no view controls)
+    // never shows a divider with nothing on one side.
+    List<Widget> joined(List<List<Widget>> clusters) {
+      final row = <Widget>[];
+      for (final cluster in clusters) {
+        if (cluster.isEmpty) {
+          continue;
+        }
+        if (row.isNotEmpty) {
+          row.add(divider());
+        }
+        row.addAll(cluster);
+      }
+      return row;
+    }
+
     return SizedBox(
       height: height,
       child: LayoutBuilder(
         builder: (context, constraints) {
-          if (constraints.maxWidth < _scrollFallbackWidth) {
+          final scrollFallbackWidth =
+              _scrollFallbackWidth + leading.length * _leadingControlBudget;
+          if (constraints.maxWidth < scrollFallbackWidth) {
             // Too tight for an Expanded scrollbar between the controls —
             // scroll the whole bar so nothing overflows (slim edge docks).
             return SingleChildScrollView(
@@ -1795,25 +2016,35 @@ class _CanvasViewportBottomBar extends StatelessWidget {
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   const SizedBox(width: 4),
-                  ...viewControls,
-                  divider(),
-                  SizedBox(width: 80, child: scrollbar()),
-                  ...colorControls,
-                  divider(),
-                  ...zoomCluster,
+                  // R28 #9: the surface swatches ride with the scrollbar
+                  // cluster, so they stay immediately right of it in the
+                  // scrolled layout too.
+                  ...joined([
+                    leading,
+                    viewControls,
+                    [
+                      SizedBox(width: 80, child: scrollbar()),
+                      ...colorControls,
+                    ],
+                    zoomCluster,
+                  ]),
                   const SizedBox(width: 4),
                 ],
               ),
             );
           }
-          final wide = constraints.maxWidth >= _wideLayoutMinWidth;
+          final wide =
+              constraints.maxWidth >=
+              _wideLayoutMinWidth + leading.length * _leadingControlBudget;
           return Row(
             children: [
               const SizedBox(width: 4),
-              // Narrow panels drop the rotation cluster; the ZOOM cluster
+              // Host controls first (R26 #41), then the view controls —
+              // narrow panels drop the rotation cluster; the ZOOM cluster
               // (fit/1:1/−/%/+, UI-R18 #17/#20) always shows on the right.
-              if (wide) ...viewControls,
-              if (wide) divider(),
+              ...joined([leading, if (wide) viewControls]),
+              if (leading.isNotEmpty || (wide && viewControls.isNotEmpty))
+                divider(),
               Expanded(child: scrollbar()),
               ...colorControls,
               divider(),
@@ -1826,6 +2057,8 @@ class _CanvasViewportBottomBar extends StatelessWidget {
     );
   }
 
+  /// R26 #42: this bar's button style is now the app-wide default, so it
+  /// lives in [AppIconButton] — this is just the local spelling.
   Widget _barIconButton({
     required String keyValue,
     required String tooltip,
@@ -1833,23 +2066,12 @@ class _CanvasViewportBottomBar extends StatelessWidget {
     required VoidCallback? onPressed,
     bool isSelected = false,
   }) {
-    return IconButton(
-      key: ValueKey<String>(keyValue),
+    return AppIconButton(
+      keyValue: keyValue,
       tooltip: tooltip,
+      icon: icon,
       onPressed: onPressed,
       isSelected: isSelected,
-      style: IconButton.styleFrom(
-        minimumSize: const Size(26, 24),
-        maximumSize: const Size(30, 24),
-        padding: EdgeInsets.zero,
-        iconSize: 18,
-        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-        // UI-R21 #1: the state accent is EXPLICIT ink — the M3 isSelected
-        // default was invisible in this theme, so a rotated/flipped view
-        // never showed on its button. Color only (the selection rule).
-        foregroundColor: isSelected ? AppColors.accent : null,
-      ),
-      icon: icon,
     );
   }
 }
