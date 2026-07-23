@@ -319,8 +319,26 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel> {
   /// Guards the seeding to once per arming.
   bool _eyedropperHoverSeeded = false;
 
-  void _noteCanvasPointer(Offset localPosition) {
+  /// [sample] false on pointer DOWN: the tap layer's pick samples that
+  /// same press, and sampling here too would double the composite read.
+  void _noteCanvasPointer(Offset localPosition, {bool sample = true}) {
     _lastCanvasPointer = localPosition;
+    if (!sample) {
+      return;
+    }
+    // R28 #8: the ALWAYS-MOUNTED census drives the eyedropper cursor too.
+    //
+    // The cursor's own tracker mounts at the moment the tool arms, and
+    // Flutter routes an in-flight pointer to the handlers captured at
+    // pointer DOWN — so under a mapped HOLD (the pen barrel / right-click
+    // switching to the eyedropper mid-press) that tracker never receives a
+    // single move. R27 #17 seeded a starting position, which is why the
+    // icon then sat wherever the seed put it and refused to follow: "커서가
+    // 이상한데로 이동하고 안움직임". This layer was mounted before the press,
+    // so it is in the route and keeps reporting.
+    if (_eyedropperCursorActive) {
+      _sampleEyedropperHover(localPosition);
+    }
   }
 
   void _seedEyedropperHoverIfNeeded() {
@@ -338,13 +356,12 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel> {
     _eyedropperHoverSeeded = true;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted && _eyedropperCursorActive && _eyedropperHover.value == null) {
-        _updateEyedropperHover(position);
+        _sampleEyedropperHover(position);
       }
     });
   }
 
-  void _updateEyedropperHover(Offset localPosition) {
-    _noteCanvasPointer(localPosition);
+  void _sampleEyedropperHover(Offset localPosition) {
     final sample = widget.sampleColorAt;
     if (sample == null) {
       return;
@@ -615,7 +632,10 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel> {
                           onPointerHover: (event) =>
                               _noteCanvasPointer(event.localPosition),
                           onPointerDown: (event) =>
-                              _noteCanvasPointer(event.localPosition),
+                              _noteCanvasPointer(
+                                event.localPosition,
+                                sample: false,
+                              ),
                           onPointerMove: (event) =>
                               _noteCanvasPointer(event.localPosition),
                           child:
@@ -657,7 +677,22 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel> {
                                           // every pan click deposited a
                                           // stray fill, which is why one
                                           // fill sometimes took two undos.
-                                          if (event.buttons != kPrimaryButton) {
+                                          //
+                                          // R28 #8: the EYEDROPPER is
+                                          // exempt. Its whole point under a
+                                          // mapped hold (pen barrel /
+                                          // right-click) is that the held
+                                          // NON-primary button is what
+                                          // picks — the strict test meant
+                                          // the mapping switched the tool
+                                          // and then refused every press,
+                                          // so it "제대로 작동하지도않고".
+                                          // A pick writes no pixels, so
+                                          // there is no stray-edit hazard
+                                          // to guard against here.
+                                          if (widget.brushToolState.tool !=
+                                                  CanvasTool.eyedropper &&
+                                              event.buttons != kPrimaryButton) {
                                             return;
                                           }
                                           _toolTapHandler()!(
@@ -689,22 +724,18 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel> {
                                             HitTestBehavior.translucent,
                                         onExit: (_) =>
                                             _eyedropperHover.value = null,
-                                        child: Listener(
-                                          key: const ValueKey<String>(
+                                        // R28 #8: the swatch/icon is fed by
+                                        // the panel's always-mounted pointer
+                                        // census, not by a tracker mounted
+                                        // here — one mounted at arming time
+                                        // is outside an in-flight pointer's
+                                        // route and hears nothing. This
+                                        // region only hides the system
+                                        // cursor and clears on exit.
+                                        child: const SizedBox.expand(
+                                          key: ValueKey<String>(
                                             'eyedropper-hover-tracker',
                                           ),
-                                          behavior: HitTestBehavior.translucent,
-                                          // Hover + move only: sampling on
-                                          // pointer DOWN would double the
-                                          // pick tap's composite sample.
-                                          onPointerHover: (event) =>
-                                              _updateEyedropperHover(
-                                                event.localPosition,
-                                              ),
-                                          onPointerMove: (event) =>
-                                              _updateEyedropperHover(
-                                                event.localPosition,
-                                              ),
                                         ),
                                       ),
                                     ),

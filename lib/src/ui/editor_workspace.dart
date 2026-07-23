@@ -11,6 +11,7 @@ import '../models/canvas_size.dart';
 import '../models/cut.dart';
 import '../models/layer_id.dart';
 import '../services/brush_preset_file_service.dart';
+import '../services/canvas_color_sampler.dart' show CanvasColorSampleSource;
 import '../services/canvas_flood_fill.dart' show FloodFillOptions;
 import '../services/canvas_selection.dart' show SelectionMaskOptions;
 import 'brush/brush_preset_library.dart';
@@ -255,6 +256,11 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
   /// feather, edge AA. Defaults keep the lift byte-preserving.
   final ValueNotifier<SelectionMaskOptions> _selectionMaskOptions =
       ValueNotifier(SelectionMaskOptions.none);
+
+  /// R28 #6: the eyedropper's reference source (Tool Settings knob). The
+  /// user's default is "pick what you SEE".
+  final ValueNotifier<CanvasColorSampleSource> _eyedropperSource =
+      ValueNotifier(CanvasColorSampleSource.display);
 
   /// The color wheel's spare (background) slot; the foreground IS the
   /// brush color. Held here so it survives tab switches.
@@ -590,6 +596,7 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
       _brushTool.dispose();
     }
     _fillOptions.dispose();
+    _eyedropperSource.dispose();
     _colorWheelBackground.dispose();
     _cameraViewEnabled.dispose();
     _cameraDimOpacity.dispose();
@@ -740,6 +747,7 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
             expandedLaneLayerIds: _expandedLaneLayerIds,
             fillOptions: _fillOptions,
             selectionMaskOptions: _selectionMaskOptions,
+            eyedropperSource: _eyedropperSource,
           ),
         );
       case EditorWorkspace.brushesTabId:
@@ -827,6 +835,11 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
                             ValueListenableBuilder<SelectionMaskOptions>(
                               valueListenable: _selectionMaskOptions,
                               builder: (context, maskOptions, _) =>
+                                  ValueListenableBuilder<
+                                    CanvasColorSampleSource
+                                  >(
+                                    valueListenable: _eyedropperSource,
+                                    builder: (context, eyedropperSource, _) =>
                                   ToolSettingsPanel(
                                     state: toolState,
                                     onChanged: (state) =>
@@ -834,6 +847,9 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
                                     fillOptions: fillOptions,
                                     onFillOptionsChanged: (options) =>
                                         _fillOptions.value = options,
+                                    eyedropperSource: eyedropperSource,
+                                    onEyedropperSourceChanged: (source) =>
+                                        _eyedropperSource.value = source,
                                     selectionMaskOptions: maskOptions,
                                     onSelectionMaskOptionsChanged: (options) =>
                                         _selectionMaskOptions.value = options,
@@ -844,6 +860,7 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
                                         .languageSettings
                                         .value
                                         .programLanguage,
+                                  ),
                                   ),
                             ),
                       ),

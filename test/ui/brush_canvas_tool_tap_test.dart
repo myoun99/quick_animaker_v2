@@ -321,6 +321,73 @@ void main() {
     );
   });
 
+  testWidgets('R28 #8: the eyedropper cursor follows a BUTTON-HELD move — '
+      'the mapped-hold case (pen barrel / right-click)', (tester) async {
+    final frameKeys = BrushCanvasFixture.createFrameKeys();
+    final samples = <CanvasPoint>[];
+    // A gradient stand-in: the color depends on where the pointer is, so a
+    // frozen cursor and a following one are distinguishable.
+    await tester.pumpWidget(
+      app(
+        BrushCanvasPanel(
+          coordinator: BrushCanvasFixture.createCoordinator(
+            frameKeys: frameKeys,
+          ),
+          availableFrameKeys: frameKeys,
+          cacheInvalidationSink: BrushEditCacheInvalidationSink(),
+          brushToolState: BrushToolState.defaults.copyWith(
+            tool: CanvasTool.eyedropper,
+          ),
+          sampleColorAt: (point) {
+            samples.add(point);
+            return 0xFF000000 | (point.x.round() & 0xFF);
+          },
+          onEyedropperPick: (_) {},
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    Color swatchColor() =>
+        (tester
+                    .widget<Container>(
+                      find.byKey(
+                        const ValueKey<String>('eyedropper-hover-swatch'),
+                      ),
+                    )
+                    .decoration!
+                as BoxDecoration)
+            .color!;
+
+    final center = tester.getCenter(find.byKey(tapLayerKey));
+    final gesture = await tester.createGesture(kind: PointerDeviceKind.mouse);
+    await gesture.addPointer(location: Offset.zero);
+    addTearDown(gesture.removePointer);
+    await gesture.moveTo(center);
+    await tester.pump();
+    final restingColor = swatchColor();
+
+    // Press and DRAG with the button held. Under a real mapped hold the
+    // cursor's own tracker mounts mid-press and is outside the pointer's
+    // route, so only the panel's always-mounted census can report these.
+    await gesture.down(center);
+    await tester.pump();
+    await gesture.moveTo(center + const Offset(60, 0));
+    await tester.pump();
+
+    expect(
+      swatchColor(),
+      isNot(restingColor),
+      reason: 'R28 #8: the swatch must track a button-held move, not freeze '
+          'wherever it was seeded',
+    );
+    expect(
+      samples.last.x,
+      greaterThan(samples.first.x),
+      reason: 'the sample point followed the pointer',
+    );
+  });
+
   testWidgets('holding Alt arms the eyedropper cursor on a painting tool '
       '(R11-②)', (tester) async {
     const trackerKey = ValueKey<String>('eyedropper-hover-tracker');

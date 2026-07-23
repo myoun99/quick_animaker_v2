@@ -879,20 +879,43 @@ class _InteractiveBrushEditCanvasViewState
     }
   }
 
+  /// Every button bit that is NOT the primary contact (R27 #17 / R28).
+  ///
+  /// The mapping used to recognise EXACTLY `kSecondaryButton` and
+  /// `kTertiaryButton`. A stylus barrel that a driver reports on any other
+  /// bit — Windows Ink and the Wacom driver have several configurations —
+  /// then fell through every branch in silence, which is the shape of the
+  /// "와콤 펜은 우클릭버튼인거 확인했는데 툴이 아예 안 바뀜" report. Treating
+  /// any non-primary bit as the secondary mapping costs nothing (the
+  /// primary contact is the only one that draws) and stops the behaviour
+  /// depending on which bit a driver happens to pick.
+  static const int _nonPrimaryButtons = ~kPrimaryButton;
+
+  /// The secondary-ish bits of [buttons]: null when only the primary (or
+  /// nothing) is down.
+  static int _mappedButtonBits(int buttons) => buttons & _nonPrimaryButtons;
+
   /// The canvas mapping row for a secondary-button press (PEN-7a); null =
   /// not a mapped press (primary drawing input, or touch).
   CanvasPointerMapping? _mappedPointerActionFor(PointerDownEvent event) {
     if (event.kind == PointerDeviceKind.touch) {
       return null;
     }
-    final settings = AppInput.settings.value;
-    if ((event.buttons & kSecondaryButton) != 0) {
-      return settings.canvasRightClick;
+    return _mappingForButtons(_mappedButtonBits(event.buttons));
+  }
+
+  /// The mapping a set of non-primary [bits] drives: the wheel click owns
+  /// the tertiary bit, and everything else reads as the secondary — the
+  /// barrel button, whichever bit the driver puts it on.
+  CanvasPointerMapping? _mappingForButtons(int bits) {
+    if (bits == 0) {
+      return null;
     }
-    if ((event.buttons & kTertiaryButton) != 0) {
+    final settings = AppInput.settings.value;
+    if ((bits & kTertiaryButton) != 0) {
       return settings.canvasWheelClick;
     }
-    return null;
+    return settings.canvasRightClick;
   }
 
   /// Buttons seen on the latest HOVER event — the PEN-11 hover-press
@@ -903,10 +926,7 @@ class _InteractiveBrushEditCanvasViewState
   int _lastHoverButtons = 0;
 
   bool _mappedButtonHeldSinceHover(PointerDownEvent event) =>
-      (_lastHoverButtons &
-          event.buttons &
-          (kSecondaryButton | kTertiaryButton)) !=
-      0;
+      (_lastHoverButtons & _mappedButtonBits(event.buttons)) != 0;
 
   /// R26 #19/#20: a mapped HOLD tool (eyedropper) engaged from a hover
   /// button press — a Wacom barrel button pressed while the pen hovers
@@ -932,16 +952,9 @@ class _InteractiveBrushEditCanvasViewState
       _hoverToolHoldButton = 0;
       widget.onTemporaryToolRelease?.call(keep: keep);
     }
-    if (pressed == 0) {
-      return;
-    }
-    final settings = AppInput.settings.value;
-    final CanvasPointerMapping? mapping;
-    if ((pressed & kSecondaryButton) != 0) {
-      mapping = settings.canvasRightClick;
-    } else if ((pressed & kTertiaryButton) != 0) {
-      mapping = settings.canvasWheelClick;
-    } else {
+    final pressedBits = _mappedButtonBits(pressed);
+    final mapping = _mappingForButtons(pressedBits);
+    if (mapping == null) {
       return;
     }
     switch (mapping.action) {
@@ -956,7 +969,7 @@ class _InteractiveBrushEditCanvasViewState
         if (!_hoverToolHoldActive && _mappedHoldPointer == null) {
           _hoverToolHoldActive = true;
           _hoverToolHoldRelease = mapping.release;
-          _hoverToolHoldButton = pressed & (kSecondaryButton | kTertiaryButton);
+          _hoverToolHoldButton = pressedBits;
           widget.onTemporaryToolHold?.call(CanvasTool.eyedropper);
         }
       case CanvasPointerAction.redo:
@@ -985,16 +998,8 @@ class _InteractiveBrushEditCanvasViewState
         _activeDrawingPointer != null) {
       return;
     }
-    final settings = AppInput.settings.value;
-    final CanvasPointerMapping mapping;
-    if ((pressed & kSecondaryButton) != 0) {
-      mapping = settings.canvasRightClick;
-    } else if ((pressed & kTertiaryButton) != 0) {
-      mapping = settings.canvasWheelClick;
-    } else {
-      return;
-    }
-    if (mapping.action != CanvasPointerAction.eyedropper) {
+    final mapping = _mappingForButtons(_mappedButtonBits(pressed));
+    if (mapping == null || mapping.action != CanvasPointerAction.eyedropper) {
       return;
     }
     _mappedHoldPointer = event.pointer;
@@ -1127,9 +1132,15 @@ class _InteractiveBrushEditCanvasViewState
   double get _activeStrokeSpacing =>
       (_activeStrokeInputSettings ?? widget.inputSettings).spacing;
 
-  bool _isPrimaryButton(int buttons) {
-    return buttons == kPrimaryMouseButton;
-  }
+  /// Whether [buttons] is a drawing contact.
+  ///
+  /// R28: a MASK test, not equality. A barrel button held while the tip
+  /// touches down reports `primary | barrel`, and the old `== primary`
+  /// test read that as "not drawing" — so on a driver that does ride the
+  /// barrel bit into contact, the pen went dead instead of picking. The
+  /// mapped-press path runs first and claims those pointers, so anything
+  /// still reaching here with the primary bit down is a real stroke.
+  bool _isPrimaryButton(int buttons) => (buttons & kPrimaryButton) != 0;
 
   void _endStrokeInput() {
     widget.onActiveStrokeChanged?.call(false);

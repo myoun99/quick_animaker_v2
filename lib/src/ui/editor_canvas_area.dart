@@ -52,6 +52,7 @@ class EditorCanvasArea extends StatefulWidget {
     this.expandedLaneLayerIds,
     this.fillOptions,
     this.selectionMaskOptions,
+    this.eyedropperSource,
     this.onInvokeAction,
   });
 
@@ -89,6 +90,10 @@ class EditorCanvasArea extends StatefulWidget {
   /// The fill tool's flood options (Tool Settings knobs, R11-④); null
   /// keeps the defaults.
   final ValueListenable<FloodFillOptions>? fillOptions;
+
+  /// R28 #6: the eyedropper's reference source (Tool Settings knob); null
+  /// keeps "pick what you see".
+  final ValueListenable<CanvasColorSampleSource>? eyedropperSource;
 
   /// The Select tool's lift-time mask knobs (R26); null keeps the
   /// classic byte-preserving hard mask.
@@ -335,10 +340,14 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
               // cursor. Which refusal applies is a SECTION question, so
               // only the shell can answer it.
               onDrawRefused: () => cursorNotices.show(_drawRefusalFor(session)),
-              // P5 eyedropper: sample the VISIBLE composite ("pick what you
-              // see"). Picks NEVER switch tools (R11-②): the eyedropper stays
-              // armed until the user changes tools, Alt-picks keep the
-              // painting tool.
+              // P5 eyedropper. Picks NEVER switch tools (R11-②): the
+              // eyedropper stays armed until the user changes tools,
+              // Alt-picks keep the painting tool.
+              // R28 #6: the reference is a SETTING — display (the visible
+              // composite) or the active layer alone. Either way the
+              // sampler maps through a posed layer's inverse (R28 #7), so
+              // a transformed layer picks what the screen shows instead of
+              // silently reading as paper.
               // Lazy: only reachable with an editable selection, which a
               // gap state never offers (requireActiveCut = backstop).
               sampleColorAt: (point) => sampleCompositeColor(
@@ -348,6 +357,10 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
                 point: point,
                 fxBypassedLayerIds: session.fxBypassedLayerIds,
                 paperColor: session.projectBackground.argb,
+                source:
+                    widget.eyedropperSource?.value ??
+                    CanvasColorSampleSource.display,
+                activeLayerId: session.activeLayer?.id,
               ),
               onEyedropperPick: (color) => widget.onBrushToolStateChanged?.call(
                 widget.brushToolState.value.copyWith(color: color),

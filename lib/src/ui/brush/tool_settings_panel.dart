@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 
 import '../../models/app_language.dart';
+import '../../services/canvas_color_sampler.dart'
+    show CanvasColorSampleSource;
 import '../../services/canvas_flood_fill.dart';
 import '../../services/canvas_selection.dart';
 import '../widgets/drag_value_label.dart';
@@ -25,6 +27,8 @@ class ToolSettingsPanel extends StatelessWidget {
     this.onSelectionMaskOptionsChanged,
     this.selectionCommands,
     this.language = AppLanguage.en,
+    this.eyedropperSource = CanvasColorSampleSource.display,
+    this.onEyedropperSourceChanged,
   });
 
   /// The program language (BB-2): the brush blend labels localize
@@ -45,6 +49,12 @@ class ToolSettingsPanel extends StatelessWidget {
   /// numeric inputs read and write the live transform through it.
   final CanvasSelectionCommands? selectionCommands;
 
+  /// R28 #6: where the eyedropper reads from (PS/CSP's 참조원). Null
+  /// handler = the picker shows but cannot be changed (hosts that do not
+  /// own the setting).
+  final CanvasColorSampleSource eyedropperSource;
+  final ValueChanged<CanvasColorSampleSource>? onEyedropperSourceChanged;
+
   @override
   Widget build(BuildContext context) {
     switch (state.tool) {
@@ -61,9 +71,9 @@ class ToolSettingsPanel extends StatelessWidget {
           onChanged: onFillOptionsChanged,
         );
       case CanvasTool.eyedropper:
-        return const _SettingsNote(
-          keyValue: 'tool-settings-eyedropper',
-          note: 'Eyedropper has no settings — it picks the visible color.',
+        return _EyedropperSettings(
+          source: eyedropperSource,
+          onChanged: onEyedropperSourceChanged,
         );
       case CanvasTool.selectRect:
       case CanvasTool.lasso:
@@ -357,6 +367,69 @@ class _MoveSettingsState extends State<_MoveSettings> {
   }
 }
 
+/// R28 #6: the eyedropper's REFERENCE SOURCE — Photoshop's "current
+/// layer / all layers", Clip Studio's 참조원. The tool itself works in
+/// every section and on every layer kind; this only decides which pixels
+/// it reads. A row with nothing drawable (an SE row) simply reads the
+/// canvas color, which is what the user described.
+class _EyedropperSettings extends StatelessWidget {
+  const _EyedropperSettings({required this.source, required this.onChanged});
+
+  final CanvasColorSampleSource source;
+  final ValueChanged<CanvasColorSampleSource>? onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final handler = onChanged;
+    return ListView(
+      key: const ValueKey<String>('tool-settings-eyedropper'),
+      padding: const EdgeInsets.all(12),
+      children: [
+        Text('Eyedropper', style: theme.textTheme.titleSmall),
+        const SizedBox(height: 8),
+        Text(
+          'Reference',
+          style: theme.textTheme.labelSmall?.copyWith(
+            color: theme.colorScheme.onSurfaceVariant,
+          ),
+        ),
+        const SizedBox(height: 4),
+        // Selection shows through COLOR only — no check glyphs (the
+        // program's selection style).
+        SegmentedButton<CanvasColorSampleSource>(
+          key: const ValueKey<String>('eyedropper-source-segments'),
+          showSelectedIcon: false,
+          segments: const [
+            ButtonSegment<CanvasColorSampleSource>(
+              value: CanvasColorSampleSource.display,
+              label: Text('Display'),
+            ),
+            ButtonSegment<CanvasColorSampleSource>(
+              value: CanvasColorSampleSource.layer,
+              label: Text('Layer'),
+            ),
+          ],
+          selected: {source},
+          onSelectionChanged: handler == null
+              ? null
+              : (selection) => handler(selection.first),
+        ),
+        const SizedBox(height: 8),
+        Text(
+          source == CanvasColorSampleSource.display
+              ? 'Picks the color you SEE — every visible layer, blended.'
+              : 'Picks the ACTIVE layer\'s own pixels; empty areas read the '
+                    'canvas color.',
+          style: theme.textTheme.bodySmall?.copyWith(
+            color: theme.colorScheme.onSurfaceVariant,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
 class _FillSettings extends StatelessWidget {
   const _FillSettings({required this.options, required this.onChanged});
 
@@ -432,27 +505,3 @@ class _FillSettings extends StatelessWidget {
   }
 }
 
-class _SettingsNote extends StatelessWidget {
-  const _SettingsNote({required this.keyValue, required this.note});
-
-  final String keyValue;
-  final String note;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return Padding(
-      key: ValueKey<String>(keyValue),
-      padding: const EdgeInsets.all(12),
-      child: Align(
-        alignment: Alignment.topLeft,
-        child: Text(
-          note,
-          style: theme.textTheme.bodySmall?.copyWith(
-            color: theme.colorScheme.onSurfaceVariant,
-          ),
-        ),
-      ),
-    );
-  }
-}

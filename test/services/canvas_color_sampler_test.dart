@@ -176,10 +176,13 @@ void main() {
       expect(color, 0xFF0000FF);
     });
 
-    test('posed layers are skipped (v1) unless their fx are bypassed', () {
+    test('R28 #7: a POSED layer samples through the inverse of its pose — '
+        'the pick matches what the screen shows', () {
       final surface = surfaceWithPixels({
         (3, 3): [0x00, 0xFF, 0x00, 0xFF],
       });
+      // 2× about the canvas centre (4,4): artwork (3,3) is painted over
+      // the canvas square starting at (2,2).
       final posed = cut([
         layer(
           'a',
@@ -188,17 +191,30 @@ void main() {
           ),
         ),
       ]);
+
       expect(
         sampleCompositeColor(
           cut: posed,
           frameIndex: 0,
           surfaceResolver: (_, _) => surface,
-          point: CanvasPoint(x: 3, y: 3),
+          point: CanvasPoint(x: 2, y: 2),
+        ),
+        0xFF00FF00,
+        reason: 'the posed pixel is pickable where it is DRAWN; the old v1 '
+            'skipped posed layers entirely and returned paper',
+      );
+      // Where the scaled artwork has nothing, the paper still shows.
+      expect(
+        sampleCompositeColor(
+          cut: posed,
+          frameIndex: 0,
+          surfaceResolver: (_, _) => surface,
+          point: CanvasPoint(x: 6, y: 6),
         ),
         canvasPaperColor,
       );
-      // With the layer's fx bypassed the pose drops out and the pixel
-      // samples directly.
+      // With the layer's fx bypassed the pose drops out, so the pixel sits
+      // at its untransformed home again.
       expect(
         sampleCompositeColor(
           cut: posed,
@@ -208,6 +224,66 @@ void main() {
           fxBypassedLayerIds: {const LayerId('a')},
         ),
         0xFF00FF00,
+      );
+      expect(
+        sampleCompositeColor(
+          cut: posed,
+          frameIndex: 0,
+          surfaceResolver: (_, _) => surface,
+          point: CanvasPoint(x: 2, y: 2),
+          fxBypassedLayerIds: {const LayerId('a')},
+        ),
+        canvasPaperColor,
+      );
+    });
+
+    test('R28 #6: the LAYER source reads the active layer alone; DISPLAY '
+        'reads the whole stack', () {
+      final red = surfaceWithPixels({
+        (3, 3): [0xFF, 0x00, 0x00, 0xFF],
+      });
+      final blue = surfaceWithPixels({
+        (3, 3): [0x00, 0x00, 0xFF, 0xFF],
+      });
+      final stack = cut([layer('bottom'), layer('top')]);
+      BitmapSurface? resolve(layer, _) =>
+          layer.id.value == 'bottom' ? red : blue;
+
+      // Display: the top layer wins, as it does on screen.
+      expect(
+        sampleCompositeColor(
+          cut: stack,
+          frameIndex: 0,
+          surfaceResolver: resolve,
+          point: CanvasPoint(x: 3, y: 3),
+        ),
+        0xFF0000FF,
+      );
+      // Layer: the ACTIVE row's own pixel, even though another layer
+      // covers it.
+      expect(
+        sampleCompositeColor(
+          cut: stack,
+          frameIndex: 0,
+          surfaceResolver: resolve,
+          point: CanvasPoint(x: 3, y: 3),
+          source: CanvasColorSampleSource.layer,
+          activeLayerId: const LayerId('bottom'),
+        ),
+        0xFFFF0000,
+      );
+      // A row with nothing drawn there (or nothing drawable at all — an SE
+      // row) reads the canvas color, per the user's description.
+      expect(
+        sampleCompositeColor(
+          cut: stack,
+          frameIndex: 0,
+          surfaceResolver: resolve,
+          point: CanvasPoint(x: 1, y: 1),
+          source: CanvasColorSampleSource.layer,
+          activeLayerId: const LayerId('bottom'),
+        ),
+        canvasPaperColor,
       );
     });
 
