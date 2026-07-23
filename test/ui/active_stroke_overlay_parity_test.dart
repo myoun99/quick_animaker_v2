@@ -725,6 +725,52 @@ void main() {
       },
     );
 
+    test(
+      'a pre-blended tile at the PASTEBOARD EDGE still covers its whole '
+      'coordinate — the base pass skipped that tile, so a clamped image '
+      'would cut a transparent strip through committed artwork',
+      () async {
+        // The overlay grid divides the canvas but NOT the pasteboard
+        // (3× the canvas), so the last coordinate is a partial rect: 40×3
+        // = 120 wide, and a 32px grid puts the wall mid-tile.
+        const overlayTile = 32;
+        final base = materializeBrushDabSequenceOnBitmapSurface(
+          surface: BitmapSurface(canvasSize: _canvasSize, tileSize: overlayTile),
+          sequence: BrushDabSequence([
+            _dab(
+              x: 113.5,
+              y: 12.5,
+              size: 20,
+              color: 0xFF994411,
+              opacity: 1,
+              flow: 1,
+              hardness: 1,
+            ),
+          ]),
+        ).surface;
+        final rasterizer = BrushLiveStrokeRasterizer(canvasSize: _canvasSize);
+        final region = rasterizer.blendFrom([
+          _dab(x: 112.5, y: 14.5, size: 10, color: 0xFF2266AA),
+        ], from: 0)!;
+
+        final model = ActiveStrokeOverlayModel(tileSize: overlayTile)
+          ..preBlendBase = base;
+        addTearDown(model.dispose);
+        model.updateRegion(source: rasterizer, region: region);
+        await model.waitForPendingDecodes();
+
+        expect(model.tileImages, isNotEmpty);
+        for (final entry in model.tileImages.entries) {
+          expect(
+            entry.value.width,
+            overlayTile,
+            reason: '${entry.key}: a pre-blended tile is never clamped',
+          );
+          expect(entry.value.height, overlayTile);
+        }
+      },
+    );
+
     test('reset clears the tile images and dabs', () async {
       final rasterizer = BrushLiveStrokeRasterizer(canvasSize: _canvasSize);
       final dabs = [_dab(x: 8.5, y: 8.5)];
