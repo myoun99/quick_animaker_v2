@@ -210,6 +210,59 @@ void main() {
     );
   });
 
+  testWidgets('R28 #10: a SECOND transform on the same tool works — the '
+      'first one\'s confirm must not leave the layer unable to lift', (
+    tester,
+  ) async {
+    // The user\'s report is about transforming twice in a row WITHOUT
+    // switching tools ("변형 한번하고 다시 변형하면"), which is the one path
+    // the R27 #18 fix did not cover — it hung the cleanup on a tool
+    // change. Both rounds here run on the Move tool.
+    final env = await pumpSelectionPanel(tester, tool: CanvasTool.move);
+
+    // Round 1: implicit whole-picture transform, confirmed.
+    env.commands.beginTransform();
+    await tester.pump();
+    expect(env.commands.transformActive, isTrue);
+    await dragOnLayer(tester, const Offset(45, 45), const Offset(55, 45));
+    env.commands.commitTransform();
+    await tester.pump();
+    expect(env.commands.transformActive, isFalse);
+    expect(inkAt(env.coordinator, 40, 30), isNonZero, reason: '+10 landed');
+    expect(
+      inkAt(env.coordinator, 30, 30),
+      0,
+      reason: 'the origin is empty — the lift erased it',
+    );
+
+    // Round 2: the SAME thing again.
+    env.commands.beginTransform();
+    await tester.pump();
+    expect(
+      env.commands.transformActive,
+      isTrue,
+      reason: 'R28 #10: the second transform must actually OPEN',
+    );
+    expect(
+      inkAt(env.coordinator, 40, 30),
+      0,
+      reason: 'R28 #10: the second lift has to ERASE its origin too — '
+          'leaving it is how the user saw "원본그림 존재하고 변형된 그림도 존재"',
+    );
+
+    // The picture moved +10, so the box did too — grab it where it now is.
+    await dragOnLayer(tester, const Offset(55, 45), const Offset(65, 45));
+    env.commands.commitTransform();
+    await tester.pump();
+    expect(
+      inkAt(env.coordinator, 50, 30),
+      isNonZero,
+      reason: 'the second +10 landed',
+    );
+    expect(inkAt(env.coordinator, 40, 30), 0);
+  });
+
+
   testWidgets('R26 #13: REVERTING the implicit whole-picture session '
       'restores the picture, leaves NO selection and records NOTHING', (
     tester,

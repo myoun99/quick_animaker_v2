@@ -606,6 +606,15 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
       // A pending float must not lose its pixels: land it at its pending
       // position (raw, no history) before the bookkeeping clears. Pending
       // resets are rare by construction — the session holds the seek lock.
+      //
+      // R28 #10: fold an OPEN box's affine in FIRST. R27 #18 taught the
+      // dispose path to do this, but a cel change resets through here —
+      // and this path still landed the PRE-transform stamp and then threw
+      // the affine away with _clearTransform below. That is the user's
+      // "룰러로 다른데 갔다오면 변형된그림은 사라져있음": the transform was
+      // never wrong, it was discarded on the way out. Whatever the box
+      // showed is what lands, on every exit.
+      _foldOpenTransformIntoPendingStamp();
       _landPendingLiftStamp();
       _cancelDrag(notify: wasDragging && !deferDragNotify);
       _shape = null;
@@ -1029,6 +1038,23 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     _moveSessionStartShape = shape;
     widget.onMoveSessionPendingChanged?.call(true);
     return true;
+  }
+
+  /// R28 #10: resamples the pending stamp through an OPEN transform box,
+  /// so an exit that lands the float lands what the box SHOWED.
+  ///
+  /// Every path that ends a session while a box is open needs this — the
+  /// dispose path grew its own copy in R27 #18 and the cel-change reset
+  /// did not, which is why a transform survived a tool switch but
+  /// evaporated when the user navigated away and back.
+  void _foldOpenTransformIntoPendingStamp() {
+    final affine = _transform;
+    final pending = _pendingLiftStamp;
+    if (affine == null || pending == null || affine.isIdentity) {
+      return;
+    }
+    _pendingLiftStamp = transformStampDab(pending, affine);
+    _shape = transformShape(_shape!, affine);
   }
 
   /// Abandon fallback: land the floating stamp at its CURRENT pending

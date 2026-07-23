@@ -46,13 +46,18 @@ void main() {
     await dismissFlyout(tester);
   });
 
-  testWidgets('Delete Layer is disabled with one layer', (tester) async {
+  testWidgets('R28 #14: Delete Layer is ENABLED with one layer — the cut '
+      'may end up empty', (tester) async {
     await _pumpHome(
       tester,
       project: _project(layers: [_layerModel(_layerAId, 'A')]),
     );
 
-    expect(await readCommandEnabled(tester, _deleteButtonKey), isFalse);
+    expect(
+      await readCommandEnabled(tester, _deleteButtonKey),
+      isTrue,
+      reason: 'R28 #14: the drawing floor that greyed this command is gone',
+    );
   });
 
   testWidgets('Delete Layer is enabled with two or more layers', (
