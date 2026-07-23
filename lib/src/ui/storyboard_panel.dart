@@ -840,7 +840,7 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
 
   Set<LayerId> _legendDisplayedLayerIds() => {
     for (final layer in _legendLayers())
-      if (layer.kind != LayerKind.camera) layer.id,
+      if (layerKindHasPictureOpacity(layer.kind)) layer.id,
   };
 
   Widget _seLabelRow(Track track, int slot) {

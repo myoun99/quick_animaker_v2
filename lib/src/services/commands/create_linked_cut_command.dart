@@ -1,10 +1,8 @@
 import '../../controllers/editing_session_state.dart';
 import '../../models/cut.dart';
 import '../../models/cut_id.dart';
-import '../../models/folder_id.dart';
 import '../../models/layer.dart';
 import '../../models/layer_id.dart';
-import '../../models/layer_kind.dart';
 import '../../models/layer_link_registry.dart';
 import '../../models/layer_section_defaults.dart';
 import '../command.dart';
@@ -18,11 +16,14 @@ import '../project_repository.dart';
 /// duplicate → 겸용 변경 composition instead.
 ///
 /// Per the confirmed design:
-/// - Only drawing (animation) layers link; SE/instruction/camera rows are
-///   fresh per-use fixtures ("카메라·SE·타임시트는 각자").
-/// - Attach structure and the folder tree mirror onto planned ids.
-/// - The registry gains one pair per linked layer (extending existing
-///   groups, so a second 겸용 joins the same bank).
+/// - Only drawing (animation) layers and the FOLDER rows holding them
+///   link; SE/instruction/camera rows are fresh per-use fixtures
+///   ("카메라·SE·타임시트는 각자").
+/// - Attach structure and folder membership mirror onto planned ids.
+/// - The registry gains one pair per linked row (extending existing
+///   groups, so a second 겸용 joins the same bank) — folder rows included,
+///   which is what makes a folder's eye/opacity/blend/name mirror through
+///   the ordinary layer path with no folder mirror table.
 class CreateLinkedCutCommand implements Command {
   CreateLinkedCutCommand({
     required this.repository,
@@ -31,7 +32,6 @@ class CreateLinkedCutCommand implements Command {
     required this.newCutId,
     required this.newName,
     required this.layerIdMap,
-    required this.folderIdMap,
     required this.newGroupIdBySource,
   });
 
@@ -41,11 +41,8 @@ class CreateLinkedCutCommand implements Command {
   final CutId newCutId;
   final String newName;
 
-  /// Source drawing-layer id → linked copy's id.
+  /// Source row id → linked copy's id (drawing layers AND folder rows).
   final Map<LayerId, LayerId> layerIdMap;
-
-  /// Source folder id → copied folder's id.
-  final Map<FolderId, FolderId> folderIdMap;
 
   /// Planned registry group ids for sources not linked yet.
   final Map<LayerId, String> newGroupIdBySource;
@@ -66,7 +63,7 @@ class CreateLinkedCutCommand implements Command {
 
       final linkedLayers = <Layer>[
         for (final layer in source.layers)
-          if (layer.kind == LayerKind.animation)
+          if (layerIdMap.containsKey(layer.id))
             layer.copyWith(
               id: _requireCopyId(layer.id),
               // EMPTY timeline: the 겸용 re-exposes the shared bank.
@@ -76,7 +73,7 @@ class CreateLinkedCutCommand implements Command {
                   : _requireCopyId(layer.attachedToLayerId!),
               folderId: layer.folderId == null
                   ? null
-                  : folderIdMap[layer.folderId!],
+                  : layerIdMap[layer.folderId!],
               // Sounds are per-use; drawing layers should carry none,
               // but strip defensively.
               audioClips: const [],
@@ -86,25 +83,16 @@ class CreateLinkedCutCommand implements Command {
         id: newCutId,
         name: newName,
         // Fresh SE/instruction/camera fixture rows around the linked
-        // drawing layers.
+        // drawing layers and their folders.
         layers: withEnsuredSectionLayers(newCutId, linkedLayers),
         duration: source.duration,
         canvasSize: source.canvasSize,
-        folders: [
-          for (final folder in source.folders)
-            folder.copyWith(
-              id: folderIdMap[folder.id],
-              parentId: folder.parentId == null
-                  ? null
-                  : folderIdMap[folder.parentId!],
-            ),
-        ],
       );
 
       _registryBefore = project.linkRegistry;
       var groups = [...project.linkRegistry.groups];
       for (final layer in source.layers) {
-        if (layer.kind != LayerKind.animation) {
+        if (!layerIdMap.containsKey(layer.id)) {
           continue;
         }
         final copyMember = LayerLinkMember(

@@ -8,9 +8,7 @@ import '../../models/audio_clip.dart' show AudioFadeCurve, AudioVolumeKey;
 import '../../models/camera_instruction.dart';
 import '../../models/layer_blend_mode.dart';
 import '../text/app_strings.dart';
-import '../../models/folder_id.dart';
 import '../../models/layer.dart';
-import '../../models/layer_folder.dart';
 import '../../models/layer_id.dart';
 import '../../models/layer_kind.dart';
 import '../../models/layer_mark.dart';
@@ -49,9 +47,7 @@ import 'timeline_layer_frame_body_layout.dart';
 import 'pen_friendly_scroll_controller.dart';
 import 'stylus_glide_stop.dart';
 import 'timeline_zoom_anchor_policy.dart';
-import 'timeline_folder_controls_row.dart';
 import 'timeline_layer_controls_row.dart';
-import 'transform_lane_policy.dart' show folderTransformPropertyLanes;
 import 'timeline_row_filter.dart';
 import 'timeline_section_policy.dart';
 import 'timeline_section_runs.dart';
@@ -102,15 +98,9 @@ class LayerTimelineGrid extends StatefulWidget {
     required this.onToggleLayerTimesheet,
     this.layerFxEnabledOf,
     this.layerIsLinkedOf,
-    this.folders = const [],
-    this.onToggleFolderCollapsed,
-    this.onToggleFolderVisibility,
+    this.onToggleLayerCollapsed,
     this.onRenameFolder,
     this.onDissolveFolder,
-    this.expandedFolderLaneIds = const {},
-    this.onToggleFolderLanes,
-    this.folderFxEnabledOf,
-    this.onToggleFolderFx,
     this.layerOnionSkinEnabledOf,
     this.onToggleLayerOnionSkin,
     this.displayedOnionSkinOn = false,
@@ -147,23 +137,7 @@ class LayerTimelineGrid extends StatefulWidget {
     this.onLayerBlendModeSelected,
     this.blendLanguage = AppLanguage.en,
     this.layerOpacityOverrideOf,
-    this.activeFolderId,
-    this.onSelectFolder,
-    this.onFolderOpacityChanged,
-    this.onFolderOpacityChangeEnd,
-    this.onFolderBlendModeSelected,
   });
-
-  /// R27 #24/#29: the selected folder row, and the folder's own display
-  /// controls (opacity/blend) — the layer row's contract, folder-keyed.
-  final FolderId? activeFolderId;
-  final ValueChanged<FolderId>? onSelectFolder;
-  final void Function(FolderId folderId, double opacity)?
-  onFolderOpacityChanged;
-  final void Function(FolderId folderId, double opacity)?
-  onFolderOpacityChangeEnd;
-  final void Function(FolderId folderId, LayerBlendMode mode)?
-  onFolderBlendModeSelected;
 
   final List<Layer> layers;
   final LayerId? activeLayerId;
@@ -309,23 +283,15 @@ class LayerTimelineGrid extends StatefulWidget {
   /// link group. Null shows no badges.
   final bool Function(LayerId layerId)? layerIsLinkedOf;
 
-  /// The cut's folder table (L5): folder HEADER rows join the rail (tree
-  /// indent, twirl, eye) and their frame bands render the aggregate
-  /// block. Empty = no folder rows.
-  final List<LayerFolder> folders;
-  final ValueChanged<FolderId>? onToggleFolderCollapsed;
-  final ValueChanged<FolderId>? onToggleFolderVisibility;
-  final ValueChanged<FolderId>? onRenameFolder;
-  final ValueChanged<FolderId>? onDissolveFolder;
+  /// Folder rows are LAYER rows: their eye, opacity, blend, fx switch and
+  /// FX lanes all arrive through the layer hooks above. Only the two
+  /// structural verbs need their own entrances.
+  final ValueChanged<LayerId>? onRenameFolder;
+  final ValueChanged<LayerId>? onDissolveFolder;
 
-  /// Folder FX lane twirl state + toggle (L5c); null hides the twirl.
-  final Set<FolderId> expandedFolderLaneIds;
-  final ValueChanged<FolderId>? onToggleFolderLanes;
-
-  /// R28 #13: the folder fx BYPASS switch — the layer row's contract,
-  /// folder-keyed. Null = the button hides (hosts without the state).
-  final bool Function(FolderId folderId)? folderFxEnabledOf;
-  final ValueChanged<FolderId>? onToggleFolderFx;
+  /// The row twirl that folds a FOLDER's members (the attach fold has its
+  /// own hook because it is session state, not layer state).
+  final ValueChanged<LayerId>? onToggleLayerCollapsed;
 
   /// Per-layer onion skin (UI-R17 #5): the row toggles + the legend cell's
   /// engaged state. Null hides the onion column entirely.
@@ -427,6 +393,7 @@ typedef _RailRowMemoInputs = ({
   bool active,
   bool hasLanes,
   bool lanesExpanded,
+  int depth,
   bool hasAttachGroup,
   bool attachGroupExpanded,
   bool fxEnabled,
@@ -922,7 +889,8 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
   /// excluded) — the master opacity bar's target set (R4 #6).
   Set<LayerId> _displayedLayerIds(List<TimelineDisplayRow> rows) => {
     for (final row in rows)
-      if (!row.isLane && row.layer.kind != LayerKind.camera) row.layer.id,
+      if (!row.isLane && layerKindHasPictureOpacity(row.layer.kind))
+        row.layer.id,
   };
 
   /// Whether every SE row is muted — the legend mute cell's toggle state
@@ -972,20 +940,13 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
   /// rebuild that didn't touch the row) skips its whole Material subtree.
   /// Lane label rows stay unmemoized: they subscribe to the frame cursor
   /// themselves and their lane models churn identity per build.
-  /// R28 #11: ONE selection. A folder and a layer used to be able to read
-  /// as selected at the same time — `selectLayer` released the folder but
-  /// `selectFolder` left the layer's row lit, so picking a folder while a
-  /// layer was active highlighted two rows. Selection is exclusive here by
-  /// construction: while a folder owns the selection, no layer row wears
-  /// it. (The canvas still edits whatever layer was active — a folder
-  /// holds no cels — but that is EDIT TARGET, not selection.)
-  bool _layerRowIsActive(Layer layer) =>
-      widget.activeFolderId == null && layer.id == widget.activeLayerId;
+  /// R28 #11: ONE selection — and now there is only one THING that can be
+  /// selected. A folder is a layer, so `activeLayerId` answers for both
+  /// and two rows can no longer read as selected at once by construction.
+  bool _layerRowIsActive(Layer layer) => layer.id == widget.activeLayerId;
 
   Widget _railRowMemoized(TimelineDisplayRow row) {
-    if (row.isLane || row.isFolder) {
-      // Folder rows stay unmemoized like lanes: their inputs (folder
-      // value + depth) churn identity per build and the widget is tiny.
+    if (row.isLane) {
       return _railRow(row);
     }
     final inputs = (
@@ -993,7 +954,8 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
       active: _layerRowIsActive(row.layer),
       hasLanes: _lanesFor(row.layer).isNotEmpty,
       lanesExpanded: widget.expandedLaneLayerIds.contains(row.layer.id),
-      hasAttachGroup: _hasAttachGroup(row.layer),
+      depth: row.depth,
+      hasAttachGroup: row.isFolder || _hasAttachGroup(row.layer),
       attachGroupExpanded: !widget.collapsedAttachBaseIds.contains(
         row.layer.id,
       ),
@@ -1024,6 +986,7 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
         a.active == b.active &&
         a.hasLanes == b.hasLanes &&
         a.lanesExpanded == b.lanesExpanded &&
+        a.depth == b.depth &&
         a.hasAttachGroup == b.hasAttachGroup &&
         a.attachGroupExpanded == b.attachGroupExpanded &&
         a.fxEnabled == b.fxEnabled &&
@@ -1114,28 +1077,6 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
   /// windowed rail loop stays readable. Rows reserve an empty leading
   /// section slot — the section ZONES overlay whole runs (UI-R7 #2).
   Widget _railRow(TimelineDisplayRow row) {
-    if (row.isFolder) {
-      return TimelineFolderControlsRow(
-        folder: row.folder!,
-        depth: row.depth,
-        metrics: _metrics,
-        active: widget.activeFolderId == row.folder!.id,
-        onSelect: widget.onSelectFolder,
-        onToggleCollapsed: widget.onToggleFolderCollapsed,
-        onToggleVisibility: widget.onToggleFolderVisibility,
-        onRename: widget.onRenameFolder,
-        onDissolve: widget.onDissolveFolder,
-        lanesExpanded: widget.expandedFolderLaneIds.contains(row.folder!.id),
-        onToggleLanes: widget.onToggleFolderLanes,
-        // R28 #13: the fx button is a BYPASS switch now, like a layer's.
-        fxEnabled: widget.folderFxEnabledOf?.call(row.folder!.id) ?? true,
-        onToggleFx: widget.onToggleFolderFx,
-        onOpacityChanged: widget.onFolderOpacityChanged,
-        onOpacityChangeEnd: widget.onFolderOpacityChangeEnd,
-        onBlendModeSelected: widget.onFolderBlendModeSelected,
-        blendLanguage: widget.blendLanguage,
-      );
-    }
     if (row.isLane) {
       // Lane labels show the value AT the cursor: subscribe here so a
       // tick rebuilds only these small cells.
@@ -1177,11 +1118,18 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
       hasLanes: _lanesFor(row.layer).isNotEmpty,
       lanesExpanded: widget.expandedLaneLayerIds.contains(row.layer.id),
       onToggleLanes: widget.onToggleLayerLanes,
-      hasAttachGroup: _hasAttachGroup(row.layer),
-      attachGroupExpanded: !widget.collapsedAttachBaseIds.contains(
-        row.layer.id,
-      ),
-      onToggleAttachGroup: widget.onToggleAttachGroup,
+      depth: row.depth,
+      // One fold twirl: a folder folds its members, an attach base folds
+      // its attach rows.
+      hasGroupFold: row.isFolder || _hasAttachGroup(row.layer),
+      groupFoldExpanded: row.isFolder
+          ? !row.layer.collapsed
+          : !widget.collapsedAttachBaseIds.contains(row.layer.id),
+      onToggleGroupFold: row.isFolder
+          ? widget.onToggleLayerCollapsed
+          : widget.onToggleAttachGroup,
+      onRenameFolder: widget.onRenameFolder,
+      onDissolveFolder: widget.onDissolveFolder,
       opacityDragPreview: widget.opacityDragPreview,
       isLinked: widget.layerIsLinkedOf?.call(row.layer.id) ?? false,
       onLayerBlendModeSelected: widget.onLayerBlendModeSelected,
@@ -1239,10 +1187,6 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
       layers: widget.layers,
       expandedLayerIds: widget.expandedLaneLayerIds,
       lanesForLayer: _lanesFor,
-      folders: widget.folders,
-      expandedFolderLaneIds: widget.expandedFolderLaneIds,
-      lanesForFolder: (folder) =>
-          folderTransformPropertyLanes(folder.id, folder.transformTrack),
       hiddenSections: widget.hiddenSections,
       rowFilter: widget.rowFilter,
       collapsedAttachBaseIds: widget.collapsedAttachBaseIds,
@@ -1627,7 +1571,7 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                                                             key: ValueKey<String>(
                                                               'timeline-rail-row-'
                                                               '${row.layer.id}-'
-                                                              '${row.folder != null ? 'folder-${row.folder!.id}' : row.lane?.laneId ?? 'row'}',
+                                                              '${row.isFolder ? 'folder-${row.layer.id}' : row.lane?.laneId ?? 'row'}',
                                                             ),
                                                             child:
                                                                 _railRowMemoized(

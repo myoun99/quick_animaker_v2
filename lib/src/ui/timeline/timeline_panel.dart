@@ -4,10 +4,8 @@ import 'package:flutter/material.dart';
 import '../../models/app_language.dart' show AppLanguage;
 import '../../models/audio_clip.dart' show AudioFadeCurve, AudioVolumeKey;
 import '../../models/camera_instruction.dart';
-import '../../models/folder_id.dart';
 import '../../models/layer_blend_mode.dart';
 import '../../models/layer.dart';
-import '../../models/layer_folder.dart';
 import '../../services/audio/audio_peaks_extractor.dart';
 import '../text/app_strings.dart';
 import '../../models/layer_id.dart';
@@ -75,15 +73,9 @@ class TimelinePanel extends StatefulWidget {
     required this.onLayerMarkSelected,
     this.layerFxEnabledOf,
     this.layerIsLinkedOf,
-    this.folders = const [],
-    this.onToggleFolderCollapsed,
-    this.onToggleFolderVisibility,
     this.onRenameFolder,
+    this.onToggleLayerCollapsed,
     this.onDissolveFolder,
-    this.expandedFolderLaneIds = const {},
-    this.onToggleFolderLanes,
-    this.folderFxEnabledOf,
-    this.onToggleFolderFx,
     this.layerOnionSkinEnabledOf,
     this.onToggleLayerOnionSkin,
     this.displayedOnionSkinOn = false,
@@ -125,22 +117,7 @@ class TimelinePanel extends StatefulWidget {
     this.onLayerBlendModeSelected,
     this.blendLanguage = AppLanguage.en,
     this.layerOpacityOverrideOf,
-    this.activeFolderId,
-    this.onSelectFolder,
-    this.onFolderOpacityChanged,
-    this.onFolderOpacityChangeEnd,
-    this.onFolderBlendModeSelected,
   });
-
-  /// R27 #24/#29: folder selection + the folder's display controls.
-  final FolderId? activeFolderId;
-  final ValueChanged<FolderId>? onSelectFolder;
-  final void Function(FolderId folderId, double opacity)?
-  onFolderOpacityChanged;
-  final void Function(FolderId folderId, double opacity)?
-  onFolderOpacityChangeEnd;
-  final void Function(FolderId folderId, LayerBlendMode mode)?
-  onFolderBlendModeSelected;
 
   final List<Layer> layers;
   final LayerId? activeLayerId;
@@ -282,20 +259,14 @@ class TimelinePanel extends StatefulWidget {
   /// Link badge state (L4); null shows no badges.
   final bool Function(LayerId layerId)? layerIsLinkedOf;
 
-  /// The active cut's folder table (L5) + folder row callbacks —
+  /// A folder is a LAYER: its eye, opacity, blend, fx switch, FX lanes and
+  /// selection all arrive through the layer hooks above. Only the two
+  /// structural verbs and the members' twirl need entrances of their own —
   /// horizontal grid only for now (the xsheet rail keeps its compact
   /// control set, like the link badges).
-  final List<LayerFolder> folders;
-  final ValueChanged<FolderId>? onToggleFolderCollapsed;
-  final ValueChanged<FolderId>? onToggleFolderVisibility;
-  final ValueChanged<FolderId>? onRenameFolder;
-  final ValueChanged<FolderId>? onDissolveFolder;
-  final Set<FolderId> expandedFolderLaneIds;
-  final ValueChanged<FolderId>? onToggleFolderLanes;
-
-  /// R28 #13: the folder fx BYPASS switch (the layer switch's twin).
-  final bool Function(FolderId folderId)? folderFxEnabledOf;
-  final ValueChanged<FolderId>? onToggleFolderFx;
+  final ValueChanged<LayerId>? onRenameFolder;
+  final ValueChanged<LayerId>? onDissolveFolder;
+  final ValueChanged<LayerId>? onToggleLayerCollapsed;
 
   /// Per-layer onion skin (UI-R17 #5) — threaded to the horizontal grid's
   /// rail rows + legend (the xsheet rail keeps its compact control set).
@@ -512,15 +483,9 @@ class _TimelinePanelState extends State<TimelinePanel> {
                     onLayerMarkSelected: widget.onLayerMarkSelected,
                     layerFxEnabledOf: widget.layerFxEnabledOf,
                     layerIsLinkedOf: widget.layerIsLinkedOf,
-                    folders: widget.folders,
-                    onToggleFolderCollapsed: widget.onToggleFolderCollapsed,
-                    onToggleFolderVisibility: widget.onToggleFolderVisibility,
                     onRenameFolder: widget.onRenameFolder,
+                    onToggleLayerCollapsed: widget.onToggleLayerCollapsed,
                     onDissolveFolder: widget.onDissolveFolder,
-                    expandedFolderLaneIds: widget.expandedFolderLaneIds,
-                    onToggleFolderLanes: widget.onToggleFolderLanes,
-                    folderFxEnabledOf: widget.folderFxEnabledOf,
-                    onToggleFolderFx: widget.onToggleFolderFx,
                     onToggleLayerFx: widget.onToggleLayerFx,
                     layerOnionSkinEnabledOf: widget.layerOnionSkinEnabledOf,
                     onToggleLayerOnionSkin: widget.onToggleLayerOnionSkin,
@@ -553,12 +518,6 @@ class _TimelinePanelState extends State<TimelinePanel> {
                     onLayerBlendModeSelected: widget.onLayerBlendModeSelected,
                     blendLanguage: widget.blendLanguage,
                     layerOpacityOverrideOf: widget.layerOpacityOverrideOf,
-                    activeFolderId: widget.activeFolderId,
-                    onSelectFolder: widget.onSelectFolder,
-                    onFolderOpacityChanged: widget.onFolderOpacityChanged,
-                    onFolderOpacityChangeEnd: widget.onFolderOpacityChangeEnd,
-                    onFolderBlendModeSelected:
-                        widget.onFolderBlendModeSelected,
                   )
                 : XSheetTimelineGrid(
                     layers: xsheetLayerDisplayOrder(widget.layers),

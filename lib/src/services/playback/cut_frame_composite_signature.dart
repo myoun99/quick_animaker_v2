@@ -4,7 +4,6 @@ import '../../models/canvas_size.dart';
 import '../../models/cut.dart';
 import '../../models/frame_id.dart';
 import '../../models/layer_blend_mode.dart';
-import '../../models/folder_id.dart';
 import '../../models/layer_id.dart';
 import '../../models/playback_quality.dart';
 import '../../models/transform_track.dart';
@@ -133,7 +132,6 @@ CutFrameCompositeSignature computeCutFrameCompositeSignature({
   required PlaybackQuality quality,
   required BrushFrameRevisionResolver revisionOf,
   Set<LayerId> fxBypassedLayerIds = const {},
-  Set<FolderId> fxBypassedFolderIds = const {},
 }) {
   return CutFrameCompositeSignature(
     canvasSize: cut.canvasSize,
@@ -146,7 +144,6 @@ CutFrameCompositeSignature computeCutFrameCompositeSignature({
         cut: cut,
         frameIndex: frameIndex,
         fxBypassedLayerIds: fxBypassedLayerIds,
-        fxBypassedFolderIds: fxBypassedFolderIds,
       ))
         CompositeLayerSignature(
           layerId: entry.layer.id,

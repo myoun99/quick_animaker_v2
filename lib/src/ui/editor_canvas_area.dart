@@ -362,7 +362,6 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
                 surfaceResolver: session.brushSurfaceForLayerFrame,
                 point: point,
                 fxBypassedLayerIds: session.fxBypassedLayerIds,
-                fxBypassedFolderIds: session.fxBypassedFolderIds,
                 paperColor: session.projectBackground.argb,
                 source:
                     widget.eyedropperSource?.value ??
@@ -436,7 +435,6 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
                 point: point,
                 color: color,
                 fxBypassedLayerIds: session.fxBypassedLayerIds,
-                fxBypassedFolderIds: session.fxBypassedFolderIds,
                 options: widget.fillOptions?.value ?? const FloodFillOptions(),
                 paperColor: session.projectBackground.argb,
                 // Extended fills refuse OPEN regions (the flood reached

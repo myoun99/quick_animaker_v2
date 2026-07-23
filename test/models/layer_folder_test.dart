@@ -1,122 +1,166 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:quick_animaker_v2/src/models/folder_id.dart';
+import 'package:quick_animaker_v2/src/models/layer.dart';
 import 'package:quick_animaker_v2/src/models/layer_folder.dart';
+import 'package:quick_animaker_v2/src/models/layer_id.dart';
+import 'package:quick_animaker_v2/src/models/layer_kind.dart';
 
 void main() {
-  LayerFolder folder(String id, {String? parent, bool collapsed = false}) =>
-      LayerFolder(
-        id: FolderId(id),
+  Layer folder(String id, {String? parent, bool collapsed = false}) =>
+      createFolderLayer(
+        id: LayerId(id),
         name: id,
-        parentId: parent == null ? null : FolderId(parent),
-        collapsed: collapsed,
-      );
+        parentId: parent == null ? null : LayerId(parent),
+      ).copyWith(collapsed: collapsed);
 
-  group('LayerFolder', () {
-    test('toJson/fromJson round-trips (defaults omitted)', () {
-      final plain = folder('a');
-      expect(LayerFolder.fromJson(plain.toJson()), plain);
-      expect(plain.toJson().containsKey('parentId'), isFalse);
-      expect(plain.toJson().containsKey('collapsed'), isFalse);
+  Layer cel(String id, {String? folderId}) => Layer(
+    id: LayerId(id),
+    name: id,
+    frames: const [],
+    timeline: const {},
+    folderId: folderId == null ? null : LayerId(folderId),
+  );
 
-      final nested = LayerFolder(
-        id: const FolderId('b'),
-        name: 'B',
-        parentId: const FolderId('a'),
-        collapsed: true,
-        isVisible: false,
-        opacity: 0.5,
-      );
-      expect(LayerFolder.fromJson(nested.toJson()), nested);
+  group('folder rows are layers', () {
+    test('createFolderLayer holds no cels and prints nothing', () {
+      final row = folder('a');
+      expect(row.kind, LayerKind.folder);
+      expect(layerKindHoldsDrawings(row.kind), isFalse);
+      expect(layerKindAcceptsBrushInput(row.kind), isFalse);
+      expect(layerKindTakesTimesheetColumn(row.kind), isFalse);
+      expect(row.frames, isEmpty);
+      expect(row.timeline, isEmpty);
+      expect(row.onTimesheet, isFalse);
     });
 
-    test('copyWith can clear parentId (move to top level)', () {
-      final nested = folder('b', parent: 'a');
-      expect(nested.copyWith(parentId: null).parentId, isNull);
-      expect(nested.copyWith(name: 'B2').parentId, const FolderId('a'));
+    test('a folder carries the same display state every layer carries', () {
+      final row = folder('a');
+      expect(layerKindHasPictureOpacity(row.kind), isTrue);
+      expect(layerKindHasLayerTransform(row.kind), isTrue);
+      expect(layerKindComposites(row.kind), isTrue);
+      // ...but paints no surface of its own — its members do.
+      expect(layerKindPaintsArtwork(row.kind), isFalse);
+    });
+
+    test('toJson/fromJson round-trips the row, twirl included', () {
+      final row = folder('a', collapsed: true).copyWith(opacity: 0.5);
+      final restored = Layer.fromJson(row.toJson());
+      expect(restored, row);
+      expect(restored.collapsed, isTrue);
+      expect(folder('a').toJson().containsKey('collapsed'), isFalse);
     });
   });
 
-  group('folder table queries', () {
-    final table = [
-      folder('root'),
-      folder('child', parent: 'root', collapsed: true),
+  group('folder queries over the stack', () {
+    // Stack order, bottom → top: each folder sits directly above its run.
+    final stack = [
+      cel('l1', folderId: 'grandchild'),
       folder('grandchild', parent: 'child'),
+      folder('child', parent: 'root', collapsed: true),
+      folder('root'),
     ];
 
     test('ancestryOf walks to the top, nearest first', () {
       expect(
-        table.ancestryOf(const FolderId('grandchild')).map((f) => f.id.value),
+        stack.ancestryOf(const LayerId('grandchild')).map((f) => f.id.value),
         ['grandchild', 'child', 'root'],
       );
-      expect(table.ancestryOf(null), isEmpty);
+      expect(stack.ancestryOf(null), isEmpty);
+    });
+
+    test('folderById ignores rows that are not folders', () {
+      expect(stack.folderById(const LayerId('l1')), isNull);
+      expect(stack.folderById(const LayerId('root'))?.name, 'root');
     });
 
     test('subtreeCollapsed sees any collapsed ancestor', () {
-      expect(table.subtreeCollapsed(const FolderId('grandchild')), isTrue);
-      expect(table.subtreeCollapsed(const FolderId('root')), isFalse);
+      expect(stack.subtreeCollapsed(const LayerId('grandchild')), isTrue);
+      expect(stack.subtreeCollapsed(const LayerId('root')), isFalse);
     });
 
     test('subtreeVisible: a hidden ancestor hides the subtree', () {
       final withHidden = [
-        folder('root').copyWith(isVisible: false),
+        cel('l1', folderId: 'child'),
         folder('child', parent: 'root'),
+        folder('root').copyWith(isVisible: false),
       ];
-      expect(withHidden.subtreeVisible(const FolderId('child')), isFalse);
+      expect(withHidden.subtreeVisible(const LayerId('child')), isFalse);
+    });
+
+    test('subtreeMembersOf gathers the whole subtree in stack order', () {
+      expect(
+        stack.subtreeMembersOf(const LayerId('root')).map((l) => l.id.value),
+        ['l1', 'grandchild', 'child'],
+      );
+      expect(
+        stack.directMembersOf(const LayerId('root')).map((l) => l.id.value),
+        ['child'],
+      );
     });
   });
 
   group('folderStructureProblem', () {
     test('sound structures pass', () {
-      final folders = [folder('a'), folder('b', parent: 'a')];
       expect(
-        folderStructureProblem(
-          folders: folders,
-          layerFolderIdsInStackOrder: [
-            null,
-            const FolderId('a'),
-            const FolderId('b'),
-            const FolderId('a'),
-            null,
-          ],
-        ),
+        folderStructureProblem([
+          cel('below'),
+          cel('m1', folderId: 'a'),
+          cel('m2', folderId: 'b'),
+          folder('b', parent: 'a'),
+          cel('m3', folderId: 'a'),
+          folder('a'),
+          cel('above'),
+        ]),
         isNull,
         reason:
-            'members of a (including nested b) form one unbroken run in '
-            'the stack',
+            "a's members (nested b included) form one unbroken run with the "
+            'folder row directly above it',
       );
     });
 
     test('a non-contiguous folder run is reported', () {
       expect(
-        folderStructureProblem(
-          folders: [folder('a')],
-          layerFolderIdsInStackOrder: [
-            const FolderId('a'),
-            null,
-            const FolderId('a'),
-          ],
-        ),
+        folderStructureProblem([
+          cel('m1', folderId: 'a'),
+          cel('outsider'),
+          cel('m2', folderId: 'a'),
+          folder('a'),
+        ]),
         contains('not contiguous'),
+      );
+    });
+
+    test('a folder row away from its members is reported', () {
+      expect(
+        folderStructureProblem([
+          cel('m1', folderId: 'a'),
+          folder('a'),
+          cel('stray'),
+        ]),
+        isNull,
+        reason: 'the folder sits directly above its run',
+      );
+      expect(
+        folderStructureProblem([
+          folder('a'),
+          cel('m1', folderId: 'a'),
+        ]),
+        contains('directly above'),
       );
     });
 
     test('a missing folder reference is reported', () {
       expect(
-        folderStructureProblem(
-          folders: const [],
-          layerFolderIdsInStackOrder: [const FolderId('ghost')],
-        ),
+        folderStructureProblem([cel('orphan', folderId: 'ghost')]),
         contains('missing folder'),
       );
     });
 
     test('a cyclic parent chain is reported', () {
-      final cyclic = [folder('a', parent: 'b'), folder('b', parent: 'a')];
       expect(
-        folderStructureProblem(
-          folders: cyclic,
-          layerFolderIdsInStackOrder: const [],
-        ),
+        folderStructureProblem([
+          folder('a', parent: 'b'),
+          folder('b', parent: 'a'),
+        ]),
         contains('cyclic'),
       );
     });

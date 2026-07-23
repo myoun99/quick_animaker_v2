@@ -1,17 +1,17 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:quick_animaker_v2/src/models/folder_id.dart';
 import 'package:quick_animaker_v2/src/models/frame_id.dart';
 import 'package:quick_animaker_v2/src/models/layer.dart';
 import 'package:quick_animaker_v2/src/models/layer_folder.dart';
 import 'package:quick_animaker_v2/src/models/layer_id.dart';
 import 'package:quick_animaker_v2/src/models/timeline_exposure.dart';
+import 'package:quick_animaker_v2/src/models/transform_track.dart';
 import 'package:quick_animaker_v2/src/ui/timeline/property_lane_model.dart';
 import 'package:quick_animaker_v2/src/ui/timeline/transform_lane_policy.dart';
 
-/// Folder rows in the timeline display list (L5): the header sits above
-/// its first member, depth drives the tree indent, collapsing swallows
-/// member rows (the active layer stays), and the header's frame band is
-/// the members' exposure UNION (the TVP-latest aggregate block).
+/// Folder rows in the timeline display list. A folder is a LAYER now, so
+/// the builder synthesizes nothing: the row is already in the stack,
+/// sitting directly above its members. What is left is the tree indent,
+/// the collapse fold, and the aggregate band the folder row paints.
 void main() {
   Layer layer(
     String id, {
@@ -22,63 +22,64 @@ void main() {
     name: id,
     frames: const [],
     timeline: timeline,
-    folderId: folder == null ? null : FolderId(folder),
+    folderId: folder == null ? null : LayerId(folder),
   );
 
-  test('folder headers sit above their first member with tree depths; '
-      'members carry their nesting depth', () {
+  Layer folderRow(String id, {String? parent, bool collapsed = false}) =>
+      createFolderLayer(
+        id: LayerId(id),
+        name: id.toUpperCase(),
+        parentId: parent == null ? null : LayerId(parent),
+      ).copyWith(collapsed: collapsed);
+
+  test('folder rows carry tree depth and their members indent under them', () {
+    // Display order (what the horizontal grid hands in): folder row first,
+    // members below it.
     final rows = buildTimelineDisplayRows(
       layers: [
         layer('top'),
+        folderRow('outer'),
         layer('a', folder: 'outer'),
+        folderRow('inner', parent: 'outer'),
         layer('b', folder: 'inner'),
       ],
       expandedLayerIds: const {},
       lanesForLayer: (_) => const [],
-      folders: [
-        LayerFolder(id: const FolderId('outer'), name: 'O'),
-        LayerFolder(
-          id: const FolderId('inner'),
-          name: 'I',
-          parentId: const FolderId('outer'),
-        ),
-      ],
     );
 
-    expect(rows.map((row) => row.isFolder ? 'F:${row.folder!.name}' : row.layer.id.value),
-        ['top', 'F:O', 'a', 'F:I', 'b']);
+    expect(rows.map((row) => row.layer.id.value), [
+      'top',
+      'outer',
+      'a',
+      'inner',
+      'b',
+    ]);
+    expect(rows[1].isFolder, isTrue);
     expect(rows[1].depth, 0);
     expect(rows[2].depth, 1, reason: 'outer member indents one level');
-    expect(rows[3].depth, 1, reason: 'nested folder header indents');
+    expect(rows[3].depth, 1, reason: 'nested folder row indents');
     expect(rows[4].depth, 2, reason: 'nested member indents two levels');
   });
 
-  test('R27 #24: a collapsed folder keeps its header and swallows EVERY '
+  test('R27 #24: a collapsed folder keeps its row and swallows EVERY '
       'member row, the active layer included', () {
-    final folders = [
-      LayerFolder(id: const FolderId('f'), name: 'F', collapsed: true),
-    ];
-    final rows = buildTimelineDisplayRows(
-      layers: [layer('a', folder: 'f'), layer('b', folder: 'f')],
-      expandedLayerIds: const {},
-      lanesForLayer: (_) => const [],
-      folders: folders,
-    );
-    expect(rows.length, 1);
-    expect(rows.single.isFolder, isTrue);
+    List<TimelineDisplayRow> build({LayerId? activeLayerId}) =>
+        buildTimelineDisplayRows(
+          layers: [
+            folderRow('f', collapsed: true),
+            layer('a', folder: 'f'),
+            layer('b', folder: 'f'),
+          ],
+          expandedLayerIds: const {},
+          lanesForLayer: (_) => const [],
+          activeLayerId: activeLayerId,
+        );
 
-    final withActive = buildTimelineDisplayRows(
-      layers: [layer('a', folder: 'f'), layer('b', folder: 'f')],
-      expandedLayerIds: const {},
-      lanesForLayer: (_) => const [],
-      folders: folders,
-      activeLayerId: const LayerId('b'),
-    );
+    expect(build().length, 1);
+    expect(build().single.isFolder, isTrue);
     expect(
-      withActive.map(
-        (row) => row.isFolder ? 'F' : row.layer.id.value,
-      ),
-      ['F'],
+      build(activeLayerId: const LayerId('b')).map((r) => r.layer.id.value),
+      ['f'],
       reason:
           'the old active-layer exemption meant a fold with a member '
           'selected did not look folded at all (R27 #24); the folder row '
@@ -86,50 +87,50 @@ void main() {
     );
   });
 
-  test('folder FX lane ids round-trip their address; ordinary lane ids '
-      'parse to null', () {
-    final laneId = folderLaneId(const FolderId('f-1'), 'position');
-    final parsed = parseFolderLaneId(laneId)!;
-    expect(parsed.folderId, const FolderId('f-1'));
-    expect(parsed.baseLaneId, 'position');
-    expect(parseFolderLaneId('position'), isNull);
-    expect(parseFolderLaneId('transform-group'), isNull);
-  });
-
-  test('expanded folder FX lanes ride under the header (independent of '
-      'the member collapse)', () {
-    final folders = [
-      LayerFolder(id: const FolderId('f'), name: 'F', collapsed: true),
-    ];
+  test('a folder row has no representative member: its layer IS the folder', () {
     final rows = buildTimelineDisplayRows(
-      layers: [layer('a', folder: 'f')],
+      layers: [folderRow('f'), layer('a', folder: 'f')],
       expandedLayerIds: const {},
       lanesForLayer: (_) => const [],
-      folders: folders,
-      expandedFolderLaneIds: {const FolderId('f')},
-      lanesForFolder: (folder) =>
-          folderTransformPropertyLanes(folder.id, folder.transformTrack),
     );
     expect(rows.first.isFolder, isTrue);
     expect(
-      rows.skip(1).map((row) => row.lane!.label),
-      // R27 #26: the LAYER's lane grammar verbatim — a Transform group
-      // header with the properties nested under it, not a bare Anchor
-      // Point row hanging off the folder.
+      rows.first.layer.id,
+      const LayerId('f'),
+      reason:
+          'the header used to carry its first MEMBER as a stand-in, which '
+          'is what let row walks land on the wrong layer (R28 #12)',
+    );
+  });
+
+  test('folder FX lanes are plain layer lanes — no folder-fx address', () {
+    final folder = folderRow('f').copyWith(
+      transformTrack: TransformTrack.empty(),
+    );
+    final rows = buildTimelineDisplayRows(
+      layers: [folder, layer('a', folder: 'f')],
+      expandedLayerIds: {const LayerId('f')},
+      lanesForLayer: (row) => transformPropertyLanes(
+        row.transformTrack,
+        includeAnchorAndOpacity: true,
+      ),
+    );
+    expect(rows.first.isFolder, isTrue);
+    expect(
+      rows.skip(1).takeWhile((row) => row.isLane).map((row) => row.lane!.label),
+      // R27 #26: the LAYER's lane grammar verbatim — and now literally the
+      // layer's lanes, keyed by plain base lane ids.
       ['Transform', 'Anchor Point', 'Position', 'Scale', 'Rotation', 'Opacity'],
-      reason: 'collapsed members, lanes still editable — a collapsed '
-          'folder still places as one',
     );
     expect(rows[1].lane!.isGroupHeader, isTrue);
-    expect(
-      parseFolderLaneId(rows[3].lane!.laneId)!.folderId,
-      const FolderId('f'),
-    );
+    expect(rows[3].lane!.laneId, 'position');
+    expect(rows[3].layer.id, const LayerId('f'));
   });
 
   test('the aggregate band is the subtree exposure UNION, holds merged', () {
     final rows = buildTimelineDisplayRows(
       layers: [
+        folderRow('f'),
         layer(
           'a',
           folder: 'f',
@@ -148,12 +149,12 @@ void main() {
       ],
       expandedLayerIds: const {},
       lanesForLayer: (_) => const [],
-      folders: [LayerFolder(id: const FolderId('f'), name: 'F')],
     );
     expect(rows.first.isFolder, isTrue);
     expect(rows.first.aggregateRuns, [
       (start: 0, endExclusive: 4),
       (start: 8, endExclusive: 9),
     ]);
+    expect(rows.first.members.map((l) => l.id.value), ['a', 'b']);
   });
 }

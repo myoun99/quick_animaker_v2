@@ -37,8 +37,7 @@ import '../models/cut_camera.dart';
 import '../models/transform_track.dart';
 import '../models/cut_id.dart';
 import '../models/cut_metadata.dart';
-import '../models/folder_id.dart';
-import '../models/layer_folder.dart' show LayerFolderTableQueries;
+import '../models/layer_folder.dart';
 import '../models/frame.dart';
 import '../models/frame_id.dart';
 import '../models/layer.dart';
@@ -1398,12 +1397,8 @@ class EditorSessionManager extends ChangeNotifier {
 
   /// Whether [cut]'s camera layer sits in the fx-bypass set.
   bool _cameraFxBypassedFor(Cut cut) {
-    for (final layer in cut.layers) {
-      if (layer.kind == LayerKind.camera) {
-        return _fxBypassedLayerIds.contains(layer.id);
-      }
-    }
-    return false;
+    final camera = cut.layers.cameraLayer;
+    return camera != null && _fxBypassedLayerIds.contains(camera.id);
   }
 
   /// The editing canvas's layer stack at the playhead: which non-active
@@ -1438,7 +1433,7 @@ class EditorSessionManager extends ChangeNotifier {
         : [
             for (final layer in source)
               preview.layerIds.contains(layer.id) &&
-                      layer.kind != LayerKind.camera
+                      layerKindHasPictureOpacity(layer.kind)
                   ? layer.copyWith(opacity: preview.opacity)
                   : layer,
           ];
@@ -1453,7 +1448,6 @@ class EditorSessionManager extends ChangeNotifier {
         cut: stackCut,
         frameIndex: frameIndex,
         fxBypassedLayerIds: fxBypassedLayerIds,
-        fxBypassedFolderIds: fxBypassedFolderIds,
       ))
         entry.layer.id: entry,
     };
@@ -1846,23 +1840,6 @@ class EditorSessionManager extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// R28 #13: the FOLDER fx switch — the same view state, folder-keyed.
-  /// A bypassed folder composes its members with no folder pose and no
-  /// animated folder opacity, exactly as a bypassed layer does.
-  final Set<FolderId> _fxBypassedFolderIds = {};
-
-  Set<FolderId> get fxBypassedFolderIds => _fxBypassedFolderIds;
-
-  bool isFolderFxEnabled(FolderId folderId) =>
-      !_fxBypassedFolderIds.contains(folderId);
-
-  void toggleFolderFx(FolderId folderId) {
-    if (!_fxBypassedFolderIds.remove(folderId)) {
-      _fxBypassedFolderIds.add(folderId);
-    }
-    notifyListeners();
-  }
-
   // --- Visibility solo mode (session view state, not persisted) ------------
 
   /// The legend eye's SOLO MODE (R4 #7 rework — REAL eye flips, user rule):
@@ -2139,7 +2116,12 @@ class EditorSessionManager extends ChangeNotifier {
       // 허용"). The global track is the thing that has to exist, not any
       // particular row inside a cut, and every drawing path already
       // handles "no editable cel" (that is the R26 #35 refusal notice).
-      LayerKind.animation || LayerKind.storyboard || LayerKind.art => true,
+      // A folder row deletes by DISSOLVING (the coordinator routes it) —
+      // its members are rows of their own and survive.
+      LayerKind.animation ||
+      LayerKind.storyboard ||
+      LayerKind.art ||
+      LayerKind.folder => true,
     };
   }
 
@@ -2156,7 +2138,7 @@ class EditorSessionManager extends ChangeNotifier {
     }
     final frameIndex = _timelineController.currentFrameIndex;
     for (final layer in cut.layers) {
-      if (layer.kind == LayerKind.camera || !layer.isVisible) {
+      if (!layerKindPaintsArtwork(layer.kind) || !layer.isVisible) {
         continue;
       }
       final frame = _timelineController.resolveFrameForLayer(
@@ -2235,8 +2217,7 @@ class EditorSessionManager extends ChangeNotifier {
     // cut-owned SE shape; stands down for now. Attach rows stand down too
     // (their cel links point into THIS cut's base).
     if (activeLayer == null ||
-        activeLayer.kind == LayerKind.camera ||
-        activeLayer.kind == LayerKind.se ||
+        !layerKindIsClipboardCopyable(activeLayer.kind) ||
         isAttachedLayer(activeLayer)) {
       return;
     }
@@ -2279,8 +2260,7 @@ class EditorSessionManager extends ChangeNotifier {
     // reason as copyActiveLayer); attach rows too (v1 — a duplicate would
     // double-link the same base cels).
     if (activeLayer == null ||
-        activeLayer.kind == LayerKind.camera ||
-        activeLayer.kind == LayerKind.se ||
+        !layerKindIsClipboardCopyable(activeLayer.kind) ||
         isAttachedLayer(activeLayer)) {
       return;
     }
@@ -2314,8 +2294,7 @@ class EditorSessionManager extends ChangeNotifier {
     // Same stand-downs as plain duplication; an attach row's LINK
     // duplicate is reached through its base (the group goes whole).
     return activeLayer != null &&
-        activeLayer.kind != LayerKind.camera &&
-        activeLayer.kind != LayerKind.se &&
+        layerKindIsClipboardCopyable(activeLayer.kind) &&
         !isAttachedLayer(activeLayer);
   }
 
@@ -2508,14 +2487,17 @@ class EditorSessionManager extends ChangeNotifier {
     if (activeLayer == null) {
       return;
     }
+    renameLayer(activeLayer.id, name);
+  }
 
-    final activeLayerId = activeLayer.id;
+  /// Renames any row by id — folders included, because a folder is a row.
+  void renameLayer(LayerId layerId, String name) {
     _cutCommandCoordinator.renameLayer(
       cutId: requireActiveCut.id,
-      layerId: activeLayerId,
+      layerId: layerId,
       name: name,
     );
-    _refreshAfterCutCommand(preferredActiveLayerId: activeLayerId);
+    _refreshAfterCutCommand(preferredActiveLayerId: layerId);
     notifyListeners();
   }
 
@@ -2599,6 +2581,10 @@ class EditorSessionManager extends ChangeNotifier {
         }
         _layerController.addLayerWithDefaults(layerId: layerId, kind: kind);
       case LayerKind.camera:
+      // Folders are MADE, not added: 폴더 생성 wraps existing rows
+      // ([groupActiveLayerIntoFolder]). Add Layer with a folder row active
+      // adds a drawing cel, like it does with the camera active.
+      case LayerKind.folder:
         _layerController.addLayerWithDefaults(layerId: layerId);
     }
     notifyListeners();
@@ -2686,29 +2672,8 @@ class EditorSessionManager extends ChangeNotifier {
       clearLaneRangeSelection();
     }
     _layerController.selectLayer(layerId);
-    // R27 #24: layer and folder selection are ONE selection — picking a
-    // row releases the folder row's highlight.
-    _activeFolderId = null;
     // The solo mode FOLLOWS the active layer (R4 #7).
     _syncVisibilitySolo();
-    notifyListeners();
-  }
-
-  /// R27 #24: the folder row the rail shows as SELECTED.
-  ///
-  /// A folder is not an editing target (it holds no cels — R27 #28), so
-  /// this is display state living beside [activeLayerId] rather than a
-  /// second kind of active layer: the canvas keeps drawing on whatever
-  /// layer was active, and the rail shows the folder as the selected row.
-  FolderId? _activeFolderId;
-
-  FolderId? get activeFolderId => _activeFolderId;
-
-  void selectFolder(FolderId folderId) {
-    if (_activeFolderId == folderId) {
-      return;
-    }
-    _activeFolderId = folderId;
     notifyListeners();
   }
 
@@ -2726,13 +2691,19 @@ class EditorSessionManager extends ChangeNotifier {
     }
   }
 
-  // --- Folders (L5) ---------------------------------------------------------
+  // --- Folders ---------------------------------------------------------------
+  //
+  // A folder is a LAYER. Everything a folder does that a layer already does
+  // — select, rename, eye, static opacity, blend, fx switch, FX lanes,
+  // mark, delete — rides the layer API above; the nine folder-shaped
+  // methods that used to live here are gone. What is left is the two
+  // structural verbs (make one, take one apart) and the twirl.
 
   bool get canGroupActiveLayerIntoFolder =>
       activeLayer != null && activeLayer!.kind == LayerKind.animation;
 
   /// 폴더 생성: folds the active layer's whole attach group into a new
-  /// folder (mirrors into 겸용 cuts through the coordinator).
+  /// folder row (mirrors into 겸용 cuts through the coordinator).
   void groupActiveLayerIntoFolder() {
     if (!canGroupActiveLayerIntoFolder) {
       return;
@@ -2746,7 +2717,7 @@ class EditorSessionManager extends ChangeNotifier {
     notifyListeners();
   }
 
-  void dissolveFolder(FolderId folderId) {
+  void dissolveFolder(LayerId folderId) {
     final cutId = _editingSession.activeCutId;
     if (cutId == null) {
       return;
@@ -2756,109 +2727,26 @@ class EditorSessionManager extends ChangeNotifier {
     notifyListeners();
   }
 
-  void renameFolder(FolderId folderId, String name) {
-    final cutId = _editingSession.activeCutId;
-    if (cutId == null) {
-      return;
-    }
-    _cutCommandCoordinator.renameFolder(
-      cutId: cutId,
-      folderId: folderId,
-      name: name,
-    );
-    _refreshAfterCutCommand();
-    notifyListeners();
-  }
-
-  void toggleFolderVisibility(FolderId folderId) {
-    final cutId = _editingSession.activeCutId;
-    if (cutId == null) {
-      return;
-    }
-    _layerController.toggleFolderVisibility(cutId: cutId, folderId: folderId);
-    notifyListeners();
-  }
-
-  void setFolderOpacity(FolderId folderId, double opacity) {
-    final cutId = _editingSession.activeCutId;
-    if (cutId == null) {
-      return;
-    }
-    _layerController.setFolderOpacity(
-      cutId: cutId,
-      folderId: folderId,
-      opacity: opacity,
-    );
-    notifyListeners();
-  }
-
-  /// R27 #29: the folder's composite blend, the layer blend's twin.
-  void setFolderBlendMode(FolderId folderId, LayerBlendMode blendMode) {
-    final cutId = _editingSession.activeCutId;
-    if (cutId == null) {
-      return;
-    }
-    _layerController.setFolderBlendMode(
-      cutId: cutId,
-      folderId: folderId,
-      blendMode: blendMode,
-    );
-    notifyListeners();
-  }
-
-  void toggleFolderCollapsed(FolderId folderId) {
-    final cutId = _editingSession.activeCutId;
-    if (cutId == null) {
-      return;
-    }
-    final wasCollapsed =
-        activeCutOrNull?.folders.byId(folderId)?.collapsed ?? false;
-    _layerController.toggleFolderCollapsed(cutId: cutId, folderId: folderId);
-    // R27 #24: FOLDING a folder that holds the active layer moves the
-    // selection to the folder itself. The member row used to stay on
-    // screen (the display builder keeps the active layer visible), so a
-    // fold with a member selected simply didn't look folded.
-    if (!wasCollapsed && _activeLayerIsInsideFolder(folderId)) {
-      _activeFolderId = folderId;
-    }
-    notifyListeners();
-  }
-
-  bool _activeLayerIsInsideFolder(FolderId folderId) {
+  /// The row's twirl. R27 #24: FOLDING a folder that holds the active
+  /// layer moves the selection to the folder row itself — otherwise the
+  /// fold simply wouldn't look folded (the member row would have to stay
+  /// on screen to keep something selected).
+  void toggleLayerCollapsed(LayerId layerId) {
     final cut = activeCutOrNull;
-    final activeId = activeLayerId;
-    if (cut == null || activeId == null) {
-      return false;
-    }
-    for (final layer in cut.layers) {
-      if (layer.id != activeId) {
-        continue;
-      }
-      return cut.folders
-          .ancestryOf(layer.folderId)
-          .any((folder) => folder.id == folderId);
-    }
-    return false;
-  }
-
-  /// Replaces a folder's FX transform track (L5c) — one undo step;
-  /// per-use lanes, never mirrored.
-  void updateFolderTransformTrack(
-    FolderId folderId,
-    TransformTrack transformTrack, {
-    String description = 'Edit folder transform',
-  }) {
-    final cutId = _editingSession.activeCutId;
-    if (cutId == null) {
+    if (cut == null) {
       return;
     }
-    _cutCommandCoordinator.updateFolderTransformTrack(
-      cutId: cutId,
-      folderId: folderId,
-      transformTrack: transformTrack,
-      description: description,
-    );
-    _refreshAfterCutCommand();
+    final wasCollapsed = cut.layers.folderById(layerId)?.collapsed ?? false;
+    _layerController.toggleLayerCollapsed(layerId);
+    final activeId = activeLayerId;
+    if (!wasCollapsed &&
+        activeId != null &&
+        cut.layers.isInsideFolder(
+          cut.layers.byId(activeId)?.folderId,
+          layerId,
+        )) {
+      _layerController.selectLayer(layerId);
+    }
     notifyListeners();
   }
 
@@ -2951,7 +2839,7 @@ class EditorSessionManager extends ChangeNotifier {
     lastMasterOpacity = clamped;
     for (final layer in layers) {
       if (layerIds.contains(layer.id) &&
-          layer.kind != LayerKind.camera &&
+          layerKindHasPictureOpacity(layer.kind) &&
           layer.opacity != clamped) {
         _layerController.setLayerOpacity(layerId: layer.id, opacity: clamped);
       }
@@ -3107,12 +2995,12 @@ class EditorSessionManager extends ChangeNotifier {
   /// opacity — it stays untouched.
   void resetAllLayersOpacity() => setAllLayersOpacity(1.0);
 
-  /// Sets every non-camera layer's opacity to [opacity] (the legend's
+  /// Sets every picture-opacity layer's opacity to [opacity] (the legend's
   /// numeric bulk set). Camera stays untouched (its slider is the dim).
   void setAllLayersOpacity(double opacity) {
     final clamped = opacity.clamp(0.0, 1.0);
     for (final layer in layers) {
-      if (layer.kind != LayerKind.camera && layer.opacity != clamped) {
+      if (layerKindHasPictureOpacity(layer.kind) && layer.opacity != clamped) {
         _layerController.setLayerOpacity(layerId: layer.id, opacity: clamped);
       }
     }
@@ -4947,6 +4835,7 @@ class EditorSessionManager extends ChangeNotifier {
       LayerKind.se => 'SE Layer',
       LayerKind.instruction => 'Instruction Layer',
       LayerKind.camera => 'Camera Layer',
+      LayerKind.folder => 'Folder',
       null => 'No Layer',
     };
   }

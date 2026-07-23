@@ -10,9 +10,7 @@ import '../models/cut_metadata.dart';
 import '../models/export_overrides.dart';
 import '../models/frame.dart';
 import '../models/frame_id.dart';
-import '../models/folder_id.dart';
 import '../models/layer.dart';
-import '../models/layer_folder.dart';
 import '../models/layer_id.dart';
 import '../models/layer_kind.dart';
 import '../models/layer_mark.dart';
@@ -433,30 +431,11 @@ class ProjectRepository {
     });
   }
 
-  /// Rewrites a cut's folder table (L5). Membership lives on the layers'
-  /// `folderId` tags — see [updateLayerFolderId].
-  void updateCutFolders({
-    required CutId cutId,
-    required List<LayerFolder> Function(List<LayerFolder> folders) update,
-  }) {
-    updateProject((project) {
-      final next = updateCutAnywhere(
-        project,
-        cutId,
-        (cut) => cut.copyWith(folders: update(cut.folders)),
-      );
-      if (next == null) {
-        throw StateError('Cut not found: $cutId');
-      }
-      return next;
-    });
-  }
-
-  /// Moves a layer into (or out of, with null) a folder (L5).
+  /// Moves a layer into (or out of, with null) a folder row.
   void updateLayerFolderId({
     required CutId cutId,
     required LayerId layerId,
-    required FolderId? folderId,
+    required LayerId? folderId,
   }) {
     updateLayer(
       layerId: layerId,

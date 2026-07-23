@@ -3,7 +3,6 @@ import '../models/bitmap_surface.dart';
 import '../models/canvas_point.dart';
 import '../models/canvas_size.dart';
 import '../models/cut.dart';
-import '../models/folder_id.dart';
 import '../models/layer_id.dart';
 import '../models/pasteboard_bounds.dart';
 import '../models/project_background.dart';
@@ -108,7 +107,6 @@ int sampleCompositeColor({
   required LayerFrameSurfaceResolver surfaceResolver,
   required CanvasPoint point,
   Set<LayerId> fxBypassedLayerIds = const {},
-  Set<FolderId> fxBypassedFolderIds = const {},
   int paperColor = canvasPaperColor,
   CanvasColorSampleSource source = CanvasColorSampleSource.display,
   LayerId? activeLayerId,
@@ -121,7 +119,6 @@ int sampleCompositeColor({
     cut: cut,
     frameIndex: frameIndex,
     fxBypassedLayerIds: fxBypassedLayerIds,
-    fxBypassedFolderIds: fxBypassedFolderIds,
   )) {
     if (source == CanvasColorSampleSource.layer &&
         entry.layer.id != activeLayerId) {

@@ -1,74 +1,76 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:quick_animaker_v2/src/controllers/default_project_helpers.dart';
-import 'package:quick_animaker_v2/src/models/folder_id.dart';
+import 'package:quick_animaker_v2/src/models/layer.dart';
 import 'package:quick_animaker_v2/src/models/layer_blend_mode.dart';
 import 'package:quick_animaker_v2/src/models/layer_folder.dart';
+import 'package:quick_animaker_v2/src/models/layer_id.dart';
 import 'package:quick_animaker_v2/src/ui/editor_session_manager.dart';
-import 'package:quick_animaker_v2/src/ui/timeline/timeline_folder_controls_row.dart';
 import 'package:quick_animaker_v2/src/ui/timeline/timeline_grid_metrics.dart';
+import 'package:quick_animaker_v2/src/ui/timeline/timeline_layer_controls_row.dart';
 
-/// R27 #23~#29: the folder row is a LAYER ROW that holds a folder —
-/// same surface, same columns, its own opacity/blend, selectable, and
-/// folding it with a member selected takes the selection.
+/// R27 #23~#29 asked for a folder row that reads exactly like a layer row.
+/// It IS one now — the same widget, so parity is by construction and these
+/// tests check the folder-shaped parts of it (the glyph, the fold twirl,
+/// the structural menu) plus the session verbs.
 void main() {
-  LayerFolder folder({
+  Layer folder({
     bool collapsed = false,
     double opacity = 1,
     LayerBlendMode blend = LayerBlendMode.normal,
-  }) => LayerFolder(
-    id: const FolderId('f'),
-    name: 'F',
+  }) => createFolderLayer(id: const LayerId('f'), name: 'F').copyWith(
     collapsed: collapsed,
     opacity: opacity,
     blendMode: blend,
   );
 
   Widget host(
-    LayerFolder value, {
+    Layer value, {
     bool active = false,
-    void Function(FolderId, double)? onOpacity,
-    void Function(FolderId, LayerBlendMode)? onBlend,
-    ValueChanged<FolderId>? onSelect,
-    ValueChanged<FolderId>? onToggleFx,
+    void Function(LayerId, double)? onOpacity,
+    void Function(LayerId, LayerBlendMode)? onBlend,
+    ValueChanged<LayerId>? onSelect,
+    ValueChanged<LayerId>? onToggleFx,
+    ValueChanged<LayerId>? onToggleFold,
+    ValueChanged<LayerId>? onToggleLanes,
+    ValueChanged<LayerId>? onDissolve,
   }) => MaterialApp(
     home: Scaffold(
-      body: TimelineFolderControlsRow(
-        folder: value,
-        depth: 0,
-        metrics: TimelineGridMetrics.defaults,
+      body: TimelineLayerControlsRow(
+        layer: value,
         active: active,
-        onSelect: onSelect,
-        onToggleCollapsed: (_) {},
-        onToggleVisibility: (_) {},
-        onToggleLanes: (_) {},
-        onToggleFx: onToggleFx,
-        onOpacityChanged: onOpacity,
-        onOpacityChangeEnd: onOpacity,
-        onBlendModeSelected: onBlend,
+        metrics: TimelineGridMetrics.defaults,
+        onSelectLayer: onSelect ?? (_) {},
+        onToggleLayerVisibility: (_) {},
+        onLayerOpacityChanged: onOpacity ?? (_, _) {},
+        onLayerOpacityChangeEnd: onOpacity,
+        onToggleLayerTimesheet: (_) {},
+        onLayerMarkSelected: (_, _) {},
+        hasLanes: true,
+        onToggleLanes: onToggleLanes ?? (_) {},
+        hasGroupFold: true,
+        groupFoldExpanded: !value.collapsed,
+        onToggleGroupFold: onToggleFold ?? (_) {},
+        onToggleLayerFx: onToggleFx ?? (_) {},
+        onLayerBlendModeSelected: onBlend,
+        onDissolveFolder: onDissolve,
       ),
     ),
   );
 
-  testWidgets('R27 #23/#29: the row carries the layer columns — fx, eye, '
-      'opacity and blend, in the layer rows\' slots', (tester) async {
-    await tester.pumpWidget(
-      host(
-        folder(),
-        onOpacity: (_, _) {},
-        onBlend: (_, _) {},
-        onToggleFx: (_) {},
-      ),
-    );
+  testWidgets('the folder row carries the LAYER columns — one widget, so '
+      'the columns cannot drift apart', (tester) async {
+    await tester.pumpWidget(host(folder(), onBlend: (_, _) {}));
 
     for (final key in [
+      'timeline-folder-row-f',
       'timeline-folder-twirl-f',
       'timeline-folder-icon-f',
-      'timeline-folder-lanes-f',
-      'timeline-folder-fx-f',
-      'timeline-folder-visibility-f',
-      'timeline-folder-opacity-f',
-      'timeline-folder-blend-f',
+      'timeline-lane-toggle-f',
+      'timeline-layer-fx-f',
+      'timeline-layer-visibility-f',
+      'timeline-layer-opacity-f',
+      'timeline-layer-blend-f',
     ]) {
       expect(
         find.byKey(ValueKey<String>(key)),
@@ -76,36 +78,38 @@ void main() {
         reason: '$key must be present',
       );
     }
-    // R27 #26: the fx column reads `fx`, exactly like a layer row's.
     expect(find.text('fx'), findsOneWidget);
     expect(find.text('Normal'), findsOneWidget);
   });
 
+  testWidgets('a folder prints nothing, so its sheet toggle stays an empty '
+      'reserved slot', (tester) async {
+    await tester.pumpWidget(host(folder()));
+    expect(
+      find.byKey(const ValueKey<String>('timeline-layer-timesheet-f')),
+      findsNothing,
+    );
+  });
+
   testWidgets('R28 #13: fx BYPASSES, the leading twirl opens the lanes, and '
       'the fold twirl sits right of the name', (tester) async {
-    final fxToggles = <FolderId>[];
-    final laneToggles = <FolderId>[];
-    final foldToggles = <FolderId>[];
+    final fxToggles = <LayerId>[];
+    final laneToggles = <LayerId>[];
+    final foldToggles = <LayerId>[];
 
     await tester.pumpWidget(
-      MaterialApp(
-        home: Scaffold(
-          body: TimelineFolderControlsRow(
-            folder: folder(),
-            depth: 0,
-            metrics: TimelineGridMetrics.defaults,
-            onToggleCollapsed: foldToggles.add,
-            onToggleLanes: laneToggles.add,
-            onToggleFx: fxToggles.add,
-          ),
-        ),
+      host(
+        folder(),
+        onToggleFx: fxToggles.add,
+        onToggleLanes: laneToggles.add,
+        onToggleFold: foldToggles.add,
       ),
     );
 
     // The fx button is a SWITCH — it must not open anything.
-    await tester.tap(find.byKey(const ValueKey<String>('timeline-folder-fx-f')));
+    await tester.tap(find.byKey(const ValueKey<String>('timeline-layer-fx-f')));
     await tester.pump();
-    expect(fxToggles, [const FolderId('f')]);
+    expect(fxToggles, [const LayerId('f')]);
     expect(
       laneToggles,
       isEmpty,
@@ -115,40 +119,40 @@ void main() {
 
     // The LEADING twirl opens the lanes, like a layer row's.
     await tester.tap(
-      find.byKey(const ValueKey<String>('timeline-folder-lanes-f')),
+      find.byKey(const ValueKey<String>('timeline-lane-toggle-f')),
     );
     await tester.pump();
-    expect(laneToggles, [const FolderId('f')]);
+    expect(laneToggles, [const LayerId('f')]);
 
     // The fold twirl sits RIGHT of the name (the attach-group twirl's
-    // position), not in the leading slot.
+    // position — they are one control).
     await tester.tap(
       find.byKey(const ValueKey<String>('timeline-folder-twirl-f')),
     );
     await tester.pump();
-    expect(foldToggles, [const FolderId('f')]);
+    expect(foldToggles, [const LayerId('f')]);
     expect(
       tester
           .getRect(find.byKey(const ValueKey<String>('timeline-folder-twirl-f')))
           .left,
       greaterThan(
         tester
-            .getRect(
-              find.byKey(const ValueKey<String>('timeline-folder-lanes-f')),
-            )
+            .getRect(find.byKey(const ValueKey<String>('timeline-lane-toggle-f')))
             .right,
       ),
       reason: 'the fold moved out of the leading slot to beside the name',
     );
   });
 
-  testWidgets('R27 #24: the row selects, and the selected row wears the '
-      'layer rows\' selection background', (tester) async {
-    FolderId? selected;
+  testWidgets('the row selects, and the selected row wears the layer rows\' '
+      'selection background', (tester) async {
+    LayerId? selected;
     await tester.pumpWidget(host(folder(), onSelect: (id) => selected = id));
-    await tester.tap(find.byKey(const ValueKey<String>('timeline-folder-row-f')));
+    await tester.tap(
+      find.byKey(const ValueKey<String>('timeline-folder-row-f')),
+    );
     await tester.pump();
-    expect(selected, const FolderId('f'));
+    expect(selected, const LayerId('f'));
 
     Color? rowColor(WidgetTester tester) {
       final container = tester.widget<Container>(
@@ -171,44 +175,43 @@ void main() {
     tester,
   ) async {
     LayerBlendMode? picked;
-    await tester.pumpWidget(host(folder(), onBlend: (_, mode) => picked = mode));
+    await tester.pumpWidget(
+      host(folder(), onBlend: (_, mode) => picked = mode),
+    );
     await tester.tap(
-      find.byKey(const ValueKey<String>('timeline-folder-blend-f')),
+      find.byKey(const ValueKey<String>('timeline-layer-blend-f')),
     );
     await tester.pumpAndSettle();
     await tester.tap(
-      find.byKey(
-        const ValueKey<String>('timeline-folder-blend-option-multiply'),
-      ),
+      find.byKey(const ValueKey<String>('timeline-layer-blend-option-multiply')),
     );
     await tester.pumpAndSettle();
     expect(picked, LayerBlendMode.multiply);
   });
 
   test('R27 #24: folding a folder whose member is active selects the '
-      'FOLDER; selecting a layer releases it', () {
+      'FOLDER — one selection, because a folder is a layer', () {
     final s = EditorSessionManager(initialProject: createDefaultProject());
     addTearDown(s.dispose);
     s.createDrawingAtCurrentFrame();
     final layerId = s.activeLayer!.id;
     s.groupActiveLayerIntoFolder();
-    final folderId = s.activeCutOrNull!.folders.single.id;
-    expect(s.activeFolderId, isNull);
+    final folderId = s.activeCutOrNull!.layers.folderLayers.single.id;
+    expect(s.activeLayerId, layerId);
 
-    s.toggleFolderCollapsed(folderId);
-    expect(s.activeFolderId, folderId);
+    s.toggleLayerCollapsed(folderId);
+    expect(s.activeLayerId, folderId);
 
     s.selectLayer(layerId);
-    expect(s.activeFolderId, isNull);
+    expect(s.activeLayerId, layerId);
   });
 
-  test('R27 #29: the folder blend round-trips through JSON and the '
-      'session commit', () {
+  test('R27 #29: the folder blend rides the LAYER blend commit', () {
     final plain = folder();
     expect(plain.toJson().containsKey('blendMode'), isFalse);
     final blended = plain.copyWith(blendMode: LayerBlendMode.screen);
     expect(
-      LayerFolder.fromJson(blended.toJson()).blendMode,
+      Layer.fromJson(blended.toJson()).blendMode,
       LayerBlendMode.screen,
     );
 
@@ -216,10 +219,10 @@ void main() {
     addTearDown(s.dispose);
     s.createDrawingAtCurrentFrame();
     s.groupActiveLayerIntoFolder();
-    final folderId = s.activeCutOrNull!.folders.single.id;
-    s.setFolderBlendMode(folderId, LayerBlendMode.multiply);
+    final folderId = s.activeCutOrNull!.layers.folderLayers.single.id;
+    s.setLayerBlendMode(folderId, LayerBlendMode.multiply);
     expect(
-      s.activeCutOrNull!.folders.single.blendMode,
+      s.activeCutOrNull!.layers.folderById(folderId)!.blendMode,
       LayerBlendMode.multiply,
     );
   });
