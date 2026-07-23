@@ -39,12 +39,31 @@ import 'deferred_image_disposal.dart';
 /// events (e.g. app focus switches) that corrupted synchronously created
 /// picture-to-image textures for a frame.
 class ActiveStrokeOverlayModel extends ChangeNotifier {
-  ActiveStrokeOverlayModel({this.tileSize = 128});
+  ActiveStrokeOverlayModel({int tileSize = 256}) : _tileSize = tileSize;
 
-  /// Edge length of an overlay tile in canvas pixels. Independent of the
-  /// committed surface's tile size; smaller tiles bound the per-move
-  /// snapshot/upload cost.
-  final int tileSize;
+  int _tileSize;
+
+  /// Edge length of an overlay tile in canvas pixels.
+  ///
+  /// PROMOTION round: the interactive view aligns this with the
+  /// committed surface's tile size at stroke start ([configureTileSize])
+  /// so a pre-blended result tile REPLACES the committed tile at the
+  /// same coordinate in the painter's base pass — no clips, no
+  /// isolation layer, and the per-frame draw count stays the idle
+  /// frame's. A mismatched grid still displays through the isolation
+  /// fallback, just without the replacement economics.
+  int get tileSize => _tileSize;
+
+  /// Aligns the overlay grid with the surface about to be stroked. Only
+  /// legal while the overlay is empty (call after [reset]) — images are
+  /// keyed by tile coordinate, which changes meaning with the grid.
+  void configureTileSize(int tileSize) {
+    assert(
+      _tileImages.isEmpty && _decoding.isEmpty,
+      'configureTileSize requires an empty overlay',
+    );
+    _tileSize = tileSize;
+  }
 
   /// Dabs of the current stroke, kept for observability and tests; rendering
   /// uses [tileImages], which carry the exact rasterized pixels.
