@@ -20,23 +20,24 @@ class ClippedStrokePixels {
   final DirtyRegion bounds;
 }
 
-/// Zeroes every stroke pixel whose centre falls OUTSIDE [region].
+/// Confines a stroke buffer to [region] — [applySelectionMaskToStrokeAlpha]
+/// over the region's coverage, which is the ONE selection rule the live
+/// pre-blend kernel also runs.
 ///
 /// This is the FALLBACK half of R26 #18 now. A stroke drawn with a live
 /// raster carries the selection through the pre-blend kernel instead
 /// (`BrushLiveStrokeRasterizer.selectionRegion`), so its promoted tiles
 /// arrive already masked and the panel passes them straight through.
 /// What still comes here: programmatic strokes and history redos, which
-/// have no live raster to have masked. Both read the SAME
-/// [CanvasSelectionRegion.maskFor] bytes, so the two routes agree at the
-/// boundary — and while masks stay binary they agree exactly, since
-/// zeroing a texel and scaling its alpha by 0 are the same thing.
+/// had no live raster to be masked in. Same mask bytes, same rounding,
+/// same rule — so a redo cannot land a different edge than the stroke it
+/// replays, at any mask softness.
 ///
 /// Straight-alpha buffers make this exact for every brush blend mode at
 /// once: alpha 0 is the documented "destination survives untouched" input
 /// of the commit kernels — plain srcOver contributes nothing, the erase
 /// stamp removes nothing, and the separable/behind kernels return the
-/// destination bytes verbatim. So ONE clip on the stroke buffer clips
+/// destination bytes verbatim. So ONE mask on the stroke buffer clips
 /// drawing, erasing and filling alike, with no per-mode special cases.
 ///
 /// Returns null when nothing survives — the caller then skips the commit
@@ -58,26 +59,17 @@ ClippedStrokePixels? clipStrokePixelsToSelection({
     height: height,
   );
   final clipped = Uint8List.fromList(pixels);
-  var survivors = false;
+  applySelectionMaskToStrokeAlpha(
+    pixels: clipped,
+    mask: mask,
+    pixelCount: width * height,
+  );
   for (var index = 0; index < mask.length; index += 1) {
-    final offset = index * 4;
-    if (mask[index] == 0) {
-      // The whole texel leaves — RGB too, so a later premultiply or
-      // bounds scan never sees a ghost colour behind alpha 0.
-      clipped[offset] = 0;
-      clipped[offset + 1] = 0;
-      clipped[offset + 2] = 0;
-      clipped[offset + 3] = 0;
-      continue;
-    }
-    if (clipped[offset + 3] != 0) {
-      survivors = true;
+    if (clipped[index * 4 + 3] != 0) {
+      return ClippedStrokePixels(pixels: clipped, bounds: bounds);
     }
   }
-  if (!survivors) {
-    return null;
-  }
-  return ClippedStrokePixels(pixels: clipped, bounds: bounds);
+  return null;
 }
 
 /// Rasterizes [dabs] into a bounds-local straight-alpha buffer so a

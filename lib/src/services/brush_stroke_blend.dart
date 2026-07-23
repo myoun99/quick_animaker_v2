@@ -78,6 +78,45 @@ Uint8List bitmapSurfaceRegionPixels(BitmapSurface surface, DirtyRegion bounds) {
   return region;
 }
 
+/// THE selection rule (R26 #18): scales a straight-alpha stroke buffer's
+/// ALPHA by [mask]'s coverage, in place.
+///
+/// Every path that confines a stroke to a selection goes through this —
+/// the live pre-blend's Dart route, the commit's clip for strokes with no
+/// live raster, and a fill's stamp bytes — and the C kernel's
+/// `qa_mask_alpha` is a transcription of it. One rule, one rounding
+/// (Skia's mul-div-255), so the preview, the committed pixels and a redo
+/// cannot disagree about where the selection ends. Three separate rules
+/// is what this replaced, and they only agreed by accident: while masks
+/// are binary, "zero the texel" and "scale alpha by 0" are the same
+/// thing; the moment a mask goes soft (the selection tool's feather / AA
+/// knobs) they stop being.
+///
+/// RGB is left alone deliberately. Alpha 0 is the documented "the
+/// destination survives untouched" input of every commit kernel — none
+/// of them read colour behind it — and premultiplying for display zeroes
+/// those bytes anyway.
+void applySelectionMaskToStrokeAlpha({
+  required Uint8List pixels,
+  required Uint8List mask,
+  required int pixelCount,
+}) {
+  for (var i = 0; i < pixelCount; i += 1) {
+    final coverage = mask[i];
+    if (coverage == 255) {
+      continue;
+    }
+    final offset = i * 4 + 3;
+    final alpha = pixels[offset];
+    if (coverage == 0 || alpha == 0) {
+      pixels[offset] = 0;
+      continue;
+    }
+    final product = alpha * coverage + 128;
+    pixels[offset] = (product + (product >> 8)) >> 8;
+  }
+}
+
 /// The C-side `QA_STROKE_BLEND_*` id for [mode] (BB-N1, ABI 22) — a fixed
 /// FFI contract; both tables MUST stay in lockstep. color/erase never
 /// reach the blend kernel (they ride the ordinary stamp path).
@@ -199,20 +238,11 @@ Uint8List preBlendStrokeOverlayPixels({
     // One masked copy up front keeps the kernels below untouched — they
     // are the commit's own code and must stay byte-identical to it.
     final masked = Uint8List.fromList(src);
-    for (var i = 0; i < pixelCount; i += 1) {
-      final o = i * 4;
-      final coverage = mask[i];
-      if (coverage == 255) {
-        continue;
-      }
-      final alpha = masked[o + 3];
-      if (coverage == 0 || alpha == 0) {
-        masked[o + 3] = 0;
-        continue;
-      }
-      final product = alpha * coverage + 128;
-      masked[o + 3] = (product + (product >> 8)) >> 8;
-    }
+    applySelectionMaskToStrokeAlpha(
+      pixels: masked,
+      mask: mask,
+      pixelCount: pixelCount,
+    );
     src = masked;
   }
   if (erase || mode == BrushBlendMode.erase) {

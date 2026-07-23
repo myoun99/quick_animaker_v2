@@ -29,6 +29,8 @@ import '../../services/brush_live_stroke_rasterizer.dart';
 import '../../services/brush_stroke_dynamics.dart';
 import '../../services/brush_tip_stamp_cache.dart';
 import '../../services/brush_pressure_dynamics.dart';
+import '../../services/brush_stroke_blend.dart'
+    show applySelectionMaskToStrokeAlpha;
 import '../../services/brush_stroke_commit_data.dart';
 import '../../native/qa_native_engine.dart';
 import '../../services/canvas_segment_clipper.dart';
@@ -1439,25 +1441,19 @@ class _InteractiveBrushEditCanvasViewState
     if (region == null) {
       return rgba;
     }
-    final mask = region.maskFor(
-      left: left,
-      top: top,
-      width: width,
-      height: height,
-    );
     final masked = Uint8List.fromList(rgba);
-    for (var i = 0; i < mask.length; i += 1) {
-      if (mask[i] != 0) {
-        continue;
-      }
-      // The whole texel leaves, RGB included — the same rule the commit's
-      // clip uses, so no ghost colour survives behind alpha 0.
-      final offset = i * 4;
-      masked[offset] = 0;
-      masked[offset + 1] = 0;
-      masked[offset + 2] = 0;
-      masked[offset + 3] = 0;
-    }
+    // The same rule the pre-blend kernel and the commit's clip run — a
+    // fill only reaches a different function, never a different rule.
+    applySelectionMaskToStrokeAlpha(
+      pixels: masked,
+      mask: region.maskFor(
+        left: left,
+        top: top,
+        width: width,
+        height: height,
+      ),
+      pixelCount: width * height,
+    );
     return masked;
   }
 

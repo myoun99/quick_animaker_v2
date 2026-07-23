@@ -6,6 +6,12 @@ import 'package:quick_animaker_v2/src/models/brush_tip_shape.dart';
 import 'package:quick_animaker_v2/src/models/canvas_point.dart';
 import 'package:quick_animaker_v2/src/models/canvas_size.dart';
 import 'package:quick_animaker_v2/src/models/dirty_region.dart';
+import 'package:quick_animaker_v2/src/models/bitmap_surface.dart';
+import 'package:quick_animaker_v2/src/models/brush_dab_sequence.dart';
+import 'package:quick_animaker_v2/src/models/brush_stamp_image.dart';
+import 'package:quick_animaker_v2/src/models/tile_coord.dart';
+import 'package:quick_animaker_v2/src/services/bitmap_surface_brush_commit.dart';
+import 'package:quick_animaker_v2/src/services/brush_stroke_blend.dart';
 import 'package:quick_animaker_v2/src/services/canvas_selection.dart';
 import 'package:quick_animaker_v2/src/services/canvas_selection_paint_clip.dart';
 import 'package:quick_animaker_v2/src/services/canvas_selection_region.dart';
@@ -49,21 +55,75 @@ void main() {
     expect(alphaAt(clipped.pixels, bounds, 17, 17), 0);
   });
 
-  test('a cleared texel loses its RGB too — no colour ghost behind α0', () {
-    final bounds = DirtyRegion.fromLTBR(
-      left: 0,
-      top: 0,
-      rightExclusive: 4,
-      bottomExclusive: 4,
-    );
-    final clipped = clipStrokePixelsToSelection(
-      pixels: solidBlock(bounds),
-      bounds: bounds,
-      region: regionRect(2, 2, 4, 4),
-    )!;
-    // (0, 0) is outside: every channel zero.
-    expect(clipped.pixels.sublist(0, 4), everyElement(0));
-  });
+  test(
+    'colour left behind α0 cannot reach the canvas — the commit is '
+    'identical to one whose excluded texels were zeroed outright',
+    () {
+      // The mask scales ALPHA and leaves RGB alone, because that is what
+      // the pre-blend kernel does and the two must be one rule. Safe
+      // because alpha 0 is every commit kernel's "destination survives"
+      // input: none of them read the colour behind it. This pins that
+      // property rather than the byte pattern, so the rule can stay
+      // unified without anyone having to trust a comment.
+      final bounds = DirtyRegion.fromLTBR(
+        left: 0,
+        top: 0,
+        rightExclusive: 4,
+        bottomExclusive: 4,
+      );
+      final clipped = clipStrokePixelsToSelection(
+        pixels: solidBlock(bounds),
+        bounds: bounds,
+        region: regionRect(2, 2, 4, 4),
+      )!;
+      expect(
+        clipped.pixels[3],
+        0,
+        reason: '(0, 0) is outside the selection: no alpha survives',
+      );
+
+      final scrubbed = Uint8List.fromList(clipped.pixels);
+      for (var i = 0; i < bounds.width * bounds.height; i += 1) {
+        if (scrubbed[i * 4 + 3] == 0) {
+          scrubbed[i * 4] = 0;
+          scrubbed[i * 4 + 1] = 0;
+          scrubbed[i * 4 + 2] = 0;
+        }
+      }
+
+      BitmapSurface commit(Uint8List pixels) => materializeBrushDabSequenceOnBitmapSurface(
+        surface: BitmapSurface(
+          canvasSize: const CanvasSize(width: 8, height: 8),
+          tileSize: 8,
+        ),
+        sequence: BrushDabSequence([
+          BrushDab(
+            center: CanvasPoint(x: 2, y: 2),
+            color: 0xFF000000,
+            size: 4,
+            opacity: 1,
+            flow: 1,
+            hardness: 1,
+            tipShape: BrushTipShape.square,
+            pressure: 1,
+            sequence: 0,
+            stamp: BrushStampImage(
+              id: 'clip-test-${pixels.hashCode}',
+              width: bounds.width,
+              height: bounds.height,
+              rgba: pixels,
+            ),
+          ),
+        ]),
+      ).surface;
+
+      expect(
+        commit(clipped.pixels).tileAt(TileCoord(x: 0, y: 0))!.pixels,
+        commit(scrubbed).tileAt(TileCoord(x: 0, y: 0))!.pixels,
+        reason: 'the colour behind α0 changed nothing',
+      );
+    },
+  );
 
   test('a stroke entirely outside the selection clips to NOTHING', () {
     final bounds = DirtyRegion.fromLTBR(
@@ -152,6 +212,57 @@ void main() {
         isTrue,
         reason: 'coverage, not an empty buffer',
       );
+    });
+  });
+
+  group('applySelectionMaskToStrokeAlpha — the ONE selection rule', () {
+    // Every path that confines a stroke to a selection calls this: the
+    // live pre-blend's Dart route, the commit clip above, and a fill's
+    // stamp bytes. The C kernel's qa_mask_alpha is a transcription of it
+    // (pinned in stroke_overlay_pre_blend_parity_test.dart).
+    test('scales alpha by coverage with Skia mul-div-255 rounding', () {
+      // The case the old rules only agreed on by accident. "Zero the
+      // texel outside" and "scale alpha" are the same thing at coverage
+      // 0 and 255 — the whole disagreement lives in between, which is
+      // exactly where the selection tool's feather/AA knobs will put it.
+      final pixels = Uint8List.fromList([
+        10, 20, 30, 200, //
+        10, 20, 30, 200,
+        10, 20, 30, 200,
+        10, 20, 30, 0,
+      ]);
+      applySelectionMaskToStrokeAlpha(
+        pixels: pixels,
+        mask: Uint8List.fromList([255, 128, 0, 128]),
+        pixelCount: 4,
+      );
+
+      int mul255Round(int value, int alpha) {
+        final product = value * alpha + 128;
+        return (product + (product >> 8)) >> 8;
+      }
+
+      expect(pixels[3], 200, reason: 'full coverage leaves alpha alone');
+      expect(pixels[7], mul255Round(200, 128), reason: 'half coverage');
+      expect(pixels[11], 0, reason: 'zero coverage');
+      expect(pixels[15], 0, reason: 'no alpha to scale');
+      expect(
+        [pixels[4], pixels[5], pixels[6]],
+        [10, 20, 30],
+        reason: 'colour is never touched — the kernel does not touch it '
+            'either, and alpha 0 hides it from every commit kernel',
+      );
+    });
+
+    test('a full-coverage mask is a no-op, byte for byte', () {
+      final pixels = Uint8List.fromList([1, 2, 3, 4, 5, 6, 7, 8]);
+      final before = Uint8List.fromList(pixels);
+      applySelectionMaskToStrokeAlpha(
+        pixels: pixels,
+        mask: Uint8List.fromList([255, 255]),
+        pixelCount: 2,
+      );
+      expect(pixels, before);
     });
   });
 }
