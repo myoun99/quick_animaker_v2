@@ -101,6 +101,12 @@ class ActiveStrokeOverlayModel extends ChangeNotifier {
   bool get preBlended => preBlendBase != null;
 
   final Map<TileCoord, ui.Image> _tileImages = <TileCoord, ui.Image>{};
+
+  /// The stroke revision each decoded image represents (promotable path
+  /// only). Pen-up hands an image to the adopted tile ONLY when the two
+  /// revisions agree: a stale image pinned onto a fresher tile would
+  /// show the wrong pixels for as long as that tile lives.
+  final Map<TileCoord, int> _tileImageRevisions = <TileCoord, int>{};
   final Set<TileCoord> _decoding = <TileCoord>{};
   final Set<TileCoord> _dirtyWhileDecoding = <TileCoord>{};
   int _generation = 0;
@@ -190,6 +196,14 @@ class ActiveStrokeOverlayModel extends ChangeNotifier {
       _dirtyWhileDecoding.add(coord);
       return;
     }
+    final preBlendBase = this.preBlendBase;
+    if (preBlendBase != null &&
+        source is BrushLiveStrokeRasterizer &&
+        source.tileSize == tileSize &&
+        preBlendBase.tileSize == tileSize) {
+      _decodePromotableTile(coord, source, preBlendBase);
+      return;
+    }
     _decoding.add(coord);
     _pendingDecodeCount += 1;
 
@@ -217,32 +231,24 @@ class ActiveStrokeOverlayModel extends ChangeNotifier {
         : math.min(tileSize, sourceCanvasSize.pasteboardBottomExclusive - top);
 
     // R25 fast path: a FULL interior tile of a native-backed live
-    // rasterizer shares this model's 128px grid, so snapshot +
-    // premultiply collapse into one C call (per 2000px move that is
-    // ~256 tiles — the Dart loops below were the big-brush stall and
-    // the visible pre-stroke tiles). Same bytes: the C premultiply is
-    // parity-pinned against this exact rounding. Pre-blend strokes skip
-    // it — the kernel needs the STRAIGHT stroke bytes, not premultiplied.
+    // rasterizer shares this model's grid, so snapshot + premultiply
+    // collapse into one C call (per 2000px move that is ~256 tiles —
+    // the Dart loops below were the big-brush stall and the visible
+    // pre-stroke tiles). Same bytes: the C premultiply is parity-pinned
+    // against this exact rounding.
+    //
+    // Pre-blended strokes never reach here: they take the promotable
+    // path above (aligned grid) or the Dart pre-blend below (a host
+    // whose overlay grid differs from its surface's).
     final preBlend = preBlendBase;
     QaStampScratch? scratch;
     Uint8List? fused;
-    if (width == tileSize &&
+    if (preBlend == null &&
+        width == tileSize &&
         height == tileSize &&
         source is BrushLiveStrokeRasterizer &&
-        BrushLiveStrokeRasterizer.tileSize == tileSize) {
-      // R27 #4 native route first: stage base + blend + premultiply all
-      // in C (the commit's own kernels — user rule: "무조건 네이티브").
-      // Falls to the Dart path below when the engine or the native tile
-      // is absent; both routes are parity-pinned to the same bytes.
-      scratch = preBlend != null
-          ? source.preBlendedOverlayTile(
-              tileX: coord.x,
-              tileY: coord.y,
-              base: preBlend,
-              mode: blendMode,
-              erase: erase,
-            )
-          : source.premultipliedOverlayTile(coord.x, coord.y);
+        source.tileSize == tileSize) {
+      scratch = source.premultipliedOverlayTile(coord.x, coord.y);
       fused = scratch?.view;
     }
     // Snapshot the straight-alpha rows, then premultiply in place with the
@@ -331,6 +337,59 @@ class ActiveStrokeOverlayModel extends ChangeNotifier {
     });
   }
 
+  /// The PROMOTABLE decode: the rasterizer pre-blends the coordinate
+  /// against the cel and keeps the straight result resident, so this
+  /// image and the tile pen-up adopts are the same pixels — the image
+  /// hands over at pen-up instead of being thrown away and decoded
+  /// again. Tiles are FULL here (no pasteboard-edge clamp): a committed
+  /// tile is full too, and the painter's pasteboard clip crops both the
+  /// same way.
+  void _decodePromotableTile(
+    TileCoord coord,
+    BrushLiveStrokeRasterizer source,
+    BitmapSurface base,
+  ) {
+    final blended = source.preBlendedOverlayTile(
+      tileX: coord.x,
+      tileY: coord.y,
+      base: base,
+      mode: blendMode,
+      erase: erase,
+    );
+    if (blended == null) {
+      return; // Untouched coordinate: the committed tile IS the result.
+    }
+    _decoding.add(coord);
+    _pendingDecodeCount += 1;
+    final generation = _generation;
+    ui.decodeImageFromPixels(
+      blended.pixels,
+      tileSize,
+      tileSize,
+      ui.PixelFormat.rgba8888,
+      (image) {
+        blended.free();
+        if (generation != _generation) {
+          image.dispose();
+          _finishDecode();
+          return;
+        }
+        _decoding.remove(coord);
+        final previous = _tileImages[coord];
+        if (previous != null) {
+          DeferredImageDisposer.instance.retire(previous);
+        }
+        _tileImages[coord] = image;
+        _tileImageRevisions[coord] = blended.revision;
+        notifyListeners();
+        if (_dirtyWhileDecoding.remove(coord)) {
+          _decodeTile(coord, source);
+        }
+        _finishDecode();
+      },
+    );
+  }
+
   void _finishDecode() {
     _pendingDecodeCount -= 1;
     if (_pendingDecodeCount == 0) {
@@ -347,6 +406,22 @@ class ActiveStrokeOverlayModel extends ChangeNotifier {
       return Future<void>.value();
     }
     return (_decodesSettled ??= Completer<void>()).future;
+  }
+
+  /// Takes the decoded image for [coord] IF it represents [revision] —
+  /// ownership transfers to the caller (the tile image cache), so it is
+  /// removed here WITHOUT being retired. Null when nothing decoded there
+  /// or the image is a revision behind the tile being adopted.
+  ///
+  /// This is what makes pen-up free: the image the user has been looking
+  /// at becomes the committed tile's image, with no re-decode and no
+  /// window where the tile has no picture.
+  ui.Image? takeTileImageAt(TileCoord coord, {required int revision}) {
+    if (_tileImageRevisions[coord] != revision) {
+      return null;
+    }
+    _tileImageRevisions.remove(coord);
+    return _tileImages.remove(coord);
   }
 
   /// Clears the overlay (stroke tiles AND the settle pin) and disposes its
@@ -377,6 +452,7 @@ class ActiveStrokeOverlayModel extends ChangeNotifier {
       DeferredImageDisposer.instance.retire(image);
     }
     _tileImages.clear();
+    _tileImageRevisions.clear();
     _decoding.clear();
     _dirtyWhileDecoding.clear();
     final stamp = _stampImage;

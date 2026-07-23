@@ -175,7 +175,7 @@ void main() {
       QaNativeEngine.debugForceDartFallback = false;
       expect(QaNativeEngine.instance, isNotNull);
 
-      const liveTile = BrushLiveStrokeRasterizer.tileSize;
+      const liveTile = 128;
       const bigCanvas = CanvasSize(width: 256, height: 256);
       final random = Random(451);
       // Base on a DIFFERENT grid (64) than the stroke tiles (128): the
@@ -203,7 +203,10 @@ void main() {
       }
 
       for (final mode in preBlendModes) {
-        final rasterizer = BrushLiveStrokeRasterizer(canvasSize: bigCanvas);
+        final rasterizer = BrushLiveStrokeRasterizer(
+          canvasSize: bigCanvas,
+          tileSize: liveTile,
+        );
         rasterizer.blendFrom([
           BrushDab(
             center: CanvasPoint(x: 64, y: 64),
@@ -218,14 +221,14 @@ void main() {
           ),
         ], from: 0);
 
-        final scratch = rasterizer.preBlendedOverlayTile(
+        final blended = rasterizer.preBlendedOverlayTile(
           tileX: 0,
           tileY: 0,
           base: base,
           mode: mode,
           erase: mode == BrushBlendMode.erase,
         );
-        expect(scratch, isNotNull, reason: '${mode.name}: native route');
+        expect(blended, isNotNull, reason: '${mode.name}: native route');
 
         // The Dart route on the same inputs.
         final stroke = Uint8List(liveTile * liveTile * 4);
@@ -266,13 +269,12 @@ void main() {
           expected[o + 3] = alpha;
         }
 
-        final view = scratch!.view;
         expect(
-          view,
+          blended!.pixels,
           expected,
           reason: '${mode.name}: native overlay tile == Dart overlay tile',
         );
-        scratch.free();
+        blended.free();
         rasterizer.clear();
       }
     },

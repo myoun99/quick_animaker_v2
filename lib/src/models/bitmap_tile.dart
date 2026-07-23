@@ -96,13 +96,35 @@ class BitmapTile implements Finalizable {
   final Uint8List _view;
 
   /// A defensive COPY of the pixel bytes (cold paths: codec, json,
-  /// stamp/lift builds). Hot paths use [nativePixels]/[copyPixelsInto].
+  /// stamp/lift builds). Hot paths use [readPixels]/[copyPixelsInto].
   Uint8List get pixels => Uint8List.fromList(_view);
 
-  /// The raw native buffer — the engine reads it directly (blend staging,
-  /// premultiply) with no Dart-side copy. NEVER written through: tiles
-  /// are immutable.
-  Pointer<Uint8> get nativePixels => _pixels;
+  /// Runs [body] with the tile's native buffer — the pointer the engine
+  /// reads directly (blend staging, premultiply) and a view over the same
+  /// bytes, with no Dart-side copy. NEVER written through: tiles are
+  /// immutable.
+  ///
+  /// THIS IS THE ONLY WAY TO REACH THE BYTES, and the reason is lifetime.
+  /// A raw `nativePixels` getter used to exist; pulling the pointer (or an
+  /// `asTypedList` view of it) into a local does NOT keep the tile alive —
+  /// [Finalizable] protects a RECEIVER for the duration of a call, not a
+  /// value that outlives the getter. A tile whose only reference was such
+  /// a local could be collected mid-read: its [NativeFinalizer] handed the
+  /// block back to the C tile pool, the pool handed it to the next
+  /// allocation, and the copy then read/wrote another live buffer —
+  /// an access violation when the block had been unmapped, silent pixel
+  /// corruption when it had not. (Found the hard way: the stroke
+  /// promotion round raised tile churn enough to make it reproducible,
+  /// but the hazard shipped with R27 #4c's pre-blend and with every
+  /// `bitmapSurfaceRegionPixels` call before it.)
+  ///
+  /// Inside [body] the tile is the receiver of an executing method, so it
+  /// — and its buffer — are alive for the whole call. Do not let the
+  /// pointer or the view escape [body] unless the caller keeps the TILE
+  /// itself reachable for as long as they are used.
+  T readPixels<T>(T Function(Pointer<Uint8> pointer, Uint8List view) body) {
+    return body(_pixels, _view);
+  }
 
   /// Copies the pixel bytes into [target] without the intermediate copy
   /// the [pixels] getter makes.

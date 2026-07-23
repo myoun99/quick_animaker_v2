@@ -1,9 +1,13 @@
-import 'dart:ffi' show Uint8Pointer;
+import 'dart:collection';
+
 import 'dart:math' as math;
 import 'dart:typed_data';
 
+import 'package:flutter/foundation.dart' show visibleForTesting;
+
 import '../core/floor_math.dart';
 import '../models/bitmap_surface.dart';
+import '../models/bitmap_tile.dart';
 import '../models/brush_blend_mode.dart';
 import '../models/brush_dab.dart';
 import '../models/brush_tip_shape.dart';
@@ -13,8 +17,51 @@ import '../models/pasteboard_bounds.dart';
 import '../models/tile_coord.dart';
 import '../native/qa_native_engine.dart';
 import 'brush_dab_dirty_region.dart';
-import 'brush_stroke_blend.dart' show strokeBlendModeNativeId;
+import 'brush_stroke_blend.dart'
+    show preBlendStrokeOverlayPixels, strokeBlendModeNativeId;
 import 'brush_tip_mask_sampling.dart';
+
+/// A pre-blended overlay tile: the premultiplied bytes to upload, and the
+/// stroke [revision] they were blended at (pen-up hands the DECODED image
+/// of a matching revision straight to the adopted tile — a stale one
+/// would pin wrong pixels forever, so the number travels with it).
+class PreBlendedOverlayTile {
+  PreBlendedOverlayTile._(this.pixels, this.revision, this._scratch);
+
+  final Uint8List pixels;
+  final int revision;
+  final QaStampScratch? _scratch;
+
+  /// Releases the native scratch (call once the decode has consumed the
+  /// bytes); a no-op on the Dart route.
+  void free() => _scratch?.free();
+}
+
+/// A finished stroke tile handed to the cel surface, with the stroke
+/// [revision] its pixels represent.
+class PromotedStrokeTile {
+  PromotedStrokeTile._(this.tile, this.revision);
+
+  final BitmapTile tile;
+  final int revision;
+}
+
+/// One resident pre-blended result: straight-alpha bytes (native-backed
+/// when the engine is loaded), the stroke revision they cover, and
+/// whether they differ from the base at all.
+class _ResultTile {
+  _ResultTile({
+    required this.native,
+    required this.bytes,
+    required this.revision,
+    required this.changed,
+  });
+
+  final QaNativeTileBuffer? native;
+  final Uint8List bytes;
+  final int revision;
+  final bool changed;
+}
 
 /// Read access to the in-progress stroke's straight-alpha pixels — what
 /// the live overlay snapshots its tile images from.
@@ -45,18 +92,25 @@ abstract interface class ActiveStrokePixelSource {
 /// stroke with the committed artwork. Equivalence with the commit rasterizer
 /// is locked by `active_stroke_overlay_parity_test.dart` (byte-exact).
 class BrushLiveStrokeRasterizer implements ActiveStrokePixelSource {
-  BrushLiveStrokeRasterizer({required this.canvasSize});
+  BrushLiveStrokeRasterizer({
+    required this.canvasSize,
+    this.tileSize = defaultTileSize,
+  });
+
+  /// Edge length of a sparse stroke tile in canvas pixels when the caller
+  /// states none — the committed surface's own default.
+  static const int defaultTileSize = 256;
 
   /// Edge length of a sparse stroke tile in canvas pixels.
   ///
-  /// PROMOTION round: equal to the committed surface's tile size, so a
-  /// stroke tile, its pre-blended result tile and the committed tile at
-  /// the same coordinate are ONE grid — the display replaces per
-  /// coordinate (no clips, no isolation layer) and pen-up ADOPTS the
-  /// result buffers as the committed tiles outright. (128 bounded the
-  /// per-move upload a little tighter, but forced quadrant bookkeeping
-  /// everywhere the grids met; the ~1.6× upload is the accepted cost.)
-  static const int tileSize = 256;
+  /// PROMOTION round: the interactive view sets this to the CEL surface's
+  /// tile size, so a stroke tile, its pre-blended result tile and the
+  /// committed tile at the same coordinate are ONE grid — the display
+  /// replaces per coordinate (no clips, no isolation layer) and pen-up
+  /// ADOPTS the result buffers as the committed tiles outright. (The old
+  /// fixed 128 bounded the per-move upload a little tighter, but forced
+  /// quadrant bookkeeping everywhere the two grids met.)
+  final int tileSize;
 
   final CanvasSize canvasSize;
 
@@ -79,6 +133,36 @@ class BrushLiveStrokeRasterizer implements ActiveStrokePixelSource {
   final Map<int, QaNativeTileBuffer> _nativeBuffers =
       <int, QaNativeTileBuffer>{};
   final QaNativeEngine? _native = QaNativeEngine.instance;
+
+  /// Tile coordinate per linear key — the promotion pass walks the
+  /// touched tiles and needs their coordinates back.
+  final Map<int, TileCoord> _tileCoords = <int, TileCoord>{};
+
+  /// How many times a dab has touched each tile. A RESULT tile
+  /// ([_results]) blended at revision R is current only while the stroke
+  /// tile still reads R; anything else must re-blend before it can be
+  /// displayed or promoted. (Conservative: a dab that writes no pixel
+  /// still bumps, costing at most one redundant re-blend.)
+  final Map<int, int> _tileRevisions = <int, int>{};
+
+  /// Resident PRE-BLENDED result tiles (base ⊕ stroke, straight alpha) in
+  /// insertion/refresh order — the exact bytes the commit holds at that
+  /// coordinate, kept alive so pen-up can ADOPT them instead of blending
+  /// the whole stroke a second time.
+  final LinkedHashMap<int, _ResultTile> _results = LinkedHashMap<int, _ResultTile>();
+  int _resultBytes = 0;
+
+  /// Resident-result byte budget (the round's one real cost: while a
+  /// stroke runs, a touched coordinate holds its stroke tile AND its
+  /// result tile). Past it the LEAST RECENTLY blended results drop —
+  /// they are behind the brush, and pen-up re-blends exactly those. The
+  /// frontier (what the user is watching) always stays resident.
+  ///
+  /// 96MB ≈ 384 tiles at 256px: a full-screen scribble keeps its whole
+  /// visible neighbourhood, an 8K canvas-covering stroke degrades to
+  /// "re-blend the part you left behind" instead of holding 512MB.
+  @visibleForTesting
+  static int residentResultByteBudget = 96 * 1024 * 1024;
 
   // The linear key grid spans the PASTEBOARD (strokes reach one canvas
   // size past every edge), offset so keys stay non-negative.
@@ -111,12 +195,26 @@ class BrushLiveStrokeRasterizer implements ActiveStrokePixelSource {
       for (final buffer in _nativeBuffers.values) {
         native.releaseTileBuffer(buffer);
       }
+      for (final result in _results.values) {
+        final buffer = result.native;
+        if (buffer != null) {
+          native.releaseTileBuffer(buffer);
+        }
+      }
     }
     _nativeBuffers.clear();
     _tiles.clear();
+    _tileCoords.clear();
+    _tileRevisions.clear();
+    _results.clear();
+    _resultBytes = 0;
     _strokeBounds = null;
     _blendedDabCount = 0;
   }
+
+  /// Resident result tiles (test/debug oracle for the memory budget).
+  @visibleForTesting
+  int get residentResultTileCount => _results.length;
 
   /// R25: the overlay's FUSED display path. Overlay tiles are the same
   /// 128px grid as the stroke tiles, so a full tile's snapshot +
@@ -140,41 +238,97 @@ class BrushLiveStrokeRasterizer implements ActiveStrokePixelSource {
     );
   }
 
-  /// R27 #4 native route: pre-blends this stroke tile against [base]'s
-  /// bytes through the COMMIT'S OWN C KERNELS and returns the
-  /// premultiplied upload — stage base rect, blend in place
-  /// (stamp srcOver / stamp erase / stroke-blend, exactly the calls the
-  /// pen-up commit makes), premultiply in C. The stroke tile is already
-  /// a native pointer, so nothing uploads. Null when the native route
-  /// cannot serve (no engine, Dart-buffer mode, or an untouched tile) —
-  /// the caller's Dart pre-blend path produces the same bytes (both
-  /// sides parity-pinned against the commit).
-  QaStampScratch? preBlendedOverlayTile({
+  /// Pre-blends the stroke tile at ([tileX], [tileY]) against [base]
+  /// through the COMMIT'S OWN KERNELS and returns the premultiplied
+  /// upload for display — while the STRAIGHT result stays resident, so
+  /// pen-up promotes it into the surface instead of blending the whole
+  /// stroke a second time.
+  ///
+  /// Native route: stage the base rect, blend in place (stamp srcOver /
+  /// stamp erase / stroke-blend — exactly the calls the commit makes),
+  /// premultiply in C; the stroke tile is already a native pointer, so
+  /// nothing uploads. Dart route (no engine, or a Dart-buffer stroke
+  /// tile): the same math through [preBlendStrokeOverlayPixels]. Both
+  /// are parity-pinned to each other and to the commit.
+  ///
+  /// Null when the tile is untouched (nothing to show there: the base
+  /// tile the painter already draws IS the result).
+  PreBlendedOverlayTile? preBlendedOverlayTile({
     required int tileX,
     required int tileY,
     required BitmapSurface base,
     required BrushBlendMode mode,
     required bool erase,
   }) {
-    final native = _native;
-    if (native == null) {
+    final key = _tileKey(tileX, tileY);
+    if (!_tiles.containsKey(key)) {
       return null;
     }
-    final stroke = _nativeBuffers[_tileKey(tileX, tileY)];
-    if (stroke == null) {
-      return null;
+    final result = _blendResultTile(
+      key: key,
+      tileX: tileX,
+      tileY: tileY,
+      base: base,
+      mode: mode,
+      erase: erase,
+    );
+    final native = _native;
+    final nativeBuffer = result.native;
+    if (native != null && nativeBuffer != null) {
+      final scratch = native.premultipliedTileScratch(
+        nativeBuffer.pointer,
+        tileSize * tileSize,
+      );
+      return PreBlendedOverlayTile._(scratch.view, result.revision, scratch);
+    }
+    return PreBlendedOverlayTile._(
+      _premultipliedCopy(result.bytes),
+      result.revision,
+      null,
+    );
+  }
+
+  /// (Re)computes the resident RESULT tile for [key] — base bytes staged
+  /// fresh, then the stroke blended in place. The blend is not
+  /// incremental by design: its input is always (original base,
+  /// accumulated stroke), which is what makes a promoted tile impossible
+  /// to double-apply — re-running it over its own output is never a
+  /// state the pipeline can reach.
+  _ResultTile _blendResultTile({
+    required int key,
+    required int tileX,
+    required int tileY,
+    required BitmapSurface base,
+    required BrushBlendMode mode,
+    required bool erase,
+  }) {
+    final revision = _tileRevisions[key] ?? 0;
+    final existing = _results[key];
+    if (existing != null && existing.revision == revision) {
+      // Refreshed by use: the frontier keeps its results, the tail drops
+      // first when the budget bites.
+      _results.remove(key);
+      _results[key] = existing;
+      return existing;
     }
     final tileLeft = tileX * tileSize;
     final tileTop = tileY * tileSize;
     final byteLength = tileSize * tileSize * 4;
-    // R27 #4c: the memset is only needed where the base cannot fill the
-    // rect — with every overlapped base tile present, the row copies
-    // overwrite the whole buffer anyway.
-    final staged = native.acquireTileBuffer(
-      byteLength,
-      zeroed: !_baseCoversRect(base, tileLeft, tileTop),
-    );
-    try {
+    final native = _native;
+    final strokeNative = _nativeBuffers[key];
+    if (native != null && strokeNative != null) {
+      // R27 #4c: the memset is only needed where the base cannot fill the
+      // rect — with every overlapped base tile present, the row copies
+      // overwrite the whole buffer anyway.
+      final staged =
+          existing?.native ??
+          native.acquireTileBuffer(
+            byteLength,
+            zeroed: !_baseCoversRect(base, tileLeft, tileTop),
+          );
+      if (existing != null && !_baseCoversRect(base, tileLeft, tileTop)) {
+        staged.view.fillRange(0, byteLength, 0);
+      }
       _copyBaseRectInto(staged.view, base, tileLeft, tileTop);
       native.ensureTileSpanBatch(1);
       native.setTileSpan(
@@ -187,11 +341,12 @@ class BrushLiveStrokeRasterizer implements ActiveStrokePixelSource {
         spanTop: tileTop,
         spanBottomExclusive: tileTop + tileSize,
       );
+      final Uint8List changed;
       if (erase || mode == BrushBlendMode.erase) {
-        native.stampBlendTiles(
+        changed = native.stampBlendTiles(
           count: 1,
           tileSize: tileSize,
-          stampBytes: stroke.pointer,
+          stampBytes: strokeNative.pointer,
           stampWidth: tileSize,
           stampLeft: tileLeft,
           stampTop: tileTop,
@@ -199,10 +354,10 @@ class BrushLiveStrokeRasterizer implements ActiveStrokePixelSource {
           erase: true,
         );
       } else if (mode == BrushBlendMode.color) {
-        native.stampBlendTiles(
+        changed = native.stampBlendTiles(
           count: 1,
           tileSize: tileSize,
-          stampBytes: stroke.pointer,
+          stampBytes: strokeNative.pointer,
           stampWidth: tileSize,
           stampLeft: tileLeft,
           stampTop: tileTop,
@@ -210,23 +365,160 @@ class BrushLiveStrokeRasterizer implements ActiveStrokePixelSource {
           erase: false,
         );
       } else {
-        native.strokeBlendTiles(
+        changed = native.strokeBlendTiles(
           count: 1,
           tileSize: tileSize,
-          strokeBytes: stroke.pointer,
+          strokeBytes: strokeNative.pointer,
           strokeWidth: tileSize,
           strokeLeft: tileLeft,
           strokeTop: tileTop,
           mode: strokeBlendModeNativeId(mode),
         );
       }
-      return native.premultipliedTileScratch(
-        staged.pointer,
-        tileSize * tileSize,
+      final result = _ResultTile(
+        native: staged,
+        bytes: staged.view,
+        revision: revision,
+        changed: changed[0] != 0,
       );
-    } finally {
-      native.releaseTileBuffer(staged);
+      _storeResult(key, result, byteLength, isNew: existing == null);
+      return result;
     }
+    // Dart route: the same kernels, in Dart. The straight result is a
+    // fresh buffer each time (the reference blend is functional), so the
+    // resident entry simply swaps.
+    final staged = Uint8List(byteLength);
+    _copyBaseRectInto(staged, base, tileLeft, tileTop);
+    final blended = preBlendStrokeOverlayPixels(
+      dst: staged,
+      src: _tiles[key]!,
+      mode: mode,
+      erase: erase,
+      pixelCount: tileSize * tileSize,
+    );
+    var changed = false;
+    for (var offset = 0; offset < byteLength; offset += 1) {
+      if (blended[offset] != staged[offset]) {
+        changed = true;
+        break;
+      }
+    }
+    final result = _ResultTile(
+      native: null,
+      bytes: blended,
+      revision: revision,
+      changed: changed,
+    );
+    _storeResult(key, result, byteLength, isNew: existing == null);
+    return result;
+  }
+
+  void _storeResult(
+    int key,
+    _ResultTile result,
+    int byteLength, {
+    required bool isNew,
+  }) {
+    _results.remove(key);
+    _results[key] = result;
+    if (isNew) {
+      _resultBytes += byteLength;
+    }
+    // Budget: drop the LEAST recently blended results (the ones the brush
+    // has moved past). Their coordinates simply re-blend at pen-up — the
+    // stroke tiles and the base are both still here, so nothing is lost
+    // but the work.
+    while (_resultBytes > residentResultByteBudget && _results.length > 1) {
+      final oldestKey = _results.keys.first;
+      if (oldestKey == key) {
+        break;
+      }
+      final dropped = _results.remove(oldestKey)!;
+      final buffer = dropped.native;
+      if (buffer != null) {
+        _native?.releaseTileBuffer(buffer);
+      }
+      _resultBytes -= byteLength;
+    }
+  }
+
+  /// The finished tiles of this stroke, ready to be ADOPTED by the cel
+  /// surface — the pen-up commit in one move.
+  ///
+  /// Every touched coordinate whose resident result is stale (dropped by
+  /// the budget, or touched after its last blend) re-blends here; a
+  /// coordinate whose result is byte-identical to the base is left out
+  /// entirely, so the dirty set stays the TRUE change set and untouched
+  /// tiles keep their identity (and their decoded image).
+  ///
+  /// Ownership of the returned tiles' pixels leaves this rasterizer, so
+  /// this may be called ONCE per stroke; [clear] afterwards releases only
+  /// what stayed behind.
+  List<PromotedStrokeTile> promoteStrokeTiles({
+    required BitmapSurface base,
+    required BrushBlendMode mode,
+    required bool erase,
+  }) {
+    assert(
+      base.tileSize == tileSize,
+      'promotion requires the stroke grid to be the surface grid',
+    );
+    final promoted = <PromotedStrokeTile>[];
+    final byteLength = tileSize * tileSize * 4;
+    for (final key in _tiles.keys.toList()) {
+      final coord = _tileCoords[key]!;
+      final result = _blendResultTile(
+        key: key,
+        tileX: coord.x,
+        tileY: coord.y,
+        base: base,
+        mode: mode,
+        erase: erase,
+      );
+      if (!result.changed) {
+        continue;
+      }
+      final buffer = result.native;
+      final tile = buffer != null
+          ? BitmapTile.adoptNative(
+              coord: coord,
+              size: tileSize,
+              pixels: buffer.pointer,
+            )
+          : BitmapTile(coord: coord, size: tileSize, pixels: result.bytes);
+      if (buffer != null) {
+        // Adopted: the tile's finalizer owns the block now.
+        _results.remove(key);
+        _resultBytes -= byteLength;
+      }
+      promoted.add(PromotedStrokeTile._(tile, result.revision));
+    }
+    return promoted;
+  }
+
+  /// Fallback premultiply for the Dart route — the same mul-div-255
+  /// rounding every tile upload in the app uses.
+  static Uint8List _premultipliedCopy(Uint8List straight) {
+    final bytes = Uint8List.fromList(straight);
+    for (var offset = 0; offset < bytes.length; offset += 4) {
+      final alpha = bytes[offset + 3];
+      if (alpha == 255) {
+        continue;
+      }
+      if (alpha == 0) {
+        bytes[offset] = 0;
+        bytes[offset + 1] = 0;
+        bytes[offset + 2] = 0;
+        continue;
+      }
+      var product = bytes[offset] * alpha + 128;
+      bytes[offset] = (product + (product >> 8)) >> 8;
+      product = bytes[offset + 1] * alpha + 128;
+      bytes[offset + 1] = (product + (product >> 8)) >> 8;
+      product = bytes[offset + 2] * alpha + 128;
+      bytes[offset + 2] = (product + (product >> 8)) >> 8;
+    }
+    return bytes;
   }
 
   /// Whether every base tile overlapping the 128-rect at ([left], [top])
@@ -247,10 +539,10 @@ class BrushLiveStrokeRasterizer implements ActiveStrokePixelSource {
     return true;
   }
 
-  /// Copies [base]'s straight bytes for the 128-rect at ([left], [top])
+  /// Copies [base]'s straight bytes for the tile rect at ([left], [top])
   /// into [target] (stride [tileSize]); missing base tiles stay zero.
   /// The base grid is the surface's own tile size — a stroke tile can
-  /// overlap up to four base tiles.
+  /// overlap up to four base tiles when the two grids differ.
   void _copyBaseRectInto(Uint8List target, BitmapSurface base, int left, int top) {
     final baseTileSize = base.tileSize;
     final right = left + tileSize;
@@ -265,9 +557,6 @@ class BrushLiveStrokeRasterizer implements ActiveStrokePixelSource {
         if (tile == null) {
           continue;
         }
-        final tilePixels = tile.nativePixels.asTypedList(
-          baseTileSize * baseTileSize * 4,
-        );
         final worldLeft = tileX * baseTileSize;
         final worldTop = tileY * baseTileSize;
         final copyLeft = math.max(left, worldLeft);
@@ -275,30 +564,41 @@ class BrushLiveStrokeRasterizer implements ActiveStrokePixelSource {
         final copyRight = math.min(right, worldLeft + baseTileSize);
         final copyBottom = math.min(bottom, worldTop + baseTileSize);
         final rowBytes = (copyRight - copyLeft) * 4;
-        for (var y = copyTop; y < copyBottom; y += 1) {
-          final srcOffset =
-              ((y - worldTop) * baseTileSize + (copyLeft - worldLeft)) * 4;
-          final dstOffset = ((y - top) * tileSize + (copyLeft - left)) * 4;
-          target.setRange(
-            dstOffset,
-            dstOffset + rowBytes,
-            tilePixels,
-            srcOffset,
-          );
-        }
+        // Inside readPixels: the tile is the receiver, so its buffer cannot
+        // be finalized mid-copy (see BitmapTile.readPixels — this exact
+        // loop is where that bug was caught).
+        tile.readPixels((_, tilePixels) {
+          for (var y = copyTop; y < copyBottom; y += 1) {
+            final srcOffset =
+                ((y - worldTop) * baseTileSize + (copyLeft - worldLeft)) * 4;
+            final dstOffset = ((y - top) * tileSize + (copyLeft - left)) * 4;
+            target.setRange(
+              dstOffset,
+              dstOffset + rowBytes,
+              tilePixels,
+              srcOffset,
+            );
+          }
+        });
       }
     }
   }
 
   Uint8List _tileBuffer(int tileX, int tileY) {
-    return _tiles.putIfAbsent(_tileKey(tileX, tileY), () {
+    final key = _tileKey(tileX, tileY);
+    // A dab is about to write here: the coordinate's resident result (if
+    // any) is now stale. Over-bumping is safe — the counter is only ever
+    // compared for equality, and a redundant re-blend costs one tile.
+    _tileRevisions[key] = (_tileRevisions[key] ?? 0) + 1;
+    return _tiles.putIfAbsent(key, () {
+      _tileCoords[key] = TileCoord(x: tileX, y: tileY);
       final native = _native;
       if (native != null) {
         final buffer = native.acquireTileBuffer(
           tileSize * tileSize * 4,
           zeroed: true,
         );
-        _nativeBuffers[_tileKey(tileX, tileY)] = buffer;
+        _nativeBuffers[key] = buffer;
         return buffer.view;
       }
       return Uint8List(tileSize * tileSize * 4);
