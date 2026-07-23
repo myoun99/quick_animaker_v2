@@ -271,9 +271,13 @@ class LayerVisibilityToggleButton extends StatelessWidget {
     required this.keyValue,
     required this.isVisible,
     required this.onToggle,
+    this.subject = 'layer',
     this.size = layerVisibilitySlotWidth,
     this.iconSize = 18,
   });
+
+  /// Names the row kind in the tooltip ('layer', 'folder').
+  final String subject;
 
   /// The full widget key string ('timeline-layer-visibility-a').
   final String keyValue;
@@ -292,7 +296,7 @@ class LayerVisibilityToggleButton extends StatelessWidget {
       height: 26,
       child: IconButton(
         key: ValueKey<String>(keyValue),
-        tooltip: isVisible ? 'Hide layer' : 'Show layer',
+        tooltip: isVisible ? 'Hide $subject' : 'Show $subject',
         padding: EdgeInsets.zero,
         constraints: BoxConstraints.tightFor(width: size, height: 26),
         icon: Icon(

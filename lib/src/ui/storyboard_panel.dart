@@ -3289,29 +3289,17 @@ class _StoryboardTrackLabel extends StatelessWidget {
               SizedBox(
                 width: layerVisibilitySlotWidth,
                 height: 26,
-                child: IconButton(
-                  key: ValueKey<String>(
-                    'storyboard-cut-visibility-'
-                    '${subjectCut?.id.value ?? 'none-${track.id.value}'}',
-                  ),
-                  tooltip:
-                      (subjectCut == null ||
-                          (cutPictureVisibleOf?.call(subjectCut!.id) ?? true))
-                      ? 'Hide cut picture'
-                      : 'Show cut picture',
-                  padding: EdgeInsets.zero,
-                  constraints: const BoxConstraints.tightFor(
-                    width: layerVisibilitySlotWidth,
-                    height: 26,
-                  ),
-                  icon: Icon(
-                    (subjectCut == null ||
-                            (cutPictureVisibleOf?.call(subjectCut!.id) ?? true))
-                        ? Icons.visibility
-                        : Icons.visibility_off,
-                    size: 16,
-                  ),
-                  onPressed: () {
+                // The SAME eye the layer and folder rows mount — this was
+                // a sixth inline copy (R28 follow-up).
+                child: LayerVisibilityToggleButton(
+                  keyValue:
+                      'storyboard-cut-visibility-'
+                      '${subjectCut?.id.value ?? 'none-${track.id.value}'}',
+                  subject: 'cut picture',
+                  isVisible:
+                      subjectCut == null ||
+                      (cutPictureVisibleOf?.call(subjectCut!.id) ?? true),
+                  onToggle: () {
                     final subject = subjectCut;
                     if (subject != null) {
                       onToggleCutPictureVisibility!(subject.id);

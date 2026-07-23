@@ -239,25 +239,13 @@ class TimelineFolderControlsRow extends StatelessWidget {
                 height: 26,
                 child: onToggleVisibility == null
                     ? null
-                    : IconButton(
-                        key: ValueKey<String>(
-                          'timeline-folder-visibility-${folder.id}',
-                        ),
-                        tooltip: folder.isVisible
-                            ? 'Hide folder'
-                            : 'Show folder',
-                        padding: EdgeInsets.zero,
-                        constraints: const BoxConstraints.tightFor(
-                          width: layerVisibilitySlotWidth,
-                          height: 26,
-                        ),
-                        icon: Icon(
-                          folder.isVisible
-                              ? Icons.visibility
-                              : Icons.visibility_off,
-                          size: 18,
-                        ),
-                        onPressed: () => onToggleVisibility!(folder.id),
+                    // The SAME eye the layer rows mount (R28 follow-up) —
+                    // the folder had a fifth inline copy of it.
+                    : LayerVisibilityToggleButton(
+                        keyValue: 'timeline-folder-visibility-${folder.id}',
+                        subject: 'folder',
+                        isVisible: folder.isVisible,
+                        onToggle: () => onToggleVisibility!(folder.id),
                       ),
               ),
               const SizedBox(width: layerMuteSlotWidth),
