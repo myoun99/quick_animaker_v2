@@ -13,6 +13,7 @@ import 'package:quick_animaker_v2/src/ui/editor_session_manager.dart';
 import 'package:quick_animaker_v2/src/ui/timeline/timeline_action_toolbar.dart';
 import 'package:quick_animaker_v2/src/ui/timeline/timeline_grid_metrics.dart';
 import 'package:quick_animaker_v2/src/ui/timeline/timeline_layer_controls_row.dart';
+import 'package:quick_animaker_v2/src/ui/widgets/panel_flyout.dart';
 
 /// R26 #30/#30-1: the layer's composite blend mode — model round-trip,
 /// the shared composite visit, cache identity, the session commit and
@@ -170,6 +171,72 @@ void main() {
     expect(
       find.byKey(const ValueKey<String>('timeline-layer-blend-menu-button')),
       findsNothing,
+    );
+  });
+
+  testWidgets('R28 #2: the row blend control IS the tool-settings button — '
+      'shared widget, no caret, centered in the blend slot', (tester) async {
+    final drawing = Layer(
+      id: const LayerId('a'),
+      name: 'A',
+      kind: LayerKind.animation,
+      frames: const [],
+    );
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Material(
+          child: Align(
+            alignment: Alignment.topLeft,
+            child: TimelineLayerControlsRow(
+              layer: drawing,
+              active: false,
+              metrics: TimelineGridMetrics.defaults,
+              onSelectLayer: (_) {},
+              onToggleLayerVisibility: (_) {},
+              onLayerOpacityChanged: (_, _) {},
+              onToggleLayerTimesheet: (_) {},
+              onLayerMarkSelected: (_, _) {},
+              onLayerBlendModeSelected: (_, _) {},
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    const chipKey = ValueKey<String>('timeline-layer-blend-a');
+    // The SHARED control, not a bespoke label: the same widget the brush
+    // panel's blend row mounts.
+    expect(
+      find.byKey(chipKey),
+      findsOneWidget,
+      reason: 'the blend control keeps its key across the widget swap',
+    );
+    expect(tester.widget(find.byKey(chipKey)), isA<PanelFlyoutButton>());
+
+    // The user asked for the caret to go — text-only button.
+    expect(
+      find.descendant(
+        of: find.byKey(chipKey),
+        matching: find.byIcon(Icons.arrow_drop_down),
+      ),
+      findsNothing,
+      reason: 'R28 #2: the layer rail drops the dropdown caret',
+    );
+
+    // ...and the label sits CENTERED in the reserved slot, so the button
+    // lines up under the legend's BLND header instead of hugging the
+    // opacity bar on its left.
+    final slot = find.ancestor(
+      of: find.byKey(chipKey),
+      matching: find.byType(SizedBox),
+    );
+    final slotCenter = tester.getCenter(slot.first).dx;
+    final buttonCenter = tester.getCenter(find.byKey(chipKey)).dx;
+    expect(
+      (buttonCenter - slotCenter).abs(),
+      lessThan(1.0),
+      reason: 'R28 #2: the blend button is centered in its column',
     );
   });
 

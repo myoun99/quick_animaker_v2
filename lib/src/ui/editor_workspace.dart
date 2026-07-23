@@ -1054,6 +1054,10 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
                 _showSecondsDisplay.value = show;
               },
               thumbnailFor: _storyboardThumbnails.thumbnailFor,
+              // R28 #1: the same camera-view state the timeline command
+              // bar and the canvas overlay drive — one notifier, three
+              // entrances.
+              cameraViewEnabled: _cameraViewEnabled,
             ),
           ),
         );

@@ -139,9 +139,16 @@ bool layerKindShowsBlendControl(LayerKind kind) =>
     kind == LayerKind.art ||
     kind == LayerKind.storyboard;
 
-/// R27 #6: the row's blend-mode dropdown. Reads the current mode's name;
-/// accent while non-normal (selection style: color only, no check glyph
-/// in the row itself).
+/// R27 #6 / R28 #2: the row's blend-mode BUTTON. Reads the current mode's
+/// name; accent while non-normal (selection style: color only, no check
+/// glyph in the row itself).
+///
+/// R28 #2: this is the tool-settings blend control — the shared
+/// [PanelFlyoutButton] — with the caret dropped, per the user's rule that
+/// everything touching blend modes speaks one UI. It used to be a bare
+/// left-aligned InkWell label, which read as text rather than a button and
+/// sat flush against the opacity bar instead of centered under the
+/// legend's BLND header.
 class LayerBlendModeChip extends StatelessWidget {
   const LayerBlendModeChip({
     super.key,
@@ -165,43 +172,28 @@ class LayerBlendModeChip extends StatelessWidget {
     return SizedBox(
       width: layerBlendSlotWidth,
       height: 20,
-      child: Builder(
-        builder: (anchorContext) => Tooltip(
-          message: 'Layer blend mode',
-          child: InkWell(
-            key: ValueKey<String>('$keyPrefix-layer-blend-$layerId'),
-            onTap: () => showPanelFlyout(
-              anchorContext,
-              entries: [
-                for (final mode in LayerBlendMode.values)
-                  PanelFlyoutItem(
-                    keyValue: '$keyPrefix-layer-blend-option-${mode.name}',
-                    label: mode.labelFor(language),
-                    checked: mode == blendMode,
-                    onSelected: () => onBlendModeSelected(layerId, mode),
-                  ),
-              ],
-            ),
-            child: Align(
-              alignment: Alignment.centerLeft,
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 3),
-                child: Text(
-                  blendMode.labelFor(language),
-                  maxLines: 1,
-                  softWrap: false,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    fontSize: 9.5,
-                    fontWeight: nonNormal ? FontWeight.w700 : FontWeight.w400,
-                    color: nonNormal
-                        ? AppColors.accent
-                        : colorScheme.onSurfaceVariant,
-                  ),
-                ),
+      // Centered in the slot so the button lines up under the legend's
+      // BLND column header (R28 #2).
+      child: Center(
+        child: PanelFlyoutButton(
+          key: ValueKey<String>('$keyPrefix-layer-blend-$layerId'),
+          label: blendMode.labelFor(language),
+          tooltip: 'Layer blend mode',
+          showCaret: false,
+          expand: true,
+          fontSize: 9.5,
+          fontWeight: nonNormal ? FontWeight.w700 : FontWeight.w400,
+          labelColor: nonNormal ? AppColors.accent : colorScheme.onSurfaceVariant,
+          padding: const EdgeInsets.symmetric(horizontal: 3, vertical: 2),
+          entriesBuilder: () => [
+            for (final mode in LayerBlendMode.values)
+              PanelFlyoutItem(
+                keyValue: '$keyPrefix-layer-blend-option-${mode.name}',
+                label: mode.labelFor(language),
+                checked: mode == blendMode,
+                onSelected: () => onBlendModeSelected(layerId, mode),
               ),
-            ),
-          ),
+          ],
         ),
       ),
     );

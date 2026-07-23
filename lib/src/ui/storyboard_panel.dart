@@ -44,9 +44,9 @@ import 'timeline/timeline_cell_style.dart'
         timelineDrawingInkColor,
         timelineSelectedFrameBorderColor;
 import 'timeline/timeline_exposure_comma_drag_handle.dart'
-    show TimelineBlockEdgeGrip;
+    show BlockEdgeGrip, BlockEdgeGripHooks, TimelineBlockEdgeGrip;
 import 'timeline/timeline_exposure_comma_drag_policy.dart'
-    show TimelineCommaDragCallbacks, commaDragFrameDelta;
+    show TimelineCommaDragCallbacks;
 import 'timeline/timeline_frame_range_policy.dart'
     show
         endlessTrailingFrames,
@@ -3693,17 +3693,20 @@ class _StoryboardFrameLinesPainter extends CustomPainter {
   }
 }
 
-/// One cut trim grip: an inset vertical bar just inside a cut block's start
-/// or end edge, mirroring the timeline's [TimelineBlockEdgeGrip] visuals and
-/// gesture state machine (cumulative whole-frame deltas via the shared
-/// comma-drag policy; the session recomputes the preview from its drag-start
-/// snapshot).
+/// One cut trim grip: binds the cut identity onto the SHARED
+/// [BlockEdgeGrip] (R28 #3).
 ///
-/// The Positioned key derives from the cut ORDINAL, never its start frame 窶・
+/// This used to be a private copy of the timeline grip's visuals and state
+/// machine, and it had already drifted — the copy never grew a hover state,
+/// so a pointer resting on a cut edge said nothing while the same gesture in
+/// the timeline lit up. One widget now serves both surfaces, so the feel
+/// cannot diverge again.
+///
+/// The Positioned key derives from the cut ORDINAL, never its start frame —
 /// a roll drag moves the start every step, and a key change there would
 /// rebuild the gesture subtree mid-drag and kill it (same constraint as the
 /// timeline grips).
-class _StoryboardCutEdgeGrip extends StatefulWidget {
+class _StoryboardCutEdgeGrip extends StatelessWidget {
   const _StoryboardCutEdgeGrip({
     required this.cutId,
     required this.cutOrdinal,
@@ -3725,117 +3728,24 @@ class _StoryboardCutEdgeGrip extends StatefulWidget {
   final StoryboardCutTrimCallbacks callbacks;
 
   static const double hitExtent = 12;
-  static const double _barThickness = 3.5;
-  static const double _barInset = 2.5;
-
-  @override
-  State<_StoryboardCutEdgeGrip> createState() => _StoryboardCutEdgeGripState();
-}
-
-class _StoryboardCutEdgeGripState extends State<_StoryboardCutEdgeGrip> {
-  double _accumulatedDelta = 0;
-  int _lastReportedFrames = 0;
-  bool _dragging = false;
-
-  void _startDrag() {
-    if (!widget.callbacks.onBegin(widget.cutId, widget.edge)) {
-      return;
-    }
-    setState(() {
-      _dragging = true;
-      _accumulatedDelta = 0;
-      _lastReportedFrames = 0;
-    });
-  }
-
-  void _updateDrag(double delta) {
-    if (!_dragging) {
-      return;
-    }
-    _accumulatedDelta += delta;
-    final frames = commaDragFrameDelta(
-      accumulatedDelta: _accumulatedDelta,
-      frameCellExtent: widget.frameCellExtent,
-    );
-    if (frames == _lastReportedFrames) {
-      return;
-    }
-    _lastReportedFrames = frames;
-    widget.callbacks.onUpdate(frames);
-  }
-
-  void _endDrag() {
-    if (!_dragging) {
-      return;
-    }
-    setState(() => _dragging = false);
-    widget.callbacks.onEnd();
-  }
-
-  void _cancelDrag() {
-    if (!_dragging) {
-      return;
-    }
-    setState(() => _dragging = false);
-    widget.callbacks.onCancel();
-  }
-
-  @override
-  void dispose() {
-    // A grip can unmount mid-drag; commit rather than leak an open session
-    // (same policy as the timeline grips).
-    if (_dragging) {
-      widget.callbacks.onEnd();
-    }
-    super.dispose();
-  }
 
   @override
   Widget build(BuildContext context) {
-    final isStartEdge = widget.edge == TimelineBlockEdge.start;
-    final hitStart = isStartEdge
-        ? widget.blockStartOffset
-        : widget.blockEndOffset - _StoryboardCutEdgeGrip.hitExtent;
-    final barColor = _dragging
-        ? timelineSelectedFrameBorderColor
-        : timelineDrawingInkColor.withValues(alpha: 0.38);
-
-    return Positioned(
-      key: ValueKey<String>(
-        'storyboard-cut-edge-grip-${widget.edge.name}-${widget.cutOrdinal}',
+    return BlockEdgeGrip(
+      positionedKey: ValueKey<String>(
+        'storyboard-cut-edge-grip-${edge.name}-$cutOrdinal',
       ),
-      left: hitStart,
-      top: 0,
-      width: _StoryboardCutEdgeGrip.hitExtent,
-      height: widget.crossAxisExtent,
-      child: MouseRegion(
-        cursor: SystemMouseCursors.resizeColumn,
-        child: GestureDetector(
-          behavior: HitTestBehavior.opaque,
-          onHorizontalDragStart: (_) => _startDrag(),
-          onHorizontalDragUpdate: (details) => _updateDrag(details.delta.dx),
-          onHorizontalDragEnd: (_) => _endDrag(),
-          onHorizontalDragCancel: _cancelDrag,
-          child: Align(
-            alignment: isStartEdge
-                ? Alignment.centerLeft
-                : Alignment.centerRight,
-            child: Padding(
-              padding: EdgeInsets.only(
-                left: isStartEdge ? _StoryboardCutEdgeGrip._barInset : 0,
-                right: isStartEdge ? 0 : _StoryboardCutEdgeGrip._barInset,
-              ),
-              child: Container(
-                width: _StoryboardCutEdgeGrip._barThickness,
-                height: widget.crossAxisExtent * 0.55,
-                decoration: BoxDecoration(
-                  color: barColor,
-                  borderRadius: BorderRadius.circular(2),
-                ),
-              ),
-            ),
-          ),
-        ),
+      edge: edge,
+      blockStartOffset: blockStartOffset,
+      blockEndOffset: blockEndOffset,
+      frameCellExtent: frameCellExtent,
+      crossAxisExtent: crossAxisExtent,
+      hitExtent: hitExtent,
+      hooks: BlockEdgeGripHooks(
+        onBegin: () => callbacks.onBegin(cutId, edge),
+        onUpdate: callbacks.onUpdate,
+        onEnd: callbacks.onEnd,
+        onCancel: callbacks.onCancel,
       ),
     );
   }

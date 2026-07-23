@@ -299,46 +299,33 @@ class _FolderBlendChip extends StatelessWidget {
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
     final nonNormal = folder.blendMode != LayerBlendMode.normal;
+    // R28 #2: the same shared blend BUTTON the layer rows and the tool
+    // settings use — caret dropped, centered in the rail's blend slot.
     return SizedBox(
       width: layerBlendSlotWidth,
       height: 20,
-      child: Builder(
-        builder: (anchorContext) => Tooltip(
-          message: 'Folder blend mode',
-          child: InkWell(
-            key: ValueKey<String>('timeline-folder-blend-${folder.id}'),
-            onTap: () => showPanelFlyout(
-              anchorContext,
-              entries: [
-                for (final mode in LayerBlendMode.values)
-                  PanelFlyoutItem(
-                    keyValue: 'timeline-folder-blend-option-${mode.name}',
-                    label: mode.labelFor(language),
-                    checked: mode == folder.blendMode,
-                    onSelected: () => onSelected(folder.id, mode),
-                  ),
-              ],
-            ),
-            child: Align(
-              alignment: Alignment.centerLeft,
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 3),
-                child: Text(
-                  folder.blendMode.labelFor(language),
-                  maxLines: 1,
-                  softWrap: false,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    fontSize: 9.5,
-                    fontWeight: nonNormal ? FontWeight.w700 : FontWeight.w400,
-                    color: nonNormal
-                        ? AppColors.accent
-                        : colorScheme.onSurfaceVariant,
-                  ),
-                ),
+      child: Center(
+        child: PanelFlyoutButton(
+          key: ValueKey<String>('timeline-folder-blend-${folder.id}'),
+          label: folder.blendMode.labelFor(language),
+          tooltip: 'Folder blend mode',
+          showCaret: false,
+          expand: true,
+          fontSize: 9.5,
+          fontWeight: nonNormal ? FontWeight.w700 : FontWeight.w400,
+          labelColor: nonNormal
+              ? AppColors.accent
+              : colorScheme.onSurfaceVariant,
+          padding: const EdgeInsets.symmetric(horizontal: 3, vertical: 2),
+          entriesBuilder: () => [
+            for (final mode in LayerBlendMode.values)
+              PanelFlyoutItem(
+                keyValue: 'timeline-folder-blend-option-${mode.name}',
+                label: mode.labelFor(language),
+                checked: mode == folder.blendMode,
+                onSelected: () => onSelected(folder.id, mode),
               ),
-            ),
-          ),
+          ],
         ),
       ),
     );

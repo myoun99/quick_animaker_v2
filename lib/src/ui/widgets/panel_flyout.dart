@@ -178,14 +178,49 @@ class PanelFlyoutButton extends StatelessWidget {
     required this.label,
     required this.entriesBuilder,
     this.tooltip,
+    this.showCaret = true,
+    this.fontSize = 12,
+    this.labelColor,
+    this.fontWeight,
+    this.padding = const EdgeInsets.fromLTRB(8, 4, 5, 4),
+    this.expand = false,
   });
 
   final String label;
   final List<PanelFlyoutEntry> Function() entriesBuilder;
   final String? tooltip;
 
+  /// R28 #2: the caret is optional. Slot-width rails (the layer rail's
+  /// blend column) drop it and keep the text alone — the border still
+  /// says "button", which is the whole point of sharing this widget.
+  final bool showCaret;
+
+  final double fontSize;
+
+  /// Null = the standard button ink; callers pass a color to carry state
+  /// (the layer rail accents a non-normal mode).
+  final Color? labelColor;
+  final FontWeight? fontWeight;
+  final EdgeInsetsGeometry padding;
+
+  /// Fill the parent's width and CENTER the label instead of hugging it —
+  /// how a fixed-width rail column keeps its button centered in the slot.
+  final bool expand;
+
   @override
   Widget build(BuildContext context) {
+    final text = Text(
+      label,
+      maxLines: 1,
+      softWrap: false,
+      overflow: TextOverflow.ellipsis,
+      textAlign: expand ? TextAlign.center : TextAlign.start,
+      style: TextStyle(
+        fontSize: fontSize,
+        color: labelColor ?? AppColors.text,
+        fontWeight: fontWeight,
+      ),
+    );
     final chip = Material(
       color: Colors.transparent,
       child: InkWell(
@@ -197,20 +232,20 @@ class PanelFlyoutButton extends StatelessWidget {
             borderRadius: BorderRadius.circular(4),
           ),
           child: Padding(
-            padding: const EdgeInsets.fromLTRB(8, 4, 5, 4),
+            padding: padding,
             child: Row(
-              mainAxisSize: MainAxisSize.min,
+              mainAxisSize: expand ? MainAxisSize.max : MainAxisSize.min,
+              mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Text(
-                  label,
-                  style: const TextStyle(fontSize: 12, color: AppColors.text),
-                ),
-                const SizedBox(width: 2),
-                const Icon(
-                  Icons.arrow_drop_down,
-                  size: 16,
-                  color: AppColors.textDim,
-                ),
+                if (expand) Flexible(child: text) else text,
+                if (showCaret) ...[
+                  const SizedBox(width: 2),
+                  const Icon(
+                    Icons.arrow_drop_down,
+                    size: 16,
+                    color: AppColors.textDim,
+                  ),
+                ],
               ],
             ),
           ),

@@ -11,6 +11,7 @@ import '../models/layer_folder.dart';
 import '../models/layer_id.dart';
 import '../models/key_range_move.dart' show transformKeyFrameUnion;
 import '../models/layer_kind.dart';
+import 'camera/camera_view_toggle_button.dart';
 import 'dialogs/camera_key_dialog.dart';
 import 'dialogs/delete_layer_dialog.dart';
 import 'dialogs/frame_name_conflict_dialog.dart';
@@ -29,7 +30,6 @@ import '../services/cut_frame_composite_plan.dart' show layerIdentityPose;
 import '../services/camera_pose_resolver.dart';
 import 'text/app_strings.dart';
 import '../models/timeline_coverage.dart' show TimelineBlockEdge;
-import 'theme/app_theme.dart' show AppColors;
 import 'timeline/camera_key_edit.dart';
 import 'timeline/property_lane_model.dart';
 import 'timeline/timeline_cut_end_handle.dart';
@@ -1380,25 +1380,12 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
           // It lived only on the camera layer row, which meant scrolling
           // the rail to it every time; the state itself is a view mode,
           // so the command bar is its natural second home (both entrances
-          // drive the one notifier).
-          if (widget.cameraViewEnabled != null)
-            ValueListenableBuilder<bool>(
-              valueListenable: widget.cameraViewEnabled!,
-              builder: (context, enabled, _) => IconButton(
-                key: const ValueKey<String>('timeline-camera-view-button'),
-                tooltip: enabled ? 'Camera view (on)' : 'Camera view',
-                visualDensity: VisualDensity.compact,
-                onPressed: () =>
-                    widget.cameraViewEnabled!.value = !enabled,
-                icon: Icon(
-                  Icons.videocam_outlined,
-                  size: 18,
-                  color: enabled
-                      ? AppColors.accent
-                      : Theme.of(context).colorScheme.onSurfaceVariant,
-                ),
-              ),
-            ),
+          // drive the one notifier). R28 #1 moved the button itself into
+          // a shared widget the storyboard's command bar mounts too.
+          CameraViewToggleButton(
+            enabled: widget.cameraViewEnabled,
+            keyValue: 'timeline-camera-view-button',
+          ),
           Expanded(
             child: TimelineActionToolbar(
               session: _session,
