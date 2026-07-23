@@ -152,18 +152,27 @@ bool layerKindShowsBlendControl(LayerKind kind) =>
 class LayerBlendModeChip extends StatelessWidget {
   const LayerBlendModeChip({
     super.key,
-    required this.keyPrefix,
-    required this.layerId,
+    required this.keyValue,
+    required this.optionKeyPrefix,
     required this.blendMode,
     required this.language,
     required this.onBlendModeSelected,
+    this.subject = 'Layer',
   });
 
-  final String keyPrefix;
-  final LayerId layerId;
+  /// The full widget key string ('timeline-layer-blend-a').
+  final String keyValue;
+
+  /// Prefix for the flyout option keys
+  /// ('timeline-layer-blend-option-' + mode name).
+  final String optionKeyPrefix;
+
   final LayerBlendMode blendMode;
   final AppLanguage language;
-  final void Function(LayerId layerId, LayerBlendMode mode) onBlendModeSelected;
+  final ValueChanged<LayerBlendMode> onBlendModeSelected;
+
+  /// Names the row kind in the tooltip ('Layer', 'Folder').
+  final String subject;
 
   @override
   Widget build(BuildContext context) {
@@ -176,22 +185,24 @@ class LayerBlendModeChip extends StatelessWidget {
       // BLND column header (R28 #2).
       child: Center(
         child: PanelFlyoutButton(
-          key: ValueKey<String>('$keyPrefix-layer-blend-$layerId'),
+          key: ValueKey<String>(keyValue),
           label: blendMode.labelFor(language),
-          tooltip: 'Layer blend mode',
+          tooltip: '$subject blend mode',
           showCaret: false,
           expand: true,
           fontSize: 9.5,
           fontWeight: nonNormal ? FontWeight.w700 : FontWeight.w400,
-          labelColor: nonNormal ? AppColors.accent : colorScheme.onSurfaceVariant,
+          labelColor: nonNormal
+              ? AppColors.accent
+              : colorScheme.onSurfaceVariant,
           padding: const EdgeInsets.symmetric(horizontal: 3, vertical: 2),
           entriesBuilder: () => [
             for (final mode in LayerBlendMode.values)
               PanelFlyoutItem(
-                keyValue: '$keyPrefix-layer-blend-option-${mode.name}',
+                keyValue: '$optionKeyPrefix${mode.name}',
                 label: mode.labelFor(language),
                 checked: mode == blendMode,
-                onSelected: () => onBlendModeSelected(layerId, mode),
+                onSelected: () => onBlendModeSelected(mode),
               ),
           ],
         ),
@@ -246,6 +257,52 @@ Widget fxGlyph({
           : Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.35),
     ),
   );
+}
+
+/// The ONE eye: whether this row shows.
+///
+/// It was written inline in three rails (timeline, x-sheet, storyboard)
+/// and had already drifted — the glyph was 18px in one and 16px in the
+/// other two. Same lesson as the fx switch: a control that exists three
+/// times is a control nobody can restyle.
+class LayerVisibilityToggleButton extends StatelessWidget {
+  const LayerVisibilityToggleButton({
+    super.key,
+    required this.keyValue,
+    required this.isVisible,
+    required this.onToggle,
+    this.size = layerVisibilitySlotWidth,
+    this.iconSize = 18,
+  });
+
+  /// The full widget key string ('timeline-layer-visibility-a').
+  final String keyValue;
+
+  final bool isVisible;
+  final VoidCallback onToggle;
+  final double size;
+
+  /// The x-sheet's column header runs a hair smaller than the rails.
+  final double iconSize;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: size,
+      height: 26,
+      child: IconButton(
+        key: ValueKey<String>(keyValue),
+        tooltip: isVisible ? 'Hide layer' : 'Show layer',
+        padding: EdgeInsets.zero,
+        constraints: BoxConstraints.tightFor(width: size, height: 26),
+        icon: Icon(
+          isVisible ? Icons.visibility : Icons.visibility_off,
+          size: iconSize,
+        ),
+        onPressed: onToggle,
+      ),
+    );
+  }
 }
 
 /// The ONE fx SWITCH: whether this row's FX apply or are bypassed.

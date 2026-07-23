@@ -447,25 +447,10 @@ class TimelineLayerControlsRow extends StatelessWidget {
                 )
               else if (onToggleLayerOnionSkin != null)
                 const SizedBox(width: layerOnionSlotWidth),
-              SizedBox(
-                width: layerVisibilitySlotWidth,
-                height: 26,
-                child: IconButton(
-                  key: ValueKey<String>(
-                    'timeline-layer-visibility-${layer.id}',
-                  ),
-                  tooltip: layer.isVisible ? 'Hide layer' : 'Show layer',
-                  padding: EdgeInsets.zero,
-                  constraints: const BoxConstraints.tightFor(
-                    width: layerVisibilitySlotWidth,
-                    height: 26,
-                  ),
-                  icon: Icon(
-                    layer.isVisible ? Icons.visibility : Icons.visibility_off,
-                    size: 18,
-                  ),
-                  onPressed: () => onToggleLayerVisibility(layer.id),
-                ),
+              LayerVisibilityToggleButton(
+                keyValue: 'timeline-layer-visibility-${layer.id}',
+                isVisible: layer.isVisible,
+                onToggle: () => onToggleLayerVisibility(layer.id),
               ),
               // SE rows carry the mute speaker beside the eye (sounds
               // silence, waveforms keep displaying). Tight SizedBox: the M3
@@ -527,11 +512,12 @@ class TimelineLayerControlsRow extends StatelessWidget {
               if (onLayerBlendModeSelected != null)
                 layerKindShowsBlendControl(layer.kind)
                     ? LayerBlendModeChip(
-                        keyPrefix: 'timeline',
-                        layerId: layer.id,
+                        keyValue: 'timeline-layer-blend-${layer.id}',
+                        optionKeyPrefix: 'timeline-layer-blend-option-',
                         blendMode: layer.blendMode,
                         language: blendLanguage,
-                        onBlendModeSelected: onLayerBlendModeSelected!,
+                        onBlendModeSelected: (mode) =>
+                            onLayerBlendModeSelected!(layer.id, mode),
                       )
                     : const SizedBox(width: layerBlendSlotWidth),
             ],

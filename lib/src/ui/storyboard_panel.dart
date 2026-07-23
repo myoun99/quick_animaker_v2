@@ -2258,25 +2258,10 @@ class _StoryboardSeLabel extends StatelessWidget {
               else
                 const SizedBox(width: layerFxSlotWidth),
               if (layer != null && onToggleLayerVisibility != null)
-                SizedBox(
-                  width: layerVisibilitySlotWidth,
-                  height: 26,
-                  child: IconButton(
-                    key: ValueKey<String>(
-                      'storyboard-layer-visibility-${layer.id}',
-                    ),
-                    tooltip: layer.isVisible ? 'Hide layer' : 'Show layer',
-                    padding: EdgeInsets.zero,
-                    constraints: const BoxConstraints.tightFor(
-                      width: layerVisibilitySlotWidth,
-                      height: 26,
-                    ),
-                    icon: Icon(
-                      layer.isVisible ? Icons.visibility : Icons.visibility_off,
-                      size: 16,
-                    ),
-                    onPressed: () => onToggleLayerVisibility!(layer.id),
-                  ),
+                LayerVisibilityToggleButton(
+                  keyValue: 'storyboard-layer-visibility-${layer.id}',
+                  isVisible: layer.isVisible,
+                  onToggle: () => onToggleLayerVisibility!(layer.id),
                 )
               else
                 const SizedBox(width: layerVisibilitySlotWidth),

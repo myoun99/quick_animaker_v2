@@ -2474,23 +2474,12 @@ class _LayerHeader extends StatelessWidget {
                           fxEnabled: fxEnabled,
                           onToggle: () => onToggleLayerFx!(layer.id),
                         ),
-                      IconButton(
-                        key: ValueKey<String>(
-                          'xsheet-layer-visibility-${layer.id}',
-                        ),
-                        tooltip: layer.isVisible ? 'Hide layer' : 'Show layer',
-                        padding: EdgeInsets.zero,
-                        constraints: const BoxConstraints.tightFor(
-                          width: 28,
-                          height: 28,
-                        ),
-                        icon: Icon(
-                          layer.isVisible
-                              ? Icons.visibility
-                              : Icons.visibility_off,
-                          size: 16,
-                        ),
-                        onPressed: () => onToggleLayerVisibility(layer.id),
+                      LayerVisibilityToggleButton(
+                        keyValue: 'xsheet-layer-visibility-${layer.id}',
+                        isVisible: layer.isVisible,
+                        onToggle: () => onToggleLayerVisibility(layer.id),
+                        size: 28,
+                        iconSize: 16,
                       ),
                       // SE columns carry the mute speaker beside the eye. Tight
                       // SizedBox: the M3 IconButton otherwise inflates to the

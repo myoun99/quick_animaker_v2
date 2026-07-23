@@ -4,9 +4,7 @@ import '../../models/app_language.dart' show AppLanguage;
 import '../../models/folder_id.dart';
 import '../../models/layer_blend_mode.dart';
 import '../../models/layer_folder.dart';
-import '../theme/app_theme.dart';
 import '../widgets/field_slider.dart';
-import '../widgets/panel_flyout.dart';
 import 'layer_label_controls.dart';
 import 'timeline_grid_metrics.dart';
 
@@ -290,10 +288,16 @@ class TimelineFolderControlsRow extends StatelessWidget {
               ),
               // ...and its blend, in the layer rows' blend column.
               if (onBlendModeSelected != null)
-                _FolderBlendChip(
-                  folder: folder,
+                // The SAME blend chip the layer rows mount — the folder
+                // had a byte-for-byte copy of it.
+                LayerBlendModeChip(
+                  keyValue: 'timeline-folder-blend-${folder.id}',
+                  optionKeyPrefix: 'timeline-folder-blend-option-',
+                  subject: 'Folder',
+                  blendMode: folder.blendMode,
                   language: blendLanguage,
-                  onSelected: onBlendModeSelected!,
+                  onBlendModeSelected: (mode) =>
+                      onBlendModeSelected!(folder.id, mode),
                 )
               else
                 const SizedBox(width: layerBlendSlotWidth),
@@ -305,50 +309,3 @@ class TimelineFolderControlsRow extends StatelessWidget {
   }
 }
 
-class _FolderBlendChip extends StatelessWidget {
-  const _FolderBlendChip({
-    required this.folder,
-    required this.language,
-    required this.onSelected,
-  });
-
-  final LayerFolder folder;
-  final AppLanguage language;
-  final void Function(FolderId folderId, LayerBlendMode mode) onSelected;
-
-  @override
-  Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
-    final nonNormal = folder.blendMode != LayerBlendMode.normal;
-    // R28 #2: the same shared blend BUTTON the layer rows and the tool
-    // settings use — caret dropped, centered in the rail's blend slot.
-    return SizedBox(
-      width: layerBlendSlotWidth,
-      height: 20,
-      child: Center(
-        child: PanelFlyoutButton(
-          key: ValueKey<String>('timeline-folder-blend-${folder.id}'),
-          label: folder.blendMode.labelFor(language),
-          tooltip: 'Folder blend mode',
-          showCaret: false,
-          expand: true,
-          fontSize: 9.5,
-          fontWeight: nonNormal ? FontWeight.w700 : FontWeight.w400,
-          labelColor: nonNormal
-              ? AppColors.accent
-              : colorScheme.onSurfaceVariant,
-          padding: const EdgeInsets.symmetric(horizontal: 3, vertical: 2),
-          entriesBuilder: () => [
-            for (final mode in LayerBlendMode.values)
-              PanelFlyoutItem(
-                keyValue: 'timeline-folder-blend-option-${mode.name}',
-                label: mode.labelFor(language),
-                checked: mode == folder.blendMode,
-                onSelected: () => onSelected(folder.id, mode),
-              ),
-          ],
-        ),
-      ),
-    );
-  }
-}
