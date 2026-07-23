@@ -4,8 +4,10 @@ import 'package:flutter/material.dart';
 
 import '../../models/bitmap_surface.dart';
 import '../../models/bitmap_tile.dart';
+
 import '../../models/canvas_viewport.dart';
 import '../../models/pasteboard_bounds.dart';
+import '../../services/canvas_selection_region.dart';
 import 'active_stroke_overlay.dart';
 import 'bitmap_tile_image_cache.dart';
 import 'viewport_canvas_transform.dart';
@@ -29,6 +31,7 @@ class BitmapSurfacePainter extends CustomPainter {
     this.overlayModel,
     this.showTransparentBackground = true,
     this.staleScope,
+    this.strokeClipRegion,
     BitmapTileImageCache? tileImageCache,
   }) : tileImageCache = tileImageCache ?? BitmapTileImageCache.instance,
        super(
@@ -53,6 +56,13 @@ class BitmapSurfacePainter extends CustomPainter {
   /// tile fallback never shows another frame's artwork; see
   /// [BitmapTileImageCache.latestImageForCoord].
   final Object? staleScope;
+
+  /// R26 #18: the live selection, in CANVAS coordinates. Non-null clips
+  /// the in-progress stroke to it — the commit clips the same stroke on
+  /// its own buffer, so what the pen shows is what lands. Null (every
+  /// no-selection path, and the display-parity suites) leaves the overlay
+  /// pipeline byte-for-byte as it was.
+  final CanvasSelectionRegion? strokeClipRegion;
 
   final BitmapTileImageCache tileImageCache;
 
@@ -130,15 +140,44 @@ class BitmapSurfacePainter extends CustomPainter {
     if (overlayBlendsInLayer) {
       canvas.saveLayer(pasteboardRect, Paint());
     }
+    // R26 #18: the selection as a canvas-space path — built once, used by
+    // both the base-pass exclusion and the overlay draw below.
+    final clipRegion = strokeClipRegion;
+    final clipPath = clipRegion?.pathIn(
+      (point) => Offset(point.x, point.y),
+    );
     if (clipsReplaceOverlay) {
       // Row-coalesced difference clips: adjacent overlay tiles merge into
       // strips, so a stroke excludes ~its tile-row count in clip ops, not
       // its tile count.
       canvas.save();
-      for (final rect in replacementStrips) {
-        // Hard edges: an antialiased clip would soften the boundary
-        // pixels and break the byte-exact display parity.
-        canvas.clipRect(rect, clipOp: ui.ClipOp.difference, doAntiAlias: false);
+      if (clipPath == null) {
+        for (final rect in replacementStrips) {
+          // Hard edges: an antialiased clip would soften the boundary
+          // pixels and break the byte-exact display parity.
+          canvas.clipRect(
+            rect,
+            clipOp: ui.ClipOp.difference,
+            doAntiAlias: false,
+          );
+        }
+      } else {
+        // With a selection the overlay only replaces the part of its
+        // rects INSIDE the region — outside it the committed base must
+        // keep painting, or the clipped stroke would leave holes. One
+        // path expresses it: the pasteboard minus (strips ∩ region).
+        final strips = Path();
+        for (final rect in replacementStrips) {
+          strips.addRect(rect);
+        }
+        canvas.clipPath(
+          Path.combine(
+            PathOperation.difference,
+            Path()..addRect(pasteboardRect),
+            Path.combine(PathOperation.intersect, strips, clipPath),
+          ),
+          doAntiAlias: false,
+        );
       }
     }
 
@@ -286,6 +325,13 @@ class BitmapSurfacePainter extends CustomPainter {
               ..isAntiAlias = false
               ..blendMode = overlay.blendMode.previewBlendMode)
           : tileImagePaint;
+      // R26 #18: with a live selection the stroke only shows INSIDE it —
+      // hard-edged, matching the commit's hard scanline mask, so the pen
+      // preview and the landed pixels agree at the boundary.
+      if (clipPath != null) {
+        canvas.save();
+        canvas.clipPath(clipPath, doAntiAlias: false);
+      }
       final overlayTileSize = overlay.tileSize.toDouble();
       for (final entry in overlay.tileImages.entries) {
         canvas.drawImage(
@@ -299,6 +345,9 @@ class BitmapSurfacePainter extends CustomPainter {
       final stampImage = overlay.stampImage;
       if (stampImage != null) {
         canvas.drawImage(stampImage, overlay.stampOffset, overlayPaint);
+      }
+      if (clipPath != null) {
+        canvas.restore();
       }
     }
 
@@ -460,6 +509,7 @@ class BitmapSurfacePainter extends CustomPainter {
     return !identical(oldDelegate.surface, surface) ||
         oldDelegate.showTransparentBackground != showTransparentBackground ||
         oldDelegate.viewport != viewport ||
+        oldDelegate.strokeClipRegion != strokeClipRegion ||
         !identical(oldDelegate.overlayModel, overlayModel);
   }
 }

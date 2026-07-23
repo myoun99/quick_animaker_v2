@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../models/brush_edit_session_state.dart';
 import '../../models/canvas_viewport.dart';
+import '../../services/canvas_selection_region.dart';
 import 'active_stroke_overlay.dart';
 import 'bitmap_surface_painter.dart';
 
@@ -21,6 +22,7 @@ class BrushEditCanvasView extends StatelessWidget {
     this.showTransparentBackground = true,
     this.overlayModel,
     this.staleScope,
+    this.strokeClipRegion,
   });
 
   final BrushEditSessionState sessionState;
@@ -37,6 +39,9 @@ class BrushEditCanvasView extends StatelessWidget {
   /// Surface lineage identity for the stale tile fallback; see
   /// [BitmapSurfacePainter.staleScope].
   final Object? staleScope;
+
+  /// R26 #18: the live selection the in-progress stroke clips to.
+  final CanvasSelectionRegion? strokeClipRegion;
 
   @override
   Widget build(BuildContext context) {
@@ -61,6 +66,7 @@ class BrushEditCanvasView extends StatelessWidget {
           overlayModel: overlayModel,
           showTransparentBackground: showTransparentBackground,
           staleScope: staleScope,
+          strokeClipRegion: strokeClipRegion,
         ),
         child: const SizedBox.expand(),
       ),

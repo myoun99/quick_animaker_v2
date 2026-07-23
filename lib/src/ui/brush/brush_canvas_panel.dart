@@ -12,6 +12,8 @@ import '../../models/bitmap_surface.dart';
 import '../../models/brush_dab.dart';
 import '../../models/brush_frame_key.dart';
 import '../../services/canvas_selection.dart';
+import '../../services/canvas_selection_paint_clip.dart';
+import '../../services/canvas_selection_region.dart';
 import '../../models/canvas_point.dart';
 import '../../models/canvas_size.dart';
 import '../../models/canvas_viewport.dart';
@@ -22,6 +24,7 @@ import '../../services/commands/brush_stroke_history_command.dart';
 import '../../services/cache_invalidation_executor.dart';
 import '../../services/history_manager.dart';
 import '../canvas/canvas_selection_layer.dart';
+import '../canvas/selection_ants_painter.dart';
 import '../canvas/canvas_viewport_gesture_layer.dart';
 import '../theme/app_theme.dart' show AppColors;
 import '../canvas/interactive_brush_edit_canvas_view.dart';
@@ -222,7 +225,8 @@ class BrushCanvasPanel extends StatefulWidget {
   State<BrushCanvasPanel> createState() => _BrushCanvasPanelState();
 }
 
-class _BrushCanvasPanelState extends State<BrushCanvasPanel> {
+class _BrushCanvasPanelState extends State<BrushCanvasPanel>
+    with SingleTickerProviderStateMixin {
   late CanvasViewport _viewport = widget.viewport ?? CanvasViewport();
   CanvasViewport? _lastWidgetViewport;
   Size? _editorViewportSize;
@@ -250,12 +254,88 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel> {
   /// sample nothing (the fill bucket).
   final ValueNotifier<Offset?> _toolCursorHover = ValueNotifier<Offset?>(null);
 
+  /// R28-S: the dash phase for the ants the panel paints when NO selection
+  /// layer is mounted — the region belongs to the document, so it keeps
+  /// showing while the brush/eraser/fill is armed (R26 #18).
+  late final AnimationController _idleAnts = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 600),
+  );
+
   @override
   void initState() {
     super.initState();
     _bindViewCommands();
     _altHeld = HardwareKeyboard.instance.isAltPressed;
     HardwareKeyboard.instance.addHandler(_handleKeyEvent);
+    widget.selectionCommands?.addListener(_handleSelectionChannelChanged);
+    _bindSelectionHistoryRecorder();
+    _syncIdleAnts();
+  }
+
+  /// One undoable selection step (R11-⑧) — the layer's marquee commits and
+  /// the channel's layer-less Ctrl+D both land here, so a selection change
+  /// is recorded the same way whatever tool is armed. Null while this
+  /// panel has no history host (focused tests apply directly).
+  void Function(CanvasSelectionRegion? before, CanvasSelectionRegion? after)?
+  get _recordSelectionChange {
+    final history = widget.historyManager;
+    final commands = widget.selectionCommands;
+    if (history == null || commands == null) {
+      return null;
+    }
+    return (before, after) => history.execute(
+      SelectionShapeHistoryCommand(
+        channel: commands,
+        before: before,
+        after: after,
+      ),
+    );
+  }
+
+  void _bindSelectionHistoryRecorder() {
+    widget.selectionCommands?.regionHistoryRecorder = _recordSelectionChange;
+  }
+
+  /// The region this panel last painted ants for — the rebuild guard.
+  CanvasSelectionRegion? _paintedIdleRegion;
+
+  void _handleSelectionChannelChanged() {
+    if (!mounted) {
+      return;
+    }
+    // The channel pings on EVERY selection mutation, including each step
+    // of a marquee/move drag. Those all happen with a selection tool
+    // armed, where the mounted layer draws and this panel has nothing to
+    // redraw — so the guard keeps the notify structure (R27 #7/#20) out
+    // of the drag loop and only rebuilds when the ants this panel owns
+    // actually change.
+    final next = _idleSelectionRegion;
+    if (next == _paintedIdleRegion) {
+      return;
+    }
+    setState(_syncIdleAnts);
+  }
+
+  /// The idle ants animate only when they are the ones on screen: the
+  /// mounted selection layer runs its own ticker.
+  void _syncIdleAnts() {
+    _paintedIdleRegion = _idleSelectionRegion;
+    final show = _paintedIdleRegion != null;
+    if (show && !_idleAnts.isAnimating) {
+      _idleAnts.repeat();
+    } else if (!show && _idleAnts.isAnimating) {
+      _idleAnts.stop();
+    }
+  }
+
+  /// The region to paint when no selection layer is mounted (null while
+  /// one is — it draws its own, session state included).
+  CanvasSelectionRegion? get _idleSelectionRegion {
+    if (canvasToolSelects(widget.brushToolState.tool)) {
+      return null;
+    }
+    return widget.selectionCommands?.region;
   }
 
   @override
@@ -270,6 +350,9 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel> {
       widget.onSelectionInteractionChanged?.call(false);
     }
     HardwareKeyboard.instance.removeHandler(_handleKeyEvent);
+    widget.selectionCommands?.removeListener(_handleSelectionChannelChanged);
+    widget.selectionCommands?.regionHistoryRecorder = null;
+    _idleAnts.dispose();
     _eyedropperHover.dispose();
     _toolCursorHover.dispose();
     widget.viewCommands?.unbind();
@@ -375,6 +458,14 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel> {
       oldWidget.viewCommands?.unbind();
       _bindViewCommands();
     }
+    if (!identical(oldWidget.selectionCommands, widget.selectionCommands)) {
+      oldWidget.selectionCommands?.removeListener(
+        _handleSelectionChannelChanged,
+      );
+      widget.selectionCommands?.addListener(_handleSelectionChannelChanged);
+    }
+    _bindSelectionHistoryRecorder();
+    _syncIdleAnts();
     final request = widget.autoFrame;
     if (request == null || request.token == oldWidget.autoFrame?.token) {
       return;
@@ -585,6 +676,10 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel> {
                   final selectionLayerActive = canvasToolSelects(
                     widget.brushToolState.tool,
                   );
+                  // R28-S: with a painting tool armed the panel paints the
+                  // committed region's ants itself (the interaction layer
+                  // is not mounted, but the selection still exists).
+                  final idleSelection = _idleSelectionRegion;
 
                   Widget gestureLayer(bool contentStrokeIsActive) {
                     return CanvasViewportGestureLayer(
@@ -623,6 +718,7 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel> {
                                 underlayBuilder == null &&
                                 _toolTapHandler() == null &&
                                 !selectionLayerActive &&
+                                idleSelection == null &&
                                 !_eyedropperCursorActive
                             ? canvasView
                             : Stack(
@@ -837,19 +933,7 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel> {
                                             widget.brushToolState.tool ==
                                             CanvasTool.move,
                                         onShapeCommitted:
-                                            widget.historyManager == null ||
-                                                widget.selectionCommands == null
-                                            ? null
-                                            : (before, after) => widget
-                                                  .historyManager!
-                                                  .execute(
-                                                    SelectionShapeHistoryCommand(
-                                                      channel: widget
-                                                          .selectionCommands!,
-                                                      before: before,
-                                                      after: after,
-                                                    ),
-                                                  ),
+                                            _recordSelectionChange,
                                         viewport: _viewport,
                                         canvasSize: widget.canvasSize,
                                         // No frame = a stable sentinel:
@@ -890,6 +974,31 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel> {
                                         // viewport navigation.
                                         onMoveSessionPendingChanged: widget
                                             .onSelectionInteractionChanged,
+                                      ),
+                                    ),
+                                  // R28-S: the selection is a DOCUMENT
+                                  // fact, so its ants stay on screen under
+                                  // every other tool too — that is what
+                                  // makes "선택하고 다른 툴" legible (R26
+                                  // #18). Purely decorative: the layer
+                                  // above owns all interaction.
+                                  if (idleSelection != null)
+                                    Positioned.fill(
+                                      key: const ValueKey<String>(
+                                        'canvas-idle-selection-ants',
+                                      ),
+                                      child: IgnorePointer(
+                                        child: CustomPaint(
+                                          painter: SelectionAntsPainter(
+                                            repaint: _idleAnts,
+                                            viewport: _viewport,
+                                            committedRegion: idleSelection,
+                                            screenOffset: Offset.zero,
+                                            marqueeShape: null,
+                                            lassoTrail: const [],
+                                          ),
+                                          child: const SizedBox.expand(),
+                                        ),
                                       ),
                                     ),
                                 ],
@@ -959,6 +1068,9 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel> {
       fillDabAt: widget.brushToolState.tool == CanvasTool.fill
           ? widget.fillDabAt
           : null,
+      // R26 #18: the live stroke shows clipped to the selection, exactly
+      // as the commit will clip it.
+      strokeClipRegion: widget.selectionCommands?.region,
       onActiveStrokeChanged: (active) {
         if (_strokeActive != active) {
           widget.onStrokeInputActiveChanged?.call(active);
@@ -1192,7 +1304,7 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel> {
 
   /// shape covers no pixels.
   ({int liftToken, BrushDab stampDab})? _handleSelectionLift(
-    CanvasSelectionShape shape,
+    CanvasSelectionRegion region,
   ) {
     final coordinator = widget.coordinator;
     if (coordinator == null) {
@@ -1200,7 +1312,7 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel> {
     }
     final preLift = coordinator.currentSurfaceOf(coordinator.activeFrameKey);
     final lift = buildSelectionLiftDabs(
-      shape: shape,
+      region: region,
       surface: preLift,
       liftId: '${DateTime.now().microsecondsSinceEpoch}',
       options: widget.selectionMaskOptions?.value ?? SelectionMaskOptions.none,
@@ -1311,10 +1423,67 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel> {
     }
   }
 
-  void _commitSourceStroke(BrushStrokeCommitData strokeData) {
+  /// R26 #18 ("선택하고 그리면 선택 내부만 그려진다"): a stroke that lands
+  /// with a live selection is CLIPPED to it before it reaches the commit.
+  ///
+  /// The clip runs on the stroke's own straight-alpha buffer, where alpha
+  /// 0 is every commit kernel's "leave the destination alone" input — so
+  /// one pass covers brush, eraser, fill and every brush blend mode with
+  /// no per-mode branches. Null return = the whole stroke fell outside
+  /// the selection and there is nothing to commit.
+  BrushStrokeCommitData? _clipStrokeToSelection(BrushStrokeCommitData data) {
+    final region = widget.selectionCommands?.region;
+    if (region == null) {
+      return data;
+    }
+    var pixels = data.strokePixels;
+    var bounds = data.strokeBounds;
+    if (pixels == null || bounds == null) {
+      // No live raster (programmatic strokes, a redo replaying dabs):
+      // rasterize the coverage first so the clip has bytes to work on.
+      final rasterized = rasterizeStrokeForClipping(
+        dabs: data.sourceDabs,
+        canvasSize: widget.canvasSize,
+        tileSize: widget.coordinator == null
+            ? BitmapSurface(canvasSize: widget.canvasSize).tileSize
+            : widget.coordinator!
+                  .currentSurfaceOf(widget.coordinator!.activeFrameKey)
+                  .tileSize,
+      );
+      if (rasterized == null) {
+        return null;
+      }
+      pixels = rasterized.pixels;
+      bounds = rasterized.bounds;
+    }
+    final clipped = clipStrokePixelsToSelection(
+      pixels: pixels,
+      bounds: bounds,
+      region: region,
+    );
+    if (clipped == null) {
+      return null;
+    }
+    return BrushStrokeCommitData(
+      sourceDabs: data.sourceDabs,
+      strokePixels: clipped.pixels,
+      strokeBounds: clipped.bounds,
+      blendMode: data.blendMode,
+    );
+  }
+
+  void _commitSourceStroke(BrushStrokeCommitData rawStrokeData) {
     // Only reachable from the interactive canvas, which requires the
     // coordinator to exist.
     final coordinator = widget.coordinator!;
+    final strokeData = _clipStrokeToSelection(rawStrokeData);
+    if (strokeData == null) {
+      // Entirely outside the selection: nothing lands, nothing undoes.
+      // The live overlay already showed it clipped, so the pen-up is
+      // simply the overlay clearing.
+      setState(() {});
+      return;
+    }
     setState(() {
       final historyManager = widget.historyManager;
       if (historyManager == null) {

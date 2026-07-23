@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../models/app_language.dart';
 import '../../services/canvas_flood_fill.dart';
 import '../../services/canvas_selection.dart';
+import '../../services/canvas_selection_region.dart';
 import '../widgets/drag_value_label.dart';
 import '../widgets/field_slider.dart';
 import 'brush_settings_panel.dart';
@@ -72,6 +73,8 @@ class ToolSettingsPanel extends StatelessWidget {
           onChanged: onChanged,
           maskOptions: selectionMaskOptions,
           onMaskOptionsChanged: onSelectionMaskOptionsChanged,
+          selectionCommands: selectionCommands,
+          language: language,
         );
       case CanvasTool.move:
         return _MoveSettings(selectionCommands: selectionCommands);
@@ -88,17 +91,22 @@ class _SelectionSettings extends StatelessWidget {
     required this.onChanged,
     required this.maskOptions,
     required this.onMaskOptionsChanged,
+    required this.selectionCommands,
+    required this.language,
   });
 
   final BrushToolState state;
   final ValueChanged<BrushToolState> onChanged;
   final SelectionMaskOptions maskOptions;
   final ValueChanged<SelectionMaskOptions>? onMaskOptionsChanged;
+  final CanvasSelectionCommands? selectionCommands;
+  final AppLanguage language;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final onMask = onMaskOptionsChanged;
+    final commands = selectionCommands;
     return ListView(
       key: const ValueKey<String>('tool-settings-selection'),
       padding: const EdgeInsets.all(12),
@@ -107,6 +115,19 @@ class _SelectionSettings extends StatelessWidget {
         // (two tools there), so the settings panel no longer duplicates
         // it — only the mask knobs remain.
         Text('Select', style: theme.textTheme.titleSmall),
+        // R26 #16: 갱신 / 추가 / 삭제 / 선택중 — how the next drag folds
+        // into the region already selected. Default 추가 (유저 원문).
+        if (commands != null) ...[
+          const SizedBox(height: 8),
+          ListenableBuilder(
+            listenable: commands,
+            builder: (context, _) => _SelectionModeRow(
+              mode: commands.combineMode,
+              language: language,
+              onChanged: (mode) => commands.combineMode = mode,
+            ),
+          ),
+        ],
         if (onMask != null) ...[
           const SizedBox(height: 8),
           FieldSlider(
@@ -146,6 +167,61 @@ class _SelectionSettings extends StatelessWidget {
                 onMask(maskOptions.copyWith(antiAlias: value)),
           ),
         ],
+      ],
+    );
+  }
+}
+
+/// R26 #16: the four selection modes as one segmented row — the same
+/// "selection shows in COLOR only" rule the rest of the app follows
+/// ([[ui-selection-style]]: no check marks).
+class _SelectionModeRow extends StatelessWidget {
+  const _SelectionModeRow({
+    required this.mode,
+    required this.language,
+    required this.onChanged,
+  });
+
+  final SelectionCombineMode mode;
+  final AppLanguage language;
+  final ValueChanged<SelectionCombineMode> onChanged;
+
+  static const Map<SelectionCombineMode, IconData> _icons = {
+    SelectionCombineMode.replace: Icons.crop_square,
+    SelectionCombineMode.add: Icons.add_box_outlined,
+    SelectionCombineMode.subtract: Icons.indeterminate_check_box_outlined,
+    SelectionCombineMode.intersect: Icons.join_inner,
+  };
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    return Row(
+      key: const ValueKey<String>('selection-mode-row'),
+      children: [
+        for (final candidate in SelectionCombineMode.values)
+          Padding(
+            padding: const EdgeInsets.only(right: 4),
+            child: IconButton(
+              key: ValueKey<String>('selection-mode-${candidate.name}'),
+              tooltip: candidate.labelFor(language),
+              onPressed: () => onChanged(candidate),
+              icon: Icon(_icons[candidate]),
+              iconSize: 20,
+              isSelected: candidate == mode,
+              style: IconButton.styleFrom(
+                foregroundColor: candidate == mode
+                    ? colorScheme.primary
+                    : colorScheme.onSurfaceVariant,
+                backgroundColor: candidate == mode
+                    ? colorScheme.surfaceContainerHigh
+                    : Colors.transparent,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(4),
+                ),
+              ),
+            ),
+          ),
       ],
     );
   }

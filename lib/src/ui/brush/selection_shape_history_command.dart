@@ -1,12 +1,12 @@
-import '../../services/canvas_selection.dart';
+import '../../services/canvas_selection_region.dart';
 import '../../services/command.dart';
 import 'canvas_selection_commands.dart';
 
 /// One committed selection-region change (marquee release, click-away,
 /// Ctrl+D) as an undoable step (R11-⑧: selecting is an action like any
-/// other). Selection is VIEW state: execute/undo push the region through
-/// the selection channel into whatever selection layer is mounted — with
-/// none mounted (another tool active) the step no-ops harmlessly.
+/// other). R28-S: the region is APP state on the selection channel, so
+/// execute/undo restore it whether or not a selection layer is mounted —
+/// undoing a selection while the brush is armed puts the ants back.
 class SelectionShapeHistoryCommand implements Command {
   SelectionShapeHistoryCommand({
     required this.channel,
@@ -15,19 +15,19 @@ class SelectionShapeHistoryCommand implements Command {
   });
 
   final CanvasSelectionCommands channel;
-  final CanvasSelectionShape? before;
-  final CanvasSelectionShape? after;
+  final CanvasSelectionRegion? before;
+  final CanvasSelectionRegion? after;
 
   @override
   String get description => after == null ? 'Deselect' : 'Select';
 
   @override
   void execute() {
-    channel.applyShape(after);
+    channel.applyRegion(after);
   }
 
   @override
   void undo() {
-    channel.applyShape(before);
+    channel.applyRegion(before);
   }
 }

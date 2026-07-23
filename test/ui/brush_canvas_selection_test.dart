@@ -7,6 +7,7 @@ import 'package:quick_animaker_v2/src/models/brush_tip_shape.dart';
 import 'package:quick_animaker_v2/src/models/canvas_point.dart';
 import 'package:quick_animaker_v2/src/services/brush_frame_editing_coordinator.dart';
 import 'package:quick_animaker_v2/src/services/canvas_color_sampler.dart';
+import 'package:quick_animaker_v2/src/services/canvas_selection_region.dart';
 import 'package:quick_animaker_v2/src/services/history_manager.dart';
 import 'package:quick_animaker_v2/src/ui/brush/brush_canvas_panel.dart';
 import 'package:quick_animaker_v2/src/ui/brush/brush_edit_cache_invalidation_sink.dart';
@@ -434,9 +435,19 @@ void main() {
     await tester.pump();
     expect(env.commands.hasSelection, isFalse);
 
-    // Re-select, then a click (degenerate marquee) deselects too.
+    // Re-select. R26 #16: in the DEFAULT 추가 mode a click is inert —
+    // clicking away must not throw a composite selection away.
     await dragOnLayer(tester, const Offset(20, 20), const Offset(70, 70));
     expect(env.commands.hasSelection, isTrue);
+    await tester.tapAt(
+      tester.getTopLeft(find.byKey(layerKey)) + const Offset(150, 150),
+    );
+    await tester.pump();
+    expect(env.commands.hasSelection, isTrue);
+
+    // In 갱신 (replace) mode the click-away deselect is back — Photoshop's.
+    env.commands.combineMode = SelectionCombineMode.replace;
+    await tester.pump();
     await tester.tapAt(
       tester.getTopLeft(find.byKey(layerKey)) + const Offset(150, 150),
     );

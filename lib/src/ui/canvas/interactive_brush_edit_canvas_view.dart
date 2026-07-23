@@ -32,6 +32,7 @@ import '../../services/brush_pressure_dynamics.dart';
 import '../../services/brush_stroke_commit_data.dart';
 import '../../native/qa_native_engine.dart';
 import '../../services/canvas_segment_clipper.dart';
+import '../../services/canvas_selection_region.dart';
 import '../../services/stroke_stabilizer.dart';
 import 'active_stroke_overlay.dart';
 import 'bitmap_tile_image_cache.dart';
@@ -111,6 +112,7 @@ class InteractiveBrushEditCanvasView extends StatefulWidget {
     this.onTemporaryToolRelease,
     this.onInvokeAction,
     this.fillDabAt,
+    this.strokeClipRegion,
     CanvasViewport? viewport,
   }) : viewport = viewport ?? CanvasViewport();
 
@@ -148,6 +150,11 @@ class InteractiveBrushEditCanvasView extends StatefulWidget {
   /// until the committed tiles decode (the settling contract) — no more
   /// tile-by-tile reveal on big fills.
   final BrushDab? Function(CanvasPoint point, int color)? fillDabAt;
+
+  /// R26 #18: the live selection region (canvas coordinates). Non-null
+  /// clips the LIVE stroke display to it — the panel clips the same
+  /// stroke's buffer at commit, so pen preview and landed pixels agree.
+  final CanvasSelectionRegion? strokeClipRegion;
 
   /// Zoom/pan applied to the canvas display and input mapping. Viewport
   /// GESTURES (middle-drag pan, wheel zoom) live on the panel's
@@ -365,6 +372,7 @@ class _InteractiveBrushEditCanvasViewState
                 showTransparentBackground: widget.showTransparentBackground,
                 overlayModel: _overlayModel,
                 staleScope: (widget.layerId, widget.frameId),
+                strokeClipRegion: widget.strokeClipRegion,
               ),
             ),
           ),

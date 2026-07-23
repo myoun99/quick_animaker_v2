@@ -9,6 +9,7 @@ import '../models/brush_stamp_image.dart';
 import '../models/brush_tip_shape.dart';
 import '../models/canvas_point.dart';
 import '../models/tile_coord.dart';
+import 'canvas_selection_region.dart';
 
 /// A selection region in canvas coordinates (P9): a closed polygon — the
 /// rectangle marquee is its 4-corner special case, the lasso is the
@@ -59,6 +60,27 @@ class CanvasSelectionShape {
       for (final point in points) CanvasPoint(x: point.x + dx, y: point.y + dy),
     ]);
   }
+
+  /// Value equality (R28-S: the composite region compares step by step,
+  /// and the ants painter's [CustomPainter.shouldRepaint] rides on it).
+  @override
+  bool operator ==(Object other) {
+    if (identical(this, other)) {
+      return true;
+    }
+    if (other is! CanvasSelectionShape || other.points.length != points.length) {
+      return false;
+    }
+    for (var i = 0; i < points.length; i += 1) {
+      if (other.points[i] != points[i]) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  @override
+  int get hashCode => Object.hashAll(points);
 }
 
 /// The Ctrl+T free-transform affine (P9b), canvas space:
@@ -854,13 +876,13 @@ void _antiAliasMask(Uint8List mask, int width, int height) {
   }
 }
 
-/// Builds the lift pair for [shape] over the active layer's committed
+/// Builds the lift pair for [region] over the active layer's committed
 /// [surface]. Null when the selection covers no canvas pixels. The mask is
 /// HARD-EDGED (a pixel is in or out by its center, the same even-odd rule
-/// as [CanvasSelectionShape.containsPoint]) — partial coverage would make
+/// as [CanvasSelectionRegion.containsPoint]) — partial coverage would make
 /// erase + stamp lose paint at the seam.
 SelectionLiftDabs? buildSelectionLiftDabs({
-  required CanvasSelectionShape shape,
+  required CanvasSelectionRegion region,
   required BitmapSurface surface,
   required String liftId,
   SelectionMaskOptions options = SelectionMaskOptions.none,
@@ -868,14 +890,11 @@ SelectionLiftDabs? buildSelectionLiftDabs({
   // Pasteboard clip, not canvas — off-canvas artwork is selectable and
   // liftable (the whole point of moving things on and off the stage).
   final canvasSize = surface.canvasSize;
-  var minX = double.infinity, minY = double.infinity;
-  var maxX = double.negativeInfinity, maxY = double.negativeInfinity;
-  for (final point in shape.points) {
-    minX = math.min(minX, point.x);
-    minY = math.min(minY, point.y);
-    maxX = math.max(maxX, point.x);
-    maxY = math.max(maxY, point.y);
-  }
+  final regionBounds = region.bounds;
+  final minX = regionBounds.left;
+  final minY = regionBounds.top;
+  final maxX = regionBounds.right;
+  final maxY = regionBounds.bottom;
   // R26: grow/feather/AA may write beyond the polygon's bbox.
   final pad = options.bboxPad;
   final left = math.max(canvasSize.pasteboardLeft, minX.floor() - pad);
@@ -894,36 +913,15 @@ SelectionLiftDabs? buildSelectionLiftDabs({
   final width = rightExclusive - left;
   final height = bottomExclusive - top;
 
-  // Even-odd scanline mask over the bbox: per row, collect the polygon
-  // edge crossings at the pixel-center scanline and fill alternate spans —
-  // O(edges × rows + pixels), where the naive per-pixel ray cast made
-  // lasso lifts quadratic.
-  final mask = Uint8List(width * height);
-  final points = shape.points;
-  final crossings = <double>[];
-  for (var row = 0; row < height; row += 1) {
-    final scanY = top + row + 0.5;
-    crossings.clear();
-    for (var i = 0, j = points.length - 1; i < points.length; j = i, i += 1) {
-      final a = points[i];
-      final b = points[j];
-      if ((a.y > scanY) != (b.y > scanY)) {
-        crossings.add((b.x - a.x) * (scanY - a.y) / (b.y - a.y) + a.x);
-      }
-    }
-    crossings.sort();
-    for (var c = 0; c + 1 < crossings.length; c += 2) {
-      // Pixel centers strictly inside [start, end): x + 0.5 > crossing —
-      // the same "point.x < intersection" strictness as containsPoint.
-      var spanStart = (crossings[c] - 0.5).ceil();
-      var spanEndExclusive = (crossings[c + 1] - 0.5).ceil();
-      spanStart = math.max(spanStart, left);
-      spanEndExclusive = math.min(spanEndExclusive, rightExclusive);
-      for (var x = spanStart; x < spanEndExclusive; x += 1) {
-        mask[row * width + (x - left)] = 255;
-      }
-    }
-  }
+  // Even-odd scanline mask over the bbox, folded step by step (R26 #16 —
+  // the composite region's own rasterizer): O(edges × rows + pixels),
+  // where the naive per-pixel ray cast made lasso lifts quadratic.
+  final mask = region.maskFor(
+    left: left,
+    top: top,
+    width: width,
+    height: height,
+  );
 
   // R26 opt-in mask post-passes (defaults leave the classic hard mask
   // byte-identical). Order: resize the region first, then soften.
