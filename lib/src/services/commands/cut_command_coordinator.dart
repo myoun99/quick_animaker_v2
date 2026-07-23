@@ -597,17 +597,8 @@ class CutCommandCoordinator {
                   .where((other) => other.kind == LayerKind.instruction)
                   .length <=
               1,
-        LayerKind.animation || LayerKind.storyboard || LayerKind.art =>
-          cut.layers
-                  .where(
-                    (other) =>
-                        !isAttachedLayer(other) &&
-                        (other.kind == LayerKind.animation ||
-                            other.kind == LayerKind.storyboard ||
-                            other.kind == LayerKind.art),
-                  )
-                  .length <=
-              1,
+        // R28 #14: no drawing floor — the action section may empty out.
+        LayerKind.animation || LayerKind.storyboard || LayerKind.art => false,
       };
       if (refused) {
         return;
@@ -1049,26 +1040,28 @@ class CutCommandCoordinator {
     );
   }
 
+  /// R28 #14: deleting the LAST cut leaves the track empty rather than
+  /// conjuring a replacement.
+  ///
+  /// "컷도 1개도 없는 상황 허용" — the empty track is the same state the
+  /// editor already shows over a storyboard GAP (no active cut): the
+  /// canvas paints its blank paper and every `requireActiveCut` consumer
+  /// is behind a guard. Auto-replacing meant a delete could not actually
+  /// clear the track, and the replacement was indistinguishable from a
+  /// real cut in the undo stack.
   void deleteCut({required CutId cutId}) {
-    final project = repository.requireProject();
-    final replacementPlan = _cutCount(project) == 1
-        ? planDeleteLastCutReplacementInput(project)
-        : null;
-
     historyManager.execute(
       DeleteCutCommand(
         repository: repository,
         editingSession: editingSession,
         cutId: cutId,
         brushFrameStore: brushFrameStore,
-        replacementCutId: replacementPlan?.replacementCutId,
-        replacementLayerId: replacementPlan?.replacementLayerId,
       ),
     );
   }
 
-  /// Deletes a batch of cuts as ONE undo step. Callers must leave at least
-  /// one cut in the project (no last-cut replacement plan here).
+  /// Deletes a batch of cuts as ONE undo step; emptying the track is
+  /// allowed (R28 #14).
   void deleteCuts({required List<CutId> cutIds}) {
     if (cutIds.isEmpty) {
       return;
@@ -1076,10 +1069,6 @@ class CutCommandCoordinator {
     if (cutIds.length == 1) {
       deleteCut(cutId: cutIds.single);
       return;
-    }
-    final project = repository.requireProject();
-    if (_cutCount(project) <= cutIds.length) {
-      throw StateError('deleteCuts would remove every cut');
     }
 
     historyManager.execute(
@@ -1157,13 +1146,6 @@ class CutCommandCoordinator {
     );
   }
 
-  int _cutCount(Project project) {
-    var count = 0;
-    for (final track in project.tracks) {
-      count += track.cuts.length;
-    }
-    return count;
-  }
 
   Cut _requireCut(CutId cutId) {
     return requireCut(repository.requireProject(), cutId);

@@ -409,19 +409,19 @@ void main() {
     );
   });
 
-  test('deleting the base cascades over its attach rows in ONE undo; the '
-      'attach rows never count toward the drawing floor', () {
+  test('deleting the base cascades over its attach rows in ONE undo (R28 '
+      '#14: no drawing floor stands in the way)', () {
     final (s, base) = sessionWithBase();
     s.addAttachedLayer(AttachedPlacement.above);
     s.addAttachedLayer(AttachedPlacement.below);
     final layersBefore = cutLayers(s).map((layer) => layer.id).toList();
 
-    // The base is the ONLY standalone drawing layer: its attach rows must
-    // not satisfy the floor, so the base itself is not deletable...
+    // R28 #14: the base is deletable even as the ONLY standalone drawing
+    // layer — the action section may empty out.
     s.selectLayer(base.id);
-    expect(s.canDeleteActiveLayer, isFalse);
+    expect(s.canDeleteActiveLayer, isTrue);
 
-    // ...but each attach row is (accessories are always deletable).
+    // Attach rows stay deletable too (accessories always were).
     final attachIds = attachedLayersOf(
       base.id,
       cutLayers(s),
@@ -429,8 +429,8 @@ void main() {
     s.selectLayer(attachIds.first);
     expect(s.canDeleteActiveLayer, isTrue);
 
-    // With a second standalone drawing layer, the base becomes deletable
-    // and takes its attach rows with it — restored whole by ONE undo.
+    // The cascade itself: deleting the base takes its attach rows with
+    // it, restored whole by ONE undo.
     s.selectLayer(base.id);
     s.addLayer(); // regular layer above the group
     s.selectLayer(base.id);

@@ -2134,17 +2134,12 @@ class EditorSessionManager extends ChangeNotifier {
       LayerKind.se => activeTrack.seLayers.length > 2,
       LayerKind.instruction =>
         layers.where((layer) => layer.kind == LayerKind.instruction).length > 1,
-      // Keep at least one drawing-section layer in the cut.
-      LayerKind.animation || LayerKind.storyboard || LayerKind.art =>
-        layers
-                .where(
-                  (layer) =>
-                      !isAttachedLayer(layer) &&
-                      timelineSectionForLayerKind(layer.kind) ==
-                          TimelineSection.drawing,
-                )
-                .length >=
-            2,
+      // R28 #14: NO drawing floor. The action section may stand empty —
+      // the last action layer is deletable ("액션 레이어가 1개도 없는상황
+      // 허용"). The global track is the thing that has to exist, not any
+      // particular row inside a cut, and every drawing path already
+      // handles "no editable cel" (that is the R26 #35 refusal notice).
+      LayerKind.animation || LayerKind.storyboard || LayerKind.art => true,
     };
   }
 
@@ -7505,6 +7500,33 @@ class EditorSessionManager extends ChangeNotifier {
     return plans;
   }
 
+  /// R28 #5: returns the drag preview to the block's REAL position.
+  ///
+  /// `planDrawingRangeMove` answers null for two different questions —
+  /// "impossible" and "no movement" (frameDelta 0, or a landing back on
+  /// the group's own start). The drag step read every null as blocked and
+  /// so HELD the last valid preview (UI-R23 #10, which is right for a
+  /// blocked landing). A drag that went right and came back therefore
+  /// froze one step out and refused to reach home: "더 이상 왼쪽으로 이동이
+  /// 안먹혀버리고 그 자리에서 멈춰버린다". Zero delta is not a blocked
+  /// landing — it is the origin, and the preview must show it.
+  void _resetRangeMovePreviewToOrigin() {
+    _rangeMovePlan = null;
+    _rangeMoveMultiPlans = null;
+    _rangeMoveSeRowChange = null;
+    _rangeMoveInstructionRowChange = null;
+    _rangeMoveMultiRowPlan = null;
+    _rangeMoveMultiSeRowChanges = null;
+    _rangeMoveCameraShifted = null;
+    _rangeMoveInstructionShifted = null;
+    _cameraKeysDragPreview = null;
+    dragPreview.value = null;
+    final selection = _rangeMoveSelectionBefore;
+    if (selection != null) {
+      frameRangeSelection.value = selection;
+    }
+  }
+
   /// A range-move drag step: live preview on [dragPreview] (repository
   /// untouched), the selection outline riding the previewed landing.
   void updateFrameRangeMoveDrag({
@@ -7513,6 +7535,17 @@ class EditorSessionManager extends ChangeNotifier {
   }) {
     final selection = _rangeMoveSelectionBefore;
     final multiSources = _rangeMoveMultiSources;
+    // R28 #5: back at the start = the origin, not a refusal. A row change
+    // still owns the step (a delta-0 drop onto a sibling row is a real
+    // move), so only same-row zero deltas reset.
+    if (selection != null &&
+        frameDelta == 0 &&
+        (targetLayerId == null ||
+            targetLayerId == selection.layerId ||
+            targetLayerId == _rangeMoveGrabLayerId)) {
+      _resetRangeMovePreviewToOrigin();
+      return;
+    }
     if (selection != null && multiSources != null) {
       // ROW-CHANGE drops within the SE / camera sections (P3b-4, 같은
       // 섹션 행이동): a single-row track-SE selection may land on a

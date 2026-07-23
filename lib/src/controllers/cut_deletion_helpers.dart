@@ -2,14 +2,19 @@ import '../models/cut_id.dart';
 import '../models/project.dart';
 import 'cut_list_helpers.dart';
 
-enum CutDeletionFallbackKind { useExistingCut, createDefaultCut }
+/// R28 #14: [emptyTrack] replaced the old `createDefaultCut`. Deleting the
+/// only cut leaves NO cut selected instead of conjuring a replacement —
+/// "컷도 1개도 없는 상황 허용". The no-active-cut state is one the editor
+/// already renders (a storyboard gap parks there), so nothing new had to
+/// learn about it.
+enum CutDeletionFallbackKind { useExistingCut, emptyTrack }
 
 class CutDeletionFallbackDecision {
   const CutDeletionFallbackDecision.useExistingCut(this.cutId)
     : kind = CutDeletionFallbackKind.useExistingCut;
 
-  const CutDeletionFallbackDecision.createDefaultCut()
-    : kind = CutDeletionFallbackKind.createDefaultCut,
+  const CutDeletionFallbackDecision.emptyTrack()
+    : kind = CutDeletionFallbackKind.emptyTrack,
       cutId = null;
 
   final CutDeletionFallbackKind kind;
@@ -53,5 +58,5 @@ CutDeletionFallbackDecision cutDeletionFallbackFor(
     return CutDeletionFallbackDecision.useExistingCut(cutIds[1]);
   }
 
-  return const CutDeletionFallbackDecision.createDefaultCut();
+  return const CutDeletionFallbackDecision.emptyTrack();
 }

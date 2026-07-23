@@ -1565,7 +1565,8 @@ void main() {
       expect(fixture.historyManager.undoCount, 1);
     });
 
-    test('deleteCut plans replacement IDs when deleting the last cut', () {
+    test('R28 #14: deleting the LAST cut empties the track — no replacement '
+        'is conjured, and undo brings the real cut back', () {
       final onlyCut = _cut(
         id: 'cut-1',
         name: 'Only',
@@ -1582,11 +1583,18 @@ void main() {
 
       fixture.coordinator.deleteCut(cutId: onlyCut.id);
 
-      var cuts = fixture.cutsFor(const TrackId('track-1'));
-      expect(cuts, hasLength(1));
-      expect(cuts.single.id, const CutId('cut-2'));
-      expect(cuts.single.layers.first.id, const LayerId('layer-2'));
-      expect(fixture.editingSession.activeCutId, const CutId('cut-2'));
+      expect(
+        fixture.cutsFor(const TrackId('track-1')),
+        isEmpty,
+        reason: 'R28 #14: "컷도 1개도 없는 상황 허용" — a delete must actually '
+            'be able to clear the track',
+      );
+      expect(
+        fixture.editingSession.activeCutId,
+        isNull,
+        reason: 'the empty track is the no-active-cut state the editor '
+            'already shows over a storyboard gap',
+      );
       expect(fixture.historyManager.undoCount, 1);
 
       fixture.historyManager.undo();
@@ -1597,9 +1605,8 @@ void main() {
 
       fixture.historyManager.redo();
 
-      cuts = fixture.cutsFor(const TrackId('track-1'));
-      expect(cuts.single.id, const CutId('cut-2'));
-      expect(fixture.editingSession.activeCutId, const CutId('cut-2'));
+      expect(fixture.cutsFor(const TrackId('track-1')), isEmpty);
+      expect(fixture.editingSession.activeCutId, isNull);
     });
 
     test(
@@ -2155,7 +2162,8 @@ void main() {
       expect(copy.audioClips.single.filePath, 'voice.wav');
     });
 
-    test('deleteLayer keeps the SE, instruction and drawing floors', () {
+    test('R28 #14: deleteLayer keeps the SE and instruction floors, but the '
+        'DRAWING floor is gone — the action section may empty out', () {
       final cel = _layer(id: 'layer-1');
       final se1 = _layer(id: 'layer-2', kind: LayerKind.se);
       final se2 = _layer(id: 'layer-3', kind: LayerKind.se);
@@ -2185,11 +2193,24 @@ void main() {
       fixture.coordinator.deleteLayer(cutId: cutA.id, layerId: instruction.id);
       expect(fixture.historyManager.undoCount, 1);
 
-      // The last drawing-section layer does not delete even though SE and
-      // instruction rows remain.
+      // R28 #14: the LAST drawing-section layer DOES delete now — "액션
+      // 레이어가 1개도 없는상황 허용". The sheet fixtures (SE pair,
+      // instruction row) keep their floors; the action section does not.
       fixture.coordinator.deleteLayer(cutId: cutA.id, layerId: cel.id);
-      expect(fixture.historyManager.undoCount, 1);
-      expect(fixture.project.tracks.single.cuts.single.layers, hasLength(4));
+      expect(fixture.historyManager.undoCount, 2);
+      final remaining = fixture.project.tracks.single.cuts.single.layers;
+      expect(remaining, hasLength(3));
+      expect(
+        remaining.where((layer) => layer.kind == LayerKind.animation),
+        isEmpty,
+      );
+
+      // ...and it comes back.
+      fixture.historyManager.undo();
+      expect(
+        fixture.project.tracks.single.cuts.single.layers.map((l) => l.id),
+        contains(cel.id),
+      );
     });
 
     test('setLayerTimesheet flips the flag through history', () {

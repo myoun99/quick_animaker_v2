@@ -129,7 +129,8 @@ void main() {
         _expectActiveCutExists(repository, editingSession);
       });
 
-      test('delete the last remaining cut creates an active replacement', () {
+      test('R28 #14: deleting the last remaining cut leaves the track EMPTY '
+          'and nothing active', () {
         final onlyCut = _cut(id: 'cut-only', name: 'Only Cut');
         final repository = _repositoryWithCuts([onlyCut]);
         final editingSession = EditingSessionState(activeCutId: onlyCut.id);
@@ -138,15 +139,15 @@ void main() {
           repository: repository,
           editingSession: editingSession,
           cutId: onlyCut.id,
-          replacementCutId: const CutId('cut-replacement'),
-          replacementLayerId: const LayerId('layer-replacement'),
         ).execute();
 
-        final cuts = _allCuts(repository);
-        expect(cuts, hasLength(1));
-        expect(cuts.single.id, const CutId('cut-replacement'));
-        expect(editingSession.activeCutId, const CutId('cut-replacement'));
-        _expectActiveCutExists(repository, editingSession);
+        expect(_allCuts(repository), isEmpty);
+        expect(
+          editingSession.activeCutId,
+          isNull,
+          reason: 'no cut exists to be active — the same state a storyboard '
+              'gap parks in',
+        );
       });
     });
 
@@ -237,7 +238,8 @@ void main() {
       });
 
       test(
-        'undo delete last cut removes replacement and restores active cut',
+        'undo delete last cut restores the cut and the active cut (R28 #14: '
+        'there is no replacement to remove first)',
         () {
           final onlyCut = _cut(id: 'cut-only', name: 'Only Cut');
           final repository = _repositoryWithCuts([onlyCut]);
@@ -249,8 +251,6 @@ void main() {
               repository: repository,
               editingSession: editingSession,
               cutId: onlyCut.id,
-              replacementCutId: const CutId('cut-replacement'),
-              replacementLayerId: const LayerId('layer-replacement'),
             ),
           );
           historyManager.undo();

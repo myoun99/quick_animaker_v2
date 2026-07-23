@@ -1,11 +1,8 @@
 import '../../controllers/cut_deletion_helpers.dart';
-import '../../controllers/default_cut_helpers.dart';
 import '../../controllers/editing_session_state.dart';
 import '../../models/brush_frame_key.dart';
-import '../../models/canvas_size.dart';
 import '../../models/cut.dart';
 import '../../models/cut_id.dart';
-import '../../models/layer_id.dart';
 import '../../models/layer_link_registry.dart';
 import '../../models/project.dart';
 import '../../models/track_id.dart';
@@ -20,11 +17,6 @@ class DeleteCutCommand implements Command {
     required this.editingSession,
     required this.cutId,
     this.brushFrameStore,
-    this.replacementCutId,
-    this.replacementLayerId,
-    // Bare-number cut names (UI-R7 #3).
-    this.replacementName = '1',
-    this.replacementCanvasSize = defaultCutCanvasSize,
   });
 
   final ProjectRepository repository;
@@ -35,16 +27,13 @@ class DeleteCutCommand implements Command {
   /// surviving member promotes and the cels re-key onto it.
   final BrushFrameStore? brushFrameStore;
 
-  final CutId? replacementCutId;
-  final LayerId? replacementLayerId;
-  final String replacementName;
-  final CanvasSize replacementCanvasSize;
+  // R28 #14: the replacement-cut inputs are gone. Deleting the only cut
+  // empties the track instead of conjuring a stand-in.
 
   Cut? _deletedCut;
   TrackId? _originalTrackId;
   int? _originalIndex;
   CutId? _previousActiveCutId;
-  bool _createdReplacementCut = false;
   LayerLinkRegistry? _registryBefore;
   final List<(BrushFrameKey, BrushFrameKey)> _rekeys = [];
   bool _hasExecuted = false;
@@ -61,13 +50,6 @@ class DeleteCutCommand implements Command {
     final fallbackDecision = isDeletingActiveCut
         ? cutDeletionFallbackFor(project, deletingCutId: cutId)
         : null;
-
-    if (fallbackDecision?.kind == CutDeletionFallbackKind.createDefaultCut &&
-        (replacementCutId == null || replacementLayerId == null)) {
-      throw StateError(
-        'Replacement CutId and LayerId are required when deleting the only cut.',
-      );
-    }
 
     _previousActiveCutId = previousActiveCutId;
     _originalTrackId = location.trackId;
@@ -89,7 +71,6 @@ class DeleteCutCommand implements Command {
       ),
     );
     _deletedCut = repository.removeCut(cutId: cutId);
-    _createdReplacementCut = false;
 
     if (!isDeletingActiveCut) {
       _hasExecuted = true;
@@ -100,20 +81,10 @@ class DeleteCutCommand implements Command {
       case CutDeletionFallbackKind.useExistingCut:
         editingSession.setActiveCutId(fallbackDecision.cutId!);
         break;
-      case CutDeletionFallbackKind.createDefaultCut:
-        final replacement = createDefaultCut(
-          cutId: replacementCutId!,
-          name: replacementName,
-          layerId: replacementLayerId!,
-          canvasSize: replacementCanvasSize,
-        );
-        repository.insertCut(
-          trackId: location.trackId,
-          cut: replacement,
-          index: location.index,
-        );
-        _createdReplacementCut = true;
-        editingSession.setActiveCutId(replacement.id);
+      // R28 #14: the track simply empties. No replacement cut is created
+      // and nothing is active — the same state a storyboard gap parks in.
+      case CutDeletionFallbackKind.emptyTrack:
+        editingSession.setActiveCutId(null);
         break;
     }
 
@@ -132,10 +103,6 @@ class DeleteCutCommand implements Command {
         originalIndex == null ||
         previousActiveCutId == null) {
       throw StateError('Command has not been executed.');
-    }
-
-    if (_createdReplacementCut) {
-      repository.removeCut(cutId: replacementCutId!);
     }
 
     repository.insertCut(

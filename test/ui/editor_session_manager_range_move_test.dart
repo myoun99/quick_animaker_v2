@@ -1209,4 +1209,50 @@ void main() {
       );
     });
   });
+
+  test('R28 #5: dragging back to the START returns the block home — a zero '
+      'delta is the origin, not a blocked landing', () {
+    final (s, a, _) = fixture();
+    s.updateFrameRangeSelectionDrag(
+      layerId: a.id,
+      anchorIndex: 0,
+      headIndex: 0,
+    );
+    expect(s.beginFrameRangeMoveDrag(), isTrue);
+
+    // Out to the right…
+    s.updateFrameRangeMoveDrag(frameDelta: 2);
+    expect(s.dragPreview.value, isNotNull);
+    expect(s.frameRangeSelection.value!.startIndex, 2);
+
+    // …and back home. This used to read as "blocked" — planDrawingRangeMove
+    // answers null for a no-op exactly as it does for an impossible
+    // landing — so the preview HELD at +2 and the block refused to come
+    // back: "더 이상 왼쪽으로 이동이 안먹혀버리고 그 자리에서 멈춰버린다".
+    s.updateFrameRangeMoveDrag(frameDelta: 0);
+    expect(
+      s.dragPreview.value,
+      isNull,
+      reason: 'R28 #5: at zero delta the block shows at its REAL position',
+    );
+    expect(
+      s.frameRangeSelection.value!.startIndex,
+      0,
+      reason: 'the outline comes home with it',
+    );
+
+    // …and the drag still works afterwards, in both directions.
+    s.updateFrameRangeMoveDrag(frameDelta: 1);
+    expect(s.frameRangeSelection.value!.startIndex, 1);
+    s.updateFrameRangeMoveDrag(frameDelta: 0);
+    expect(s.frameRangeSelection.value!.startIndex, 0);
+
+    s.endFrameRangeMoveDrag();
+    // Ending at the origin commits nothing.
+    expect(
+      s.layers.firstWhere((l) => l.id == a.id).timeline[0],
+      isNotNull,
+      reason: 'the block never left frame 0',
+    );
+  });
 }

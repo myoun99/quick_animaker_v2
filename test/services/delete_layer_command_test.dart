@@ -86,14 +86,23 @@ void main() {
       expect(_layerNames(fixture.repository, _otherCutId), ['Other A']);
     });
 
-    test('deleting last layer is rejected without history', () {
+    test('R28 #14: deleting the LAST layer is allowed — the cut may stand '
+        'empty', (
+    ) {
       final fixture = _fixture();
 
       fixture.coordinator.deleteLayer(cutId: _otherCutId, layerId: _layerAId);
 
+      expect(
+        _layerNames(fixture.repository, _otherCutId),
+        isEmpty,
+        reason: 'R28 #14: "액션 레이어가 1개도 없는상황 허용" — the floor that '
+            'kept one layer alive is gone',
+      );
+      expect(fixture.history.undoCount, 1);
+
+      fixture.history.undo();
       expect(_layerNames(fixture.repository, _otherCutId), ['Other A']);
-      expect(fixture.history.undoCount, 0);
-      expect(fixture.history.redoCount, 0);
     });
 
     test(

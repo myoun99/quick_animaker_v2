@@ -67,7 +67,8 @@ void main() {
       );
     });
 
-    test('requests default cut creation when deleting the only cut', () {
+    test('R28 #14: deleting the ONLY cut empties the track — no replacement '
+        'cut is requested', () {
       final project = _projectWithTracks([
         _track(id: 'track-1', cuts: [_cut('only-cut')]),
       ]);
@@ -77,7 +78,7 @@ void main() {
         deletingCutId: const CutId('only-cut'),
       );
 
-      expect(decision, const CutDeletionFallbackDecision.createDefaultCut());
+      expect(decision, const CutDeletionFallbackDecision.emptyTrack());
       expect(decision.cutId, isNull);
     });
 
