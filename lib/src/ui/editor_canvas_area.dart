@@ -249,11 +249,11 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
         !isPlaybackActive && !isScrubbing && session.editingPlayheadInGap;
     final layerStack = inGap
         ? (
-            below: const <CanvasLayerImageRequest>[],
-            above: const <CanvasLayerImageRequest>[],
+            below: const <CanvasLayerStackNode>[],
+            above: const <CanvasLayerStackNode>[],
             activeLayerOpacity: 1.0,
           )
-        : session.editingCanvasStack;
+        : session.editingCanvasStackSplit;
     final showAboveLayers =
         !isPlaybackActive && !isScrubbing && layerStack.above.isNotEmpty;
     final selection = inGap
@@ -460,13 +460,16 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
                   ? null
                   : (context, viewport) {
                       final below = CanvasLayerStackView(
-                        layers: [
+                        nodes: [
                           ...layerStack.below,
                           // Onion ghosts (P2) sit ABOVE the other layers and
                           // directly UNDER the active drawing; playback and
                           // scrubs never reach here, so they auto-hide. A gap
                           // parking shows the VOID (R16-⑥): no ghosts either.
-                          if (!inGap) ...session.onionSkinCanvasRequests(),
+                          if (!inGap)
+                            for (final ghost
+                                in session.onionSkinCanvasRequests())
+                              CanvasLayerImageNode(ghost),
                         ],
                         imageCache: session.layerFrameImageCache,
                         canvasSize: canvasSize,
@@ -483,7 +486,7 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
                         children: [
                           Positioned.fill(
                             child: CanvasLayerStackView(
-                              layers: const [],
+                              nodes: const [],
                               imageCache: session.layerFrameImageCache,
                               canvasSize: canvasSize,
                               viewport: viewport,
@@ -523,7 +526,7 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
                             // camera overlay stays unposed (canvas chrome).
                             child: _wrapInCutPose(
                               CanvasLayerStackView(
-                                layers: layerStack.above,
+                                nodes: layerStack.above,
                                 imageCache: session.layerFrameImageCache,
                                 canvasSize: canvasSize,
                                 viewport: viewport,

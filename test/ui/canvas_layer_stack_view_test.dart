@@ -67,14 +67,18 @@ void main() {
       MaterialApp(
         home: Scaffold(
           body: CanvasLayerStackView(
-            layers: [
-              CanvasLayerImageRequest(
-                frameKey: key('layer-below'),
-                opacity: 0.5,
+            nodes: [
+              CanvasLayerImageNode(
+                CanvasLayerImageRequest(
+                  frameKey: key('layer-below'),
+                  opacity: 0.5,
+                ),
               ),
-              CanvasLayerImageRequest(
-                frameKey: key('layer-undrawn'),
-                opacity: 1,
+              CanvasLayerImageNode(
+                CanvasLayerImageRequest(
+                  frameKey: key('layer-undrawn'),
+                  opacity: 1,
+                ),
               ),
             ],
             imageCache: cache,
@@ -114,7 +118,7 @@ void main() {
     Widget stack(List<CanvasLayerImageRequest> layers) => MaterialApp(
       home: Scaffold(
         body: CanvasLayerStackView(
-          layers: layers,
+          nodes: [for (final layer in layers) CanvasLayerImageNode(layer)],
           imageCache: cache,
           canvasSize: canvasSize,
           viewport: CanvasViewport(),
@@ -129,8 +133,10 @@ void main() {
           matching: find.byType(CustomPaint),
         ),
       );
-      final images = (paint.painter as dynamic).images as List<Object?>;
-      return images.length;
+      // The painter walks a TREE now; this stack is flat, so its top level
+      // is exactly the resolved images.
+      final nodes = (paint.painter as dynamic).nodes as List<Object?>;
+      return nodes.length;
     }
 
     // The layer starts OUTSIDE the stack (it is the active layer, drawn by

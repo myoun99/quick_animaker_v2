@@ -1,6 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:quick_animaker_v2/src/controllers/default_project_helpers.dart';
 import 'package:quick_animaker_v2/src/models/layer_kind.dart';
+import 'package:quick_animaker_v2/src/ui/canvas/canvas_layer_stack_view.dart';
 import 'package:quick_animaker_v2/src/ui/editor_session_manager.dart';
 
 /// R6-④: the brush only lands on drawing-section layers — SE cels are
@@ -55,10 +56,10 @@ void main() {
     session.selectFrameIndex(0);
     session.createSeEntryAtCurrentFrame(name: '쿵');
 
-    final stack = session.editingCanvasStack;
+    final split = session.editingCanvasStackSplit;
     final stackLayerIds = [
-      for (final request in [...stack.below, ...stack.above])
-        request.frameKey.layerId,
+      for (final node in [...split.below, ...split.above])
+        if (node is CanvasLayerImageNode) node.request.frameKey.layerId,
     ];
     expect(
       stackLayerIds,

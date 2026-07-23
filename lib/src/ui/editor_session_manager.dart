@@ -1401,29 +1401,30 @@ class EditorSessionManager extends ChangeNotifier {
     return camera != null && _fxBypassedLayerIds.contains(camera.id);
   }
 
-  /// The editing canvas's layer stack at the playhead: which non-active
-  /// layers composite below/above the interactive layer (bottom → top,
-  /// hidden/transparent/undrawn layers skipped) and the active layer's own
-  /// display opacity (0 while hidden; includes its animated Opacity). The
-  /// active layer's pose rides separately ([layerCanvasPoseSample]) into
-  /// the interactive view's draw-through wrap.
-  ({
-    List<CanvasLayerImageRequest> below,
-    List<CanvasLayerImageRequest> above,
-    double activeLayerOpacity,
-  })
+  /// The editing canvas's composite TREE at the playhead — the same tree
+  /// playback and export composite, with the ACTIVE layer standing in it
+  /// as a [CanvasActiveLayerNode] instead of a cached image.
+  ///
+  /// That node is the whole point: the stack used to be two flat lists
+  /// painted around the interactive view, so a folder's group buffer —
+  /// one `saveLayer` — could never span the layer you were drawing on.
+  /// Now one painter opens the buffer, draws the live surface inside it,
+  /// and closes it.
+  ///
+  /// [activeLayerOpacity] is the active row's display opacity (0 while
+  /// hidden; includes its animated Opacity); its pose rides separately
+  /// through [layerCanvasPoseSample] into the interactive draw-through
+  /// wrap, so it is repeated on the node for the merged painter.
+  ({List<CanvasLayerStackNode> nodes, double activeLayerOpacity})
   get editingCanvasStack {
     final cut = activeCutOrNull;
     final activeLayerId = this.activeLayerId;
-    final below = <CanvasLayerImageRequest>[];
-    final above = <CanvasLayerImageRequest>[];
-    var activeLayerOpacity = 1.0;
     if (cut == null) {
-      return (below: below, above: above, activeLayerOpacity: 1.0);
+      return (nodes: const <CanvasLayerStackNode>[], activeLayerOpacity: 1.0);
     }
 
     final frameIndex = _timelineController.currentFrameIndex;
-    var seenActiveLayer = false;
+    var activeLayerOpacity = 1.0;
     // Opacity drag preview (R4 #4/#6, DISPLAY only): the dragged rows'
     // static opacity substitutes in before the shared visit, so the canvas
     // follows the drag without any repo write per move.
@@ -1440,45 +1441,87 @@ class EditorSessionManager extends ChangeNotifier {
     final stackCut = preview == null
         ? cut
         : cut.copyWith(layers: withOpacityPreview(cut.layers));
-    // The CUT layers ride the shared composite visit (skip rules, fx
-    // sharing and the W5 attach-layer expansion agree with playback by
-    // construction); the split around the active layer happens here.
-    final entryByLayerId = {
-      for (final entry in resolveCutFrameCompositeEntries(
+
+    // The CUT layers ride the shared composite TREE (skip rules, fx
+    // sharing, the W5 attach-layer expansion AND the group buffers agree
+    // with playback by construction).
+    CanvasLayerStackNode? mapNode(CutFrameCompositeEntryNode node) {
+      switch (node) {
+        case CutFrameCompositeEntryGroup(
+          :final children,
+          :final opacity,
+          :final blendMode,
+        ):
+          final mapped = <CanvasLayerStackNode>[
+            for (final child in children) ?mapNode(child),
+          ];
+          if (mapped.isEmpty) {
+            return null;
+          }
+          return CanvasLayerGroupNode(
+            children: List.unmodifiable(mapped),
+            opacity: opacity,
+            blendMode: blendMode,
+          );
+        case CutFrameCompositeEntryLeaf(:final entry):
+          // A brush-banned active layer (SE/instruction, R6-④) has no
+          // interactive surface — it composites like any other stack row
+          // so its existing cels keep displaying read-only.
+          if (entry.layer.id == activeLayerId &&
+              layerKindAcceptsBrushInput(entry.layer.kind)) {
+            activeLayerOpacity = !entry.layer.isVisible
+                ? 0.0
+                : _stackLayerOpacity(entry.layer, stackCut.layers, frameIndex);
+            return CanvasActiveLayerNode(
+              opacity: entry.opacity,
+              pose: entry.pose,
+              anchorPoint: entry.anchorPoint,
+            );
+          }
+          return CanvasLayerImageNode(
+            CanvasLayerImageRequest(
+              frameKey: brushFrameKeyForCut(
+                cut,
+                entry.layer.id,
+                entry.frame.id,
+              ),
+              opacity: entry.opacity,
+              blendMode: entry.blendMode,
+              pose: entry.pose,
+              anchorPoint: entry.anchorPoint,
+            ),
+          );
+      }
+    }
+
+    final nodes = <CanvasLayerStackNode>[
+      for (final node in resolveCutFrameCompositeTree(
         cut: stackCut,
         frameIndex: frameIndex,
         fxBypassedLayerIds: fxBypassedLayerIds,
       ))
-        entry.layer.id: entry,
-    };
-    for (final layer in stackCut.layers) {
-      // A brush-banned active layer (SE/instruction, R6-④) has no
-      // interactive surface — it composites like any other stack layer so
-      // its existing cels keep displaying read-only.
-      if (layer.id == activeLayerId && layerKindAcceptsBrushInput(layer.kind)) {
-        seenActiveLayer = true;
-        activeLayerOpacity = !layer.isVisible
-            ? 0.0
-            : _stackLayerOpacity(layer, stackCut.layers, frameIndex);
-        continue;
-      }
-      final entry = entryByLayerId[layer.id];
-      if (entry == null) {
-        continue;
-      }
-      (seenActiveLayer ? above : below).add(
-        CanvasLayerImageRequest(
-          frameKey: brushFrameKeyForCut(cut, entry.layer.id, entry.frame.id),
-          opacity: entry.opacity,
-          blendMode: entry.blendMode,
-          pose: entry.pose,
-          anchorPoint: entry.anchorPoint,
-        ),
-      );
+        ?mapNode(node),
+    ];
+
+    // An ACTIVE layer with nothing exposed at this frame resolves no entry
+    // at all, so the walk above never reaches it. It still needs its node:
+    // the interactive surface is where the next stroke lands.
+    if (activeLayerId != null &&
+        !_treeHoldsActiveLayer(nodes) &&
+        layerKindAcceptsBrushInput(
+          stackCut.layers.byId(activeLayerId)?.kind ?? LayerKind.camera,
+        )) {
+      final active = stackCut.layers.byId(activeLayerId)!;
+      activeLayerOpacity = !active.isVisible
+          ? 0.0
+          : _stackLayerOpacity(active, stackCut.layers, frameIndex);
+      nodes.add(CanvasActiveLayerNode(opacity: activeLayerOpacity));
     }
+
     // Track-owned SE rows join as their cut-local display clones — they
     // composite read-only like before the ownership move (their transform
-    // tracks are stripped, so the plain resolve path suffices).
+    // tracks are stripped, so the plain resolve path suffices). They live
+    // outside the cut's stack, so they land at the top level.
     for (final layer in withOpacityPreview(trackSeDisplayLayers)) {
       final fxEnabled = isLayerFxEnabled(layer.id);
       if (!layer.isVisible || layer.opacity <= 0) {
@@ -1494,16 +1537,139 @@ class EditorSessionManager extends ChangeNotifier {
       if (frame == null) {
         continue;
       }
-      (seenActiveLayer ? above : below).add(
-        CanvasLayerImageRequest(
-          frameKey: brushFrameKeyForCut(cut, layer.id, frame.id),
-          opacity: opacity,
-          pose: null,
-          anchorPoint: null,
+      nodes.add(
+        CanvasLayerImageNode(
+          CanvasLayerImageRequest(
+            frameKey: brushFrameKeyForCut(cut, layer.id, frame.id),
+            opacity: opacity,
+            pose: null,
+            anchorPoint: null,
+          ),
         ),
       );
     }
-    return (below: below, above: above, activeLayerOpacity: activeLayerOpacity);
+    return (
+      nodes: List.unmodifiable(nodes),
+      activeLayerOpacity: activeLayerOpacity,
+    );
+  }
+
+  /// [editingCanvasStack] split at the ACTIVE layer, for the canvas's
+  /// current three-widget mount (below stack · interactive view · above
+  /// stack).
+  ///
+  /// Every group buffer that sits WHOLLY below or WHOLLY above the active
+  /// layer survives the split intact. The one group that CONTAINS the
+  /// active layer cannot: a `saveLayer` opened in the below painter has no
+  /// way to close in the above painter, so that folder alone falls back to
+  /// folding its opacity/blend into its members — today's approximation,
+  /// now scoped to exactly one folder instead of all of them.
+  ///
+  /// Removing even that needs the ACTIVE layer drawn inside the tree,
+  /// which needs the stroke overlay model to be reachable from the host
+  /// (it lives in the interactive view's State today). That is the last
+  /// step, and it is a stroke-plumbing change, not a compositing one.
+  ({
+    List<CanvasLayerStackNode> below,
+    List<CanvasLayerStackNode> above,
+    double activeLayerOpacity,
+  })
+  get editingCanvasStackSplit {
+    final stack = editingCanvasStack;
+    final below = <CanvasLayerStackNode>[];
+    final above = <CanvasLayerStackNode>[];
+    var seenActive = false;
+
+    void walk(List<CanvasLayerStackNode> nodes) {
+      for (final node in nodes) {
+        switch (node) {
+          case CanvasActiveLayerNode():
+            seenActive = true;
+          case CanvasLayerImageNode():
+            (seenActive ? above : below).add(node);
+          case CanvasLayerGroupNode(
+            :final children,
+            :final opacity,
+            :final blendMode,
+          ):
+            if (!_treeHoldsActiveLayer(children)) {
+              (seenActive ? above : below).add(node);
+              continue;
+            }
+            // The group the active layer is inside: fold it per member.
+            for (final child in children) {
+              walk([_foldedIntoMember(child, opacity, blendMode)]);
+            }
+        }
+      }
+    }
+
+    walk(stack.nodes);
+    return (
+      below: List.unmodifiable(below),
+      above: List.unmodifiable(above),
+      activeLayerOpacity: stack.activeLayerOpacity,
+    );
+  }
+
+  /// [node] with a spanning group's [opacity]/[blendMode] folded in — the
+  /// split's fallback for the one folder that holds the active layer.
+  static CanvasLayerStackNode _foldedIntoMember(
+    CanvasLayerStackNode node,
+    double opacity,
+    LayerBlendMode blendMode,
+  ) {
+    switch (node) {
+      case CanvasActiveLayerNode(
+        :final pose,
+        :final anchorPoint,
+        opacity: final own,
+      ):
+        return CanvasActiveLayerNode(
+          opacity: (own * opacity).clamp(0.0, 1.0).toDouble(),
+          pose: pose,
+          anchorPoint: anchorPoint,
+        );
+      case CanvasLayerImageNode(:final request):
+        return CanvasLayerImageNode(
+          CanvasLayerImageRequest(
+            frameKey: request.frameKey,
+            opacity: (request.opacity * opacity).clamp(0.0, 1.0).toDouble(),
+            blendMode: request.blendMode == LayerBlendMode.normal
+                ? blendMode
+                : request.blendMode,
+            pose: request.pose,
+            anchorPoint: request.anchorPoint,
+            tint: request.tint,
+          ),
+        );
+      case CanvasLayerGroupNode(
+        :final children,
+        opacity: final own,
+        blendMode: final ownBlend,
+      ):
+        return CanvasLayerGroupNode(
+          children: children,
+          opacity: (own * opacity).clamp(0.0, 1.0).toDouble(),
+          blendMode: ownBlend == LayerBlendMode.normal ? blendMode : ownBlend,
+        );
+    }
+  }
+
+  static bool _treeHoldsActiveLayer(List<CanvasLayerStackNode> nodes) {
+    for (final node in nodes) {
+      switch (node) {
+        case CanvasActiveLayerNode():
+          return true;
+        case CanvasLayerGroupNode(:final children):
+          if (_treeHoldsActiveLayer(children)) {
+            return true;
+          }
+        case CanvasLayerImageNode():
+          break;
+      }
+    }
+    return false;
   }
 
   /// The display opacity the editing stack (and the interactive view's

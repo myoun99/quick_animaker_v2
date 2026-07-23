@@ -7,11 +7,13 @@ import '../../models/canvas_point.dart';
 import '../../models/layer_blend_mode.dart';
 import '../../models/canvas_size.dart';
 import '../../models/canvas_viewport.dart';
+import '../../models/pasteboard_bounds.dart';
 import '../../models/playback_quality.dart';
 import '../../models/project_background.dart';
 import '../../models/transform_track.dart';
 import '../dev_profile.dart';
 import '../playback/layer_frame_image_cache.dart';
+import 'bitmap_surface_painter.dart';
 import 'layer_pose_paint.dart';
 import 'paper_background.dart';
 import 'viewport_canvas_transform.dart';
@@ -97,27 +99,53 @@ class CanvasLayerImageRequest {
   final int? tint;
 }
 
-/// Paints the non-active layers of the editing canvas (below or above the
-/// interactive layer) from the layer-frame image cache, under the panel
-/// viewport transform.
+/// Paints the editing canvas's whole composite tree from the layer-frame
+/// image cache, under the panel viewport transform — the ACTIVE layer
+/// included, drawn in place through [activeSurfacePainter].
 ///
-/// This is what makes the OTHER layers visible while editing — the
-/// interactive view renders only the active layer's surface. Visibility and
-/// opacity toggles act here (hidden layers are simply not requested).
+/// This is what makes the layers visible while editing, and (since the
+/// merge) what lets a folder's group buffer wrap the layer you are drawing
+/// on: one painter opens the `saveLayer` and closes it.
 /// Paint-only: input always passes through to the canvas below.
 class CanvasLayerStackView extends StatefulWidget {
   const CanvasLayerStackView({
     super.key,
-    required this.layers,
+    required this.nodes,
     required this.imageCache,
     required this.canvasSize,
     required this.viewport,
+    this.activeSurfacePainter,
     this.paintPaper = false,
     this.paperBackground = ProjectBackground.defaultBackground,
   });
 
-  /// Bottom → top.
-  final List<CanvasLayerImageRequest> layers;
+  /// The composite tree, bottom → top.
+  final List<CanvasLayerStackNode> nodes;
+
+  /// Draws the ACTIVE layer's live surface wherever a
+  /// [CanvasActiveLayerNode] sits in [nodes]; null paints nothing there
+  /// (hosts that still mount their own interactive view).
+  final BitmapSurfacePainter? activeSurfacePainter;
+
+  /// Every cached-image request under [nodes], depth-first bottom → top.
+  Iterable<CanvasLayerImageRequest> get layers sync* {
+    Iterable<CanvasLayerImageRequest> walk(
+      List<CanvasLayerStackNode> list,
+    ) sync* {
+      for (final node in list) {
+        switch (node) {
+          case CanvasLayerImageNode(:final request):
+            yield request;
+          case CanvasLayerGroupNode(:final children):
+            yield* walk(children);
+          case CanvasActiveLayerNode():
+            break;
+        }
+      }
+    }
+
+    yield* walk(nodes);
+  }
 
   final LayerFrameImageCache imageCache;
   final CanvasSize canvasSize;
@@ -273,24 +301,63 @@ class _CanvasLayerStackViewState extends State<CanvasLayerStackView> {
     }
   }
 
+  /// The tree with each image request replaced by the clone we hold —
+  /// requests whose image is not ready yet simply drop out, and a group
+  /// left empty by that drops with them (an empty buffer is a wasted
+  /// saveLayer).
+  List<_PaintNode> _resolvedTree(List<CanvasLayerStackNode> nodes) {
+    final out = <_PaintNode>[];
+    for (final node in nodes) {
+      switch (node) {
+        case CanvasLayerImageNode(:final request):
+          final held = _images[request.frameKey];
+          if (held == null) {
+            continue;
+          }
+          out.add(
+            _PaintImage(
+              image: held.clone,
+              worldRect: held.worldRect,
+              opacity: request.opacity,
+              blendMode: request.blendMode,
+              pose: request.pose,
+              anchorPoint: request.anchorPoint,
+              tint: request.tint,
+            ),
+          );
+        case CanvasActiveLayerNode(:final pose, :final anchorPoint):
+          if (widget.activeSurfacePainter == null) {
+            continue;
+          }
+          out.add(_PaintActiveSurface(pose: pose, anchorPoint: anchorPoint));
+        case CanvasLayerGroupNode(
+          :final children,
+          :final opacity,
+          :final blendMode,
+        ):
+          final mapped = _resolvedTree(children);
+          if (mapped.isEmpty) {
+            continue;
+          }
+          out.add(
+            _PaintGroup(
+              children: mapped,
+              opacity: opacity,
+              blendMode: blendMode,
+            ),
+          );
+      }
+    }
+    return out;
+  }
+
   @override
   Widget build(BuildContext context) {
     return IgnorePointer(
       child: CustomPaint(
         painter: _LayerStackPainter(
-          images: [
-            for (final layer in widget.layers)
-              if (_images[layer.frameKey] != null)
-                (
-                  image: _images[layer.frameKey]!.clone,
-                  worldRect: _images[layer.frameKey]!.worldRect,
-                  opacity: layer.opacity,
-                  blendMode: layer.blendMode,
-                  pose: layer.pose,
-                  anchorPoint: layer.anchorPoint,
-                  tint: layer.tint,
-                ),
-          ],
+          nodes: _resolvedTree(widget.nodes),
+          activeSurfacePainter: widget.activeSurfacePainter,
           canvasSize: widget.canvasSize,
           viewport: widget.viewport,
           paintPaper: widget.paintPaper,
@@ -302,27 +369,66 @@ class _CanvasLayerStackViewState extends State<CanvasLayerStackView> {
   }
 }
 
+/// The painter's own node shape: the request tree with images resolved.
+sealed class _PaintNode {
+  const _PaintNode();
+}
+
+final class _PaintImage extends _PaintNode {
+  const _PaintImage({
+    required this.image,
+    required this.worldRect,
+    required this.opacity,
+    required this.blendMode,
+    required this.pose,
+    required this.anchorPoint,
+    required this.tint,
+  });
+
+  final ui.Image image;
+  final Rect worldRect;
+  final double opacity;
+  final LayerBlendMode blendMode;
+  final TransformPose? pose;
+  final CanvasPoint? anchorPoint;
+  final int? tint;
+}
+
+final class _PaintActiveSurface extends _PaintNode {
+  const _PaintActiveSurface({required this.pose, required this.anchorPoint});
+
+  final TransformPose? pose;
+  final CanvasPoint? anchorPoint;
+}
+
+final class _PaintGroup extends _PaintNode {
+  const _PaintGroup({
+    required this.children,
+    required this.opacity,
+    required this.blendMode,
+  });
+
+  final List<_PaintNode> children;
+  final double opacity;
+  final LayerBlendMode blendMode;
+}
+
 class _LayerStackPainter extends CustomPainter {
-  const _LayerStackPainter({
-    required this.images,
+  _LayerStackPainter({
+    required this.nodes,
+    required this.activeSurfacePainter,
     required this.canvasSize,
     required this.viewport,
     required this.paintPaper,
     required this.paperBackground,
-  });
+  }) : super(repaint: activeSurfacePainter);
 
-  final List<
-    ({
-      ui.Image image,
-      Rect worldRect,
-      double opacity,
-      LayerBlendMode blendMode,
-      TransformPose? pose,
-      CanvasPoint? anchorPoint,
-      int? tint,
-    })
-  >
-  images;
+  final List<_PaintNode> nodes;
+
+  /// Draws the ACTIVE layer's live surface in place. Its own repaint
+  /// Listenable (tile cache + stroke overlay) drives this painter too, so
+  /// a stroke step still repaints without a widget rebuild.
+  final BitmapSurfacePainter? activeSurfacePainter;
   final CanvasSize canvasSize;
   final CanvasViewport viewport;
   final bool paintPaper;
@@ -343,73 +449,158 @@ class _LayerStackPainter extends CustomPainter {
     if (paintPaper) {
       paintProjectPaper(canvas, canvasRect, paperBackground);
     }
-    for (final layer in images) {
-      // Layer transforms apply at composite time — the stack shows the
-      // same picture playback composes (three-route parity).
-      final layerPose = layer.pose;
-      if (layerPose != null) {
-        canvas.save();
-        applyLayerPoseTransform(
-          canvas,
-          layerPose,
-          canvasSize,
-          anchorPoint: layer.anchorPoint,
-        );
-      }
-      final paint = Paint()
-        ..filterQuality = FilterQuality.low
-        ..color = Color.fromRGBO(0, 0, 0, layer.opacity.clamp(0.0, 1.0))
-        // R26 #30: the layer blend applies at composite time — the stack
-        // shows the same picture playback composes.
-        ..blendMode = layer.blendMode.paintBlendMode;
-      // Onion-skin Colors mode: the ghost CONVERTS fully to the tint —
-      // every drawn pixel takes the tint's RGB, only alpha survives
-      // (TVPaint's look, R11-①; modulate kept light artwork un-tinted).
-      // The paint alpha above still fades the whole ghost.
-      final tint = layer.tint;
-      if (tint != null) {
-        paint.colorFilter = ColorFilter.mode(Color(tint), BlendMode.srcIn);
-      }
-      // Dest = the image's WORLD rect: the canvas rect for plain cels
-      // (legacy path, unchanged bytes), grown for pasteboard content so
-      // off-canvas artwork of non-active layers shows at its position.
-      canvas.drawImageRect(
-        layer.image,
-        Rect.fromLTWH(
-          0,
-          0,
-          layer.image.width.toDouble(),
-          layer.image.height.toDouble(),
-        ),
-        layer.worldRect,
-        paint,
-      );
-      if (layerPose != null) {
-        canvas.restore();
+    final groupBounds = Rect.fromLTRB(
+      canvasSize.pasteboardLeft.toDouble(),
+      canvasSize.pasteboardTop.toDouble(),
+      canvasSize.pasteboardRightExclusive.toDouble(),
+      canvasSize.pasteboardBottomExclusive.toDouble(),
+    );
+
+    void paintNodes(List<_PaintNode> list) {
+      for (final node in list) {
+        // Poses apply at composite time — the stack shows the same picture
+        // playback composes (route parity).
+        final nodePose = switch (node) {
+          _PaintImage(:final pose) => pose,
+          _PaintActiveSurface(:final pose) => pose,
+          _PaintGroup() => null,
+        };
+        final nodeAnchor = switch (node) {
+          _PaintImage(:final anchorPoint) => anchorPoint,
+          _PaintActiveSurface(:final anchorPoint) => anchorPoint,
+          _PaintGroup() => null,
+        };
+        if (nodePose != null) {
+          canvas.save();
+          applyLayerPoseTransform(
+            canvas,
+            nodePose,
+            canvasSize,
+            anchorPoint: nodeAnchor,
+          );
+        }
+        switch (node) {
+          case _PaintGroup(:final children, :final opacity, :final blendMode):
+            // R27 #29: one buffer for the group, one blend on it — and
+            // because the ACTIVE layer is a node in here, a stroke drawn
+            // inside a blended folder finally reads the way it will play
+            // back.
+            canvas.saveLayer(
+              groupBounds,
+              Paint()
+                ..color = Color.fromRGBO(0, 0, 0, opacity.clamp(0.0, 1.0))
+                ..blendMode = blendMode.paintBlendMode,
+            );
+            paintNodes(children);
+            canvas.restore();
+          case _PaintActiveSurface():
+            // The live surface, drawn by the SAME painter the standalone
+            // interactive view uses — the canvas is already
+            // viewport-transformed, so only the content body runs.
+            canvas.save();
+            canvas.clipRect(activeSurfacePainter!.pasteboardRect);
+            activeSurfacePainter!.paintContentInto(canvas, size);
+            canvas.restore();
+          case _PaintImage(
+            :final image,
+            :final worldRect,
+            :final opacity,
+            :final blendMode,
+            :final tint,
+          ):
+            final paint = Paint()
+              ..filterQuality = FilterQuality.low
+              ..color = Color.fromRGBO(0, 0, 0, opacity.clamp(0.0, 1.0))
+              // R26 #30: the layer blend applies at composite time — the
+              // stack shows the same picture playback composes.
+              ..blendMode = blendMode.paintBlendMode;
+            // Onion-skin Colors mode: the ghost CONVERTS fully to the tint
+            // — every drawn pixel takes the tint's RGB, only alpha
+            // survives (TVPaint's look, R11-①; modulate kept light artwork
+            // un-tinted). The paint alpha above still fades the whole
+            // ghost.
+            if (tint != null) {
+              paint.colorFilter = ColorFilter.mode(
+                Color(tint),
+                BlendMode.srcIn,
+              );
+            }
+            // Dest = the image's WORLD rect: the canvas rect for plain
+            // cels (legacy path, unchanged bytes), grown for pasteboard
+            // content so off-canvas artwork of non-active layers shows at
+            // its position.
+            canvas.drawImageRect(
+              image,
+              Rect.fromLTWH(
+                0,
+                0,
+                image.width.toDouble(),
+                image.height.toDouble(),
+              ),
+              worldRect,
+              paint,
+            );
+        }
+        if (nodePose != null) {
+          canvas.restore();
+        }
       }
     }
+
+    paintNodes(nodes);
     canvas.restore();
   }
 
   @override
   bool shouldRepaint(covariant _LayerStackPainter oldDelegate) {
-    if (oldDelegate.canvasSize != canvasSize ||
+    return oldDelegate.canvasSize != canvasSize ||
         oldDelegate.viewport != viewport ||
         oldDelegate.paintPaper != paintPaper ||
-        oldDelegate.images.length != images.length) {
-      return true;
+        !identical(
+          oldDelegate.activeSurfacePainter,
+          activeSurfacePainter,
+        ) ||
+        !_treesMatch(oldDelegate.nodes, nodes);
+  }
+
+  static bool _treesMatch(List<_PaintNode> a, List<_PaintNode> b) {
+    if (a.length != b.length) {
+      return false;
     }
-    for (var index = 0; index < images.length; index += 1) {
-      if (!identical(oldDelegate.images[index].image, images[index].image) ||
-          oldDelegate.images[index].worldRect != images[index].worldRect ||
-          oldDelegate.images[index].opacity != images[index].opacity ||
-          oldDelegate.images[index].blendMode != images[index].blendMode ||
-          oldDelegate.images[index].pose != images[index].pose ||
-          oldDelegate.images[index].anchorPoint != images[index].anchorPoint ||
-          oldDelegate.images[index].tint != images[index].tint) {
-        return true;
+    for (var index = 0; index < a.length; index += 1) {
+      final x = a[index];
+      final y = b[index];
+      switch ((x, y)) {
+        case (_PaintImage(), _PaintImage()):
+          x as _PaintImage;
+          y as _PaintImage;
+          if (!identical(x.image, y.image) ||
+              x.worldRect != y.worldRect ||
+              x.opacity != y.opacity ||
+              x.blendMode != y.blendMode ||
+              x.pose != y.pose ||
+              x.anchorPoint != y.anchorPoint ||
+              x.tint != y.tint) {
+            return false;
+          }
+        case (_PaintActiveSurface(), _PaintActiveSurface()):
+          x as _PaintActiveSurface;
+          y as _PaintActiveSurface;
+          if (x.pose != y.pose || x.anchorPoint != y.anchorPoint) {
+            return false;
+          }
+        case (_PaintGroup(), _PaintGroup()):
+          x as _PaintGroup;
+          y as _PaintGroup;
+          if (x.opacity != y.opacity ||
+              x.blendMode != y.blendMode ||
+              !_treesMatch(x.children, y.children)) {
+            return false;
+          }
+        default:
+          return false;
       }
     }
-    return false;
+    return true;
   }
 }
