@@ -2,6 +2,7 @@ import 'dart:typed_data';
 
 import '../ui/dev_profile.dart';
 import '../models/bitmap_surface.dart';
+import '../models/bitmap_tile.dart';
 import '../models/brush_blend_mode.dart';
 import '../models/brush_dab.dart';
 import '../models/brush_dab_sequence.dart';
@@ -159,6 +160,8 @@ class BrushFrameEditingCoordinator {
     Uint8List? prerasterizedStrokePixels,
     DirtyRegion? prerasterizedStrokeBounds,
     BrushBlendMode blendMode = BrushBlendMode.color,
+    BitmapSurface? promotedBase,
+    List<BitmapTile>? promotedTiles,
   }) {
     if (sourceDabs.isEmpty) {
       throw ArgumentError.value(sourceDabs, 'sourceDabs', 'must not be empty');
@@ -178,6 +181,8 @@ class BrushFrameEditingCoordinator {
         prerasterizedStrokePixels: prerasterizedStrokePixels,
         prerasterizedStrokeBounds: prerasterizedStrokeBounds,
         blendMode: blendMode,
+        promotedBase: promotedBase,
+        promotedTiles: promotedTiles,
       ),
     );
     final committedState = result.sessionState;

@@ -4,6 +4,7 @@ import 'dart:typed_data';
 
 import '../core/floor_math.dart';
 import '../models/bitmap_surface.dart';
+import '../models/bitmap_tile.dart';
 import '../models/brush_dab.dart';
 import '../models/brush_stamp_image.dart';
 import '../models/brush_tip_shape.dart';
@@ -279,6 +280,9 @@ class LazyCanvasRasterRgb {
             int blendCount,
           })
         >[];
+    // Holds every tile whose POINTER is staged below, so none of their
+    // buffers can be finalized before the batch call consumes them.
+    final keepAlive = <BitmapTile>[];
     final blends =
         <
           ({
@@ -332,8 +336,12 @@ class LazyCanvasRasterRgb {
             }
             final baseX = tx * surfaceTileSize - originX;
             final baseY = ty * surfaceTileSize - originY;
+            // The staged pointer outlives this loop (the batch call below
+            // reads it), so the TILE must stay reachable until then —
+            // keepAlive does that (see BitmapTile.readPixels).
+            keepAlive.add(tile);
             blends.add((
-              pixels: tile.nativePixels,
+              pixels: tile.readPixels((pointer, _) => pointer),
               tileSize: tile.size,
               baseX: baseX,
               baseY: baseY,
@@ -366,6 +374,9 @@ class LazyCanvasRasterRgb {
       tiles: tiles,
       blends: blends,
     );
+    // Reached only after the kernel has read every staged pointer: this
+    // use is what keeps the tiles above alive across the call.
+    keepAlive.clear();
   }
 
   void _composeTile(int left, int top) {
@@ -408,17 +419,19 @@ class LazyCanvasRasterRgb {
             }
             final baseX = tx * surfaceTileSize - originX;
             final baseY = ty * surfaceTileSize - originY;
-            native.fillComposeTile(
-              handles: handles,
-              tilePixels: tile.nativePixels,
-              tileSize: tile.size,
-              baseX: baseX,
-              baseY: baseY,
-              clipLeft: math.max(left, baseX),
-              clipTop: math.max(top, baseY),
-              clipRightExclusive: math.min(right, baseX + surfaceTileSize),
-              clipBottomExclusive: math.min(bottom, baseY + surfaceTileSize),
-              opacityInt: opacityInt,
+            tile.readPixels(
+              (pointer, _) => native.fillComposeTile(
+                handles: handles,
+                tilePixels: pointer,
+                tileSize: tile.size,
+                baseX: baseX,
+                baseY: baseY,
+                clipLeft: math.max(left, baseX),
+                clipTop: math.max(top, baseY),
+                clipRightExclusive: math.min(right, baseX + surfaceTileSize),
+                clipBottomExclusive: math.min(bottom, baseY + surfaceTileSize),
+                opacityInt: opacityInt,
+              ),
             );
           }
         }

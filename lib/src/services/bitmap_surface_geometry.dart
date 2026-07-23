@@ -1,4 +1,3 @@
-import 'dart:ffi' show Uint8Pointer;
 import 'dart:typed_data';
 
 import '../core/floor_math.dart';
@@ -38,16 +37,21 @@ bitmapSurfaceContentBounds(BitmapSurface surface) {
     final entries = surface.tiles.entries.toList();
     native.ensureTileSpanBatch(entries.length);
     for (var i = 0; i < entries.length; i += 1) {
-      // Only tilePixels is consumed — the scan is whole-tile.
-      native.setTileSpan(
-        i,
-        tilePixels: entries[i].value.nativePixels,
-        tileLeft: 0,
-        tileTop: 0,
-        spanLeft: 0,
-        spanRightExclusive: tileSize,
-        spanTop: 0,
-        spanBottomExclusive: tileSize,
+      // Only tilePixels is consumed — the scan is whole-tile. The staged
+      // pointers outlive this loop (the batch call below reads them), so
+      // what keeps the buffers alive is `entries` holding every tile —
+      // and it is used again after the call.
+      entries[i].value.readPixels(
+        (pointer, _) => native.setTileSpan(
+          i,
+          tilePixels: pointer,
+          tileLeft: 0,
+          tileTop: 0,
+          spanLeft: 0,
+          spanRightExclusive: tileSize,
+          spanTop: 0,
+          spanBottomExclusive: tileSize,
+        ),
       );
     }
     final bounds = native.alphaBoundsTiles(
@@ -81,38 +85,38 @@ bitmapSurfaceContentBounds(BitmapSurface surface) {
     );
   }
   for (final entry in surface.tiles.entries) {
-    // RGBA little-endian: alpha is the word's top byte. The native view
-    // reads in place — the [BitmapTile.pixels] getter would copy every
-    // tile just to scan it.
-    final bytes = entry.value.nativePixels.asTypedList(
-      tileSize * tileSize * 4,
-    );
-    final words = bytes.buffer.asUint32List(0, tileSize * tileSize);
     final originX = entry.key.x * tileSize;
     final originY = entry.key.y * tileSize;
-    for (var y = 0; y < tileSize; y += 1) {
-      final rowStart = y * tileSize;
-      for (var x = 0; x < tileSize; x += 1) {
-        final word = words[rowStart + x];
-        if (word == 0 || (word & 0xff000000) == 0) {
-          continue;
-        }
-        final worldX = originX + x;
-        final worldY = originY + y;
-        if (worldX < minX) {
-          minX = worldX;
-        }
-        if (worldX > maxX) {
-          maxX = worldX;
-        }
-        if (worldY < minY) {
-          minY = worldY;
-        }
-        if (worldY > maxY) {
-          maxY = worldY;
+    // RGBA little-endian: alpha is the word's top byte. The native view
+    // reads in place — the [BitmapTile.pixels] getter would copy every
+    // tile just to scan it — and readPixels keeps the tile alive for the
+    // scan (see BitmapTile.readPixels).
+    entry.value.readPixels((_, bytes) {
+      final words = bytes.buffer.asUint32List(0, tileSize * tileSize);
+      for (var y = 0; y < tileSize; y += 1) {
+        final rowStart = y * tileSize;
+        for (var x = 0; x < tileSize; x += 1) {
+          final word = words[rowStart + x];
+          if (word == 0 || (word & 0xff000000) == 0) {
+            continue;
+          }
+          final worldX = originX + x;
+          final worldY = originY + y;
+          if (worldX < minX) {
+            minX = worldX;
+          }
+          if (worldX > maxX) {
+            maxX = worldX;
+          }
+          if (worldY < minY) {
+            minY = worldY;
+          }
+          if (worldY > maxY) {
+            maxY = worldY;
+          }
         }
       }
-    }
+    });
   }
   if (maxX < minX) {
     return null;

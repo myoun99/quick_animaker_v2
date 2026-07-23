@@ -1,5 +1,7 @@
 import 'dart:typed_data';
 
+import '../models/bitmap_surface.dart';
+import '../models/bitmap_tile.dart';
 import '../models/brush_blend_mode.dart';
 import '../models/brush_dab_sequence.dart';
 import '../models/dirty_region.dart';
@@ -22,6 +24,8 @@ commitBrushDabSequenceToBrushEditSessionWithCacheInvalidation({
   Uint8List? prerasterizedStrokePixels,
   DirtyRegion? prerasterizedStrokeBounds,
   BrushBlendMode blendMode = BrushBlendMode.color,
+  BitmapSurface? promotedBase,
+  List<BitmapTile>? promotedTiles,
 }) {
   final commitResult = commitBrushDabSequenceToBrushEditSessionState(
     sessionState: sessionState,
@@ -31,6 +35,8 @@ commitBrushDabSequenceToBrushEditSessionWithCacheInvalidation({
     prerasterizedStrokePixels: prerasterizedStrokePixels,
     prerasterizedStrokeBounds: prerasterizedStrokeBounds,
     blendMode: blendMode,
+    promotedBase: promotedBase,
+    promotedTiles: promotedTiles,
   );
   final historyEntry = commitResult.historyEntry;
 

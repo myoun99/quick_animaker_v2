@@ -82,7 +82,13 @@ BrushSurfaceMaterialization materializeBrushDabSequenceOnBitmapSurface({
         );
         nativeTiles[coord] = buffer;
         if (tile != null) {
-          native.copyBytes(buffer.pointer, tile.nativePixels, tileByteLength);
+          // readPixels keeps the tile alive across the copy — a bare
+          // pointer would let its finalizer recycle the block mid-memcpy
+          // (see BitmapTile.readPixels).
+          tile.readPixels(
+            (pointer, _) =>
+                native.copyBytes(buffer.pointer, pointer, tileByteLength),
+          );
         }
         return buffer.view;
       }
@@ -1044,7 +1050,13 @@ BrushSurfaceMaterialization _materializeStrokeBlendNative({
           zeroed: tile == null,
         );
         if (tile != null) {
-          native.copyBytes(buffer.pointer, tile.nativePixels, tileByteLength);
+          // readPixels keeps the tile alive across the copy — a bare
+          // pointer would let its finalizer recycle the block mid-memcpy
+          // (see BitmapTile.readPixels).
+          tile.readPixels(
+            (pointer, _) =>
+                native.copyBytes(buffer.pointer, pointer, tileByteLength),
+          );
         }
         nativeTiles[coord] = buffer;
         final tileLeft = tileX * tileSize;

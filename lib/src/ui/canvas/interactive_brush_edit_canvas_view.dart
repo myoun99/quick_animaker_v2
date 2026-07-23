@@ -324,10 +324,6 @@ class _InteractiveBrushEditCanvasViewState
     _settlingFallbackTimer?.cancel();
     _overlayModel.dispose();
     _liveRasterizer?.clear(); // Native tiles back to the engine (R21).
-    // A pending pen-up commit at dispose (app teardown mid-frame): the
-    // native tiles still return to the engine's free list.
-    _pendingPenUp?.rasterizer?.clear();
-    _pendingPenUp = null;
     // R26 #5: a view disposed mid-touch never sees its pointer-up — its
     // contacts must leave the app-wide census or ink stays blocked.
     CanvasTouchContacts.removeAll(_activeTouchPointers);
@@ -382,11 +378,9 @@ class _InteractiveBrushEditCanvasViewState
   }
 
   void _handlePointerDown(PointerDownEvent event) {
-    // R25-④: a previous stroke's DEFERRED commit still one frame away —
-    // land it before any new input state, so strokes can never
-    // interleave or get lost (the rare fast-restroke pays the old
-    // synchronous cost).
-    _flushPendingStrokeCommit();
+    // (No deferred stroke commit to land first: pen-up commits inside its
+    // own event now — R25-④'s one-frame deferral existed to hide a
+    // synchronous re-materialize that the promotion round deleted.)
     if (event.kind == PointerDeviceKind.touch) {
       // PEN-12 #4: a finger draws exactly when the ONE-FINGER touch slot
       // says draw (the old control/draw mode collapsed into the slot);
@@ -789,87 +783,99 @@ class _InteractiveBrushEditCanvasViewState
 
     final hadDabs = _collectedDabs.isNotEmpty;
     if (hadDabs) {
-      // The commit reads the rasterizer's pixels/bounds — blend any dabs
-      // still waiting on the per-frame flush first.
+      // The commit reads the rasterizer's tiles — blend any dabs still
+      // waiting on the per-frame flush first.
       _flushPendingOverlayDabs();
-      final rasterizer = _liveRasterizer;
-      // The settling check below watches exactly the tiles this stroke
-      // touched; unrelated tiles must not gate the overlay handoff.
-      _settlingBounds = rasterizer?.strokeBounds;
-      // Pin the PRE-stroke tiles (the surface is still pre-commit here) so
-      // the painter never mixes freshly decoded post-commit tiles with the
-      // still-visible overlay — that mix flashed the stroke at double
-      // density in tile-shaped patches during settling.
-      _overlayModel.holdPreStrokeTiles(
-        preStrokeHoldTiles(
-          surface: widget.sessionState.canvasState.currentSurface,
-          bounds: _settlingBounds,
-        ),
-      );
-      // R25-④: the commit DEFERS one frame past pen-up (the synchronous
-      // materialize was the reported stroke-END hitch). The rasterizer
-      // DETACHES here — the next stroke builds a fresh one, so the
-      // deferred commit's pixel source can never be reset under it; a
-      // new pointer-down (or a frame/layer switch, or dispose) flushes
-      // synchronously first, so a stroke can never be lost.
-      // BB-1: the stroke's blend rides the pen-up payload — captured
-      // from the stroke's settings SNAPSHOT, so a mid-flush tool change
-      // can never flip a committed stroke's mode.
-      _pendingPenUp = (
-        dabs: List.of(_collectedDabs),
-        rasterizer: rasterizer,
-        blendMode: (_activeStrokeInputSettings ?? widget.inputSettings)
-            .blendMode,
-      );
-      _liveRasterizer = null;
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        _flushPendingStrokeCommit();
-      });
-      SchedulerBinding.instance.ensureVisualUpdate();
+      _commitStroke();
     }
 
-    // Keep the overlay visible until the committed tiles decode so the
-    // stroke never flashes away during the switch to the materialized
-    // bitmap; the input bookkeeping is cleared immediately (settling
-    // starts inside the deferred flush, AFTER the commit — checking the
-    // pre-commit surface would release the overlay instantly).
     _endStrokeInput();
     if (!hadDabs) {
       _resetOverlay();
     }
   }
 
-  ({
-    List<BrushDab> dabs,
-    BrushLiveStrokeRasterizer? rasterizer,
-    BrushBlendMode blendMode,
-  })?
-  _pendingPenUp;
-
-  void _flushPendingStrokeCommit({
-    void Function(BrushStrokeCommitData data)? commit,
-  }) {
-    final pending = _pendingPenUp;
-    if (pending == null) {
+  /// PROMOTION pen-up: the stroke is ALREADY blended into finished tiles
+  /// (that is what has been on screen the whole time), so committing is
+  /// installing them — no re-blend of the whole stroke, no re-decode, no
+  /// "settling" window while a second decode lands.
+  ///
+  /// The order is what makes it invisible: promote the tiles, hand each
+  /// one the overlay image that shows exactly its pixels, commit, then
+  /// drop the overlay — all inside this one pointer event, so the very
+  /// next frame paints committed tiles that already have their pictures.
+  /// (The old route deferred a synchronous materialize by one frame and
+  /// pinned the pre-stroke tiles until every post-commit decode landed;
+  /// both existed only because commit re-derived what the screen already
+  /// had.)
+  void _commitStroke() {
+    final rasterizer = _liveRasterizer;
+    final base = _overlayModel.preBlendBase;
+    final blendMode = (_activeStrokeInputSettings ?? widget.inputSettings)
+        .blendMode;
+    final erase = _overlayModel.erase;
+    _liveRasterizer = null;
+    if (rasterizer == null) {
       return;
     }
-    _pendingPenUp = null;
-    if (!mounted && commit == null) {
-      pending.rasterizer?.clear();
-      return;
+    final promotable = base != null && base.tileSize == rasterizer.tileSize;
+    final promoted = promotable
+        ? rasterizer.promoteStrokeTiles(
+            base: base,
+            mode: blendMode,
+            erase: erase,
+          )
+        : const <PromotedStrokeTile>[];
+    if (promotable) {
+      // Hand the decoded images over BEFORE the commit: the painter must
+      // never see an adopted tile without a picture (that is a frame of
+      // stale content — the flicker the settle machinery existed for).
+      // Only images at the promoted tile's own revision qualify; a
+      // stale one would be pinned to that tile forever.
+      for (final entry in promoted) {
+        final image = _overlayModel.takeTileImageAt(
+          entry.tile.coord,
+          revision: entry.revision,
+        );
+        if (image != null) {
+          BitmapTileImageCache.instance.adoptDecoded(
+            entry.tile,
+            image,
+            staleScope: (widget.layerId, widget.frameId),
+          );
+        } else {
+          // Its decode never landed (or landed a revision behind): start
+          // one now. The coordinate was showing base pixels anyway, so
+          // this is a continuation, not a regression.
+          BitmapTileImageCache.instance.ensureDecoded(
+            entry.tile,
+            staleScope: (widget.layerId, widget.frameId),
+          );
+        }
+      }
     }
-    (commit ?? widget.onSourceStrokeCommitted)(
+    widget.onSourceStrokeCommitted(
       BrushStrokeCommitData(
-        sourceDabs: pending.dabs,
-        // Bounds-local row-major buffer (stride = bounds width): its
-        // allocation scales with the stroke, never the canvas.
-        strokePixels: pending.rasterizer?.strokePixelsWithinBounds(),
-        strokeBounds: pending.rasterizer?.strokeBounds,
-        blendMode: pending.blendMode,
+        sourceDabs: List.of(_collectedDabs),
+        // BB-1: the stroke's blend rides the payload — captured from the
+        // stroke's settings SNAPSHOT, so a tool change can never flip a
+        // committed stroke's mode.
+        blendMode: blendMode,
+        promotedBase: promotable ? base : null,
+        promotedTiles: promotable
+            ? [for (final entry in promoted) entry.tile]
+            : null,
+        // Without promotion (a host whose overlay grid differs from its
+        // surface's) the classic payload still commits correctly: a
+        // bounds-local row-major stroke buffer the commit composites.
+        strokePixels: promotable ? null : rasterizer.strokePixelsWithinBounds(),
+        strokeBounds: promotable ? null : rasterizer.strokeBounds,
       ),
     );
-    pending.rasterizer?.clear();
-    _beginSettling();
+    rasterizer.clear();
+    // Atomic: the overlay's remaining images retire in the same
+    // notification that reveals the committed tiles.
+    _resetOverlay();
   }
 
   void _handlePointerCancel(PointerCancelEvent event) {

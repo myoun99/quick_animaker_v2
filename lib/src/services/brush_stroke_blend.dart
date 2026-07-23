@@ -1,4 +1,4 @@
-import 'dart:ffi' show Uint8Pointer;
+
 import 'dart:math' as math;
 import 'dart:typed_data';
 
@@ -50,9 +50,6 @@ Uint8List bitmapSurfaceRegionPixels(BitmapSurface surface, DirtyRegion bounds) {
       if (tile == null) {
         continue;
       }
-      final tilePixels = tile.nativePixels.asTypedList(
-        tileSize * tileSize * 4,
-      );
       final worldLeft = tileX * tileSize;
       final worldTop = tileY * tileSize;
       final copyLeft = math.max(bounds.left, worldLeft);
@@ -60,13 +57,22 @@ Uint8List bitmapSurfaceRegionPixels(BitmapSurface surface, DirtyRegion bounds) {
       final copyRight = math.min(bounds.rightExclusive, worldLeft + tileSize);
       final copyBottom = math.min(bounds.bottomExclusive, worldTop + tileSize);
       final rowBytes = (copyRight - copyLeft) * 4;
-      for (var y = copyTop; y < copyBottom; y += 1) {
-        final srcOffset =
-            ((y - worldTop) * tileSize + (copyLeft - worldLeft)) * 4;
-        final dstOffset =
-            ((y - bounds.top) * width + (copyLeft - bounds.left)) * 4;
-        region.setRange(dstOffset, dstOffset + rowBytes, tilePixels, srcOffset);
-      }
+      // Inside readPixels: the tile is the receiver, so its buffer cannot
+      // be finalized out from under these reads (see BitmapTile.readPixels).
+      tile.readPixels((_, tilePixels) {
+        for (var y = copyTop; y < copyBottom; y += 1) {
+          final srcOffset =
+              ((y - worldTop) * tileSize + (copyLeft - worldLeft)) * 4;
+          final dstOffset =
+              ((y - bounds.top) * width + (copyLeft - bounds.left)) * 4;
+          region.setRange(
+            dstOffset,
+            dstOffset + rowBytes,
+            tilePixels,
+            srcOffset,
+          );
+        }
+      });
     }
   }
   return region;

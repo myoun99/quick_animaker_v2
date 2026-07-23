@@ -125,6 +125,43 @@ class BitmapTileImageCache extends ChangeNotifier {
     );
   }
 
+  /// ADOPTS an already-decoded [image] as [tile]'s picture — the
+  /// promotion round's pen-up handoff.
+  ///
+  /// The live overlay decoded exactly these premultiplied bytes while the
+  /// user drew, and the tile the stroke promotes carries exactly those
+  /// straight bytes; re-decoding them at commit was the old pipeline
+  /// paying twice for one picture (and the reason the overlay had to
+  /// linger through a "settle" window while the second decode landed).
+  /// Ownership transfers here: the finalizer retires the image with the
+  /// tile, so the caller must NOT dispose it.
+  ///
+  /// A tile that somehow already has an image keeps it and the incoming
+  /// one is retired — never two owners for one image.
+  void adoptDecoded(
+    BitmapTile tile,
+    ui.Image image, {
+    Object? staleScope,
+  }) {
+    if (_images[tile] != null) {
+      DeferredImageDisposer.instance.retire(image);
+      return;
+    }
+    // An in-flight decode for this tile would land later and overwrite
+    // the entry (leaking this image's ownership), so let it win instead.
+    if (_inFlight[tile] != null) {
+      DeferredImageDisposer.instance.retire(image);
+      return;
+    }
+    _images[tile] = image;
+    _imageFinalizer.attach(tile, image);
+    final scoped = _latestDecodedByScope.remove(staleScope);
+    (_latestDecodedByScope[staleScope] =
+            scoped ?? <TileCoord, BitmapTile>{})[tile.coord] =
+        tile;
+    _evictScopesBeyondBudget();
+  }
+
   void _evictScopesBeyondBudget() {
     while (_latestDecodedByScope.length > retainedScopeLimit) {
       _latestDecodedByScope.remove(_latestDecodedByScope.keys.first);
@@ -191,9 +228,11 @@ class BitmapTileImageCache extends ChangeNotifier {
     // three per decode start.
     final native = QaNativeEngine.instance;
     if (native != null) {
-      return native.premultipliedCopyFromNative(
-        tile.nativePixels,
-        tile.size * tile.size * BitmapTile.bytesPerPixel,
+      return tile.readPixels(
+        (pointer, _) => native.premultipliedCopyFromNative(
+          pointer,
+          tile.size * tile.size * BitmapTile.bytesPerPixel,
+        ),
       );
     }
     final pixels = tile.pixels;
