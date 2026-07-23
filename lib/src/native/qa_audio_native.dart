@@ -31,7 +31,11 @@ final class QaAudioNative {
 
   /// Must match `qa_engine_abi_version()` in the C.
   /// v23: RNNoise round (qa_audio_denoise_f32 — voice-take suppression).
-  static const int _abiVersion = 23;
+  /// v24: the fused pre-blend kernel + selection mask (raster side only;
+  /// the audio surface is unchanged, but the version is one number for
+  /// the whole binary — leaving this at 23 silently drops audio to the
+  /// Dart mixer, which is how the R26 parity wipeout happened).
+  static const int _abiVersion = 24;
 
   final void Function(
     Pointer<QaAudioClipStruct>,

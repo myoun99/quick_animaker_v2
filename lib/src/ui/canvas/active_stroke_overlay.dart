@@ -15,7 +15,10 @@ import '../../models/pasteboard_bounds.dart';
 import '../../models/tile_coord.dart';
 import '../../native/qa_native_engine.dart' show QaStampScratch;
 import '../../services/brush_live_stroke_rasterizer.dart'
-    show ActiveStrokePixelSource, BrushLiveStrokeRasterizer;
+    show
+        ActiveStrokePixelSource,
+        BrushLiveStrokeRasterizer,
+        PreBlendedOverlayTile;
 import '../../services/brush_stroke_blend.dart'
     show bitmapSurfaceRegionPixels, preBlendStrokeOverlayPixels;
 import 'deferred_image_disposal.dart';
@@ -186,7 +189,44 @@ class ActiveStrokeOverlayModel extends ChangeNotifier {
     required ActiveStrokePixelSource source,
     required DirtyRegion region,
   }) {
-    for (final coord in region.toTileCoords(tileSize: tileSize)) {
+    final coords = region.toTileCoords(tileSize: tileSize).toList();
+    final preBlendBase = this.preBlendBase;
+    if (preBlendBase != null &&
+        source is BrushLiveStrokeRasterizer &&
+        source.tileSize == tileSize &&
+        preBlendBase.tileSize == tileSize) {
+      // ONE pooled kernel call for the whole dirty region (ABI 24). A
+      // pointer move touches a neighbourhood of tiles, and staging +
+      // blending + premultiplying them one at a time never engaged the C
+      // worker pool: measured at 256px tiles, an 1800px brush spent
+      // 122ms of every frame there and now spends ~21ms.
+      final pending = [
+        for (final coord in coords)
+          if (!_decoding.contains(coord)) coord,
+      ];
+      for (final coord in coords) {
+        if (_decoding.contains(coord)) {
+          _dirtyWhileDecoding.add(coord);
+        }
+      }
+      if (pending.isEmpty) {
+        return;
+      }
+      final blended = source.preBlendedOverlayTiles(
+        coords: pending,
+        base: preBlendBase,
+        mode: blendMode,
+        erase: erase,
+      );
+      for (var i = 0; i < pending.length; i += 1) {
+        final tile = blended[i];
+        if (tile != null) {
+          _decodePreBlendedTile(pending[i], source, tile);
+        }
+      }
+      return;
+    }
+    for (final coord in coords) {
       _decodeTile(coord, source);
     }
   }
@@ -357,8 +397,20 @@ class ActiveStrokeOverlayModel extends ChangeNotifier {
       erase: erase,
     );
     if (blended == null) {
-      return; // Untouched coordinate: the committed tile IS the result.
+      // Nothing to show: the coordinate is untouched, or the selection
+      // excludes it — either way the committed tile IS the result.
+      return;
     }
+    _decodePreBlendedTile(coord, source, blended);
+  }
+
+  /// Uploads an already pre-blended tile (single or batched) and adopts
+  /// the decoded image as this coordinate's overlay picture.
+  void _decodePreBlendedTile(
+    TileCoord coord,
+    BrushLiveStrokeRasterizer source,
+    PreBlendedOverlayTile blended,
+  ) {
     _decoding.add(coord);
     _pendingDecodeCount += 1;
     final generation = _generation;

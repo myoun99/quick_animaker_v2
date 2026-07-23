@@ -17,6 +17,8 @@ import 'package:quick_animaker_v2/src/native/qa_native_engine.dart';
 import 'package:quick_animaker_v2/src/services/bitmap_surface_brush_commit.dart';
 import 'package:quick_animaker_v2/src/services/brush_live_stroke_rasterizer.dart';
 import 'package:quick_animaker_v2/src/services/brush_stroke_blend.dart';
+import 'package:quick_animaker_v2/src/services/canvas_selection.dart';
+import 'package:quick_animaker_v2/src/services/canvas_selection_region.dart';
 
 /// R27 #4: the live overlay's PRE-BLEND must be byte-identical to the
 /// pen-up commit — for EVERY brush blend mode, erase included, against
@@ -137,6 +139,140 @@ void main() {
       );
     }
   }
+
+  /// R28: the selection mask must mean the same thing on both sides —
+  /// the C kernel scales the stroke's alpha, and the Dart reference has
+  /// to agree byte for byte or the live display and the commit would
+  /// drift exactly at the selection boundary.
+  test(
+    'MASKED pre-blend: the native kernel == the Dart reference, every '
+    'mode, byte for byte',
+    () {
+      if (!available) {
+        markTestSkipped(nativeEngineMissingSkipReason);
+        return;
+      }
+      QaNativeEngine.debugResetForTests();
+      QaNativeEngine.debugLibraryPathOverride = dllPath;
+      QaNativeEngine.debugForceDartFallback = false;
+      expect(QaNativeEngine.instance, isNotNull);
+
+      const liveTile = 64;
+      const bigCanvas = CanvasSize(width: 128, height: 128);
+      final random = Random(90731);
+      // A base on the SAME grid: that is the aligned case the kernel
+      // stages from, and the case production always runs.
+      final baseTiles = <TileCoord, BitmapTile>{};
+      for (var tileY = 0; tileY < 2; tileY += 1) {
+        for (var tileX = 0; tileX < 2; tileX += 1) {
+          final coord = TileCoord(x: tileX, y: tileY);
+          baseTiles[coord] = BitmapTile(
+            coord: coord,
+            size: liveTile,
+            pixels: randomPixels(random, liveTile * liveTile * 4),
+          );
+        }
+      }
+      final base = BitmapSurface(
+        canvasSize: bigCanvas,
+        tileSize: liveTile,
+        tiles: baseTiles,
+      );
+      // A selection with a hard edge THROUGH the tile, so the mask is
+      // neither all-in nor all-out (both of which take shortcuts).
+      final region = CanvasSelectionRegion.shape(
+        CanvasSelectionShape.rect(left: 0, top: 0, right: 33, bottom: 128),
+      );
+      final maskBytes = region.maskFor(
+        left: 0,
+        top: 0,
+        width: liveTile,
+        height: liveTile,
+      );
+
+      int mul255Round(int value, int alpha) {
+        final product = value * alpha + 128;
+        return (product + (product >> 8)) >> 8;
+      }
+
+      for (final mode in preBlendModes) {
+        final rasterizer = BrushLiveStrokeRasterizer(
+          canvasSize: bigCanvas,
+          tileSize: liveTile,
+        )..selectionRegion = region;
+        rasterizer.blendFrom([
+          BrushDab(
+            center: CanvasPoint(x: 32, y: 32),
+            color: 0x90C04010,
+            size: 60,
+            opacity: 0.7,
+            flow: 0.8,
+            hardness: 0.4,
+            tipShape: BrushTipShape.round,
+            pressure: 1,
+            sequence: 0,
+          ),
+        ], from: 0);
+
+        final blended = rasterizer.preBlendedOverlayTile(
+          tileX: 0,
+          tileY: 0,
+          base: base,
+          mode: mode,
+          erase: mode == BrushBlendMode.erase,
+        );
+        expect(blended, isNotNull, reason: '${mode.name}: masked native route');
+
+        // The Dart reference on the same inputs, mask included.
+        final stroke = Uint8List(liveTile * liveTile * 4);
+        for (var y = 0; y < liveTile; y += 1) {
+          rasterizer.copyRow(0, y, liveTile, stroke, y * liveTile * 4);
+        }
+        final straight = preBlendStrokeOverlayPixels(
+          dst: bitmapSurfaceRegionPixels(
+            base,
+            DirtyRegion(
+              left: 0,
+              top: 0,
+              rightExclusive: liveTile,
+              bottomExclusive: liveTile,
+            ),
+          ),
+          src: stroke,
+          mode: mode,
+          erase: mode == BrushBlendMode.erase,
+          pixelCount: liveTile * liveTile,
+          mask: maskBytes,
+        );
+        final expected = Uint8List(straight.length);
+        for (var o = 0; o < straight.length; o += 4) {
+          final alpha = straight[o + 3];
+          if (alpha == 0) {
+            continue;
+          }
+          if (alpha == 255) {
+            expected[o] = straight[o];
+            expected[o + 1] = straight[o + 1];
+            expected[o + 2] = straight[o + 2];
+            expected[o + 3] = 255;
+            continue;
+          }
+          expected[o] = mul255Round(straight[o], alpha);
+          expected[o + 1] = mul255Round(straight[o + 1], alpha);
+          expected[o + 2] = mul255Round(straight[o + 2], alpha);
+          expected[o + 3] = alpha;
+        }
+
+        expect(
+          blended!.pixels,
+          expected,
+          reason: '${mode.name}: masked kernel == masked Dart reference',
+        );
+        blended.free();
+        rasterizer.clear();
+      }
+    },
+  );
 
   test('live pre-blend == Dart-reference commit, every mode, byte for byte',
       () {

@@ -14,7 +14,7 @@ import 'package:quick_animaker_v2/src/ui/brush/brush_canvas_panel.dart';
 import 'package:quick_animaker_v2/src/ui/brush/brush_edit_cache_invalidation_sink.dart';
 import 'package:quick_animaker_v2/src/ui/brush/brush_tool_state.dart';
 import 'package:quick_animaker_v2/src/ui/brush/canvas_selection_commands.dart';
-import 'package:quick_animaker_v2/src/ui/canvas/brush_edit_canvas_view.dart';
+import 'package:quick_animaker_v2/src/ui/canvas/interactive_brush_edit_canvas_view.dart';
 import 'package:quick_animaker_v2/src/ui/canvas/canvas_selection_layer.dart';
 
 import '../helpers/brush_canvas_fixture.dart';
@@ -345,22 +345,28 @@ void main() {
 
     expect(
       tester
-          .widget<BrushEditCanvasView>(find.byType(BrushEditCanvasView))
-          .strokeClipRegion,
+          .widget<InteractiveBrushEditCanvasView>(
+            find.byType(InteractiveBrushEditCanvasView),
+          )
+          .selectionRegion,
       region,
+      reason: 'the stroke rasterizer masks with this region',
     );
 
     await gesture.up();
     await tester.pump();
 
-    // And with no selection the clip is OFF — the painter's untouched
-    // pipeline (the R27 #4 parity suites depend on that null).
+    // And with no selection the mask is OFF — the kernel then takes its
+    // null-mask path, which is byte-identical to the no-selection
+    // pipeline the R27 #4 parity suites pin.
     env.commands.setRegion(null);
     await tester.pump();
     expect(
       tester
-          .widget<BrushEditCanvasView>(find.byType(BrushEditCanvasView))
-          .strokeClipRegion,
+          .widget<InteractiveBrushEditCanvasView>(
+            find.byType(InteractiveBrushEditCanvasView),
+          )
+          .selectionRegion,
       isNull,
     );
   });

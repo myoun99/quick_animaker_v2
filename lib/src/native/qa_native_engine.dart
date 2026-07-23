@@ -26,6 +26,7 @@ class QaNativeEngine {
     this._stampBlendTiles,
     this._strokeBlendTiles,
     this._alphaBoundsTiles,
+    this._preBlendTiles,
     this._premultiplyRgbaCopy,
     this._copyBytes,
     this._tileAlloc,
@@ -45,7 +46,13 @@ class QaNativeEngine {
   // brush blend) and the alpha-bounds tile scan.
   // v23: the RNNoise round added qa_audio_denoise_f32 (voice-take
   // suppression); the raster surface is unchanged.
-  static const int _abiVersion = 23;
+  // v24: the FUSED PRE-BLEND — qa_tile_span gained base/stroke/mask/
+  // premul fields and qa_pre_blend_tiles stages, blends and premultiplies
+  // a whole frame's overlay tiles in one pooled call (the per-tile
+  // count=1 sequence never engaged the workers). The mask field carries
+  // the selection so "draw inside the selection only" happens in the
+  // kernel instead of a painter clip.
+  static const int _abiVersion = 24;
 
   /// The ABI this build expects — surfaced by the runtime-path report
   /// (Preferences > System) so a user can see which engine generation
@@ -419,6 +426,18 @@ class QaNativeEngine {
   )
   _alphaBoundsTiles;
 
+  /// ABI 24: the fused pre-blend (stage + blend + premultiply, masked).
+  /// Reference = `preBlendStrokeOverlayPixels`.
+  final void Function(
+    Pointer<QaTileSpanStruct> tiles,
+    int tileCount,
+    int tileSize,
+    int kind,
+    int mode,
+    Pointer<Uint8> changedOut,
+  )
+  _preBlendTiles;
+
   final int Function(
     Pointer<Uint8> pixels,
     int tileWidth,
@@ -736,6 +755,25 @@ class QaNativeEngine {
             ),
             void Function(Pointer<QaTileSpanStruct>, int, int, Pointer<Int32>)
           >('qa_alpha_bounds_tiles');
+      final preBlendTiles = library
+          .lookupFunction<
+            Void Function(
+              Pointer<QaTileSpanStruct>,
+              Int32,
+              Int32,
+              Int32,
+              Int32,
+              Pointer<Uint8>,
+            ),
+            void Function(
+              Pointer<QaTileSpanStruct>,
+              int,
+              int,
+              int,
+              int,
+              Pointer<Uint8>,
+            )
+          >('qa_pre_blend_tiles');
       final premultiplyRgbaCopy = library
           .lookupFunction<
             Void Function(Pointer<Uint8>, Pointer<Uint8>, Int32),
@@ -913,6 +951,7 @@ class QaNativeEngine {
         stampBlendTiles,
         strokeBlendTiles,
         alphaBoundsTiles,
+        preBlendTiles,
         premultiplyRgbaCopy,
         copyBytes,
         tileAlloc,
@@ -1031,6 +1070,14 @@ class QaNativeEngine {
     final buffer = malloc<Uint8>(pixelCount * 4);
     _premultiplyRgbaCopy(buffer, source, pixelCount);
     return QaStampScratch._(buffer.asTypedList(pixelCount * 4), buffer);
+  }
+
+  /// An EMPTY upload buffer for a kernel to fill (ABI 24: the fused
+  /// pre-blend writes the premultiplied result straight into it). Free it
+  /// once the decode has consumed the view.
+  QaStampScratch acquireScratch(int byteLength) {
+    final buffer = malloc<Uint8>(byteLength);
+    return QaStampScratch._(buffer.asTypedList(byteLength), buffer);
   }
 
   // -------------------------------------------------------------------
@@ -1483,6 +1530,12 @@ class QaNativeEngine {
     required int spanRightExclusive,
     required int spanTop,
     required int spanBottomExclusive,
+    // ABI 24 — only the fused pre-blend reads these; every other kernel
+    // ignores them, so they default to "absent".
+    Pointer<Uint8>? basePixels,
+    Pointer<Uint8>? strokePixels,
+    Pointer<Uint8>? maskPixels,
+    Pointer<Uint8>? premulOut,
   }) {
     final span = _tileSpans[index];
     span.tilePixels = tilePixels;
@@ -1493,7 +1546,34 @@ class QaNativeEngine {
     span.spanTop = spanTop;
     span.spanBottomExclusive = spanBottomExclusive;
     span.reserved = 0;
+    span.basePixels = basePixels ?? nullptr;
+    span.strokePixels = strokePixels ?? nullptr;
+    span.maskPixels = maskPixels ?? nullptr;
+    span.premulOut = premulOut ?? nullptr;
   }
+
+  /// ABI 24: stages, blends and premultiplies every staged span in ONE
+  /// pooled call — the live overlay's whole frame of tiles.
+  ///
+  /// [kind] picks the composite the stroke lands with
+  /// ([preBlendKindSrcOver] / [preBlendKindErase] / [preBlendKindStroke]),
+  /// and [mode] carries the `QA_STROKE_BLEND_*` id when the kind is
+  /// STROKE. Returns per-tile changed flags (valid until the next batch);
+  /// a tile reports unchanged when the stroke moved no byte of the base,
+  /// which is what keeps untouched coordinates out of the commit.
+  Uint8List preBlendTiles({
+    required int count,
+    required int tileSize,
+    required int kind,
+    int mode = 0,
+  }) {
+    _preBlendTiles(_tileSpans, count, tileSize, kind, mode, _batchChanged);
+    return _batchChanged.asTypedList(count);
+  }
+
+  static const int preBlendKindSrcOver = 0;
+  static const int preBlendKindErase = 1;
+  static const int preBlendKindStroke = 2;
 
   /// Blends the prepared dab ([prepareDab]) into every staged span in ONE
   /// call, fanned across the worker pool (tiles are disjoint, so results
@@ -1912,6 +1992,9 @@ class QaStampScratch {
   final Uint8List view;
   final Pointer<Uint8> _buffer;
 
+  /// The raw buffer — a kernel writing INTO this scratch needs it.
+  Pointer<Uint8> get pointer => _buffer;
+
   void free() {
     malloc.free(_buffer);
   }
@@ -1965,6 +2048,13 @@ final class QaTileSpanStruct extends Struct {
   external int spanBottomExclusive;
   @Int32()
   external int reserved;
+
+  /// ABI 24 — the fused pre-blend's per-tile buffers, all tile-local on
+  /// the same grid as [tilePixels]. The older kernels ignore them.
+  external Pointer<Uint8> basePixels;
+  external Pointer<Uint8> strokePixels;
+  external Pointer<Uint8> maskPixels;
+  external Pointer<Uint8> premulOut;
 }
 
 /// Mirror of the C `qa_dab_spec` — field order/types must match EXACTLY

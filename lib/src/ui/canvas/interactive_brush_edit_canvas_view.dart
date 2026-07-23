@@ -112,7 +112,7 @@ class InteractiveBrushEditCanvasView extends StatefulWidget {
     this.onTemporaryToolRelease,
     this.onInvokeAction,
     this.fillDabAt,
-    this.strokeClipRegion,
+    this.selectionRegion,
     CanvasViewport? viewport,
   }) : viewport = viewport ?? CanvasViewport();
 
@@ -152,9 +152,14 @@ class InteractiveBrushEditCanvasView extends StatefulWidget {
   final BrushDab? Function(CanvasPoint point, int color)? fillDabAt;
 
   /// R26 #18: the live selection region (canvas coordinates). Non-null
-  /// clips the LIVE stroke display to it — the panel clips the same
-  /// stroke's buffer at commit, so pen preview and landed pixels agree.
-  final CanvasSelectionRegion? strokeClipRegion;
+  /// confines the stroke to it — the region goes to the RASTERIZER, which
+  /// masks the accumulated stroke's alpha inside the pre-blend kernel, so
+  /// the tiles the user sees and the tiles pen-up promotes are already
+  /// clipped. (It used to be a painter clipPath over the overlay; that
+  /// showed the right thing but cost the whole-coordinate replacement
+  /// path — a clipped overlay cannot own a coordinate — so every selected
+  /// stroke fell back to a per-frame isolation layer.)
+  final CanvasSelectionRegion? selectionRegion;
 
   /// Zoom/pan applied to the canvas display and input mapping. Viewport
   /// GESTURES (middle-drag pan, wheel zoom) live on the panel's
@@ -368,7 +373,6 @@ class _InteractiveBrushEditCanvasViewState
                 showTransparentBackground: widget.showTransparentBackground,
                 overlayModel: _overlayModel,
                 staleScope: (widget.layerId, widget.frameId),
-                strokeClipRegion: widget.strokeClipRegion,
               ),
             ),
           ),
@@ -1289,15 +1293,26 @@ class _InteractiveBrushEditCanvasViewState
 
   /// Creates or recycles the live stroke rasterizer for the current canvas.
   void _prepareLiveRasterizer() {
-    final canvasSize =
-        widget.sessionState.canvasState.currentSurface.canvasSize;
+    final surface = widget.sessionState.canvasState.currentSurface;
+    final canvasSize = surface.canvasSize;
     final existing = _liveRasterizer;
-    if (existing == null || existing.canvasSize != canvasSize) {
+    // The stroke grid IS the cel grid (the promotion round's premise: a
+    // result tile stands in for the committed tile at its coordinate).
+    if (existing == null ||
+        existing.canvasSize != canvasSize ||
+        existing.tileSize != surface.tileSize) {
       existing?.clear(); // Native tiles return to the engine (R21).
-      _liveRasterizer = BrushLiveStrokeRasterizer(canvasSize: canvasSize);
+      _liveRasterizer = BrushLiveStrokeRasterizer(
+        canvasSize: canvasSize,
+        tileSize: surface.tileSize,
+      );
     } else {
       existing.clear();
     }
+    // R26 #18: the selection reaches the KERNEL through the rasterizer.
+    // Captured once per stroke — it cannot change mid-stroke (the
+    // selection layer is not mounted while a painting tool is active).
+    _liveRasterizer!.selectionRegion = widget.selectionRegion;
   }
 
   /// Rasterizes [newDabs] into the live buffer (exact commit math) and
@@ -1331,6 +1346,19 @@ class _InteractiveBrushEditCanvasViewState
           stampTop + stamp.height,
         ),
       );
+      // R26 #18: a fill previews as ONE stamp image, so it does not pass
+      // through the stroke pre-blend where the selection mask lives — the
+      // mask goes onto the stamp's own bytes instead, once, before the
+      // upload. The commit clips the same fill on its own buffer
+      // (clipStrokePixelsToSelection), and both read the SAME scanline
+      // mask, so the preview and the landed pixels agree at the boundary.
+      final stampRgba = _maskedStampRgba(
+        rgba: stamp.rgba,
+        left: stampLeft,
+        top: stampTop,
+        width: stamp.width,
+        height: stamp.height,
+      );
       // The stamp is straight-alpha; the overlay pipeline (like the
       // tile images) uploads premultiplied. The fused C kernel does
       // 64MP in one pass — the same loop in Dart was seconds. The
@@ -1339,10 +1367,10 @@ class _InteractiveBrushEditCanvasViewState
       final Uint8List premultiplied;
       QaStampScratch? scratch;
       if (engine != null) {
-        scratch = engine.premultipliedStampCopy(stamp.rgba);
+        scratch = engine.premultipliedStampCopy(stampRgba);
         premultiplied = scratch.view;
       } else {
-        premultiplied = _premultipliedCopyDart(stamp.rgba);
+        premultiplied = _premultipliedCopyDart(stampRgba);
       }
       final token = _fillOverlayToken;
       ui.decodeImageFromPixels(
@@ -1396,6 +1424,41 @@ class _InteractiveBrushEditCanvasViewState
     }
     widget.onSourceStrokeCommitted(BrushStrokeCommitData(sourceDabs: [dab]));
     _beginSettling();
+  }
+
+  /// [rgba] with the live selection applied, or [rgba] itself when there
+  /// is no selection (no copy, no scan).
+  Uint8List _maskedStampRgba({
+    required Uint8List rgba,
+    required int left,
+    required int top,
+    required int width,
+    required int height,
+  }) {
+    final region = widget.selectionRegion;
+    if (region == null) {
+      return rgba;
+    }
+    final mask = region.maskFor(
+      left: left,
+      top: top,
+      width: width,
+      height: height,
+    );
+    final masked = Uint8List.fromList(rgba);
+    for (var i = 0; i < mask.length; i += 1) {
+      if (mask[i] != 0) {
+        continue;
+      }
+      // The whole texel leaves, RGB included — the same rule the commit's
+      // clip uses, so no ghost colour survives behind alpha 0.
+      final offset = i * 4;
+      masked[offset] = 0;
+      masked[offset + 1] = 0;
+      masked[offset + 2] = 0;
+      masked[offset + 3] = 0;
+    }
+    return masked;
   }
 
   /// Fallback premultiply (engine absent) — same bytes as the overlay

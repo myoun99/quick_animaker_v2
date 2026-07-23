@@ -1151,7 +1151,7 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
           : null,
       // R26 #18: the live stroke shows clipped to the selection, exactly
       // as the commit will clip it.
-      strokeClipRegion: widget.selectionCommands?.region,
+      selectionRegion: widget.selectionCommands?.region,
       onActiveStrokeChanged: (active) {
         if (_strokeActive != active) {
           widget.onStrokeInputActiveChanged?.call(active);
@@ -1516,6 +1516,13 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
     final region = widget.selectionCommands?.region;
     if (region == null) {
       return data;
+    }
+    if (data.promotedTiles != null) {
+      // The stroke was pre-blended THROUGH the selection mask (R28): the
+      // promoted tiles are already clipped, and re-deriving them here
+      // would throw away the finished pixels to rasterize the dabs again.
+      // An empty list means the whole stroke fell outside the selection.
+      return data.promotedTiles!.isEmpty ? null : data;
     }
     var pixels = data.strokePixels;
     var bounds = data.strokeBounds;

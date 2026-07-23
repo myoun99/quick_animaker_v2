@@ -181,13 +181,40 @@ int _clampByte(double value) {
 /// kernel's srcOver at opacity 1 (the color landing is one stamp of the
 /// stroke buffer) — every stroke mode pre-blends now (user rule 07-23:
 /// ONE display pipeline, live == commit unconditionally).
+/// [mask] (R28 selection): 1 byte of coverage per pixel, scaling the
+/// STROKE's alpha before the composite — `a = mul255(a, mask)`, the same
+/// rounding the kernel uses. Null means no selection and is byte-for-byte
+/// the pre-mask path. It applies to the ACCUMULATED stroke, never per
+/// dab: masking dabs individually would break soft masks, because
+/// srcOver(a₁·m, a₂·m) ≠ srcOver(a₁, a₂)·m.
 Uint8List preBlendStrokeOverlayPixels({
   required Uint8List dst,
   required Uint8List src,
   required BrushBlendMode mode,
   required bool erase,
   required int pixelCount,
+  Uint8List? mask,
 }) {
+  if (mask != null) {
+    // One masked copy up front keeps the kernels below untouched — they
+    // are the commit's own code and must stay byte-identical to it.
+    final masked = Uint8List.fromList(src);
+    for (var i = 0; i < pixelCount; i += 1) {
+      final o = i * 4;
+      final coverage = mask[i];
+      if (coverage == 255) {
+        continue;
+      }
+      final alpha = masked[o + 3];
+      if (coverage == 0 || alpha == 0) {
+        masked[o + 3] = 0;
+        continue;
+      }
+      final product = alpha * coverage + 128;
+      masked[o + 3] = (product + (product >> 8)) >> 8;
+    }
+    src = masked;
+  }
   if (erase || mode == BrushBlendMode.erase) {
     // Mirror of the stamp-ERASE per-pixel path at dabOpacity 1
     // (bitmap_surface_brush_commit): sa==0 leaves the pixel verbatim,

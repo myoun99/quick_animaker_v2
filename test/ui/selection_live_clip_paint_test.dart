@@ -4,6 +4,7 @@ import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:quick_animaker_v2/src/models/bitmap_surface.dart';
+import 'package:quick_animaker_v2/src/models/brush_blend_mode.dart';
 import 'package:quick_animaker_v2/src/models/brush_dab.dart';
 import 'package:quick_animaker_v2/src/models/brush_dab_sequence.dart';
 import 'package:quick_animaker_v2/src/models/brush_tip_shape.dart';
@@ -16,16 +17,23 @@ import 'package:quick_animaker_v2/src/services/canvas_selection_region.dart';
 import 'package:quick_animaker_v2/src/ui/canvas/active_stroke_overlay.dart';
 import 'package:quick_animaker_v2/src/ui/canvas/bitmap_surface_painter.dart';
 
-/// R26 #18, display half: what the pen SHOWS while drawing is clipped to
-/// the selection exactly like what the commit lands.
+/// R26 #18, display half: with a selection, what the pen SHOWS while
+/// drawing is confined to it — and is the same bytes the commit lands.
 ///
-/// The pre-blend route is the dangerous one — its overlay tiles carry the
-/// commit's finished pixels and the base pass CLIPS THEM OUT, so a naive
-/// "just clip the overlay draw" would punch a hole in the artwork outside
-/// the selection. Both routes are driven here (the strip cap forces the
-/// isolation-layer fallback), through the production painter.
+/// The selection reaches the PRE-BLEND KERNEL now (it scales the
+/// accumulated stroke's alpha), not a painter clipPath. That is what
+/// makes these two things true at once, which the clip could never do:
+///
+///  * outside the selection a result tile equals the base, so the tile
+///    still owns its whole coordinate and the painter keeps the
+///    replacement fast path (the clip forced a per-frame isolation layer
+///    on every selected stroke);
+///  * live and committed pixels come out of ONE masked blend, so the
+///    boundary cannot disagree — there is no second clipping rule left to
+///    keep in sync.
 void main() {
   const canvasSize = CanvasSize(width: 40, height: 40);
+  const tileSize = 64; // one tile covers the canvas: the aligned grid.
 
   BrushDab dab(double x, double y) => BrushDab(
     center: CanvasPoint(x: x, y: y),
@@ -44,57 +52,10 @@ void main() {
     CanvasSelectionShape.rect(left: 0, top: 0, right: 20, bottom: 40),
   );
 
-  Future<Uint8List> paintedBytes({
-    required BitmapSurface base,
-    required ActiveStrokeOverlayModel overlay,
-    CanvasSelectionRegion? clip,
-  }) async {
-    final recorder = ui.PictureRecorder();
-    BitmapSurfacePainter(
-      surface: base,
-      overlayModel: overlay,
-      showTransparentBackground: false,
-      strokeClipRegion: clip,
-      // A fresh scope keeps another test's tile at the same coordinate out
-      // of the stale-image fallback (the parity suite's rule).
-      staleScope: Object(),
-    ).paint(Canvas(recorder), const Size(40, 40));
-    final image = await recorder.endRecording().toImage(40, 40);
-    final data = await image.toByteData(format: ui.ImageByteFormat.rawRgba);
-    image.dispose();
-    return data!.buffer.asUint8List();
-  }
-
-  int alphaAt(Uint8List pixels, int x, int y) => pixels[(y * 40 + x) * 4 + 3];
-  int redAt(Uint8List pixels, int x, int y) => pixels[(y * 40 + x) * 4];
-
-  /// A horizontal stroke straddling the selection's right edge (x = 20).
-  Future<ActiveStrokeOverlayModel> strokeOverlay({
-    required bool preBlended,
-    BitmapSurface? preBlendBase,
-    int tileSize = 16,
-  }) async {
-    final rasterizer = BrushLiveStrokeRasterizer(canvasSize: canvasSize);
-    final dabs = [for (var x = 6; x <= 34; x += 4) dab(x.toDouble(), 20)];
-    final region = rasterizer.blendFrom(dabs, from: 0)!;
-    final model = ActiveStrokeOverlayModel(tileSize: tileSize);
-    if (preBlended) {
-      // The production contract (R27 #4b): every stroke pre-blends against
-      // the cel it paints on, so the overlay tiles carry finished pixels.
-      model.preBlendBase =
-          preBlendBase ?? BitmapSurface(canvasSize: canvasSize, tileSize: 64);
-    }
-    addTearDown(model.dispose);
-    model.updateRegion(source: rasterizer, region: region);
-    await model.waitForPendingDecodes();
-    expect(model.hasStrokeContent, isTrue);
-    return model;
-  }
-
-  /// Paper the base surface so "the base survives outside the clip" is a
+  /// Paper the base so "the base survives outside the selection" is a
   /// visible fact and not just transparency.
   BitmapSurface paintedBase() => materializeBrushDabSequenceOnBitmapSurface(
-    surface: BitmapSurface(canvasSize: canvasSize, tileSize: 64),
+    surface: BitmapSurface(canvasSize: canvasSize, tileSize: tileSize),
     sequence: BrushDabSequence([
       BrushDab(
         center: CanvasPoint(x: 20, y: 20),
@@ -110,76 +71,119 @@ void main() {
     ]),
   ).surface;
 
-  test('a plain overlay draws only inside the region', () async {
-    final overlay = await strokeOverlay(preBlended: false);
-    final base = paintedBase();
+  /// A horizontal stroke straddling the selection's right edge (x = 20).
+  List<BrushDab> straddlingStroke() => [
+    for (var x = 6; x <= 34; x += 4) dab(x.toDouble(), 20),
+  ];
 
-    final unclipped = await paintedBytes(base: base, overlay: overlay);
-    final clipped = await paintedBytes(
-      base: base,
-      overlay: overlay,
-      clip: leftHalf,
-    );
+  Future<Uint8List> paintedBytes({
+    required BitmapSurface surface,
+    required ActiveStrokeOverlayModel overlay,
+  }) async {
+    final recorder = ui.PictureRecorder();
+    BitmapSurfacePainter(
+      surface: surface,
+      overlayModel: overlay,
+      showTransparentBackground: false,
+      // A fresh scope keeps another test's tile at the same coordinate out
+      // of the stale-image fallback (the parity suite's rule).
+      staleScope: Object(),
+    ).paint(Canvas(recorder), const Size(40, 40));
+    final image = await recorder.endRecording().toImage(40, 40);
+    final data = await image.toByteData(format: ui.ImageByteFormat.rawRgba);
+    image.dispose();
+    return data!.buffer.asUint8List();
+  }
 
-    // Unclipped: the black stroke covers both sides.
-    expect(redAt(unclipped, 10, 20), lessThan(64));
-    expect(redAt(unclipped, 30, 20), lessThan(64));
+  /// Draws [dabs] through a rasterizer carrying [region] and returns the
+  /// live overlay plus that rasterizer, so a test can take the COMMIT
+  /// from the very same stroke.
+  Future<(ActiveStrokeOverlayModel, BrushLiveStrokeRasterizer)> liveStroke({
+    required BitmapSurface base,
+    required List<BrushDab> dabs,
+    CanvasSelectionRegion? region,
+    BrushBlendMode mode = BrushBlendMode.color,
+  }) async {
+    final rasterizer = BrushLiveStrokeRasterizer(
+      canvasSize: canvasSize,
+      tileSize: tileSize,
+    )..selectionRegion = region;
+    final dirty = rasterizer.blendFrom(dabs, from: 0)!;
+    final model = ActiveStrokeOverlayModel(tileSize: tileSize)
+      ..blendMode = mode
+      ..erase = mode == BrushBlendMode.erase
+      ..preBlendBase = base;
+    addTearDown(model.dispose);
+    model.updateRegion(source: rasterizer, region: dirty);
+    await model.waitForPendingDecodes();
+    return (model, rasterizer);
+  }
 
-    // Clipped: the left keeps the stroke, the right shows the RED base
-    // again — not a hole, not the stroke.
-    expect(redAt(clipped, 10, 20), lessThan(64), reason: 'stroke inside');
-    expect(redAt(clipped, 30, 20), greaterThan(160), reason: 'base outside');
-    expect(alphaAt(clipped, 30, 20), 255, reason: 'no hole punched');
-  });
+  int alphaAt(Uint8List pixels, int x, int y) => pixels[(y * 40 + x) * 4 + 3];
+  int redAt(Uint8List pixels, int x, int y) => pixels[(y * 40 + x) * 4];
 
-  test('the PRE-BLENDED replacement route clips without holing the '
-      'base outside the region', () async {
-    final base = paintedBase();
-    final overlay = await strokeOverlay(preBlended: true, preBlendBase: base);
+  test(
+    'the live stroke shows only inside the selection, and the base '
+    'survives outside it — on the ALIGNED grid, where the overlay owns '
+    'whole coordinates',
+    () async {
+      final base = paintedBase();
+      final (overlay, rasterizer) = await liveStroke(
+        base: base,
+        dabs: straddlingStroke(),
+        region: leftHalf,
+      );
+      addTearDown(rasterizer.clear);
 
-    final clipped = await paintedBytes(
-      base: base,
-      overlay: overlay,
-      clip: leftHalf,
-    );
-    expect(redAt(clipped, 10, 20), lessThan(64), reason: 'stroke inside');
-    expect(
-      redAt(clipped, 30, 20),
-      greaterThan(160),
-      reason: 'the base pass kept painting outside the selection',
-    );
-    expect(alphaAt(clipped, 30, 20), 255);
-  });
+      final painted = await paintedBytes(surface: base, overlay: overlay);
+      expect(redAt(painted, 10, 20), lessThan(64), reason: 'stroke inside');
+      expect(
+        redAt(painted, 30, 20),
+        greaterThan(160),
+        reason: 'the red base survived outside the selection',
+      );
+      expect(alphaAt(painted, 30, 20), 255, reason: 'no hole punched');
+    },
+  );
 
-  test('the ALIGNED-GRID replacement route (the promotion round\'s fast '
-      'path) still clips without holing the base', () async {
-    // The dangerous case: on a matched grid the base pass SKIPS every
-    // coordinate the overlay owns. A clipped overlay cannot own a whole
-    // coordinate any more, so the painter has to step off that fast path
-    // — otherwise the artwork outside the selection would simply vanish.
-    final base = paintedBase();
-    final overlay = await strokeOverlay(
-      preBlended: true,
-      preBlendBase: base,
-      tileSize: 64, // == the base surface's tile size
-    );
-    final clipped = await paintedBytes(
-      base: base,
-      overlay: overlay,
-      clip: leftHalf,
-    );
-    expect(redAt(clipped, 10, 20), lessThan(64), reason: 'stroke inside');
-    expect(
-      redAt(clipped, 30, 20),
-      greaterThan(160),
-      reason: 'the base survived outside the selection',
-    );
-    expect(alphaAt(clipped, 30, 20), 255, reason: 'no hole punched');
-  });
+  test(
+    'live == committed with a selection: one masked blend feeds both, so '
+    'the boundary cannot disagree',
+    () async {
+      for (final mode in const [
+        BrushBlendMode.color,
+        BrushBlendMode.multiply,
+        BrushBlendMode.erase,
+      ]) {
+        final base = paintedBase();
+        final (overlay, rasterizer) = await liveStroke(
+          base: base,
+          dabs: straddlingStroke(),
+          region: leftHalf,
+          mode: mode,
+        );
+        final live = await paintedBytes(surface: base, overlay: overlay);
 
-  test('a composite region clips through its own fold — a subtracted '
-      'hole shows the base', () async {
-    final overlay = await strokeOverlay(preBlended: false);
+        final committed = base.putTiles([
+          for (final entry in rasterizer.promoteStrokeTiles(
+            base: base,
+            mode: mode,
+            erase: mode == BrushBlendMode.erase,
+          ))
+            entry.tile,
+        ]);
+        rasterizer.clear();
+        final empty = ActiveStrokeOverlayModel(tileSize: tileSize);
+        addTearDown(empty.dispose);
+        final after = await paintedBytes(surface: committed, overlay: empty);
+
+        expect(live, after, reason: '${mode.name}: live display == committed');
+      }
+    },
+  );
+
+  test('a composite region folds through the mask — a subtracted hole '
+      'keeps the base', () async {
     final base = paintedBase();
     final withHole = leftHalf
         .combinedWith(
@@ -190,23 +194,68 @@ void main() {
           CanvasSelectionShape.rect(left: 14, top: 0, right: 26, bottom: 40),
           SelectionCombineMode.subtract,
         )!;
-
-    final clipped = await paintedBytes(
+    final (overlay, rasterizer) = await liveStroke(
       base: base,
-      overlay: overlay,
-      clip: withHole,
+      dabs: straddlingStroke(),
+      region: withHole,
     );
-    expect(redAt(clipped, 8, 20), lessThan(64), reason: 'left of the hole');
-    expect(redAt(clipped, 20, 20), greaterThan(160), reason: 'in the hole');
-    expect(redAt(clipped, 32, 20), lessThan(64), reason: 'right of the hole');
+    addTearDown(rasterizer.clear);
+
+    final painted = await paintedBytes(surface: base, overlay: overlay);
+    expect(redAt(painted, 8, 20), lessThan(64), reason: 'left of the hole');
+    expect(redAt(painted, 20, 20), greaterThan(160), reason: 'in the hole');
+    expect(redAt(painted, 32, 20), lessThan(64), reason: 'right of the hole');
   });
 
-  test('NO region leaves the pipeline byte-identical', () async {
+  test('a selection that covers everything paints what NO selection '
+      'paints, byte for byte', () async {
     final base = paintedBase();
-    final overlay = await strokeOverlay(preBlended: true, preBlendBase: base);
+    final (masked, rasterizerA) = await liveStroke(
+      base: base,
+      dabs: straddlingStroke(),
+      region: CanvasSelectionRegion.shape(
+        CanvasSelectionShape.rect(
+          left: -100,
+          top: -100,
+          right: 200,
+          bottom: 200,
+        ),
+      ),
+    );
+    addTearDown(rasterizerA.clear);
+    final (plain, rasterizerB) = await liveStroke(
+      base: base,
+      dabs: straddlingStroke(),
+    );
+    addTearDown(rasterizerB.clear);
+
     expect(
-      await paintedBytes(base: base, overlay: overlay),
-      await paintedBytes(base: base, overlay: overlay, clip: null),
+      await paintedBytes(surface: base, overlay: masked),
+      await paintedBytes(surface: base, overlay: plain),
     );
   });
+
+  test(
+    'a stroke entirely outside the selection shows nothing and promotes '
+    'nothing — the commit must not touch a tile the stroke could not reach',
+    () async {
+      final base = paintedBase();
+      final (overlay, rasterizer) = await liveStroke(
+        base: base,
+        dabs: [for (var x = 26; x <= 34; x += 4) dab(x.toDouble(), 20)],
+        region: leftHalf,
+      );
+      addTearDown(rasterizer.clear);
+
+      expect(overlay.tileImages, isEmpty, reason: 'nothing to show');
+      expect(
+        rasterizer.promoteStrokeTiles(
+          base: base,
+          mode: BrushBlendMode.color,
+          erase: false,
+        ),
+        isEmpty,
+      );
+    },
+  );
 }

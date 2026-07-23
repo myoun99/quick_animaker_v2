@@ -1510,6 +1510,11 @@ QA_EXPORT int32_t qa_stamp_blend_tile(
 
 // One tile's span of a batch job. Field order/types MUST match the Dart
 // QaTileSpanStruct exactly; the loader cross-checks qa_tile_span_sizeof.
+//
+// ABI 24 appended the four pre-blend fields. The older kernels
+// (dab/stamp/stroke/alpha-bounds) never read them, so they keep working
+// on spans staged without them - but both sides must still agree on the
+// struct size, which the sizeof cross-check enforces.
 typedef struct {
   uint8_t* tile_pixels;
   int32_t tile_left;
@@ -1519,6 +1524,12 @@ typedef struct {
   int32_t span_top;
   int32_t span_bottom_exclusive;
   int32_t reserved;
+  // --- ABI 24: the fused pre-blend's per-tile inputs/outputs.
+  // Tile-local buffers, all on the SAME tile_size grid as tile_pixels.
+  const uint8_t* base_pixels;    // committed bytes to stage; NULL = empty
+  const uint8_t* stroke_pixels;  // the live stroke's straight RGBA
+  const uint8_t* mask_pixels;    // selection coverage, 1 byte/px; NULL = all
+  uint8_t* premul_out;           // premultiplied upload; NULL = skip
 } qa_tile_span;
 
 QA_EXPORT int32_t qa_tile_span_sizeof(void) {
@@ -2134,6 +2145,164 @@ QA_EXPORT void qa_tile_alpha_bounds(
   bounds_out[1] = min_y;
   bounds_out[2] = max_x;
   bounds_out[3] = max_y;
+}
+
+// ---------------------------------------------------------------------------
+// Fused PRE-BLEND (ABI 24): one call does a whole frame's overlay tiles.
+//
+// The live overlay shows the commit's finished bytes, so every touched
+// tile has to be staged from the cel, blended with the stroke, and
+// premultiplied for upload. That ran per tile from Dart — a base row copy
+// in the VM plus two count=1 kernel calls, which never engage the worker
+// pool (a one-item batch runs inline). Measured on a debug build at
+// 256px tiles: ~2ms PER TILE, so a 1000px brush spent 34ms of every frame
+// there and an 1800px brush 122ms. Here the three passes fuse and the
+// tiles fan out across the pool; the per-pixel math is untouched, so the
+// bytes are identical to the Dart reference (parity-pinned).
+//
+// SELECTION MASK: `mask_pixels` (1 byte per pixel, tile-local) scales the
+// STROKE's alpha before the blend — `a = mul255(a, mask)`. It is applied
+// to the ACCUMULATED stroke, never per dab: masking each dab would break
+// soft masks, since srcOver(a1·m, a2·m) != srcOver(a1, a2)·m. NULL means
+// no selection and takes a branch-free path that is byte-identical to
+// ABI 23.
+enum {
+  QA_PRE_BLEND_SRC_OVER = 0,  // plain colour: the stamp kernel's srcOver
+  QA_PRE_BLEND_ERASE = 1,     // eraser / 소거: the stamp kernel's dstOut
+  QA_PRE_BLEND_STROKE = 2,    // the 13 brush blends (mode = QA_STROKE_BLEND_*)
+};
+
+// Pixels of masked stroke staged per pass. Rows longer than this are
+// blended in chunks, so any tile size works with a fixed 4KB of stack.
+#define QA_PRE_BLEND_CHUNK 1024
+
+static inline int32_t qa_mask_alpha(int32_t alpha, const uint8_t* mask,
+                                    int32_t index) {
+  if (mask == NULL) {
+    return alpha;
+  }
+  const int32_t m = mask[index];
+  if (m == 255) {
+    return alpha;
+  }
+  if (m == 0 || alpha == 0) {
+    return 0;
+  }
+  // Skia's SkMulDiv255Round — the same rounding the lift's soft masks and
+  // every premultiply in this engine use.
+  const int32_t product = alpha * m + 128;
+  return (product + (product >> 8)) >> 8;
+}
+
+typedef struct {
+  qa_tile_span* tiles;
+  int32_t tile_size;
+  int32_t kind;
+  int32_t mode;
+  uint8_t* changed_out;
+} qa_pre_blend_context;
+
+// The stroke buffer masked into a scratch row, so the blend kernels below
+// can stay exactly the code the commit runs. Returns the row to blend.
+static const uint8_t* qa_masked_stroke_row(
+    const uint8_t* stroke_row,
+    const uint8_t* mask_row,
+    int32_t count,
+    uint8_t* scratch) {
+  if (mask_row == NULL) {
+    return stroke_row;
+  }
+  for (int32_t i = 0; i < count; i += 1) {
+    const uint8_t* s = stroke_row + (ptrdiff_t)i * 4;
+    uint8_t* d = scratch + (ptrdiff_t)i * 4;
+    d[0] = s[0];
+    d[1] = s[1];
+    d[2] = s[2];
+    d[3] = (uint8_t)qa_mask_alpha(s[3], mask_row, i);
+  }
+  return scratch;
+}
+
+static void qa_pre_blend_item(int32_t item_index, void* context) {
+  const qa_pre_blend_context* batch = (const qa_pre_blend_context*)context;
+  const qa_tile_span* span = &batch->tiles[item_index];
+  const int32_t tile_size = batch->tile_size;
+  const ptrdiff_t tile_bytes = (ptrdiff_t)tile_size * tile_size * 4;
+  uint8_t* tile = span->tile_pixels;
+
+  // 1. Stage the cel's bytes (or emptiness) as the blend destination.
+  if (span->base_pixels != NULL) {
+    memcpy(tile, span->base_pixels, (size_t)tile_bytes);
+  } else {
+    memset(tile, 0, (size_t)tile_bytes);
+  }
+
+  // 2. Blend the stroke in place, row by row, through the SAME kernels
+  // the pen-up commit uses.
+  int32_t changed = 0;
+  const int32_t left = span->span_left - span->tile_left;
+  const int32_t right = span->span_right_exclusive - span->tile_left;
+  const int32_t top = span->span_top - span->tile_top;
+  const int32_t bottom = span->span_bottom_exclusive - span->tile_top;
+  const int32_t count = right - left;
+  if (count > 0 && span->stroke_pixels != NULL) {
+    // Masking rewrites alpha, so it needs a row of scratch. Fixed stack
+    // chunk rather than an allocation: the pool runs this on several
+    // threads and must never touch the heap here. Unmasked spans skip
+    // the copy entirely (the scratch stays untouched).
+    uint8_t masked_row[QA_PRE_BLEND_CHUNK * 4];
+    const int32_t chunk = count > QA_PRE_BLEND_CHUNK ? QA_PRE_BLEND_CHUNK : count;
+    for (int32_t y = top; y < bottom; y += 1) {
+      for (int32_t x0 = left; x0 < right; x0 += chunk) {
+        const int32_t n = (right - x0) < chunk ? (right - x0) : chunk;
+        const ptrdiff_t offset = ((ptrdiff_t)y * tile_size + x0);
+        uint8_t* tile_row = tile + offset * 4;
+        const uint8_t* stroke_row = span->stroke_pixels + offset * 4;
+        const uint8_t* mask_row =
+            span->mask_pixels == NULL ? NULL : span->mask_pixels + offset;
+        const uint8_t* src =
+            qa_masked_stroke_row(stroke_row, mask_row, n, masked_row);
+        int32_t row_changed;
+        if (batch->kind == QA_PRE_BLEND_STROKE) {
+          row_changed = qa_stroke_blend_row(tile_row, src, n, batch->mode);
+        } else {
+          row_changed = qa_stamp_blend_row(
+              tile_row, src, n, 1.0,
+              batch->kind == QA_PRE_BLEND_ERASE ? 1 : 0);
+        }
+        if (row_changed) {
+          changed = 1;
+        }
+      }
+    }
+  }
+  batch->changed_out[item_index] = (uint8_t)changed;
+
+  // 3. Premultiply straight into the upload buffer — the third pass that
+  // used to be its own FFI call per tile.
+  if (span->premul_out != NULL) {
+    qa_premultiply_rgba_copy(span->premul_out, tile, tile_size * tile_size);
+  }
+}
+
+// Stages, blends and premultiplies MANY overlay tiles in one call, fanned
+// across the worker pool. Tiles are disjoint and every pixel's math is
+// independent, so the result is byte-identical regardless of worker count
+// — and identical to running the ABI 23 per-tile sequence.
+QA_EXPORT void qa_pre_blend_tiles(
+    qa_tile_span* tiles,
+    int32_t tile_count,
+    int32_t tile_size,
+    int32_t kind,
+    int32_t mode,
+    uint8_t* changed_out) {
+  qa_pre_blend_context context;
+  context.tiles = tiles;
+  context.tile_size = tile_size;
+  context.kind = kind;
+  context.mode = mode;
+  context.changed_out = changed_out;
+  qa_pool_run(qa_pre_blend_item, &context, tile_count);
 }
 
 typedef struct {
@@ -3658,4 +3827,4 @@ QA_EXPORT int64_t qa_audio_resample_frames(int64_t input_frames,
 // v20: AUDIO-PRO R7 - qa_video_export_* (the OS video encoder).
 // v21: EX4 - qa_video_export_open gains container/codec/alpha/bitrate,
 //      qa_video_export_probe, and qa_image_encode_jpg (stb).
-QA_EXPORT int32_t qa_engine_abi_version(void) { return 23; }
+QA_EXPORT int32_t qa_engine_abi_version(void) { return 24; }

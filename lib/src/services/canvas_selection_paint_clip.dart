@@ -22,6 +22,16 @@ class ClippedStrokePixels {
 
 /// Zeroes every stroke pixel whose centre falls OUTSIDE [region].
 ///
+/// This is the FALLBACK half of R26 #18 now. A stroke drawn with a live
+/// raster carries the selection through the pre-blend kernel instead
+/// (`BrushLiveStrokeRasterizer.selectionRegion`), so its promoted tiles
+/// arrive already masked and the panel passes them straight through.
+/// What still comes here: programmatic strokes and history redos, which
+/// have no live raster to have masked. Both read the SAME
+/// [CanvasSelectionRegion.maskFor] bytes, so the two routes agree at the
+/// boundary — and while masks stay binary they agree exactly, since
+/// zeroing a texel and scaling its alpha by 0 are the same thing.
+///
 /// Straight-alpha buffers make this exact for every brush blend mode at
 /// once: alpha 0 is the documented "destination survives untouched" input
 /// of the commit kernels — plain srcOver contributes nothing, the erase
