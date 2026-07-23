@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 
 import '../../models/app_language.dart' show AppLanguage;
-import '../../models/folder_id.dart';
 import '../../models/layer_blend_mode.dart';
 import '../../models/layer_id.dart';
 import '../../models/layer_kind.dart';
@@ -223,99 +222,75 @@ bool layerKindShowsFxToggle(LayerKind kind) => true;
 /// The AE-style layer fx switch: bypasses the layer's FX (transform +
 /// animated opacity) on EVERY composite route while off — session view
 /// state, not persisted.
-/// R28 #13: the FOLDER's fx switch — the layer switch's twin, folder-keyed.
+/// The `fx` GLYPH — italic, bold, accent when the FX apply and dim when
+/// bypassed. Defined ONCE (R28 follow-up).
 ///
-/// Folders wired fx to the lane twirl, so pressing fx opened Transform
-/// instead of bypassing it. The verb is the same for both row kinds now:
-/// fx says whether this row's FX apply, and the leading twirl opens them.
-class FolderFxToggleButton extends StatelessWidget {
-  const FolderFxToggleButton({
-    super.key,
-    required this.keyPrefix,
-    required this.folderId,
-    required this.fxEnabled,
-    required this.onToggle,
-  });
-
-  final String keyPrefix;
-  final FolderId folderId;
-  final bool fxEnabled;
-  final ValueChanged<FolderId> onToggle;
-
-  @override
-  Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
-    return SizedBox(
-      width: layerFxSlotWidth,
-      height: 26,
-      child: IconButton(
-        key: ValueKey<String>('$keyPrefix-folder-fx-$folderId'),
-        tooltip: fxEnabled ? 'Bypass folder FX' : 'Apply folder FX',
-        padding: EdgeInsets.zero,
-        constraints: const BoxConstraints.tightFor(
-          width: layerFxSlotWidth,
-          height: 26,
-        ),
-        icon: Text(
-          'fx',
-          style: TextStyle(
-            fontSize: 13,
-            fontStyle: FontStyle.italic,
-            fontWeight: FontWeight.w700,
-            color: fxEnabled
-                ? AppColors.accent
-                : colorScheme.onSurface.withValues(alpha: 0.35),
-          ),
-        ),
-        onPressed: () => onToggle(folderId),
-      ),
-    );
-  }
+/// Four copies of this styling existed: the layer switch, the folder
+/// switch, the storyboard's cut switch and the legend's column header.
+/// Restyling fx meant finding all four, which is exactly the failure the
+/// user keeps calling out — change it in one place, it changes
+/// everywhere.
+Widget fxGlyph({
+  required BuildContext context,
+  required bool active,
+  double fontSize = 13,
+}) {
+  return Text(
+    'fx',
+    style: TextStyle(
+      fontSize: fontSize,
+      fontStyle: FontStyle.italic,
+      fontWeight: FontWeight.w700,
+      color: active
+          ? AppColors.accent
+          : Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.35),
+    ),
+  );
 }
 
-class LayerFxToggleButton extends StatelessWidget {
-  const LayerFxToggleButton({
+/// The ONE fx SWITCH: whether this row's FX apply or are bypassed.
+///
+/// Every row kind that has FX mounts this and binds its own identity —
+/// layers, folders and storyboard cuts. It is deliberately id-agnostic:
+/// a per-type wrapper is how the copies started.
+///
+/// Tight SizedBox: the M3 IconButton otherwise inflates its layout box to
+/// the 48px minimum tap target and overflows the row (same gotcha as the
+/// timesheet toggle).
+class FxToggleButton extends StatelessWidget {
+  const FxToggleButton({
     super.key,
-    required this.keyPrefix,
-    required this.layerId,
+    required this.keyValue,
     required this.fxEnabled,
     required this.onToggle,
+    this.subject = 'layer',
+    this.size = layerFxSlotWidth,
   });
 
-  final String keyPrefix;
-  final LayerId layerId;
+  /// The full widget key string — callers spell their own identity in
+  /// ('timeline-layer-fx-a', 'storyboard-cut-fx-3').
+  final String keyValue;
+
   final bool fxEnabled;
-  final ValueChanged<LayerId> onToggle;
+  final VoidCallback onToggle;
+
+  /// Names the row kind in the tooltip ('layer', 'folder', 'cut').
+  final String subject;
+
+  final double size;
 
   @override
   Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
-    // Tight SizedBox: the M3 IconButton otherwise inflates its layout box
-    // to the 48px minimum tap target and overflows the row (same gotcha as
-    // the timesheet toggle).
     return SizedBox(
-      width: layerFxSlotWidth,
+      width: size,
       height: 26,
       child: IconButton(
-        key: ValueKey<String>('$keyPrefix-layer-fx-$layerId'),
-        tooltip: fxEnabled ? 'Bypass layer FX' : 'Apply layer FX',
+        key: ValueKey<String>(keyValue),
+        tooltip: fxEnabled ? 'Bypass $subject FX' : 'Apply $subject FX',
         padding: EdgeInsets.zero,
-        constraints: const BoxConstraints.tightFor(
-          width: layerFxSlotWidth,
-          height: 26,
-        ),
-        icon: Text(
-          'fx',
-          style: TextStyle(
-            fontSize: 13,
-            fontStyle: FontStyle.italic,
-            fontWeight: FontWeight.w700,
-            color: fxEnabled
-                ? AppColors.accent
-                : colorScheme.onSurface.withValues(alpha: 0.35),
-          ),
-        ),
-        onPressed: () => onToggle(layerId),
+        constraints: BoxConstraints.tightFor(width: size, height: 26),
+        icon: fxGlyph(context: context, active: fxEnabled),
+        onPressed: onToggle,
       ),
     );
   }

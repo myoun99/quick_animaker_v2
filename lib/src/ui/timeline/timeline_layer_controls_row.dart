@@ -409,11 +409,10 @@ class TimelineLayerControlsRow extends StatelessWidget {
               if (onToggleLayerFx != null &&
                   layerKindShowsFxToggle(layer.kind) &&
                   layer.attachedToLayerId == null)
-                LayerFxToggleButton(
-                  keyPrefix: 'timeline',
-                  layerId: layer.id,
+                FxToggleButton(
+                  keyValue: 'timeline-layer-fx-${layer.id}',
                   fxEnabled: fxEnabled,
-                  onToggle: onToggleLayerFx!,
+                  onToggle: () => onToggleLayerFx!(layer.id),
                 )
               else
                 const SizedBox(width: layerFxSlotWidth),

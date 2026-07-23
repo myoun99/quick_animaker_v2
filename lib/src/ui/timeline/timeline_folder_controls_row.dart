@@ -227,11 +227,11 @@ class TimelineFolderControlsRow extends StatelessWidget {
               // differently at all. The lanes open from the leftmost
               // twirl now, like everywhere else.
               if (onToggleFx != null)
-                FolderFxToggleButton(
-                  keyPrefix: 'timeline',
-                  folderId: folder.id,
+                FxToggleButton(
+                  keyValue: 'timeline-folder-fx-${folder.id}',
+                  subject: 'folder',
                   fxEnabled: fxEnabled,
-                  onToggle: onToggleFx!,
+                  onToggle: () => onToggleFx!(folder.id),
                 )
               else
                 const SizedBox(width: layerFxSlotWidth),

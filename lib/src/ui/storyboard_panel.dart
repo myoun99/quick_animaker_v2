@@ -2250,11 +2250,10 @@ class _StoryboardSeLabel extends StatelessWidget {
               if (layer != null &&
                   onToggleLayerFx != null &&
                   layerKindShowsFxToggle(layer.kind))
-                LayerFxToggleButton(
-                  keyPrefix: 'storyboard',
-                  layerId: layer.id,
+                FxToggleButton(
+                  keyValue: 'storyboard-layer-fx-${layer.id}',
                   fxEnabled: layerFxEnabledOf?.call(layer.id) ?? true,
-                  onToggle: onToggleLayerFx!,
+                  onToggle: () => onToggleLayerFx!(layer.id),
                 )
               else
                 const SizedBox(width: layerFxSlotWidth),
@@ -3292,8 +3291,12 @@ class _StoryboardTrackLabel extends StatelessWidget {
             // the button is track furniture, only its subject is absent.
             const SizedBox(width: layerFillReferenceSlotWidth),
             if (onToggleCutFx != null)
-              _CutFxToggleButton(
-                keySuffix: subjectCut?.id.value ?? 'none-${track.id.value}',
+              FxToggleButton(
+                keyValue:
+                    'storyboard-cut-fx-'
+                    '${subjectCut?.id.value ?? 'none-${track.id.value}'}',
+                subject: 'cut',
+                size: 26,
                 fxEnabled: subjectCut == null
                     ? true
                     : (cutFxEnabledOf?.call(subjectCut!.id) ?? true),
@@ -3351,49 +3354,6 @@ class _StoryboardTrackLabel extends StatelessWidget {
   }
 }
 
-/// The V-row fx switch 窶・[LayerFxToggleButton]'s exact look, cut-typed
-/// (the shared widget speaks LayerId; the key and callback are the only
-/// differences).
-class _CutFxToggleButton extends StatelessWidget {
-  const _CutFxToggleButton({
-    required this.keySuffix,
-    required this.fxEnabled,
-    required this.onToggle,
-  });
-
-  final String keySuffix;
-  final bool fxEnabled;
-  final VoidCallback onToggle;
-
-  @override
-  Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
-    // Tight SizedBox: the M3 IconButton otherwise inflates to the 48px
-    // minimum tap target and overflows the row (shared gotcha).
-    return SizedBox(
-      width: 26,
-      height: 26,
-      child: IconButton(
-        key: ValueKey<String>('storyboard-cut-fx-$keySuffix'),
-        tooltip: fxEnabled ? 'Bypass cut FX' : 'Apply cut FX',
-        padding: EdgeInsets.zero,
-        constraints: const BoxConstraints.tightFor(width: 26, height: 26),
-        icon: Text(
-          'fx',
-          style: TextStyle(
-            fontSize: 13,
-            fontStyle: FontStyle.italic,
-            fontWeight: FontWeight.w700,
-            color: fxEnabled
-                ? AppColors.accent
-                : colorScheme.onSurface.withValues(alpha: 0.35),
-          ),
-        ),
-        onPressed: onToggle,
-      ),
-    );
-  }
-}
 
 /// The end line's drag grip (UI-R18 #15 → UI-R20 #3): a 12px strip over
 /// the strips' movie-end line; dragging it edits the movie's FINAL

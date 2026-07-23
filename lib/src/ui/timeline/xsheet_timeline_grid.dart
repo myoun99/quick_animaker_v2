@@ -2469,11 +2469,10 @@ class _LayerHeader extends StatelessWidget {
                     children: [
                       if (onToggleLayerFx != null &&
                           layerKindShowsFxToggle(layer.kind))
-                        LayerFxToggleButton(
-                          keyPrefix: 'xsheet',
-                          layerId: layer.id,
+                        FxToggleButton(
+                          keyValue: 'xsheet-layer-fx-${layer.id}',
                           fxEnabled: fxEnabled,
-                          onToggle: onToggleLayerFx!,
+                          onToggle: () => onToggleLayerFx!(layer.id),
                         ),
                       IconButton(
                         key: ValueKey<String>(

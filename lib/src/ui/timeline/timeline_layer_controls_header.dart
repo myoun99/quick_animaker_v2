@@ -465,14 +465,12 @@ class TimelineLayerControlsHeader extends StatelessWidget {
                               ),
                             ],
                           ],
-                    child: Text(
-                      'fx',
-                      style: TextStyle(
-                        fontSize: 11,
-                        fontStyle: FontStyle.italic,
-                        fontWeight: FontWeight.w700,
-                        color: rowFilter.fxOnly ? AppColors.accent : restColor,
-                      ),
+                    // The shared fx glyph (R28 follow-up) — the column
+                    // header and the row switches read the same mark.
+                    child: fxGlyph(
+                      context: context,
+                      active: rowFilter.fxOnly,
+                      fontSize: 11,
                     ),
                   ),
                   // Onion legend (UI-R17 #5): bulk apply/clear over the
