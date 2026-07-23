@@ -2269,19 +2269,10 @@ class _StoryboardSeLabel extends StatelessWidget {
                 SizedBox(
                   width: layerMuteSlotWidth,
                   height: 26,
-                  child: IconButton(
-                    key: ValueKey<String>('storyboard-layer-mute-${layer.id}'),
-                    tooltip: layer.muted ? 'Unmute layer' : 'Mute layer',
-                    padding: EdgeInsets.zero,
-                    constraints: const BoxConstraints.tightFor(
-                      width: layerMuteSlotWidth,
-                      height: 26,
-                    ),
-                    icon: Icon(
-                      layer.muted ? Icons.volume_off : Icons.volume_up,
-                      size: 14,
-                    ),
-                    onPressed: () => onToggleLayerMuted!(layer.id),
+                  child: LayerMuteToggleButton(
+                    keyValue: 'storyboard-layer-mute-${layer.id}',
+                    muted: layer.muted,
+                    onToggle: () => onToggleLayerMuted!(layer.id),
                   ),
                 )
               else

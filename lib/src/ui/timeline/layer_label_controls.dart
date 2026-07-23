@@ -305,6 +305,54 @@ class LayerVisibilityToggleButton extends StatelessWidget {
   }
 }
 
+/// The ONE mute speaker (SE rows).
+///
+/// Also written inline three times, also drifted — 14px glyph in the
+/// storyboard, 16px in the two timeline rails, and the storyboard's copy
+/// had silently lost the SOLO accent the other two carry.
+///
+/// The button itself is unwrapped: the rails put their own secondary-tap
+/// mix menu around it, which is host wiring, not the control.
+class LayerMuteToggleButton extends StatelessWidget {
+  const LayerMuteToggleButton({
+    super.key,
+    required this.keyValue,
+    required this.muted,
+    required this.onToggle,
+    this.soloed = false,
+    this.width = layerMuteSlotWidth,
+    this.height = 26,
+  });
+
+  /// The full widget key string ('timeline-layer-mute-a').
+  final String keyValue;
+
+  final bool muted;
+  final VoidCallback onToggle;
+
+  /// Soloed rows tint accent (selection style: color only, no checkmarks).
+  final bool soloed;
+
+  final double width;
+  final double height;
+
+  @override
+  Widget build(BuildContext context) {
+    return IconButton(
+      key: ValueKey<String>(keyValue),
+      tooltip: muted ? 'Unmute layer' : 'Mute layer',
+      padding: EdgeInsets.zero,
+      constraints: BoxConstraints.tightFor(width: width, height: height),
+      icon: Icon(
+        muted ? Icons.volume_off : Icons.volume_up,
+        size: 16,
+        color: soloed ? Theme.of(context).colorScheme.primary : null,
+      ),
+      onPressed: onToggle,
+    );
+  }
+}
+
 /// The ONE fx SWITCH: whether this row's FX apply or are bypassed.
 ///
 /// Every row kind that has FX mounts this and binds its own identity —

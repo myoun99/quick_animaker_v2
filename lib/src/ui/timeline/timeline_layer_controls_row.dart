@@ -474,24 +474,11 @@ class TimelineLayerControlsRow extends StatelessWidget {
                         ? null
                         : (details) =>
                               _showMixMenu(context, details.globalPosition),
-                    child: IconButton(
-                      key: ValueKey<String>('timeline-layer-mute-${layer.id}'),
-                      tooltip: layer.muted ? 'Unmute layer' : 'Mute layer',
-                      padding: EdgeInsets.zero,
-                      constraints: const BoxConstraints.tightFor(
-                        width: layerMuteSlotWidth,
-                        height: 26,
-                      ),
-                      icon: Icon(
-                        layer.muted ? Icons.volume_off : Icons.volume_up,
-                        size: 16,
-                        // Soloed rows tint accent (selection style: color
-                        // only, no checkmarks).
-                        color: isLayerSoloed
-                            ? Theme.of(context).colorScheme.primary
-                            : null,
-                      ),
-                      onPressed: () => onToggleLayerMuted!(layer.id),
+                    child: LayerMuteToggleButton(
+                      keyValue: 'timeline-layer-mute-${layer.id}',
+                      muted: layer.muted,
+                      soloed: isLayerSoloed,
+                      onToggle: () => onToggleLayerMuted!(layer.id),
                     ),
                   ),
                 )
