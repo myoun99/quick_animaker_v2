@@ -118,18 +118,21 @@ List<TimesheetInkWindow> timesheetInkWindows({
     return windows;
   }
 
-  for (final page in document.pages) {
+  // Page view mounts windows for the page ON SCREEN only (R26 #41) — the
+  // off-screen pages' surfaces keep their ink, they just have no window.
+  final visiblePages = layout.visiblePageIndexes;
+  for (final pageIndex in visiblePages) {
     windows.add(
       TimesheetInkWindow(
-        id: 'page-${page.index}',
+        id: 'page-$pageIndex',
         plane: TimesheetInkPlane.page,
-        key: TimesheetInkController.pageKey(cutId, page.index),
-        documentRect: layout.pageRect(page.index),
+        key: TimesheetInkController.pageKey(cutId, pageIndex),
+        documentRect: layout.pageRect(pageIndex),
         inkOffset: Offset.zero,
       ),
     );
   }
-  for (final page in document.pages) {
+  for (final pageIndex in visiblePages) {
     for (var half = 0; half < 2; half += 1) {
       final rowCount = layout.halfRowCount(half);
       if (rowCount <= 0) {
@@ -137,12 +140,12 @@ List<TimesheetInkWindow> timesheetInkWindows({
       }
       windows.add(
         TimesheetInkWindow(
-          id: 'strip-${page.index}-h$half',
+          id: 'strip-$pageIndex-h$half',
           plane: TimesheetInkPlane.strip,
-          key: TimesheetInkController.stripBandKey(cutId, page.index),
+          key: TimesheetInkController.stripBandKey(cutId, pageIndex),
           documentRect: Rect.fromLTWH(
-            layout.halfLeft(page.index, half),
-            layout.halfRowsTop(page.index),
+            layout.halfLeft(pageIndex, half),
+            layout.halfRowsTop(pageIndex),
             layout.halfWidth,
             rowCount * rowHeight,
           ),

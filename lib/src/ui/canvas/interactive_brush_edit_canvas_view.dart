@@ -555,19 +555,6 @@ class _InteractiveBrushEditCanvasViewState
           )
         : widget.inputSettings;
     _activeStrokeInputSettings = strokeSettings;
-    // The overlay must display in the stroke's blend mode (paint vs erase)
-    // from the first dab through settling.
-    _overlayModel.erase = strokeSettings.erase;
-    _overlayModel.blendMode = strokeSettings.blendMode;
-    // R27 #4: EVERY stroke pre-blends its live tiles with the commit's
-    // own kernels against the cel as it stands (user rule 07-23: ONE
-    // display pipeline for all modes — color included). The GPU never
-    // computes a pixel of the stroke composite, so pen-up cannot move a
-    // byte in any mode. Revert switch if stroke feel regresses on
-    // device: gate this on `blendMode != color` to give plain strokes
-    // their classic stroke-only GPU-srcOver overlay back.
-    _overlayModel.preBlendBase =
-        widget.sessionState.canvasState.currentSurface;
     _currentPressure = _normalizedPressure(event);
     widget.onActiveStrokeChanged?.call(true);
     _nextSequence = 0;
@@ -585,6 +572,24 @@ class _InteractiveBrushEditCanvasViewState
     _lastDirectionDegrees = null;
     _previousBaseDab = null;
     _resetOverlay();
+    // Overlay stroke configuration AFTER the reset — reset() clears
+    // preBlendBase, so setting it earlier silently disabled the whole
+    // pre-blend pipeline for real pointer strokes (the R27 #4 ordering
+    // bug: every parity test staged the model manually and never caught
+    // it). The overlay must display in the stroke's blend mode from the
+    // first dab.
+    final strokeSurface = widget.sessionState.canvasState.currentSurface;
+    _overlayModel.configureTileSize(strokeSurface.tileSize);
+    _overlayModel.erase = strokeSettings.erase;
+    _overlayModel.blendMode = strokeSettings.blendMode;
+    // R27 #4: EVERY stroke pre-blends its live tiles with the commit's
+    // own kernels against the cel as it stands (user rule 07-23: ONE
+    // display pipeline for all modes — color included). The GPU never
+    // computes a pixel of the stroke composite, so pen-up cannot move a
+    // byte in any mode. Revert switch if stroke feel regresses on
+    // device: gate this on `blendMode != color` to give plain strokes
+    // their classic stroke-only GPU-srcOver overlay back.
+    _overlayModel.preBlendBase = strokeSurface;
     _collectedDabs.clear();
     _prepareLiveRasterizer();
     if (!startsInsidePasteboard) {

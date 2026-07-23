@@ -39,12 +39,31 @@ import 'deferred_image_disposal.dart';
 /// events (e.g. app focus switches) that corrupted synchronously created
 /// picture-to-image textures for a frame.
 class ActiveStrokeOverlayModel extends ChangeNotifier {
-  ActiveStrokeOverlayModel({this.tileSize = 128});
+  ActiveStrokeOverlayModel({int tileSize = 256}) : _tileSize = tileSize;
 
-  /// Edge length of an overlay tile in canvas pixels. Independent of the
-  /// committed surface's tile size; smaller tiles bound the per-move
-  /// snapshot/upload cost.
-  final int tileSize;
+  int _tileSize;
+
+  /// Edge length of an overlay tile in canvas pixels.
+  ///
+  /// PROMOTION round: the interactive view aligns this with the
+  /// committed surface's tile size at stroke start ([configureTileSize])
+  /// so a pre-blended result tile REPLACES the committed tile at the
+  /// same coordinate in the painter's base pass — no clips, no
+  /// isolation layer, and the per-frame draw count stays the idle
+  /// frame's. A mismatched grid still displays through the isolation
+  /// fallback, just without the replacement economics.
+  int get tileSize => _tileSize;
+
+  /// Aligns the overlay grid with the surface about to be stroked. Only
+  /// legal while the overlay is empty (call after [reset]) — images are
+  /// keyed by tile coordinate, which changes meaning with the grid.
+  void configureTileSize(int tileSize) {
+    assert(
+      _tileImages.isEmpty && _decoding.isEmpty,
+      'configureTileSize requires an empty overlay',
+    );
+    _tileSize = tileSize;
+  }
 
   /// Dabs of the current stroke, kept for observability and tests; rendering
   /// uses [tileImages], which carry the exact rasterized pixels.
@@ -178,18 +197,24 @@ class ActiveStrokeOverlayModel extends ChangeNotifier {
     final top = coord.y * tileSize;
     // Snapshot clamps at the PASTEBOARD edge, not the canvas — live
     // strokes paint (and must display) past the canvas rect.
+    //
+    // A PRE-BLENDED tile is the exception: it REPLACES the committed tile
+    // at its coordinate, so it has to cover the whole tile. A clamped
+    // edge tile would leave the rest of that coordinate showing nothing
+    // (the base pass skipped it) — a transparent strip through committed
+    // artwork while stroking near the pasteboard wall. Committed tiles
+    // are full too, and the painter's pasteboard clip crops both alike;
+    // the extra pixels are just base bytes copied through.
     final sourceCanvasSize = CanvasSize(
       width: source.canvasWidth,
       height: source.canvasHeight,
     );
-    final width = math.min(
-      tileSize,
-      sourceCanvasSize.pasteboardRightExclusive - left,
-    );
-    final height = math.min(
-      tileSize,
-      sourceCanvasSize.pasteboardBottomExclusive - top,
-    );
+    final width = preBlendBase != null
+        ? tileSize
+        : math.min(tileSize, sourceCanvasSize.pasteboardRightExclusive - left);
+    final height = preBlendBase != null
+        ? tileSize
+        : math.min(tileSize, sourceCanvasSize.pasteboardBottomExclusive - top);
 
     // R25 fast path: a FULL interior tile of a native-backed live
     // rasterizer shares this model's 128px grid, so snapshot +

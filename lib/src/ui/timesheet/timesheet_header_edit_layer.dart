@@ -147,15 +147,15 @@ class _TimesheetHeaderEditLayerState extends State<TimesheetHeaderEditLayer> {
   @override
   Widget build(BuildContext context) {
     final layout = widget.layout;
-    final document = layout.document;
     final target = _target;
-    // The header repeats on every paper page; the continuous strip has one.
-    final pageCount = layout.continuous ? 1 : document.pages.length;
+    // The header repeats on every paper page; the continuous strip has
+    // one, and page view (R26 #41) shows one at a time.
+    final pages = layout.visiblePageIndexes;
 
     return Stack(
       children: [
         if (target == null) ...[
-          for (var page = 0; page < pageCount; page += 1) ...[
+          for (final page in pages) ...[
             for (final box in layout.headerFieldBoxes(page))
               if (TimesheetHeaderEditLayer.editableFields.contains(box.field))
                 _tapZone(

@@ -1,0 +1,82 @@
+import 'package:flutter/material.dart';
+
+import '../theme/app_theme.dart';
+
+/// R26 #42 — THE app's icon button.
+///
+/// The canvas panel's bottom bar (fit / 1:1 / zoom / rotate / flip) is the
+/// style the user adopted as the default icon UI, so it lives here now and
+/// every other surface mounts THIS widget instead of hand-rolling its own
+/// `InkWell` + `Icon` pair: a compact square hit target, an 18px glyph, no
+/// padding, and — the selection rule ([[ui-selection-style]]) — an accent
+/// FOREGROUND for the on state, never a check mark or a filled chip.
+///
+/// Sizing is a token, not a per-call number: [AppIconButtonSize.bar] is the
+/// canvas bottom bar's, [AppIconButtonSize.strip] the same button squeezed
+/// into a slim status strip (same 18px glyph, tighter box). Callers pick a
+/// token so a future style change lands everywhere at once.
+enum AppIconButtonSize {
+  /// Panel bottom bars — the reference size.
+  bar(minWidth: 26, maxWidth: 30, height: 24, iconSize: 18),
+
+  /// Slim panel status strips.
+  strip(minWidth: 22, maxWidth: 26, height: 20, iconSize: 15);
+
+  const AppIconButtonSize({
+    required this.minWidth,
+    required this.maxWidth,
+    required this.height,
+    required this.iconSize,
+  });
+
+  final double minWidth;
+  final double maxWidth;
+  final double height;
+  final double iconSize;
+}
+
+class AppIconButton extends StatelessWidget {
+  const AppIconButton({
+    super.key,
+    required this.keyValue,
+    required this.tooltip,
+    required this.icon,
+    required this.onPressed,
+    this.isSelected = false,
+    this.size = AppIconButtonSize.bar,
+  });
+
+  /// Stable widget key (the tests' handle).
+  final String keyValue;
+  final String tooltip;
+
+  /// Usually an [Icon]; text glyphs ('1:1') are allowed — they inherit the
+  /// same accent/foreground treatment.
+  final Widget icon;
+  final VoidCallback? onPressed;
+
+  /// The ON state — accent ink only (UI-R21 #1: the M3 `isSelected`
+  /// default was invisible in this theme, so the accent is explicit).
+  final bool isSelected;
+
+  final AppIconButtonSize size;
+
+  @override
+  Widget build(BuildContext context) {
+    return IconButton(
+      key: ValueKey<String>(keyValue),
+      tooltip: tooltip,
+      onPressed: onPressed,
+      isSelected: isSelected,
+      style: IconButton.styleFrom(
+        minimumSize: Size(size.minWidth, size.height),
+        maximumSize: Size(size.maxWidth, size.height),
+        padding: EdgeInsets.zero,
+        iconSize: size.iconSize,
+        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+        foregroundColor: isSelected ? AppColors.accent : null,
+      ),
+      icon: icon,
+    );
+  }
+}

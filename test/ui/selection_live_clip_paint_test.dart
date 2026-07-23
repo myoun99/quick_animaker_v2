@@ -72,11 +72,12 @@ void main() {
   Future<ActiveStrokeOverlayModel> strokeOverlay({
     required bool preBlended,
     BitmapSurface? preBlendBase,
+    int tileSize = 16,
   }) async {
     final rasterizer = BrushLiveStrokeRasterizer(canvasSize: canvasSize);
     final dabs = [for (var x = 6; x <= 34; x += 4) dab(x.toDouble(), 20)];
     final region = rasterizer.blendFrom(dabs, from: 0)!;
-    final model = ActiveStrokeOverlayModel(tileSize: 16);
+    final model = ActiveStrokeOverlayModel(tileSize: tileSize);
     if (preBlended) {
       // The production contract (R27 #4b): every stroke pre-blends against
       // the cel it paints on, so the overlay tiles carry finished pixels.
@@ -150,23 +151,30 @@ void main() {
     expect(alphaAt(clipped, 30, 20), 255);
   });
 
-  test('the isolation-layer FALLBACK route clips the same way', () async {
-    final previousCap = BitmapSurfacePainter.maxReplacementClipStrips;
-    BitmapSurfacePainter.maxReplacementClipStrips = 0;
-    addTearDown(
-      () => BitmapSurfacePainter.maxReplacementClipStrips = previousCap,
-    );
-
+  test('the ALIGNED-GRID replacement route (the promotion round\'s fast '
+      'path) still clips without holing the base', () async {
+    // The dangerous case: on a matched grid the base pass SKIPS every
+    // coordinate the overlay owns. A clipped overlay cannot own a whole
+    // coordinate any more, so the painter has to step off that fast path
+    // — otherwise the artwork outside the selection would simply vanish.
     final base = paintedBase();
-    final overlay = await strokeOverlay(preBlended: true, preBlendBase: base);
+    final overlay = await strokeOverlay(
+      preBlended: true,
+      preBlendBase: base,
+      tileSize: 64, // == the base surface's tile size
+    );
     final clipped = await paintedBytes(
       base: base,
       overlay: overlay,
       clip: leftHalf,
     );
     expect(redAt(clipped, 10, 20), lessThan(64), reason: 'stroke inside');
-    expect(redAt(clipped, 30, 20), greaterThan(160), reason: 'base outside');
-    expect(alphaAt(clipped, 30, 20), 255);
+    expect(
+      redAt(clipped, 30, 20),
+      greaterThan(160),
+      reason: 'the base survived outside the selection',
+    );
+    expect(alphaAt(clipped, 30, 20), 255, reason: 'no hole punched');
   });
 
   test('a composite region clips through its own fold — a subtracted '

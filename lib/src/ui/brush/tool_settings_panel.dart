@@ -48,37 +48,41 @@ class ToolSettingsPanel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    switch (state.tool) {
-      case CanvasTool.brush:
-      case CanvasTool.eraser:
-        return BrushSettingsPanel(
+    // Own Material (the tool LIBRARY panel's rule, same reason): the dock
+    // body paints a background color, and the Switch/ListTile ink and
+    // selection tints render on the nearest Material ancestor — without
+    // one Flutter asserts that those effects would be invisible. R26 #31
+    // surfaced it by docking this panel open by default, so every tool's
+    // settings now build for real instead of only when its tab is picked.
+    return Material(
+      type: MaterialType.transparency,
+      child: switch (state.tool) {
+        CanvasTool.brush || CanvasTool.eraser => BrushSettingsPanel(
           state: state,
           onChanged: onChanged,
           language: language,
-        );
-      case CanvasTool.fill:
-        return _FillSettings(
+        ),
+        CanvasTool.fill => _FillSettings(
           options: fillOptions,
           onChanged: onFillOptionsChanged,
-        );
-      case CanvasTool.eyedropper:
-        return const _SettingsNote(
+        ),
+        CanvasTool.eyedropper => const _SettingsNote(
           keyValue: 'tool-settings-eyedropper',
           note: 'Eyedropper has no settings — it picks the visible color.',
-        );
-      case CanvasTool.selectRect:
-      case CanvasTool.lasso:
-        return _SelectionSettings(
+        ),
+        CanvasTool.selectRect || CanvasTool.lasso => _SelectionSettings(
           state: state,
           onChanged: onChanged,
           maskOptions: selectionMaskOptions,
           onMaskOptionsChanged: onSelectionMaskOptionsChanged,
           selectionCommands: selectionCommands,
           language: language,
-        );
-      case CanvasTool.move:
-        return _MoveSettings(selectionCommands: selectionCommands);
-    }
+        ),
+        CanvasTool.move => _MoveSettings(
+          selectionCommands: selectionCommands,
+        ),
+      },
+    );
   }
 }
 

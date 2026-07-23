@@ -29,7 +29,7 @@ import '../services/cut_frame_composite_plan.dart' show layerIdentityPose;
 import '../services/camera_pose_resolver.dart';
 import 'text/app_strings.dart';
 import '../models/timeline_coverage.dart' show TimelineBlockEdge;
-import 'theme/app_theme.dart' show AppColors;
+import 'widgets/app_icon_button.dart';
 import 'timeline/camera_key_edit.dart';
 import 'timeline/property_lane_model.dart';
 import 'timeline/timeline_cut_end_handle.dart';
@@ -1384,19 +1384,14 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
           if (widget.cameraViewEnabled != null)
             ValueListenableBuilder<bool>(
               valueListenable: widget.cameraViewEnabled!,
-              builder: (context, enabled, _) => IconButton(
-                key: const ValueKey<String>('timeline-camera-view-button'),
+              // R26 #42: the app's standard icon button — its accent IS the
+              // on-state, so the hand-mixed color goes away.
+              builder: (context, enabled, _) => AppIconButton(
+                keyValue: 'timeline-camera-view-button',
                 tooltip: enabled ? 'Camera view (on)' : 'Camera view',
-                visualDensity: VisualDensity.compact,
-                onPressed: () =>
-                    widget.cameraViewEnabled!.value = !enabled,
-                icon: Icon(
-                  Icons.videocam_outlined,
-                  size: 18,
-                  color: enabled
-                      ? AppColors.accent
-                      : Theme.of(context).colorScheme.onSurfaceVariant,
-                ),
+                isSelected: enabled,
+                onPressed: () => widget.cameraViewEnabled!.value = !enabled,
+                icon: const Icon(Icons.videocam_outlined),
               ),
             ),
           Expanded(

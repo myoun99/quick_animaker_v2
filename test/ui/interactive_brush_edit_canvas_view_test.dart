@@ -154,6 +154,49 @@ void main() {
       expect(_isStrictlyIncreasing(sequences), isTrue);
     });
 
+    testWidgets(
+      'a REAL pointer stroke runs the pre-blend pipeline on the surface '
+      'grid (the R27 #4 ordering regression: reset() after setup nulled '
+      'preBlendBase, silently reverting every live stroke to the classic '
+      'GPU path)',
+      (tester) async {
+        final sessionState = _sessionState();
+        await tester.pumpWidget(_app(_view(sessionState, (_) {})));
+
+        final gesture = await tester.startGesture(
+          canvasGlobalOffset(tester, const Offset(1.5, 1.5)),
+          pointer: 1,
+        );
+        await tester.pump();
+
+        final overlay = tester
+            .widget<BrushEditCanvasView>(find.byType(BrushEditCanvasView))
+            .overlayModel!;
+        expect(
+          overlay.preBlended,
+          isTrue,
+          reason: 'mid-stroke the overlay must be in pre-blend mode',
+        );
+        expect(
+          identical(
+            overlay.preBlendBase,
+            sessionState.canvasState.currentSurface,
+          ),
+          isTrue,
+          reason: 'the pre-blend base is the cel surface at stroke start',
+        );
+        expect(
+          overlay.tileSize,
+          sessionState.canvasState.currentSurface.tileSize,
+          reason: 'the overlay grid aligns with the committed grid '
+              '(coordinate replacement in the painter requires it)',
+        );
+
+        await gesture.up();
+        await tester.pump();
+      },
+    );
+
     testWidgets('fast drag commits sampled source dabs beyond raw endpoints', (
       tester,
     ) async {
