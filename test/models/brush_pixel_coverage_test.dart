@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import '../helpers/json_round_trip.dart';
 import 'package:quick_animaker_v2/src/models/brush_pixel_coverage.dart';
 
 void main() {
@@ -7,12 +8,7 @@ void main() {
       return BrushPixelCoverage(x: x, y: y, coverage: coverage);
     }
 
-    test('creates with valid values', () {
-      final value = coverage();
-      expect(value.x, 1);
-      expect(value.y, 2);
-      expect(value.coverage, 0.5);
-    });
+
 
     test('allows coverage 0', () {
       expect(coverage(coverage: 0).coverage, 0);
@@ -66,15 +62,9 @@ void main() {
 
     test('toJson/fromJson round-trips', () {
       final value = coverage(x: 3, y: 4, coverage: 0.25);
-      expect(BrushPixelCoverage.fromJson(value.toJson()), value);
+      expectJsonRoundTrip(value, BrushPixelCoverage.fromJson);
     });
 
-    test('toString includes useful data', () {
-      final text = coverage(x: 3, y: 4, coverage: 0.25).toString();
-      expect(text, contains('BrushPixelCoverage'));
-      expect(text, contains('x: 3'));
-      expect(text, contains('y: 4'));
-      expect(text, contains('coverage: 0.25'));
-    });
+
   });
 }

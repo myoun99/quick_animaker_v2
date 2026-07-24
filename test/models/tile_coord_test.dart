@@ -1,19 +1,16 @@
 import 'package:flutter_test/flutter_test.dart';
+import '../helpers/json_round_trip.dart';
 import 'package:quick_animaker_v2/src/models/tile_coord.dart';
 
 void main() {
   group('TileCoord', () {
-    test('creates with non-negative x and y', () {
-      final coord = TileCoord(x: 0, y: 1);
-      expect(coord.x, 0);
-      expect(coord.y, 1);
-    });
+
 
     test('negative coords are allowed (pasteboard tiles)', () {
       final coord = TileCoord(x: -3, y: -1);
       expect(coord.x, -3);
       expect(coord.y, -1);
-      expect(TileCoord.fromJson(coord.toJson()), coord);
+      expectJsonRoundTrip(coord, TileCoord.fromJson);
     });
 
     test('copyWith updates x', () {

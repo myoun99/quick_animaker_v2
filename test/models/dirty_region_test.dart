@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import '../helpers/json_round_trip.dart';
 import 'package:quick_animaker_v2/src/models/bitmap_surface.dart';
 import 'package:quick_animaker_v2/src/models/canvas_size.dart';
 import 'package:quick_animaker_v2/src/models/dirty_region.dart';
@@ -204,7 +205,7 @@ void main() {
         rightExclusive: 3,
         bottomExclusive: 4,
       );
-      expect(DirtyRegion.fromJson(region.toJson()), region);
+      expectJsonRoundTrip(region, DirtyRegion.fromJson);
     });
 
     test('containsPixel is true inside region', () {

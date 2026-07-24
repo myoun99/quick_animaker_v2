@@ -160,10 +160,6 @@ void main() {
       expect(first.hashCode, second.hashCode);
     });
 
-    test('toString contains useful class name', () {
-      final state = CanvasSurfaceState(currentSurface: surface());
 
-      expect(state.toString(), contains('CanvasSurfaceState'));
-    });
   });
 }

@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import '../helpers/json_round_trip.dart';
 import 'package:quick_animaker_v2/src/models/dirty_region.dart';
 import 'package:quick_animaker_v2/src/models/dirty_tile_set.dart';
 import 'package:quick_animaker_v2/src/models/tile_coord.dart';
@@ -125,7 +126,7 @@ void main() {
 
     test('toJson/fromJson round-trips', () {
       final set = DirtyTileSet([a, b]);
-      expect(DirtyTileSet.fromJson(set.toJson()), set);
+      expectJsonRoundTrip(set, DirtyTileSet.fromJson);
     });
   });
 }

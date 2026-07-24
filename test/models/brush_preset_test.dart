@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import '../helpers/json_round_trip.dart';
 import 'package:quick_animaker_v2/src/models/brush_preset.dart';
 import 'package:quick_animaker_v2/src/models/brush_preset_id.dart';
 import 'package:quick_animaker_v2/src/models/brush_settings.dart';
@@ -29,7 +30,7 @@ void main() {
     });
 
     test('toJson/fromJson round-trips', () {
-      expect(BrushPreset.fromJson(preset.toJson()), preset);
+      expectJsonRoundTrip(preset, BrushPreset.fromJson);
     });
 
     test('equality includes id, name, and settings', () {

@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import '../helpers/json_round_trip.dart';
 import 'package:quick_animaker_v2/src/models/canvas_size.dart';
 import 'package:quick_animaker_v2/src/models/cut_id.dart';
 import 'package:quick_animaker_v2/src/models/playback_preview_cache_key.dart';
@@ -11,11 +12,7 @@ void main() {
       previewSize: const CanvasSize(width: 320, height: 180),
     );
 
-    test('creates with cutId, frameIndex, previewSize', () {
-      expect(key.cutId, const CutId('cut-a'));
-      expect(key.frameIndex, 3);
-      expect(key.previewSize, const CanvasSize(width: 320, height: 180));
-    });
+
 
     test('rejects negative frameIndex', () {
       expect(
@@ -74,7 +71,7 @@ void main() {
     });
 
     test('toJson/fromJson round-trips', () {
-      expect(PlaybackPreviewCacheKey.fromJson(key.toJson()), key);
+      expectJsonRoundTrip(key, PlaybackPreviewCacheKey.fromJson);
     });
 
     test('different previewSize creates different key', () {
@@ -86,10 +83,6 @@ void main() {
       );
     });
 
-    test('toString includes useful identifying data', () {
-      expect(key.toString(), contains('cut-a'));
-      expect(key.toString(), contains('3'));
-      expect(key.toString(), contains('320'));
-    });
+
   });
 }

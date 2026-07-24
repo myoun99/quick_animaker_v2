@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import '../helpers/json_round_trip.dart';
 import 'package:quick_animaker_v2/src/models/cache_invalidation_plan.dart';
 import 'package:quick_animaker_v2/src/models/canvas_size.dart';
 import 'package:quick_animaker_v2/src/models/cut_id.dart';
@@ -260,7 +261,7 @@ void main() {
         frameComposites: [frameKey(0)],
         playbackPreviews: [previewKey(0, 1, 1)],
       );
-      expect(CacheInvalidationPlan.fromJson(plan.toJson()), plan);
+      expectJsonRoundTrip(plan, CacheInvalidationPlan.fromJson);
     });
 
     test('toJson emits deterministic order', () {

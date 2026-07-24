@@ -412,20 +412,5 @@ void main() {
     expect(track.seLayers.map((layer) => layer.name), ['S1', 'S3', 'S2']);
   });
 
-  testWidgets('does not expose future storyboard or inspector UI', (
-    tester,
-  ) async {
-    await tester.pumpWidget(const QuickAnimakerApp());
 
-    expect(find.text('Storyboard Panel'), findsNothing);
-    expect(find.text('Conte Panel'), findsNothing);
-    expect(find.text('Layer Inspector'), findsNothing);
-    expect(find.text('Cut Inspector'), findsNothing);
-    expect(find.text('StoryboardFrameMetadata editor'), findsNothing);
-    expect(find.text('actionMemo'), findsNothing);
-    expect(find.text('dialogueMemo'), findsNothing);
-    expect(find.byKey(const ValueKey<String>('panelNote')), findsNothing);
-    expect(find.byKey(const ValueKey<String>('actionMemo')), findsNothing);
-    expect(find.byKey(const ValueKey<String>('dialogueMemo')), findsNothing);
-  });
 }

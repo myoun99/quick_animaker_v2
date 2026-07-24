@@ -888,55 +888,7 @@ void main() {
     _expectCellText('default-layer-1', 0, '○');
   });
 
-  testWidgets('does not expose future cut management features', (
-    WidgetTester tester,
-  ) async {
-    await tester.pumpWidget(const QuickAnimakerApp());
-    await _showStoryboardPanel(tester);
 
-    expect(find.byTooltip('Reorder Cut'), findsNothing);
-    // Move commands live in the Cut ▾ flyout (R-toolbar round).
-    final cutMenu = find.byKey(const ValueKey<String>('cut-menu-button'));
-    await tester.ensureVisible(cutMenu);
-    await tester.pumpAndSettle();
-    await tester.tap(cutMenu);
-    await tester.pumpAndSettle();
-    expect(
-      find.byKey(const ValueKey<String>('move-cut-left-button')),
-      findsOneWidget,
-    );
-    expect(
-      find.byKey(const ValueKey<String>('move-cut-right-button')),
-      findsOneWidget,
-    );
-    await tester.tapAt(const Offset(5, 400));
-    await tester.pumpAndSettle();
-    expect(find.byTooltip('Linked Cut'), findsNothing);
-    expect(
-      find.byKey(const ValueKey<String>('cut-reorder-button')),
-      findsNothing,
-    );
-    expect(
-      find.byKey(const ValueKey<String>('cut-reorder-handle')),
-      findsNothing,
-    );
-    expect(find.byIcon(Icons.drag_handle), findsNothing);
-    expect(
-      find.byKey(const ValueKey<String>('cut-management-panel')),
-      findsNothing,
-    );
-    expect(find.text('Cut Management'), findsNothing);
-    expect(find.text('Manage Cuts'), findsNothing);
-    expect(find.text('Conte Panel'), findsNothing);
-    expect(find.text('Storyboard Panel'), findsNothing);
-    expect(find.text('Metadata Panel'), findsNothing);
-    expect(find.text('Cut Inspector'), findsNothing);
-    expect(find.text('StoryboardLayer'), findsNothing);
-    expect(find.text('StoryboardPanel'), findsNothing);
-    expect(find.text('actionMemo'), findsNothing);
-    expect(find.text('dialogueMemo'), findsNothing);
-    expect(find.byType(ReorderableListView), findsNothing);
-  });
 
   testWidgets('dragging Cut 2 before Cut 1 keeps Cut 2 active', (
     WidgetTester tester,

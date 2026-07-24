@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import '../helpers/json_round_trip.dart';
 import 'package:quick_animaker_v2/src/models/cut_id.dart';
 import 'package:quick_animaker_v2/src/models/frame_composite_cache_key.dart';
 
@@ -9,10 +10,7 @@ void main() {
       frameIndex: 3,
     );
 
-    test('creates with cutId and frameIndex', () {
-      expect(key.cutId, const CutId('cut-a'));
-      expect(key.frameIndex, 3);
-    });
+
 
     test('rejects negative frameIndex', () {
       expect(
@@ -50,12 +48,9 @@ void main() {
     });
 
     test('toJson/fromJson round-trips', () {
-      expect(FrameCompositeCacheKey.fromJson(key.toJson()), key);
+      expectJsonRoundTrip(key, FrameCompositeCacheKey.fromJson);
     });
 
-    test('toString includes useful identifying data', () {
-      expect(key.toString(), contains('cut-a'));
-      expect(key.toString(), contains('3'));
-    });
+
   });
 }

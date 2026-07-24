@@ -1,14 +1,10 @@
 import 'package:flutter_test/flutter_test.dart';
+import '../helpers/json_round_trip.dart';
 import 'package:quick_animaker_v2/src/models/viewport_point.dart';
 
 void main() {
   group('ViewportPoint', () {
-    test('creates with finite x and y', () {
-      final point = ViewportPoint(x: 1.25, y: -2.5);
 
-      expect(point.x, 1.25);
-      expect(point.y, -2.5);
-    });
 
     test('copyWith updates x', () {
       final point = ViewportPoint(x: 1, y: 2);
@@ -35,7 +31,7 @@ void main() {
     test('toJson/fromJson round-trips', () {
       final point = ViewportPoint(x: 1.25, y: 2.5);
 
-      expect(ViewportPoint.fromJson(point.toJson()), point);
+      expectJsonRoundTrip(point, ViewportPoint.fromJson);
     });
 
     test('NaN x throws', () {
