@@ -92,6 +92,38 @@ void main() {
     expect(out.samples[0], closeTo(0.3, 1e-6));
   });
 
+  test(
+    'REC1-D: the no-op chain clamps too — a hot float capture cannot '
+    'reach the 16-bit bake out of range',
+    () {
+      // device fold + 0 dB is the DEFAULT path and the only one that used
+      // to hand its input straight back. A float capture can overshoot
+      // +/-1.0, and the take is baked to 16-bit next.
+      final out = processVoiceTake(
+        samples: Float32List.fromList([1.4, -1.4, 0.5, -0.5]),
+        channels: 1,
+        gainDb: 0,
+        channelMode: VoiceInputChannelMode.device,
+      );
+      expect(out.samples[0], 1.0);
+      expect(out.samples[1], -1.0);
+      expect(out.clipped, isTrue);
+      // In-range samples pass through untouched — the clamp only fires
+      // where it must.
+      expect(out.samples[2], closeTo(0.5, 1e-6));
+      expect(out.samples[3], closeTo(-0.5, 1e-6));
+
+      final quiet = processVoiceTake(
+        samples: Float32List.fromList([0.5, -0.5]),
+        channels: 1,
+        gainDb: 0,
+        channelMode: VoiceInputChannelMode.device,
+      );
+      expect(quiet.clipped, isFalse);
+      expect(quiet.samples, [0.5, -0.5]);
+    },
+  );
+
   test('REC1-D: the capture-chain settings round-trip and clamp', () {
     const settings = AudioSyncSettings(
       micGainDb: 12,

@@ -73,13 +73,40 @@ QA_EXPORT int32_t qa_audio_denoise_f32(float *samples,
     free(out);
     return 0;
   }
+  // Every channel's model is created BEFORE the first sample is touched.
+  // Creating them one at a time as the loop went meant an allocation
+  // failure on channel 2 returned 0 -- "untouched" -- after channel 1 had
+  // already been rewritten in place, which is the one thing the contract
+  // above promises never happens. Now a failure here has written nothing.
+  DenoiseState **states =
+      (DenoiseState **)calloc((size_t)channels, sizeof(DenoiseState *));
+  if (states == NULL) {
+    free(in);
+    free(out);
+    return 0;
+  }
   int32_t ok = 1;
-  for (int32_t channel = 0; channel < channels && ok; channel += 1) {
-    DenoiseState *state = rnnoise_create(NULL);
-    if (state == NULL) {
+  for (int32_t channel = 0; channel < channels; channel += 1) {
+    states[channel] = rnnoise_create(NULL);
+    if (states[channel] == NULL) {
       ok = 0;
       break;
     }
+  }
+  if (!ok) {
+    for (int32_t channel = 0; channel < channels; channel += 1) {
+      if (states[channel] != NULL) {
+        rnnoise_destroy(states[channel]);
+      }
+    }
+    free(states);
+    free(in);
+    free(out);
+    return 0;
+  }
+
+  for (int32_t channel = 0; channel < channels; channel += 1) {
+    DenoiseState *state = states[channel];
     for (int64_t start = 0; start < frames; start += frame_size) {
       const int64_t valid = frames - start < frame_size ? frames - start
                                                         : frame_size;
@@ -97,7 +124,8 @@ QA_EXPORT int32_t qa_audio_denoise_f32(float *samples,
     }
     rnnoise_destroy(state);
   }
+  free(states);
   free(in);
   free(out);
-  return ok;
+  return 1;
 }

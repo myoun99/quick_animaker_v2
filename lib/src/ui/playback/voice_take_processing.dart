@@ -51,14 +51,27 @@ ProcessedVoiceTake processVoiceTake({
   final outChannels = fold == VoiceInputChannelMode.device ? channels : 1;
   final factor = micGainFactor(gainDb);
 
+  // The no-op chain (device channels, 0 dB) still has to CLAMP: a float
+  // capture can hand us |v| > 1.0, and the take is about to be baked into
+  // 16-bit. Returning those verbatim made "output clamps to +/-1.0" true
+  // of every path except this one — and the one it was false of is the
+  // default. Only a sample that actually needs it is written, so an
+  // in-range take still passes through untouched.
   final identity = fold == VoiceInputChannelMode.device && gainDb == 0;
   var clipped = false;
   if (identity) {
     for (var index = 0; index < samples.length; index += 1) {
       final value = samples[index];
-      if (value >= voiceClipThreshold || value <= -voiceClipThreshold) {
+      if (value >= voiceClipThreshold) {
         clipped = true;
-        break;
+        if (value > 1.0) {
+          samples[index] = 1.0;
+        }
+      } else if (value <= -voiceClipThreshold) {
+        clipped = true;
+        if (value < -1.0) {
+          samples[index] = -1.0;
+        }
       }
     }
     return ProcessedVoiceTake(
