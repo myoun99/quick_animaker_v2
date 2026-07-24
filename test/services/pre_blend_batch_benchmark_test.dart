@@ -1,3 +1,6 @@
+@Tags(['benchmark'])
+library;
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:quick_animaker_v2/src/models/bitmap_surface.dart';
 import 'package:quick_animaker_v2/src/models/brush_blend_mode.dart';

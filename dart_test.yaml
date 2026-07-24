@@ -1,0 +1,10 @@
+# Performance benchmarks are timing probes, not regression tests: they must
+# run ALONE for their A/B ratios to mean anything (a benchmark racing the
+# rest of the suite for CPU reports noise). So the `benchmark` tag is skipped
+# by default — `flutter test` and CI run the real suite without them.
+#
+# Run the benchmarks deliberately, on their own:
+#   flutter test --run-skipped --tags benchmark
+tags:
+  benchmark:
+    skip: "performance benchmark — run with: flutter test --run-skipped --tags benchmark"
