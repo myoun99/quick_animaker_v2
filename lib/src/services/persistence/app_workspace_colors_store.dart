@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import '../../ui/theme/app_workspace_colors.dart';
+import 'app_support_path.dart';
 
 /// Loads and saves the workspace surface colors (R28 #9) — the
 /// pasteboard color. Editor/app state, not project data: an app-support
@@ -13,18 +14,8 @@ class AppWorkspaceColorsStore {
 
   final String filePath;
 
-  static String defaultFilePath() {
-    final environment = Platform.environment;
-    final base =
-        environment['APPDATA'] ??
-        environment['HOME'] ??
-        environment['USERPROFILE'] ??
-        Directory.systemTemp.path;
-    const separator = '/';
-    final normalizedBase = base.replaceAll('\\', separator);
-    return '$normalizedBase$separator'
-        'quick_animaker_v2${separator}workspace_colors.json';
-  }
+  static String defaultFilePath() =>
+      appSupportFilePath('workspace_colors.json');
 
   static const int version = 1;
 

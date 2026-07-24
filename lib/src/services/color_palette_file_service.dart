@@ -1,6 +1,8 @@
 import 'dart:convert';
 import 'dart:io';
 
+import 'persistence/app_support_path.dart';
+
 /// The editor's color palette (P4): a user-pinned swatch list plus the
 /// recent-colors row. Editor/app state like brush presets — an app-support
 /// JSON file, never project data.
@@ -66,16 +68,8 @@ class ColorPaletteFileService {
 
   final String filePath;
 
-  static String defaultColorPaletteFilePath() {
-    final environment = Platform.environment;
-    final base =
-        environment['APPDATA'] ??
-        environment['HOME'] ??
-        environment['USERPROFILE'] ??
-        Directory.systemTemp.path;
-    final normalizedBase = base.replaceAll('\\', '/');
-    return '$normalizedBase/quick_animaker_v2/color_palette.json';
-  }
+  static String defaultColorPaletteFilePath() =>
+      appSupportFilePath('color_palette.json');
 
   static const int version = 1;
 

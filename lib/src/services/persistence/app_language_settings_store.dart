@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import '../../models/app_language.dart';
+import 'app_support_path.dart';
 
 /// Loads and saves the two language settings (UI-R10 #7). Editor/app
 /// state, not project data — an app-support JSON file next to the
@@ -12,18 +13,8 @@ class AppLanguageSettingsStore {
 
   final String filePath;
 
-  static String defaultFilePath() {
-    final environment = Platform.environment;
-    final base =
-        environment['APPDATA'] ??
-        environment['HOME'] ??
-        environment['USERPROFILE'] ??
-        Directory.systemTemp.path;
-    const separator = '/';
-    final normalizedBase = base.replaceAll('\\', separator);
-    return '$normalizedBase$separator'
-        'quick_animaker_v2${separator}language_settings.json';
-  }
+  static String defaultFilePath() =>
+      appSupportFilePath('language_settings.json');
 
   static const int version = 1;
 

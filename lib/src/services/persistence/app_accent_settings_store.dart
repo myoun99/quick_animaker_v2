@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import '../../ui/theme/app_accents.dart';
+import 'app_support_path.dart';
 
 /// Loads and saves the two program accents (UI-R22 #5). Editor/app
 /// state, not project data — an app-support JSON file beside the
@@ -12,18 +13,8 @@ class AppAccentSettingsStore {
 
   final String filePath;
 
-  static String defaultFilePath() {
-    final environment = Platform.environment;
-    final base =
-        environment['APPDATA'] ??
-        environment['HOME'] ??
-        environment['USERPROFILE'] ??
-        Directory.systemTemp.path;
-    const separator = '/';
-    final normalizedBase = base.replaceAll('\\', separator);
-    return '$normalizedBase$separator'
-        'quick_animaker_v2${separator}accent_settings.json';
-  }
+  static String defaultFilePath() =>
+      appSupportFilePath('accent_settings.json');
 
   static const int version = 1;
 

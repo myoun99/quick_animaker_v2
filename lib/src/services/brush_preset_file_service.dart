@@ -4,6 +4,7 @@ import 'dart:io';
 import '../models/brush_preset.dart';
 import '../models/brush_preset_id.dart';
 import 'brush_preset_defaults.dart';
+import 'persistence/app_support_path.dart';
 
 /// Loads and saves the app-level brush preset library.
 ///
@@ -17,21 +18,8 @@ class BrushPresetFileService {
   /// Absolute path of the preset library file.
   final String filePath;
 
-  /// Resolves the platform's per-user app-data directory without extra
-  /// dependencies: `%APPDATA%` on Windows, the home directory elsewhere,
-  /// falling back to the system temp directory.
-  static String defaultBrushPresetFilePath() {
-    final environment = Platform.environment;
-    final base =
-        environment['APPDATA'] ??
-        environment['HOME'] ??
-        environment['USERPROFILE'] ??
-        Directory.systemTemp.path;
-    const separator = '/';
-    final normalizedBase = base.replaceAll('\\', separator);
-    return '$normalizedBase$separator'
-        'quick_animaker_v2${separator}brush_presets.json';
-  }
+  static String defaultBrushPresetFilePath() =>
+      appSupportFilePath('brush_presets.json');
 
   /// Library file format version. Bump when a release adds new built-in
   /// presets: libraries saved with an older version get the new built-ins
