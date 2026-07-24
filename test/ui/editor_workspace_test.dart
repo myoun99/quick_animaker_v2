@@ -34,11 +34,11 @@ Future<void> _pumpHome(WidgetTester tester) async {
   await tester.pumpWidget(const MaterialApp(home: HomePage()));
   await tester.pumpAndSettle();
   // Tabs always show [X][lock][name] now, and the test (Ahem) font draws
-  // every glyph 12px wide 窶・the three palette tabs need ~480px, far past
+  // every glyph 12px wide — the three palette tabs need ~480px, far past
   // the default 260px dock. Widen the dock so every tab (and its drop
   // target) is hittable.
-  // The R10-竭ｩ drag grips widen every tab a little further still (but
-  // stay below the dock's max-width clamp 窶・the splitter test measures
+  // The R10-⑩ drag grips widen every tab a little further still (but
+  // stay below the dock's max-width clamp — the splitter test measures
   // relative shrink from here).
   await tester.drag(
     find.byKey(const ValueKey<String>('dock-resize-left')),
@@ -58,7 +58,7 @@ Future<void> _closeTimesheet(WidgetTester tester) async {
   await tester.pumpAndSettle();
 }
 
-/// Drags a tab to a target by its GRIP handle (R10-竭ｩ: only the grip
+/// Drags a tab to a target by its GRIP handle (R10-⑩: only the grip
 /// lifts a tab; the rest of the button is a plain tap target). The target
 /// is a CLOSURE evaluated after the lift, because lifting reveals the
 /// section split zones and shifts the strips down.
@@ -353,7 +353,7 @@ void main() {
     testWidgets('frame-axis tabs may dock into the side dock', (tester) async {
       await _pumpHome(tester);
 
-      // Timeline into the left strip: allowed 窶・the shell hosts it at its
+      // Timeline into the left strip: allowed — the shell hosts it at its
       // minimum content size inside scrollers.
       await _dragTab(
         tester,
@@ -445,7 +445,7 @@ void main() {
 
       // Reopen from the menu bar's Window menu (the retired Panels menu's
       // keys). Ahem-wide labels can push the button past the strip's
-      // scroll clip in tests 窶・bring it into view first.
+      // scroll clip in tests — bring it into view first.
       await tester.ensureVisible(
         find.byKey(const ValueKey<String>('panels-menu-button')),
       );
@@ -557,7 +557,7 @@ void main() {
     ) async {
       await openTimesheet(tester);
 
-      // Paged by default 窶・the toggle offers the continuous view.
+      // Paged by default — the toggle offers the continuous view.
       expect(find.byTooltip('Continuous View'), findsOneWidget);
 
       await tester.tap(

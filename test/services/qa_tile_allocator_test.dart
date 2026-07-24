@@ -9,7 +9,7 @@ import 'package:quick_animaker_v2/src/native/qa_engine_abi.dart';
 import 'package:quick_animaker_v2/src/native/qa_native_engine.dart';
 
 /// R20-E1: the C tile free-list allocator. Freed tile blocks must PARK on
-/// exact-size lists and be handed straight back 窶・adoption (R19-Z) sends
+/// exact-size lists and be handed straight back — adoption (R19-Z) sends
 /// commit scratch out as finished tiles, so without recycling every
 /// full-canvas fill paid ~1024 fresh mallocs. Skips (loudly) when no
 /// locally built binary is found.
@@ -33,7 +33,7 @@ void main() {
   void requireEngine() {
     if (!available) {
       markTestSkipped(
-        'qa_engine.dll not built 窶・run: cmake -S packages/qa_native/src -B '
+        'qa_engine.dll not built — run: cmake -S packages/qa_native/src -B '
         'build/native_standalone && cmake --build build/native_standalone '
         '--config Release',
       );

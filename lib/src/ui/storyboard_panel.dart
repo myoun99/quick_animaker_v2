@@ -227,8 +227,8 @@ class StoryboardPanel extends StatefulWidget {
   static const double _minBlockWidth = 8;
 
   // Wide enough for the timeline-style rows (icon + names) the rail mirrors.
-  // 140 竊・240 when the S rows gained the timeline-parity layer controls
-  // (R4-竭ｨ '・・ｲｽ奝ｵ・ｼ'); the control set needs the width, like the timeline
+  // 140 → 240 when the S rows gained the timeline-parity layer controls
+  // (R4-⑨ '완벽통일'); the control set needs the width, like the timeline
   // rail's own widening for the fx switch.
   // 240 → the timeline rail's width (UI-R5 storyboard unification): the
   // rail rows share the timeline's slot grid and the legend header sits
@@ -336,7 +336,7 @@ class StoryboardPanel extends StatefulWidget {
 
   /// Build-time resolver for the cut blocks' first-frame thumbnails (the
   /// store behind it kicks async renders and re-notifies). The image stays
-  /// OWNED BY THE RESOLVER 窶・blocks paint it without disposing. Null hides
+  /// OWNED BY THE RESOLVER — blocks paint it without disposing. Null hides
   /// the thumbnail strip.
   final ui.Image? Function(Cut cut)? thumbnailFor;
 
@@ -354,24 +354,24 @@ class StoryboardPanel extends StatefulWidget {
   final void Function(Track track, int slot)? onToggleSeRowLane;
 
   /// Twirled-down V tracks (track id value): the cut-level Transform group
-  /// under the track row (V-track full transform, R6 窶・the AE lanes plus
+  /// under the track row (V-track full transform, R6 — the AE lanes plus
   /// the cut-fade Opacity strip).
   final Set<String> expandedTransformTracks;
   final void Function(Track track)? onToggleTrackLane;
 
   /// Twirled-open Transform GROUP HEADERS (AE group collapse, default
   /// collapsed): track id values for the V tracks, [seRowKey]s for the S
-  /// rows. One set 窶・the key shapes never collide.
+  /// rows. One set — the key shapes never collide.
   final Set<String> expandedTransformGroups;
   final void Function(String groupKey)? onToggleTransformGroup;
 
   /// Per-cut lane edit hooks for the V track's Transform lanes: the host
   /// builds callbacks that edit THAT cut's cut-level transform track (one
   /// undo per edit). The carrier Layer the substrate hands back is
-  /// synthetic 窶・the closures capture their cut. Null = display-only.
+  /// synthetic — the closures capture their cut. Null = display-only.
   final PropertyLaneEditCallbacks? Function(Cut cut)? cutLaneEditFor;
 
-  /// Lane edit hooks for the S rows' Transform lanes 窶・the timeline's
+  /// Lane edit hooks for the S rows' Transform lanes — the timeline's
   /// layer-transform lane editing on the ACTIVE cut's slot layers. Null =
   /// display-only.
   final PropertyLaneEditCallbacks? layerLaneEdit;
@@ -380,11 +380,11 @@ class StoryboardPanel extends StatefulWidget {
   /// and keyframe navigator read here.
   final int activeCutFrameIndex;
 
-  /// Key-navigator jumps (笳 笆ｶ) select this cut-local frame on the session.
+  /// Key-navigator jumps (◀ ▶) select this cut-local frame on the session.
   final ValueChanged<int>? onSelectFrameIndex;
 
   /// The display space the CUT pose resolves over for the value column
-  /// (the camera's output frame 窶・the same space playback and the MP4
+  /// (the camera's output frame — the same space playback and the MP4
   /// bake use). Null hides the V lanes' values.
   final CanvasSize? poseDisplaySize;
 
@@ -393,15 +393,15 @@ class StoryboardPanel extends StatefulWidget {
   final void Function(CutId cutId, int fadeInFrames, int fadeOutFrames)?
   onSetCutFade;
 
-  /// Sets what a cut's fade fades TO (FO=black / WO=white) 窶・the fade
+  /// Sets what a cut's fade fades TO (FO=black / WO=white) — the fade
   /// span's context menu. Null hides the menu.
   final void Function(CutId cutId, CutFadeTarget fadeTarget)?
   onSetCutFadeTarget;
 
-  // --- Timeline-parity layer controls ('・・ｲｽ奝ｵ・ｼ', R4-竭ｨ) -------------------
+  // --- Timeline-parity layer controls ('완벽통일', R4-⑨) -------------------
   // The S rows carry the SAME layer controls as the timeline rows, acting
   // on the ACTIVE cut's slot layer (the storyboard rail is track-global;
-  // the active cut supplies the concrete layer). All LayerId-generic 窶・
+  // the active cut supplies the concrete layer). All LayerId-generic —
   // wired to the same session methods the timeline host uses.
   final ValueChanged<LayerId>? onToggleLayerVisibility;
   final ValueChanged<LayerId>? onToggleLayerMuted;
@@ -448,7 +448,7 @@ class StoryboardPanel extends StatefulWidget {
   onSelectSeBlock;
 
   /// The timeline's comma-drag hooks for the ACTIVE cut's SE blocks (the
-  /// session's exposure edge drags are active-cut scoped 窶・other cuts'
+  /// session's exposure edge drags are active-cut scoped — other cuts'
   /// blocks select on tap first). Null hides the grips.
   final TimelineCommaDragCallbacks? seCommaDrag;
 
@@ -622,7 +622,7 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
   }
 
   /// The widest content edge across every track (blocks can outgrow their
-  /// duration via the minimum block width) plus trailing padding 窶・the
+  /// duration via the minimum block width) plus trailing padding — the
   /// ruler and playhead overlay both span it.
   double _timelineContentWidth(
     List<StoryboardTimelineLayoutEntry> entries,
@@ -687,14 +687,14 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
   }
 
   /// The shared lane substrate speaks Layer; the V track's cut-level lanes
-  /// ride a synthetic carrier 窶・its id only feeds the widget keys, the
+  /// ride a synthetic carrier — its id only feeds the widget keys, the
   /// edit closures capture their cut ([StoryboardPanel.cutLaneEditFor]).
   Layer _vLaneCarrier(String seed) =>
       Layer(id: LayerId('v-$seed'), name: 'V', frames: const []);
 
   /// The Transform-group member lanes of one V track, header first: the
   /// AE lane list valued against the ACTIVE cut (label-only rows while the
-  /// active cut lives elsewhere). The Opacity lane stays LAST 窶・its strip
+  /// active cut lives elsewhere). The Opacity lane stays LAST — its strip
   /// is the cut-fade envelope row, and the labels must line up.
   List<PropertyLaneRow> _cutTransformLanes(Track track, Cut? activeCut) {
     final expanded = widget.expandedTransformGroups.contains(track.id.value);
@@ -728,7 +728,7 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
 
   /// One S row's Transform-group lanes, header first, valued against the
   /// ACTIVE cut's slot layer (the same raw-track resolution the timeline's
-  /// value column uses 窶・fx bypass never touches authoring values).
+  /// value column uses — fx bypass never touches authoring values).
   List<PropertyLaneRow> _seTransformLanes(
     Track track,
     int slot,
@@ -871,7 +871,7 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
     );
   }
 
-  /// One track group's rail rows in TIMELINE order (R6 B3, R7-竭｣): the S
+  /// One track group's rail rows in TIMELINE order (R6 B3, R7-④): the S
   /// rows (each with its twirled-down Audio lane and Transform group)
   /// ABOVE the V track row and ITS Transform group, slots counting UP from
   /// the bottom like the timeline's layer stack (S1 sits right above V,
@@ -1005,7 +1005,7 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
   }
 
   /// One track group's strip rows, mirroring [_railRowsForTrack] row for
-  /// row (heights must stay in lockstep 窶・the two columns share no
+  /// row (heights must stay in lockstep — the two columns share no
   /// scaffolding).
   List<Widget> _stripRowsForTrack(
     Track track,
@@ -1139,7 +1139,7 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
   }
 
   /// The V track's Transform strip rows: the group header band plus,
-  /// twirled open, the AE lanes' key-marker strips 窶・and the cut-fade
+  /// twirled open, the AE lanes' key-marker strips — and the cut-fade
   /// envelope row AS the Opacity strip (fade handles unchanged, canonical
   /// key policy intact).
   List<Widget> _cutTransformLaneStrips(
@@ -1472,7 +1472,7 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
                                   // Track groups in TIMELINE order (R6 B3): the
                                   // S rows sit ABOVE their V track, slots
                                   // bottom-up like the timeline (top-down
-                                  // S2, S1, V 窶・R7-竭｣).
+                                  // S2, S1, V — R7-④).
                                   for (
                                     var index = 0;
                                     index < project.tracks.length;
@@ -1506,7 +1506,7 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
                                       // Frame grid lines under the blocks:
                                       // the runway reads as endless frame
                                       // cells, like the timeline's grid
-                                      // (painted 窶・costs nothing per frame).
+                                      // (painted — costs nothing per frame).
                                       Positioned.fill(
                                         child: IgnorePointer(
                                           child: RepaintBoundary(
@@ -1554,7 +1554,7 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
                                             // to do this from inside the content).
                                             SizedBox(width: contentWidth),
                                             // Track groups in TIMELINE order (R6
-                                            // B3), mirroring the rail exactly 窶・
+                                            // B3), mirroring the rail exactly —
                                             // row for row, height for height.
                                             for (
                                               var index = 0;
@@ -1583,7 +1583,7 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
                                         ),
                                       ),
                                       if (playheadListenable != null)
-                                        // Frame-wide accent tint only 窶・no solid
+                                        // Frame-wide accent tint only — no solid
                                         // edge line over the blocks (user
                                         // direction); the ruler carries its own
                                         // current-frame highlight. Subscribes to
@@ -1758,7 +1758,7 @@ class _StoryboardRuler extends StatefulWidget {
 
   final double width;
 
-  /// Rendered range 窶・includes the endless-axis runway past the cuts;
+  /// Rendered range — includes the endless-axis runway past the cuts;
   /// seeks may land anywhere in it (over-end selection like the timeline).
   final int renderedFrames;
 
@@ -2038,19 +2038,19 @@ class _StoryboardRulerCursorPainter extends CustomPainter {
       !identical(oldDelegate.isFrameCached, isFrameCached);
 }
 
-/// SE rows under a track: one per SE slot, S1ﾂｷS2窶ｦ like the sheet columns.
-// 22 竊・30 with the timeline-parity S-row controls (mute/eye/opacity).
+/// SE rows under a track: one per SE slot, S1·S2… like the sheet columns.
+// 22 → 30 with the timeline-parity S-row controls (mute/eye/opacity).
 const double _seRowHeight = 30;
 
 /// Twirl-down lane heights: the enlarged waveform strip, the cut-fade
 /// (Opacity) envelope lane and the Transform lanes (labels and strips
-/// share these 窶・the rail and strips columns must stay height-synced).
+/// share these — the rail and strips columns must stay height-synced).
 const double _audioLaneHeight = 36;
 const double _opacityLaneHeight = 26;
 const double _transformLaneHeight = 26;
 
 /// The track's SE row count: SE rows are TRACK-owned (list order is THE
-/// ordering every panel renders 窶・timeline parity by identity).
+/// ordering every panel renders — timeline parity by identity).
 int _seSlotCount(Track track) => track.seLayers.length;
 
 /// The [slot]th TRACK-owned SE layer (global-frame timeline); null when
@@ -2070,7 +2070,7 @@ Layer? _activeSlotLayerOf(Track track, CutId? activeCutId, int slot) {
 }
 
 /// SE slot rows in the rail: the same bordered-row language as the track
-/// row above them, compact like the timeline's SE rows 窶・with the timeline
+/// row above them, compact like the timeline's SE rows — with the timeline
 /// rows' controls and a lane chevron (twirl-down waveform strip).
 class _StoryboardSeLabel extends StatelessWidget {
   const _StoryboardSeLabel({
@@ -2098,7 +2098,7 @@ class _StoryboardSeLabel extends StatelessWidget {
   final VoidCallback? onToggleLane;
 
   /// The ACTIVE cut's layer behind this slot (null while the active cut
-  /// lives on another track or has no such slot) 窶・the timeline-parity
+  /// lives on another track or has no such slot) — the timeline-parity
   /// controls act on it.
   final Layer? activeLayer;
 
@@ -2134,8 +2134,8 @@ class _StoryboardSeLabel extends StatelessWidget {
     final layer = activeLayer;
     final trackLayer = _trackSeAt(track, slot);
     final onSelect = onSelectLayer;
-    // Rows stack FLUSH like the timeline rail 窶・no inter-row padding
-    // (R7-竭､); the 1px borders carry the separation.
+    // Rows stack FLUSH like the timeline rail — no inter-row padding
+    // (R7-⑤); the 1px borders carry the separation.
     return InkWell(
       key: ValueKey<String>(
         'storyboard-se-label-${track.id.value}-${slot + 1}',
@@ -2375,7 +2375,7 @@ class _StoryboardLaneLabel extends StatelessWidget {
 }
 
 /// One TRACK-owned SE row: the track's [slot]th SE layer rendered straight
-/// on the global frame axis 窶・blocks keep their true lengths (a sound may
+/// on the global frame axis — blocks keep their true lengths (a sound may
 /// cross cut boundaries; each crossed boundary draws a `~` continuation
 /// mark) and the timeline's data is exactly this layer, by identity.
 class _StoryboardSeRow extends StatelessWidget {
@@ -2425,7 +2425,7 @@ class _StoryboardSeRow extends StatelessWidget {
     final layer = this.layer;
     if (layer != null) {
       final blocks = drawingBlocks(layer.timeline);
-      // Paper blocks first 窶・the storyboard SE row has no cells
+      // Paper blocks first — the storyboard SE row has no cells
       // underneath, so each block paints its own paper span (SePaperSpan)
       // at its TRUE global extent; waveforms go above the paper, the
       // writing on top.
@@ -2451,9 +2451,9 @@ class _StoryboardSeRow extends StatelessWidget {
         );
       }
       // Waveforms above the paper (painted UNDER the SE writing): sounds
-      // are FRAME-LINKED 窶・each carrying block windows its waveform,
+      // are FRAME-LINKED — each carrying block windows its waveform,
       // clamped to the block and the file length (cut ends no longer
-      // clip 窶・the block may cross them).
+      // clip — the block may cross them).
       final audioPeaksFor = this.audioPeaksFor;
       if (audioPeaksFor != null) {
         for (final span in seAudioSpans(layer)) {
@@ -2536,7 +2536,7 @@ class _StoryboardSeRow extends StatelessWidget {
       // the WHOLE flow — blocks simply run across cut boundaries; the
       // cut-scoped timeline view carries the continuation marks instead.
       // Timeline parity: tap zones select the block (its OWNING cut +
-      // layer + the block's cut-local start 窶・the session's contract)窶ｦ
+      // layer + the block's cut-local start — the session's contract)…
       if (onSelectSeBlock != null) {
         for (final block in blocks) {
           final owner = _entryContaining(block.startIndex);
@@ -2614,7 +2614,7 @@ class _StoryboardSeRow extends StatelessWidget {
 
 /// The twirled-down S row's enlarged waveform strip: the timeline Audio
 /// lane ITSELF, mounted ONCE across the whole track (the layer is
-/// track-owned 窶・its spans sit on the global axis and slide-edit
+/// track-owned — its spans sit on the global axis and slide-edit
 /// everywhere; the session's clip edits resolve by layer id).
 class _StoryboardAudioLaneRow extends StatelessWidget {
   const _StoryboardAudioLaneRow({
@@ -2697,7 +2697,7 @@ class _StoryboardAudioLaneRow extends StatelessWidget {
 }
 
 /// One Transform lane's frame band: the reused timeline lane substrate
-/// rendered PER CUT (the audio lane's remount pattern 窶・each span runs
+/// rendered PER CUT (the audio lane's remount pattern — each span runs
 /// cut-local frames at the cut's global left). Key markers ride each
 /// cut's own transform track; editing is gated to the ACTIVE cut, like
 /// the audio lane's slide edit.
@@ -2771,7 +2771,7 @@ class _StoryboardLaneStripRow extends StatelessWidget {
 }
 
 /// The twirled-down V track's Opacity lane: one fade-envelope span per cut
-/// with draggable fade in/out handles at the span edges 窶・the cut fade
+/// with draggable fade in/out handles at the span edges — the cut fade
 /// ("opacity joins the transform system"). Commits ONE undo per handle
 /// drag via [StoryboardPanel.onSetCutFade].
 class _StoryboardOpacityLaneRow extends StatelessWidget {
@@ -2844,7 +2844,7 @@ class _CutFadeSpan extends StatefulWidget {
   final double frameCellExtent;
   final void Function(int fadeInFrames, int fadeOutFrames)? onSetFade;
 
-  /// Sets what the fade fades TO (FO=black / WO=white) 窶・the span's
+  /// Sets what the fade fades TO (FO=black / WO=white) — the span's
   /// right-click/long-press menu. Null hides the menu.
   final ValueChanged<CutFadeTarget>? onSetFadeTarget;
 
@@ -3061,7 +3061,7 @@ class _CutFadeSpanState extends State<_CutFadeSpan> {
 }
 
 /// Paints a cut's opacity envelope: a line through per-frame samples with
-/// the area underneath filled 窶・1.0 rides the top edge, 0.0 the bottom.
+/// the area underneath filled — 1.0 rides the top edge, 0.0 the bottom.
 class _CutFadeEnvelopePainter extends CustomPainter {
   const _CutFadeEnvelopePainter({
     required this.samples,
@@ -3128,8 +3128,8 @@ class _CutFadeEnvelopePainter extends CustomPainter {
   }
 }
 
-/// Rail rows share the timeline label rail's row language 窶・bordered
-/// surface rows, a kind icon leading the name 窶・so the storyboard's left
+/// Rail rows share the timeline label rail's row language — bordered
+/// surface rows, a kind icon leading the name — so the storyboard's left
 /// edge reads near-identically to the timeline's layers/sections rail
 /// (user direction). The track row opens its section like the timeline's
 /// heavier section divider.
