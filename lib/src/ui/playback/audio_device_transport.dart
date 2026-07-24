@@ -27,6 +27,7 @@ import '../../services/playback/playback_frame_mapping.dart';
 import '../audio/audio_conform_store.dart';
 import 'audio_playback_schedule.dart';
 import 'audio_sync_settings.dart';
+import 'audio_windowed_upload.dart';
 import 'canvas_playback_controller.dart';
 
 class AudioDeviceTransport {
@@ -173,16 +174,12 @@ class AudioDeviceTransport {
     _uploadWindowedSchedule(mix, device.positionSamples);
   }
 
-  /// Uploads [mix] with streaming windows around [centerSample] (the
-  /// shared [windowedMixUpload] builds it — the scrubber streams on the
-  /// same geometry). False uploads nothing, so any old schedule keeps
-  /// playing.
+  /// Uploads [mix] with streaming windows around [centerSample] (the shared
+  /// [uploadWindowedSchedule] — the scrubber streams on the same geometry).
+  /// False uploads nothing, so any old schedule keeps playing.
   bool _uploadWindowedSchedule(AudioMixSchedule mix, int centerSample) {
-    final device = _device;
-    if (device == null) {
-      return false;
-    }
-    final upload = windowedMixUpload(
+    final hasStreaming = uploadWindowedSchedule(
+      device: _device,
       mix: mix,
       conformStore: conformStore,
       deviceRate: _deviceRate,
@@ -190,13 +187,10 @@ class AudioDeviceTransport {
       backSeconds: _windowBackSeconds,
       aheadSeconds: _windowAheadSeconds,
     );
-    if (upload == null) {
+    if (hasStreaming == null) {
       return false;
     }
-    if (!device.setSchedule(clips: upload.clips, sources: upload.sources)) {
-      return false;
-    }
-    _hasStreaming = upload.hasStreaming;
+    _hasStreaming = hasStreaming;
     _windowCenterSample = centerSample;
     return true;
   }
