@@ -53,12 +53,16 @@ class TimelineFrameRangeHooks {
 
   /// [headLayerId] is the row under the pointer (UI-R17 #8 — the grid
   /// resolves cross-row drags like it does for moves); null/anchor keeps
-  /// the single-layer selection.
+  /// the single-layer selection. [headLaneId] is non-null when that row
+  /// is a property LANE row (R27 #14): the drag then reaches down the
+  /// layer's own lane group instead of skipping past it to the next
+  /// layer's cells.
   final void Function(
     LayerId layerId,
     int anchorIndex,
     int headIndex, {
     LayerId? headLayerId,
+    String? headLaneId,
   })
   onSelectUpdate;
   final VoidCallback onClear;

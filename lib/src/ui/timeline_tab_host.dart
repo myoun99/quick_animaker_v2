@@ -1044,12 +1044,19 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
           // + one-undo discipline.
           rangeHooks: TimelineFrameRangeHooks(
             selection: _session.frameRangeSelection,
-            onSelectUpdate: (layerId, anchorIndex, headIndex, {headLayerId}) =>
-                _session.updateFrameRangeSelectionDrag(
+            onSelectUpdate:
+                (
+                  layerId,
+                  anchorIndex,
+                  headIndex, {
+                  headLayerId,
+                  headLaneId,
+                }) => _session.updateFrameRangeSelectionDrag(
                   layerId: layerId,
                   anchorIndex: anchorIndex,
                   headIndex: headIndex,
                   headLayerId: headLayerId,
+                  headLaneId: headLaneId,
                 ),
             onClear: _session.clearFrameRangeSelection,
             move: TimelineRangeMoveCallbacks(
