@@ -10,7 +10,7 @@ import '../../models/layer.dart';
 import '../../models/layer_id.dart';
 import '../../models/timeline_frame_range.dart';
 import 'property_lane_model.dart';
-import 'timeline_block_move_handle.dart' show resolveBlockMoveTargetLayer;
+import 'timeline_row_span_resolver.dart' show resolveBlockMoveTargetLayer;
 import 'timeline_exposure_comma_drag_policy.dart';
 import 'transform_lane_policy.dart' show laneSelectionCoversBandRow;
 

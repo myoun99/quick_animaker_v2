@@ -4,7 +4,7 @@ name: Apple (macOS + iOS)
 # but a build is minutes rather than seconds - so this runs once a day
 # and on demand, not on every push. Its job is COMPILE verification:
 # nobody here owns a Mac, so "it builds and links on Apple platforms" is
-# the guarantee this workflow buys (see docs/Audio_Sync_Program.md §5).
+# the guarantee this workflow buys.
 on:
   schedule:
     # 03:00 UTC = 12:00 KST, once a day.

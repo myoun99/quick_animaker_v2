@@ -4,7 +4,7 @@ import 'package:quick_animaker_v2/src/models/layer.dart';
 import 'package:quick_animaker_v2/src/models/layer_id.dart';
 import 'package:quick_animaker_v2/src/ui/editor_session_manager.dart';
 import 'package:quick_animaker_v2/src/ui/timeline/property_lane_model.dart';
-import 'package:quick_animaker_v2/src/ui/timeline/timeline_block_move_handle.dart';
+import 'package:quick_animaker_v2/src/ui/timeline/timeline_row_span_resolver.dart';
 import 'package:quick_animaker_v2/src/ui/timeline/transform_lane_policy.dart';
 
 /// R27 #14 잔여: a cell drag reaching DOWN into the layer's own property
