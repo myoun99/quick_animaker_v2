@@ -73,6 +73,9 @@ void main() {
 
     // A live Wintab stream outranks the channel sidecar.
     final wintab = WintabPenService.instance;
+    // Freeze the freshness clock so the injected packet cannot age out of
+    // the 150ms window while a busy suite runs between inject and read.
+    WintabPenService.debugClockOverride = () => DateTime(2024);
     wintab.debugPollOverride = () => const [];
     wintab.start();
     wintab.debugInjectPacket(
