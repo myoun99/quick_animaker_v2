@@ -1,6 +1,7 @@
 import 'dart:ui' show BlendMode;
 
 import 'app_language.dart';
+import 'separable_blend_mode.dart';
 
 /// The layer's compositing blend against everything below it (R26 #30).
 ///
@@ -40,23 +41,17 @@ enum LayerBlendMode {
   /// composed first to have something to blend.
   bool get isolatesGroup => this != passThrough;
 
+  /// The shared separable data for this mode, or `null` for the two heads
+  /// ([passThrough]/[normal]). The separable vocabulary (GPU blend + labels)
+  /// lives once on [SeparableBlendMode].
+  SeparableBlendMode? get separable => SeparableBlendMode.forName(name);
+
   /// The ui.Paint blend for the composite draw. [passThrough] answers
   /// srcOver defensively; a pass-through folder is never drawn as a node
   /// at all, so this should not be reached for it.
   BlendMode get paintBlendMode => switch (this) {
     passThrough || normal => BlendMode.srcOver,
-    darken => BlendMode.darken,
-    multiply => BlendMode.multiply,
-    colorBurn => BlendMode.colorBurn,
-    lighten => BlendMode.lighten,
-    screen => BlendMode.screen,
-    colorDodge => BlendMode.colorDodge,
-    add => BlendMode.plus,
-    overlay => BlendMode.overlay,
-    softLight => BlendMode.softLight,
-    hardLight => BlendMode.hardLight,
-    difference => BlendMode.difference,
-    exclusion => BlendMode.exclusion,
+    _ => separable!.blendMode,
   };
 
   /// The menu label (the industry-standard English terms every paint
@@ -64,18 +59,7 @@ enum LayerBlendMode {
   String get label => switch (this) {
     passThrough => 'Pass Through',
     normal => 'Normal',
-    darken => 'Darken',
-    multiply => 'Multiply',
-    colorBurn => 'Color Burn',
-    lighten => 'Lighten',
-    screen => 'Screen',
-    colorDodge => 'Color Dodge',
-    add => 'Add',
-    overlay => 'Overlay',
-    softLight => 'Soft Light',
-    hardLight => 'Hard Light',
-    difference => 'Difference',
-    exclusion => 'Exclusion',
+    _ => separable!.label,
   };
 
   /// The label in the program language. Japanese follows Clip Studio's
@@ -85,18 +69,7 @@ enum LayerBlendMode {
     AppLanguage.ja => switch (this) {
       passThrough => '通過',
       normal => '通常',
-      darken => '比較（暗）',
-      multiply => '乗算',
-      colorBurn => '焼き込みカラー',
-      lighten => '比較（明）',
-      screen => 'スクリーン',
-      colorDodge => '覆い焼きカラー',
-      add => '加算',
-      overlay => 'オーバーレイ',
-      softLight => 'ソフトライト',
-      hardLight => 'ハードライト',
-      difference => '差の絶対値',
-      exclusion => '除外',
+      _ => separable!.labelFor(language),
     },
     _ => label,
   };
