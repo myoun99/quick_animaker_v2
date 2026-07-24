@@ -911,6 +911,7 @@ class EditorSessionManager extends ChangeNotifier {
     voiceRecordClipLit.dispose();
     _testToneTimer?.cancel();
     _voiceRecordCountInTimer?.cancel();
+    _deleteCueBeepDirectory();
     detachInputMeter();
     audioPlaybackSync.dispose();
     audioScrubber.dispose();
@@ -3479,6 +3480,27 @@ class EditorSessionManager extends ChangeNotifier {
   Timer? _voiceRecordCountInTimer;
   String? _cueBeepPath;
 
+  /// The OS temp folder holding [_cueBeepPath], kept so dispose can take it
+  /// back. It is one small wav, but it was one small wav PER APP RUN left
+  /// behind in the system temp forever.
+  Directory? _cueBeepDirectory;
+
+  void _deleteCueBeepDirectory() {
+    final directory = _cueBeepDirectory;
+    _cueBeepDirectory = null;
+    _cueBeepPath = null;
+    if (directory == null) {
+      return;
+    }
+    try {
+      if (directory.existsSync()) {
+        directory.deleteSync(recursive: true);
+      }
+    } on Object {
+      // A locked temp file is the OS's to clean up, not a shutdown failure.
+    }
+  }
+
   /// The cue beep on disk (project-rate mono, ~90 ms of 1 kHz with 5 ms
   /// ramps), written once per session and registered with the conform
   /// store like any take.
@@ -3506,7 +3528,9 @@ class EditorSessionManager extends ChangeNotifier {
         channels: 1,
         sampleRate: sampleRate,
       );
+      _deleteCueBeepDirectory(); // A stale one only happens if the file vanished.
       final directory = Directory.systemTemp.createTempSync('qa_cue_');
+      _cueBeepDirectory = directory;
       final file = File('${directory.path}/cue-beep.wav');
       file.writeAsBytesSync(wav);
       audioConformStore.invalidate(file.path);
@@ -6732,19 +6756,21 @@ class EditorSessionManager extends ChangeNotifier {
           );
   }
 
-  /// Commits the move as a single undo step (no-op when the drag ends on
-  /// an illegal or unchanged landing). Cross-layer moves compose the two
-  /// layer updates with the brush-store rekey so undo restores everything.
-  void endDrawingBlockMoveDrag() {
-    final source = _blockMoveSourceBefore;
-    final plan = _blockMovePlan;
-    _blockMoveSourceBefore = null;
-    _blockMoveBlockStart = null;
-    _blockMovePlan = null;
-    dragPreview.value = null;
-    if (source == null || plan == null) {
-      return;
-    }
+  /// The single undo step a ONE-ROW move lands as: the source row's
+  /// rewrite, the target row's rewrite when the move crossed rows, and the
+  /// brush-frame rekey that carries the cels across with it.
+  ///
+  /// The drawing-block drag and the frame-range drag both land exactly
+  /// this way — same plan type, same three pieces, same collapse to a bare
+  /// command when there is only one. They differed in the undo LABEL and
+  /// nothing else, so that is all this takes. (The multi-row rigid move is
+  /// a different shape: SE row pairs, instruction and camera riders, and a
+  /// rekey list built from the plan instead of the moved frame ids.)
+  Command _singleRowMoveCommand(
+    DrawingBlockMovePlan plan, {
+    required Layer source,
+    required String description,
+  }) {
     final commands = <Command>[
       UpdateLayerTimelineCommand(
         repository: _repository,
@@ -6779,13 +6805,30 @@ class EditorSessionManager extends ChangeNotifier {
         ),
       );
     }
+    return commands.length == 1
+        ? commands.single
+        : CompositeCommand(description: description, commands: commands);
+  }
+
+  /// Commits the move as a single undo step (no-op when the drag ends on
+  /// an illegal or unchanged landing). Cross-layer moves compose the two
+  /// layer updates with the brush-store rekey so undo restores everything.
+  void endDrawingBlockMoveDrag() {
+    final source = _blockMoveSourceBefore;
+    final plan = _blockMovePlan;
+    _blockMoveSourceBefore = null;
+    _blockMoveBlockStart = null;
+    _blockMovePlan = null;
+    dragPreview.value = null;
+    if (source == null || plan == null) {
+      return;
+    }
     _historyManager.execute(
-      commands.length == 1
-          ? commands.single
-          : CompositeCommand(
-              description: 'Move drawing block',
-              commands: commands,
-            ),
+      _singleRowMoveCommand(
+        plan,
+        source: source,
+        description: 'Move drawing block',
+      ),
     );
     // The selection follows the block onto its new layer (R12-④): the
     // user grabbed THAT drawing — keep working on it where it landed.
@@ -8004,47 +8047,12 @@ class EditorSessionManager extends ChangeNotifier {
       frameRangeSelection.value = selection;
       return;
     }
-    final commands = <Command>[
-      UpdateLayerTimelineCommand(
-        repository: _repository,
-        before: source,
-        after: rederiveRunBehaviors(
-          plan.sourceAfter,
-          cutFrameCount: _activeCutFrameCount,
-        ),
-      ),
-      if (plan.targetBefore != null)
-        UpdateLayerTimelineCommand(
-          repository: _repository,
-          before: plan.targetBefore!,
-          after: rederiveRunBehaviors(
-            plan.targetAfter!,
-            cutFrameCount: _activeCutFrameCount,
-          ),
-        ),
-    ];
-    if (plan.isCrossLayer && plan.movedFrameIds.isNotEmpty) {
-      final cut = requireActiveCut;
-      commands.add(
-        RekeyBrushFramesCommand(
-          store: brushFrameStore,
-          pairs: [
-            for (final frameId in plan.movedFrameIds)
-              (
-                brushFrameKeyForCut(cut, source.id, frameId),
-                brushFrameKeyForCut(cut, plan.targetAfter!.id, frameId),
-              ),
-          ],
-        ),
-      );
-    }
     _historyManager.execute(
-      commands.length == 1
-          ? commands.single
-          : CompositeCommand(
-              description: 'Move frame range',
-              commands: commands,
-            ),
+      _singleRowMoveCommand(
+        plan,
+        source: source,
+        description: 'Move frame range',
+      ),
     );
     // The selection stays on the moved frames where they landed.
     frameRangeSelection.value = landedSelection;

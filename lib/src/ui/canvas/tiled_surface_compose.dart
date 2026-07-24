@@ -84,11 +84,34 @@ Future<ui.Image?> composeTiledSurfaceImage(
   BitmapSurface surface, {
   BitmapTileImageCache? reuse,
   bool Function()? shouldAbort,
+}) => _composeAsync(
+  surface,
+  reuse: reuse,
+  shouldAbort: shouldAbort,
+  width: surface.canvasSize.width,
+  height: surface.canvasSize.height,
+);
+
+/// THE tile compose, async: draw every tile 1:1 at its integer offset and
+/// raster the result at [width]x[height], with [origin] subtracted first
+/// (the positioned variants raster over the pasteboard rect instead of the
+/// canvas).
+///
+/// Four functions in this file used to carry this loop — canvas-size and
+/// positioned, each async and sync — and they differed only in the origin,
+/// the extent, and whether the raster awaits. Four copies of a recorder
+/// lifetime is four chances to leak one.
+Future<ui.Image?> _composeAsync(
+  BitmapSurface surface, {
+  required BitmapTileImageCache? reuse,
+  required bool Function()? shouldAbort,
+  required int width,
+  required int height,
+  ui.Offset origin = ui.Offset.zero,
 }) async {
-  final width = surface.canvasSize.width;
-  final height = surface.canvasSize.height;
   final recorder = ui.PictureRecorder();
   final canvas = ui.Canvas(recorder);
+  canvas.translate(-origin.dx, -origin.dy);
   final paint = ui.Paint()..filterQuality = ui.FilterQuality.none;
   final transient = <ui.Image>[];
   var recorderClosed = false;
@@ -105,14 +128,7 @@ Future<ui.Image?> composeTiledSurfaceImage(
         image = await _decodeTile(tile);
         transient.add(image);
       }
-      canvas.drawImage(
-        image,
-        ui.Offset(
-          (tile.coord.x * tile.size).toDouble(),
-          (tile.coord.y * tile.size).toDouble(),
-        ),
-        paint,
-      );
+      canvas.drawImage(image, _tileOffset(tile), paint);
     }
 
     final picture = recorder.endRecording();
@@ -135,6 +151,44 @@ Future<ui.Image?> composeTiledSurfaceImage(
   }
 }
 
+/// THE tile compose, sync: the same draw, but every tile must ALREADY be
+/// decoded in [reuse] — a miss returns null so the caller falls back to
+/// the async path. Rasterization stays deferred on the GPU
+/// ([ui.Picture.toImageSync]).
+ui.Image? _composeSync(
+  BitmapSurface surface, {
+  required BitmapTileImageCache reuse,
+  required int width,
+  required int height,
+  ui.Offset origin = ui.Offset.zero,
+}) {
+  final recorder = ui.PictureRecorder();
+  final canvas = ui.Canvas(recorder);
+  canvas.translate(-origin.dx, -origin.dy);
+  final paint = ui.Paint()..filterQuality = ui.FilterQuality.none;
+
+  for (final tile in surface.tiles.values) {
+    final image = reuse.imageFor(tile);
+    if (image == null) {
+      recorder.endRecording().dispose();
+      return null;
+    }
+    canvas.drawImage(image, _tileOffset(tile), paint);
+  }
+
+  final picture = recorder.endRecording();
+  try {
+    return picture.toImageSync(width, height);
+  } finally {
+    picture.dispose();
+  }
+}
+
+ui.Offset _tileOffset(BitmapTile tile) => ui.Offset(
+  (tile.coord.x * tile.size).toDouble(),
+  (tile.coord.y * tile.size).toDouble(),
+);
+
 /// Synchronous variant for latency-critical swaps (the layer-switch
 /// handoff): composes ONLY when every tile is already decoded in [reuse] —
 /// the on-screen frame's tiles always are — via [ui.Picture.toImageSync]
@@ -156,37 +210,12 @@ ui.Image? composeTiledSurfaceImageSyncOrNull(
 ui.Image? _composeTiledSurfaceImageSyncOrNull(
   BitmapSurface surface, {
   required BitmapTileImageCache reuse,
-}) {
-  final recorder = ui.PictureRecorder();
-  final canvas = ui.Canvas(recorder);
-  final paint = ui.Paint()..filterQuality = ui.FilterQuality.none;
-
-  for (final tile in surface.tiles.values) {
-    final image = reuse.imageFor(tile);
-    if (image == null) {
-      recorder.endRecording().dispose();
-      return null;
-    }
-    canvas.drawImage(
-      image,
-      ui.Offset(
-        (tile.coord.x * tile.size).toDouble(),
-        (tile.coord.y * tile.size).toDouble(),
-      ),
-      paint,
-    );
-  }
-
-  final picture = recorder.endRecording();
-  try {
-    return picture.toImageSync(
-      surface.canvasSize.width,
-      surface.canvasSize.height,
-    );
-  } finally {
-    picture.dispose();
-  }
-}
+}) => _composeSync(
+  surface,
+  reuse: reuse,
+  width: surface.canvasSize.width,
+  height: surface.canvasSize.height,
+);
 
 /// The pasteboard-aware sibling of [composeTiledSurfaceImage]: rasters the
 /// surface over [surfaceContentWorldRect] and returns the image WITH that
@@ -200,59 +229,17 @@ Future<PositionedSurfaceImage?> composePositionedSurfaceImage(
   bool Function()? shouldAbort,
 }) async {
   final worldRect = surfaceContentWorldRect(surface);
-  final recorder = ui.PictureRecorder();
-  final canvas = ui.Canvas(recorder);
-  canvas.translate(-worldRect.left, -worldRect.top);
-  final paint = ui.Paint()..filterQuality = ui.FilterQuality.none;
-  final transient = <ui.Image>[];
-  var recorderClosed = false;
-
-  try {
-    for (final tile in surface.tiles.values) {
-      var image = reuse?.imageFor(tile);
-      if (image == null) {
-        if (shouldAbort?.call() ?? false) {
-          recorder.endRecording().dispose();
-          recorderClosed = true;
-          return null;
-        }
-        image = await _decodeTile(tile);
-        transient.add(image);
-      }
-      canvas.drawImage(
-        image,
-        ui.Offset(
-          (tile.coord.x * tile.size).toDouble(),
-          (tile.coord.y * tile.size).toDouble(),
-        ),
-        paint,
-      );
-    }
-
-    final picture = recorder.endRecording();
-    recorderClosed = true;
-    try {
-      if (shouldAbort?.call() ?? false) {
-        return null;
-      }
-      return PositionedSurfaceImage(
-        image: await picture.toImage(
-          worldRect.width.round(),
-          worldRect.height.round(),
-        ),
-        worldRect: worldRect,
-      );
-    } finally {
-      picture.dispose();
-    }
-  } finally {
-    if (!recorderClosed) {
-      recorder.endRecording().dispose();
-    }
-    for (final image in transient) {
-      image.dispose();
-    }
-  }
+  final image = await _composeAsync(
+    surface,
+    reuse: reuse,
+    shouldAbort: shouldAbort,
+    width: worldRect.width.round(),
+    height: worldRect.height.round(),
+    origin: worldRect.topLeft,
+  );
+  return image == null
+      ? null
+      : PositionedSurfaceImage(image: image, worldRect: worldRect);
 }
 
 /// Synchronous positioned variant (the layer-switch handoff): composes
@@ -262,39 +249,16 @@ PositionedSurfaceImage? composePositionedSurfaceImageSyncOrNull(
   required BitmapTileImageCache reuse,
 }) {
   final worldRect = surfaceContentWorldRect(surface);
-  final recorder = ui.PictureRecorder();
-  final canvas = ui.Canvas(recorder);
-  canvas.translate(-worldRect.left, -worldRect.top);
-  final paint = ui.Paint()..filterQuality = ui.FilterQuality.none;
-
-  for (final tile in surface.tiles.values) {
-    final image = reuse.imageFor(tile);
-    if (image == null) {
-      recorder.endRecording().dispose();
-      return null;
-    }
-    canvas.drawImage(
-      image,
-      ui.Offset(
-        (tile.coord.x * tile.size).toDouble(),
-        (tile.coord.y * tile.size).toDouble(),
-      ),
-      paint,
-    );
-  }
-
-  final picture = recorder.endRecording();
-  try {
-    return PositionedSurfaceImage(
-      image: picture.toImageSync(
-        worldRect.width.round(),
-        worldRect.height.round(),
-      ),
-      worldRect: worldRect,
-    );
-  } finally {
-    picture.dispose();
-  }
+  final image = _composeSync(
+    surface,
+    reuse: reuse,
+    width: worldRect.width.round(),
+    height: worldRect.height.round(),
+    origin: worldRect.topLeft,
+  );
+  return image == null
+      ? null
+      : PositionedSurfaceImage(image: image, worldRect: worldRect);
 }
 
 Future<ui.Image> _decodeTile(BitmapTile tile) {

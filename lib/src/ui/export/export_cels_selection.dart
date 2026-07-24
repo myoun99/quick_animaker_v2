@@ -48,12 +48,22 @@ ExportCelsSelection resolveExportCelsSelection({
   final layers = cut.layers;
 
   bool baseRule(Layer layer) {
+    // WHICH KINDS can export a cel is one fact, and it lives with the kind
+    // (layerKindExportsCels): the camera has no artwork, SE cels are timing
+    // data, and a folder holds its members' cels rather than one of its
+    // own. Spelling that set out again here was a second copy of the same
+    // decision — both exhaustive, so both would force an author to choose
+    // when a kind is added, and nothing made the two choices agree.
+    //
+    // What stays here is this EXPORT's policy on top of that gate.
+    if (!layerKindExportsCels(layer.kind)) {
+      return false;
+    }
     switch (layer.kind) {
       case LayerKind.camera:
       case LayerKind.se:
-      // A folder holds its members' cels, never one of its own.
       case LayerKind.folder:
-        return false;
+        return false; // Gated above; the switch stays exhaustive on purpose.
       case LayerKind.instruction:
         if (!spec.includeInstructionLayers) {
           return false;
@@ -93,9 +103,11 @@ ExportCelsSelection resolveExportCelsSelection({
           !includedFolders.contains(layer.folderId)) {
         continue;
       }
-      if (layerKindHoldsDrawings(layer.kind) &&
-          layer.kind != LayerKind.se &&
-          layer.isVisible) {
+      // "holdsDrawings && != se" IS layerKindIsDrawingCel — re-deriving a
+      // predicate inline is how a kind gets missed when the next one is
+      // added, which is exactly what layer_kind.dart's predicates exist to
+      // prevent.
+      if (layerKindIsDrawingCel(layer.kind) && layer.isVisible) {
         included[i] = true;
       }
     }
