@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'app_export_settings.dart';
+import 'app_support_path.dart';
 
 /// Loads and saves the export UI state (presets, last specs, location).
 /// App state — an app-support JSON beside the save/input/audio settings;
@@ -20,15 +21,7 @@ class AppExportSettingsStore {
       return '${Directory.systemTemp.path.replaceAll('\\', '/')}/'
           'qa_test_export_settings_$pid/export_settings.json';
     }
-    final base =
-        environment['APPDATA'] ??
-        environment['HOME'] ??
-        environment['USERPROFILE'] ??
-        Directory.systemTemp.path;
-    const separator = '/';
-    final normalizedBase = base.replaceAll('\\', separator);
-    return '$normalizedBase$separator'
-        'quick_animaker_v2${separator}export_settings.json';
+    return appSupportFilePath('export_settings.json');
   }
 
   static const int version = 1;

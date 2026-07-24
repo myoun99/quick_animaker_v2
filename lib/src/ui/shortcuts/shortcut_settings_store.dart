@@ -1,6 +1,8 @@
 import 'dart:convert';
 import 'dart:io';
 
+import '../../services/persistence/app_support_path.dart';
+
 /// Loads and saves the user's shortcut overrides ({actionId: [activator
 /// json]}). Editor/app state like the workspace layout: an app-support
 /// JSON file; missing or corrupt files simply yield no overrides (the
@@ -11,18 +13,8 @@ class ShortcutSettingsStore {
 
   final String filePath;
 
-  static String defaultShortcutSettingsFilePath() {
-    final environment = Platform.environment;
-    final base =
-        environment['APPDATA'] ??
-        environment['HOME'] ??
-        environment['USERPROFILE'] ??
-        Directory.systemTemp.path;
-    const separator = '/';
-    final normalizedBase = base.replaceAll('\\', separator);
-    return '$normalizedBase$separator'
-        'quick_animaker_v2${separator}shortcut_overrides.json';
-  }
+  static String defaultShortcutSettingsFilePath() =>
+      appSupportFilePath('shortcut_overrides.json');
 
   static const int version = 1;
 

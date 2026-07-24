@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import '../../ui/playback/audio_sync_settings.dart';
+import 'app_support_path.dart';
 
 /// Loads and saves the A/V offset (audio program 2D).
 ///
@@ -19,18 +20,8 @@ class AudioSyncSettingsStore {
 
   final String filePath;
 
-  static String defaultFilePath() {
-    final environment = Platform.environment;
-    final base =
-        environment['APPDATA'] ??
-        environment['HOME'] ??
-        environment['USERPROFILE'] ??
-        Directory.systemTemp.path;
-    const separator = '/';
-    final normalizedBase = base.replaceAll('\\', separator);
-    return '$normalizedBase$separator'
-        'quick_animaker_v2${separator}audio_sync_settings.json';
-  }
+  static String defaultFilePath() =>
+      appSupportFilePath('audio_sync_settings.json');
 
   static const int version = 1;
 

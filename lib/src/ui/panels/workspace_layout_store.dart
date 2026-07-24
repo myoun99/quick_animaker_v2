@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:io';
 
+import '../../services/persistence/app_support_path.dart';
 import 'editor_panel_layout.dart';
 
 /// Loads and saves the dockable-panel workspace layout (which tab lives in
@@ -16,21 +17,8 @@ class WorkspaceLayoutStore {
   /// Absolute path of the layout file.
   final String filePath;
 
-  /// Resolves the platform's per-user app-data directory without extra
-  /// dependencies: `%APPDATA%` on Windows, the home directory elsewhere,
-  /// falling back to the system temp directory.
-  static String defaultWorkspaceLayoutFilePath() {
-    final environment = Platform.environment;
-    final base =
-        environment['APPDATA'] ??
-        environment['HOME'] ??
-        environment['USERPROFILE'] ??
-        Directory.systemTemp.path;
-    const separator = '/';
-    final normalizedBase = base.replaceAll('\\', separator);
-    return '$normalizedBase$separator'
-        'quick_animaker_v2${separator}workspace_layout.json';
-  }
+  static String defaultWorkspaceLayoutFilePath() =>
+      appSupportFilePath('workspace_layout.json');
 
   static const int layoutVersion = 1;
 

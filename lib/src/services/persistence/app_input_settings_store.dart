@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import '../../ui/input/app_input_settings.dart';
+import 'app_support_path.dart';
 
 /// Loads and saves the pointer-input policy (UI-R22 #6). Editor/app
 /// state — an app-support JSON file beside the language/accent settings;
@@ -12,18 +13,8 @@ class AppInputSettingsStore {
 
   final String filePath;
 
-  static String defaultFilePath() {
-    final environment = Platform.environment;
-    final base =
-        environment['APPDATA'] ??
-        environment['HOME'] ??
-        environment['USERPROFILE'] ??
-        Directory.systemTemp.path;
-    const separator = '/';
-    final normalizedBase = base.replaceAll('\\', separator);
-    return '$normalizedBase$separator'
-        'quick_animaker_v2${separator}input_settings.json';
-  }
+  static String defaultFilePath() =>
+      appSupportFilePath('input_settings.json');
 
   static const int version = 1;
 
