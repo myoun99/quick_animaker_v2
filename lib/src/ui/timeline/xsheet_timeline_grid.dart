@@ -23,6 +23,7 @@ import 'timeline_cut_end_handle.dart';
 import 'timeline_drag_preview.dart';
 import 'timeline_exposure_comma_drag_policy.dart';
 import '../../models/project_frame_rate.dart';
+import 'timeline_edge_auto_pan.dart';
 import 'timeline_row_span_resolver.dart' show resolveBlockMoveTargetLayer;
 import 'timeline_frame_range_gesture.dart';
 import 'timeline_run_end_handles.dart';
@@ -600,14 +601,7 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
     if (!_frameScrollController.hasClients || !viewport.hasSize) {
       return;
     }
-    const edge = 24.0;
-    final height = viewport.size.height;
-    double delta = 0;
-    if (localY > height - edge) {
-      delta = localY - (height - edge);
-    } else if (localY < edge) {
-      delta = localY - edge;
-    }
+    final delta = edgeAutoPanDelta(localY, viewport.size.height);
     if (delta == 0) {
       return;
     }
