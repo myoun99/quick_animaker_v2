@@ -115,6 +115,8 @@ class InteractiveBrushEditCanvasView extends StatefulWidget {
     this.onInvokeAction,
     this.fillDabAt,
     this.selectionRegion,
+    this.overlayModel,
+    this.paintsContent = true,
     CanvasViewport? viewport,
   }) : viewport = viewport ?? CanvasViewport();
 
@@ -162,6 +164,18 @@ class InteractiveBrushEditCanvasView extends StatefulWidget {
   /// path — a clipped overlay cannot own a coordinate — so every selected
   /// stroke fell back to a per-frame isolation layer.)
   final CanvasSelectionRegion? selectionRegion;
+
+  /// The live-stroke overlay. HOST-OWNED when non-null, which is what lets
+  /// the editing canvas draw the active layer inside its composite tree: a
+  /// folder's group buffer is one `saveLayer`, so the layer being drawn on
+  /// has to be paintable by the same painter that opened it. Null keeps
+  /// the view's own model (standalone hosts, tests).
+  final ActiveStrokeOverlayModel? overlayModel;
+
+  /// Whether this view PAINTS. False leaves it input-only — the merged
+  /// stack painter draws the surface + overlay in tree order instead.
+  /// Input is untouched either way: the Listener is this widget's.
+  final bool paintsContent;
 
   /// Zoom/pan applied to the canvas display and input mapping. Viewport
   /// GESTURES (middle-drag pan, wheel zoom) live on the panel's
@@ -244,7 +258,17 @@ class _InteractiveBrushEditCanvasViewState
   /// tiles; decode completions repaint the canvas painter directly through
   /// this model — no widget rebuild per move, and the pixels on screen are
   /// the pixels the commit will keep.
-  final ActiveStrokeOverlayModel _overlayModel = ActiveStrokeOverlayModel();
+  ///
+  /// OWNED here only when the host does not supply one. A host that draws
+  /// the active layer inside its own composite tree owns it instead (see
+  /// [InteractiveBrushEditCanvasView.overlayModel]) — the stroke path
+  /// below is identical either way, it just writes into a model somebody
+  /// else can also paint from.
+  late final ActiveStrokeOverlayModel _ownedOverlayModel =
+      ActiveStrokeOverlayModel();
+
+  ActiveStrokeOverlayModel get _overlayModel =>
+      widget.overlayModel ?? _ownedOverlayModel;
 
   BrushLiveStrokeRasterizer? _liveRasterizer;
 
@@ -329,7 +353,13 @@ class _InteractiveBrushEditCanvasViewState
   void dispose() {
     BitmapTileImageCache.instance.removeListener(_onTileImagesChanged);
     _settlingFallbackTimer?.cancel();
-    _overlayModel.dispose();
+    // Only OUR model — a host-owned one outlives this view (it survives
+    // the layer switches that rebuild us).
+    if (widget.overlayModel == null) {
+      _ownedOverlayModel.dispose();
+    } else {
+      _overlayModel.reset();
+    }
     _liveRasterizer?.clear(); // Native tiles back to the engine (R21).
     // R26 #5: a view disposed mid-touch never sees its pointer-up — its
     // contacts must leave the app-wide census or ink stays blocked.
@@ -364,19 +394,29 @@ class _InteractiveBrushEditCanvasViewState
             onPointerUp: _handlePointerUp,
             onPointerCancel: _handlePointerCancel,
             onPointerHover: _handlePointerHover,
-            child: ClipRect(
-              key: const ValueKey<String>('interactive-brush-edit-canvas-clip'),
-              // The viewport transform is applied inside the painter (not by
-              // a Transform widget) so the canvas rasterizes at final device
-              // resolution in one picture — pixel-stable at fractional zoom.
-              child: BrushEditCanvasView(
-                sessionState: widget.sessionState,
-                viewport: widget.viewport,
-                showTransparentBackground: widget.showTransparentBackground,
-                overlayModel: _overlayModel,
-                staleScope: (widget.layerId, widget.frameId),
-              ),
-            ),
+            // paintsContent false: the merged stack painter draws this
+            // surface in TREE order (inside whatever folder buffer holds
+            // it) — this view stays for input alone. The listener above is
+            // untouched, so the stroke path is identical.
+            child: widget.paintsContent
+                ? ClipRect(
+                    key: const ValueKey<String>(
+                      'interactive-brush-edit-canvas-clip',
+                    ),
+                    // The viewport transform is applied inside the painter
+                    // (not by a Transform widget) so the canvas rasterizes
+                    // at final device resolution in one picture —
+                    // pixel-stable at fractional zoom.
+                    child: BrushEditCanvasView(
+                      sessionState: widget.sessionState,
+                      viewport: widget.viewport,
+                      showTransparentBackground:
+                          widget.showTransparentBackground,
+                      overlayModel: _overlayModel,
+                      staleScope: (widget.layerId, widget.frameId),
+                    ),
+                  )
+                : const SizedBox.expand(),
           ),
         );
       },

@@ -449,12 +449,25 @@ class _LayerStackPainter extends CustomPainter {
     if (paintPaper) {
       paintProjectPaper(canvas, canvasRect, paperBackground);
     }
-    final groupBounds = Rect.fromLTRB(
+    // The group buffer's bounds are a SIZE HINT to the engine: it
+    // allocates an offscreen that big. The pasteboard is 5×5 canvases —
+    // 25× the area — so handing it over verbatim would make every folder
+    // buffer 25× more expensive than the picture it holds. Only what is
+    // ON SCREEN can matter, so intersect with the visible canvas-space
+    // rect (the same rect the surface painter uses to prioritise decodes).
+    final visibleRect = MatrixUtils.transformRect(
+      viewportInverseTransformMatrix(viewport),
+      Offset.zero & size,
+    );
+    final pasteboardRect = Rect.fromLTRB(
       canvasSize.pasteboardLeft.toDouble(),
       canvasSize.pasteboardTop.toDouble(),
       canvasSize.pasteboardRightExclusive.toDouble(),
       canvasSize.pasteboardBottomExclusive.toDouble(),
     );
+    final groupBounds = visibleRect.isEmpty
+        ? pasteboardRect
+        : pasteboardRect.intersect(visibleRect);
 
     void paintNodes(List<_PaintNode> list) {
       for (final node in list) {

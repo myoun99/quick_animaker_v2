@@ -23,6 +23,8 @@ import '../../services/commands/brush_lift_move_history_command.dart';
 import '../../services/commands/brush_stroke_history_command.dart';
 import '../../services/cache_invalidation_executor.dart';
 import '../../services/history_manager.dart';
+import '../canvas/bitmap_surface_painter.dart';
+import '../canvas/active_stroke_overlay.dart';
 import '../canvas/canvas_selection_layer.dart';
 import '../canvas/selection_ants_painter.dart';
 import '../canvas/canvas_viewport_gesture_layer.dart';
@@ -65,6 +67,17 @@ class CanvasAutoFrameRequest {
 /// This widget is route-agnostic and behaves as an embedded canvas panel for
 /// the main editor canvas area. Temporary debug controls are intentionally not
 /// part of this panel.
+/// Builds the layer content painted under (and, in merged mode, around)
+/// the interactive canvas. [activeSurfacePainter] is non-null only in
+/// merged mode: draw it where the ACTIVE layer belongs in the composite
+/// tree, so a folder's group buffer can enclose it.
+typedef CanvasUnderlayBuilder =
+    Widget Function(
+      BuildContext context,
+      CanvasViewport viewport,
+      BitmapSurfacePainter? activeSurfacePainter,
+    );
+
 class BrushCanvasPanel extends StatefulWidget {
   const BrushCanvasPanel({
     super.key,
@@ -79,6 +92,7 @@ class BrushCanvasPanel extends StatefulWidget {
     this.selectionLabels = const CanvasEditorSelectionLabels(),
     this.viewportOverlayBuilder,
     this.viewportUnderlayBuilder,
+    this.activeStrokeOverlayModel,
     this.interactiveContentOpacity = 1.0,
     this.interactiveContentPose,
     this.contentOverride,
@@ -151,8 +165,39 @@ class BrushCanvasPanel extends StatefulWidget {
   /// Optional layer painted UNDER the interactive canvas (layers below the
   /// active one + the paper). When present, the interactive view skips its
   /// own opaque background so the underlay shows through.
-  final Widget Function(BuildContext context, CanvasViewport viewport)?
-  viewportUnderlayBuilder;
+  ///
+  /// In MERGED mode ([activeStrokeOverlayModel] non-null) this paints the
+  /// WHOLE stack, active layer included: the builder receives the active
+  /// layer's [BitmapSurfacePainter] so it can draw the live surface at the
+  /// right place in its composite tree.
+  final CanvasUnderlayBuilder? viewportUnderlayBuilder;
+
+  /// MERGED canvas mode: the host owns the live-stroke overlay and paints
+  /// the active layer itself, inside its composite tree, so a folder's
+  /// group buffer can enclose the layer being drawn on. The interactive
+  /// view then runs input-only. Null keeps the classic split (the view
+  /// owns its overlay and paints itself between the two stacks).
+  final ActiveStrokeOverlayModel? activeStrokeOverlayModel;
+
+  /// The active layer's painter for [viewportUnderlayBuilder] in merged
+  /// mode — built here because the surface lives on the coordinator.
+  BitmapSurfacePainter? _activeSurfacePainterFor(
+    BrushFrameEditingCoordinator coordinator,
+  ) {
+    final overlay = activeStrokeOverlayModel;
+    if (overlay == null) {
+      return null;
+    }
+    final activeKey = coordinator.activeFrameKey;
+    return BitmapSurfacePainter(
+      surface: coordinator.activeSessionState.canvasState.currentSurface,
+      overlayModel: overlay,
+      // The stack painter applies the viewport itself, so the surface
+      // painter draws in canvas space.
+      showTransparentBackground: false,
+      staleScope: (activeKey.layerId, activeKey.frameId),
+    );
+  }
 
   /// Display opacity of the interactive layer itself (the active layer's
   /// visibility/opacity preview); strokes still commit at full strength.
@@ -797,6 +842,11 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
                                       child: underlayBuilder(
                                         context,
                                         _viewport,
+                                        widget.coordinator == null
+                                            ? null
+                                            : widget._activeSurfacePainterFor(
+                                                widget.coordinator!,
+                                              ),
                                       ),
                                     ),
                                   Positioned.fill(child: canvasView),
@@ -1161,6 +1211,11 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
       // The underlay paints the paper (and the layers below); an opaque
       // background here would hide them.
       showTransparentBackground: widget.viewportUnderlayBuilder == null,
+      // MERGED mode: the host owns the overlay model and paints this
+      // surface itself, in composite-tree order, so a group buffer can
+      // wrap the layer being drawn on. The view keeps the input.
+      overlayModel: widget.activeStrokeOverlayModel,
+      paintsContent: widget.activeStrokeOverlayModel == null,
     );
     // The draw-through wrap: display AND hit testing share one screen
     // matrix, so the active layer draws posed and pointers inverse-map to

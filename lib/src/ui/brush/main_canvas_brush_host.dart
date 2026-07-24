@@ -17,6 +17,7 @@ import '../../services/brush_frame_editing_coordinator.dart';
 import '../../services/canvas_selection.dart' show SelectionMaskOptions;
 import '../../services/cache_invalidation_executor.dart';
 import '../../services/history_manager.dart';
+import '../canvas/active_stroke_overlay.dart';
 import '../canvas/layer_pose_paint.dart';
 import '../input/app_input_settings.dart' show AppInput;
 import 'brush_canvas_panel.dart';
@@ -48,6 +49,7 @@ class MainCanvasBrushHost extends StatefulWidget {
     this.brushToolState = BrushToolState.defaults,
     this.viewportOverlayBuilder,
     this.viewportUnderlayBuilder,
+    this.activeStrokeOverlayModel,
     this.interactiveContentOpacity = 1.0,
     this.interactiveContentPose,
     this.contentOverride,
@@ -99,9 +101,14 @@ class MainCanvasBrushHost extends StatefulWidget {
   viewportOverlayBuilder;
 
   /// Forwarded to [BrushCanvasPanel]: painted under the interactive canvas
-  /// (paper + layers below the active one).
-  final Widget Function(BuildContext context, CanvasViewport viewport)?
-  viewportUnderlayBuilder;
+  /// (paper + layers below the active one) — or, in merged mode, the whole
+  /// composite tree with the active layer inside it.
+  final CanvasUnderlayBuilder? viewportUnderlayBuilder;
+
+  /// Forwarded to [BrushCanvasPanel]: the host-owned live-stroke overlay
+  /// that puts the canvas in MERGED mode (the active layer painted inside
+  /// the composite tree, so folder buffers can enclose it).
+  final ActiveStrokeOverlayModel? activeStrokeOverlayModel;
 
   /// Forwarded to [BrushCanvasPanel]: the active layer's display opacity.
   final double interactiveContentOpacity;
@@ -270,6 +277,7 @@ class _MainCanvasBrushHostState extends State<MainCanvasBrushHost> {
       brushToolState: widget.brushToolState,
       viewportOverlayBuilder: widget.viewportOverlayBuilder,
       viewportUnderlayBuilder: widget.viewportUnderlayBuilder,
+      activeStrokeOverlayModel: widget.activeStrokeOverlayModel,
       interactiveContentOpacity: widget.interactiveContentOpacity,
       interactiveContentPose: widget.interactiveContentPose,
       contentOverride: contentOverride,
