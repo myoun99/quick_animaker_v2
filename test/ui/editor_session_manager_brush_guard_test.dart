@@ -56,9 +56,8 @@ void main() {
     session.selectFrameIndex(0);
     session.createSeEntryAtCurrentFrame(name: '쿵');
 
-    final split = session.editingCanvasStackSplit;
     final stackLayerIds = [
-      for (final node in [...split.below, ...split.above])
+      for (final node in session.editingCanvasStack.nodes)
         if (node is CanvasLayerImageNode) node.request.frameKey.layerId,
     ];
     expect(

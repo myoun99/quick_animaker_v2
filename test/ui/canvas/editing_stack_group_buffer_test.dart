@@ -61,10 +61,41 @@ void main() {
     );
   });
 
-  test('a group NOT containing the active layer survives the split intact', () {
+  test('the folder CONTAINING the active layer buffers too — the merged '
+      'painter closes the saveLayer it opened', () {
+    final s = sessionWithFolder(blend: LayerBlendMode.multiply);
+    final nodes = s.editingCanvasStack.nodes;
+
+    expect(countGroups(nodes), 1);
+    final group = nodes.whereType<CanvasLayerGroupNode>().single;
+    expect(group.blendMode, LayerBlendMode.multiply);
+    expect(
+      holdsActive(group.children),
+      isTrue,
+      reason: 'the layer being drawn on sits INSIDE the buffer — this is '
+          'what the three-sibling-painter split could never express',
+    );
+  });
+
+  test('inside a buffering folder the member carries no folder state — it '
+      'is on the buffer, so nothing double-applies', () {
+    final s = sessionWithFolder(blend: LayerBlendMode.multiply, opacity: 0.5);
+    final group = s.editingCanvasStack.nodes
+        .whereType<CanvasLayerGroupNode>()
+        .single;
+    expect(group.opacity, closeTo(0.5, 1e-9));
+    expect(group.blendMode, LayerBlendMode.multiply);
+
+    final active = group.children.whereType<CanvasActiveLayerNode>().single;
+    expect(
+      active.opacity,
+      1,
+      reason: 'the folder opacity belongs to the buffer, not the member',
+    );
+  });
+
+  test('a group NOT containing the active layer buffers as well', () {
     final s = sessionWithFolder();
-    // Fold the folder's member away from the selection: select a row
-    // outside it, so the group sits wholly below/above the active layer.
     final cut = s.activeCutOrNull!;
     final outside = cut.layers.firstWhere(
       (layer) => layer.folderId == null && layer.id != s.activeLayerId,
@@ -73,30 +104,6 @@ void main() {
     s.setLayerBlendMode(folderId, LayerBlendMode.multiply);
     s.selectLayer(outside.id);
 
-    final split = s.editingCanvasStackSplit;
-    expect(
-      countGroups(split.below) + countGroups(split.above),
-      1,
-      reason: 'the buffer is whole on one side of the interactive view',
-    );
-  });
-
-  test('the group that CONTAINS the active layer folds instead — the one '
-      'honest gap, and it is scoped to that folder alone', () {
-    final s = sessionWithFolder(blend: LayerBlendMode.multiply);
-    // The active layer is the folder's member.
-    expect(holdsActive(s.editingCanvasStack.nodes), isTrue);
-    expect(
-      countGroups(s.editingCanvasStack.nodes),
-      1,
-      reason: 'the TREE still has the buffer — playback and export use it',
-    );
-
-    final split = s.editingCanvasStackSplit;
-    expect(
-      countGroups(split.below) + countGroups(split.above),
-      0,
-      reason: 'the split cannot span the interactive view, so it folds',
-    );
+    expect(countGroups(s.editingCanvasStack.nodes), 1);
   });
 }
