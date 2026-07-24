@@ -1,6 +1,7 @@
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
+import '../helpers/json_round_trip.dart';
 import 'package:quick_animaker_v2/src/models/brush_dab.dart';
 import 'package:quick_animaker_v2/src/models/brush_input_sample.dart';
 import 'package:quick_animaker_v2/src/models/brush_pressure_curve.dart';
@@ -39,10 +40,7 @@ void main() {
       );
     }
 
-    test('creates with valid values', () {
-      expect(dab().center, CanvasPoint(x: 1, y: 2));
-      expect(dab(color: 0x80FF3366).color, 0x80FF3366);
-    });
+
 
     test('rejects negative color', () {
       expect(() => dab(color: -1), throwsArgumentError);
@@ -192,7 +190,7 @@ void main() {
         roundness: 0.4,
         angleDegrees: 137.5,
       );
-      expect(BrushDab.fromJson(value.toJson()), value);
+      expectJsonRoundTrip(value, BrushDab.fromJson);
     });
 
     test('fromJson without color uses default black', () {

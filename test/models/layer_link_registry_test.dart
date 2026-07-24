@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import '../helpers/json_round_trip.dart';
 import 'package:quick_animaker_v2/src/controllers/default_project_helpers.dart';
 import 'package:quick_animaker_v2/src/models/brush_frame_key.dart';
 import 'package:quick_animaker_v2/src/models/project.dart';
@@ -86,10 +87,7 @@ void main() {
 
     test('toJson/fromJson round-trips', () {
       final links = registry();
-      expect(
-        LayerLinkRegistry.fromJson(links.toJson()),
-        links,
-      );
+      expectJsonRoundTrip(links, LayerLinkRegistry.fromJson);
       expect(LayerLinkRegistry.fromJson(const {'groups': []}).isEmpty, isTrue);
     });
 

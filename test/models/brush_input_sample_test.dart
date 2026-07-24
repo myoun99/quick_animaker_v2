@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import '../helpers/json_round_trip.dart';
 import 'package:quick_animaker_v2/src/models/brush_input_sample.dart';
 
 void main() {
@@ -58,7 +59,7 @@ void main() {
         sequence: 4,
       );
 
-      expect(BrushInputSample.fromJson(sample.toJson()), sample);
+      expectJsonRoundTrip(sample, BrushInputSample.fromJson);
     });
 
     test('invalid pressure below 0 throws', () {

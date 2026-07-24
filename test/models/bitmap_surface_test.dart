@@ -1,6 +1,7 @@
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
+import '../helpers/json_round_trip.dart';
 import 'package:quick_animaker_v2/src/models/bitmap_surface.dart';
 import 'package:quick_animaker_v2/src/models/bitmap_tile.dart';
 import 'package:quick_animaker_v2/src/models/canvas_size.dart';
@@ -180,7 +181,7 @@ void main() {
         pixels: Uint8List(256 * 256 * 4)..[0] = 7,
       );
       final original = surface().putTile(tile);
-      expect(BitmapSurface.fromJson(original.toJson()), original);
+      expectJsonRoundTrip(original, BitmapSurface.fromJson);
     });
 
     test('surface does not allocate all possible tiles eagerly', () {

@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import '../helpers/json_round_trip.dart';
 import 'package:quick_animaker_v2/src/models/canvas_point.dart';
 import 'package:quick_animaker_v2/src/models/canvas_viewport.dart';
 import 'package:quick_animaker_v2/src/models/viewport_point.dart';
@@ -50,7 +51,7 @@ void main() {
     test('toJson/fromJson round-trips', () {
       final viewport = CanvasViewport(zoom: 1.5, panX: -10.25, panY: 20.5);
 
-      expect(CanvasViewport.fromJson(viewport.toJson()), viewport);
+      expectJsonRoundTrip(viewport, CanvasViewport.fromJson);
     });
 
     test('canvasToViewport applies zoom only', () {

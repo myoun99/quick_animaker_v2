@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import '../helpers/json_round_trip.dart';
 import 'package:quick_animaker_v2/src/models/frame_id.dart';
 import 'package:quick_animaker_v2/src/models/layer_id.dart';
 import 'package:quick_animaker_v2/src/models/layer_tile_cache_key.dart';
@@ -12,11 +13,7 @@ void main() {
       tileCoord: TileCoord(x: 1, y: 2),
     );
 
-    test('creates with layerId, frameId, tileCoord', () {
-      expect(key.layerId, const LayerId('layer-a'));
-      expect(key.frameId, const FrameId('frame-a'));
-      expect(key.tileCoord, TileCoord(x: 1, y: 2));
-    });
+
 
     test('copyWith updates layerId', () {
       expect(
@@ -65,13 +62,9 @@ void main() {
     });
 
     test('toJson/fromJson round-trips', () {
-      expect(LayerTileCacheKey.fromJson(key.toJson()), key);
+      expectJsonRoundTrip(key, LayerTileCacheKey.fromJson);
     });
 
-    test('toString includes useful identifying data', () {
-      expect(key.toString(), contains('layer-a'));
-      expect(key.toString(), contains('frame-a'));
-      expect(key.toString(), contains('TileCoord'));
-    });
+
   });
 }

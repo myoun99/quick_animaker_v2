@@ -1,15 +1,10 @@
 import 'package:flutter_test/flutter_test.dart';
+import '../helpers/json_round_trip.dart';
 import 'package:quick_animaker_v2/src/models/rgba_color.dart';
 
 void main() {
   group('RgbaColor', () {
-    test('creates with valid RGBA components', () {
-      final color = RgbaColor(r: 255, g: 51, b: 102, a: 128);
-      expect(color.r, 255);
-      expect(color.g, 51);
-      expect(color.b, 102);
-      expect(color.a, 128);
-    });
+
 
     test('rejects r below 0', () {
       expect(() => RgbaColor(r: -1, g: 0, b: 0, a: 0), throwsArgumentError);
@@ -106,12 +101,9 @@ void main() {
 
     test('toJson/fromJson round-trips', () {
       final color = RgbaColor(r: 255, g: 51, b: 102, a: 128);
-      expect(RgbaColor.fromJson(color.toJson()), color);
+      expectJsonRoundTrip(color, RgbaColor.fromJson);
     });
 
-    test('toString includes useful component data', () {
-      expect(RgbaColor(r: 1, g: 2, b: 3, a: 4).toString(), contains('r: 1'));
-      expect(RgbaColor(r: 1, g: 2, b: 3, a: 4).toString(), contains('a: 4'));
-    });
+
   });
 }

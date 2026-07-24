@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import '../helpers/json_round_trip.dart';
 import 'package:quick_animaker_v2/src/models/brush_dab.dart';
 import 'package:quick_animaker_v2/src/models/brush_dab_sequence.dart';
 import 'package:quick_animaker_v2/src/models/brush_tip_shape.dart';
@@ -102,7 +103,7 @@ void main() {
 
     test('toJson/fromJson round-trips', () {
       final sequence = BrushDabSequence([dab(0), dab(1)]);
-      expect(BrushDabSequence.fromJson(sequence.toJson()), sequence);
+      expectJsonRoundTrip(sequence, BrushDabSequence.fromJson);
     });
 
     test('toJson/fromJson preserves dab color', () {
