@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
 
+import '../../core/floor_math.dart';
+
 import '../../models/bitmap_surface.dart';
 import '../../models/bitmap_tile.dart';
+import '../../models/tile_coord.dart';
 
 import '../../models/canvas_viewport.dart';
 import '../../models/pasteboard_bounds.dart';
@@ -159,28 +162,15 @@ class BitmapSurfacePainter extends CustomPainter {
     // for its decode (it lands within a few frames — the repaint hook
     // brings it in).
     var pixelFallbackBudget = 4;
-    // R27 #2: and it goes to tiles the user can actually SEE. The budget
-    // used to be spent in map order, so a stroke whose new tiles span far
-    // more than four coordinates — a 1800px brush does that in one dab —
-    // could burn it entirely off-screen and leave visible coordinates
-    // drawing NOTHING for a few frames: the reported blank-tile flash.
-    // Decode starts have prioritised by visibility since R18; the
-    // fallback simply never learned to.
-    final fallbackVisibleRect = viewport == null
+    // R27 #2: the budget goes to tiles the user can actually SEE. Since
+    // the walk below is now visible-only, every coordinate it reaches
+    // already shows — no separate visibility test is needed.
+    final visibleRect = viewport == null
         ? (Offset.zero & size)
         : MatrixUtils.transformRect(
             viewportInverseTransformMatrix(viewport!),
             Offset.zero & size,
           );
-    bool tileIsVisible(BitmapTile tile) {
-      final tileSize = tile.size.toDouble();
-      return Rect.fromLTWH(
-        tile.coord.x * tileSize,
-        tile.coord.y * tileSize,
-        tileSize,
-        tileSize,
-      ).overlaps(fallbackVisibleRect);
-    }
     // Decode-start chunking (R18 B-1): STARTING a decode costs a
     // synchronous tile copy + 65k-pixel premultiply on the UI thread, and
     // a full-canvas commit used to start every changed tile in one paint
@@ -190,61 +180,90 @@ class BitmapSurfacePainter extends CustomPainter {
     // notifies (coalesced per frame), which repaints this painter and
     // starts the next chunk, so the surface converges over a few frames
     // while the stale/settle-hold fallbacks keep on-screen content stable.
+    // Decode STARTS are collected across the WHOLE cel (cheap: an Expando
+    // lookup per tile), so off-screen tiles keep pre-warming in the
+    // background and scroll in already decoded — the visibility priority
+    // lives in _startPrioritizedDecodes.
     List<BitmapTile>? pendingDecodes;
     for (final tile in surface.tiles.values) {
       if (tileImageCache.needsDecodeStart(tile)) {
         (pendingDecodes ??= <BitmapTile>[]).add(tile);
       }
-      // The overlay's result tile REPLACES this coordinate outright (it
-      // already contains the committed pixels blended with the stroke) —
-      // the committed tile is not drawn at all. Decode starts above still
-      // run, so a freshly adopted tile's image is ready by the time the
-      // override releases.
-      if (overlayReplacesCoords && overlay.tileImages.containsKey(tile.coord)) {
-        continue;
-      }
-      if (settleHold != null && settleHold.containsKey(tile.coord)) {
-        final preTile = settleHold[tile.coord];
-        if (preTile != null) {
-          final preImage = tileImageCache.imageFor(preTile);
-          if (preImage != null) {
-            canvas.drawImage(
-              preImage,
-              Offset(
-                (preTile.coord.x * preTile.size).toDouble(),
-                (preTile.coord.y * preTile.size).toDouble(),
-              ),
-              tileImagePaint,
-            );
-          } else {
-            _paintTilePixels(canvas, preTile);
-          }
+    }
+
+    // DRAWING walks only the tile COORDINATES the view covers, not every
+    // committed tile. This paint runs per stroke frame (the overlay's
+    // repaint hook), and a big cel drawn all over holds far more tiles
+    // than fit a zoomed-in view — the old draw-everything walk issued a
+    // drawImage per committed tile (~2.2ms at 1024 tiles, growing
+    // linearly) for pixels the pasteboard clip drops anyway. The tile map
+    // is a coordinate hash, so each lookup is O(1) and the draw cost is
+    // O(visible tiles).
+    final tileSize = surface.tileSize;
+    final firstTileX = floorDiv(visibleRect.left.floor(), tileSize);
+    final lastTileX = floorDiv(visibleRect.right.ceil() - 1, tileSize);
+    final firstTileY = floorDiv(visibleRect.top.floor(), tileSize);
+    final lastTileY = floorDiv(visibleRect.bottom.ceil() - 1, tileSize);
+    for (var tileY = firstTileY; tileY <= lastTileY; tileY += 1) {
+      for (var tileX = firstTileX; tileX <= lastTileX; tileX += 1) {
+        final tile = surface.tiles[TileCoord(x: tileX, y: tileY)];
+        if (tile == null) {
+          continue;
         }
-        continue;
-      }
-      // While this tile version's decode is pending, show the latest decoded
-      // image at the same coordinate (slightly stale content) instead of a
-      // per-pixel redraw: scanning up to 65k pixels per changed tile froze
-      // the UI after large strokes. The active overlay keeps the in-progress
-      // stroke visible until the new tiles are decoded.
-      final tileImage =
-          tileImageCache.imageFor(tile) ??
-          tileImageCache.latestImageForCoord(tile.coord, scope: staleScope);
-      if (tileImage != null) {
-        canvas.drawImage(
-          tileImage,
-          Offset(
-            (tile.coord.x * tile.size).toDouble(),
-            (tile.coord.y * tile.size).toDouble(),
-          ),
-          tileImagePaint,
-        );
-      } else if (pixelFallbackBudget > 0 && tileIsVisible(tile)) {
-        // First-ever content at this coordinate and not decoded yet: draw
-        // per pixel for this frame only — within the budget, and only
-        // where it shows (R27 #2).
-        pixelFallbackBudget -= 1;
-        _paintTilePixels(canvas, tile);
+        // The overlay's result tile REPLACES this coordinate outright (it
+        // already contains the committed pixels blended with the stroke) —
+        // the committed tile is not drawn at all. The decode start ran in
+        // the collect pass above, so a freshly adopted tile's image is
+        // ready by the time the override releases.
+        if (overlayReplacesCoords &&
+            overlay.tileImages.containsKey(tile.coord)) {
+          continue;
+        }
+        if (settleHold != null && settleHold.containsKey(tile.coord)) {
+          final preTile = settleHold[tile.coord];
+          if (preTile != null) {
+            final preImage = tileImageCache.imageFor(preTile);
+            if (preImage != null) {
+              canvas.drawImage(
+                preImage,
+                Offset(
+                  (preTile.coord.x * preTile.size).toDouble(),
+                  (preTile.coord.y * preTile.size).toDouble(),
+                ),
+                tileImagePaint,
+              );
+            } else {
+              _paintTilePixels(canvas, preTile);
+            }
+          }
+          continue;
+        }
+        // While this tile version's decode is pending, show the latest
+        // decoded image at the same coordinate (slightly stale content)
+        // instead of a per-pixel redraw: scanning up to 65k pixels per
+        // changed tile froze the UI after large strokes. The active
+        // overlay keeps the in-progress stroke visible until the new tiles
+        // are decoded.
+        final tileImage =
+            tileImageCache.imageFor(tile) ??
+            tileImageCache.latestImageForCoord(tile.coord, scope: staleScope);
+        if (tileImage != null) {
+          canvas.drawImage(
+            tileImage,
+            Offset(
+              (tile.coord.x * tile.size).toDouble(),
+              (tile.coord.y * tile.size).toDouble(),
+            ),
+            tileImagePaint,
+          );
+        } else if (pixelFallbackBudget > 0) {
+          // First-ever content at this coordinate and not decoded yet:
+          // draw per pixel for this frame only — within the budget. Every
+          // coordinate here is visible, so the budget spends only where it
+          // shows (R27 #2).
+          pixelFallbackBudget -= 1;
+          _paintTilePixels(canvas, tile);
+        }
       }
     }
     if (pendingDecodes != null) {
