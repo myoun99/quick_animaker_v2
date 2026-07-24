@@ -519,10 +519,9 @@ class QaNativeEngine {
   static QaNativeEngine? _instance;
   static bool _loadAttempted = false;
 
-  /// Test hooks: an explicit binary path (parity tests point at the
-  /// locally built DLL) and a force-Dart switch (the parity test's
-  /// reference side).
-  static String? debugLibraryPathOverride;
+  /// Test hook: the parity test's reference side, forcing Dart even when
+  /// a binary loads. Which binary is [debugQaEngineLibraryPathOverride],
+  /// shared by every loader.
   static bool debugForceDartFallback = false;
 
   static void debugResetForTests() {
@@ -543,7 +542,7 @@ class QaNativeEngine {
   }
 
   static QaNativeEngine? _tryLoad() {
-    final library = openQaEngineLibrary(overridePath: debugLibraryPathOverride);
+    final library = openQaEngineLibrary();
     if (library == null) {
       return null;
     }

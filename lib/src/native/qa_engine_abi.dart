@@ -61,6 +61,21 @@ import 'dart:io';
 ///   only" happens in the kernel instead of a painter clip.
 const int kQaEngineAbiVersion = 24;
 
+/// Test hook: point EVERY engine loader at a locally built binary.
+///
+/// One switch, because "where the engine is" is one fact about the
+/// process, not six. It used to be a static on each loader, and the cost
+/// showed up immediately: the conform worker set two of the six and no
+/// one noticed the other four were still resolving on their own.
+///
+/// Set it before the loaders resolve — each caches its instance on first
+/// touch, so pair a change with the relevant `debugResetForTests()`
+/// (those stay per class: the cached instance really is per class).
+///
+/// `qa_tablet` is a different binary and keeps its own override, on
+/// `QA_TABLET_PATH`.
+String? debugQaEngineLibraryPathOverride;
+
 /// Opens the engine binary, or null when there is none here or the one
 /// found does not speak [kQaEngineAbiVersion].
 ///
@@ -70,15 +85,19 @@ const int kQaEngineAbiVersion = 24;
 /// structs — see `qaAudioStructLayoutsMatch` — since only they know what
 /// the layout is supposed to be.
 ///
-/// [overridePath] is the caller's own test hook; `QA_ENGINE_PATH` is the
-/// environment fallback CI sets. A bad override falls through to the
-/// platform defaults rather than failing, so pointing at a stale path
-/// degrades to "no engine" instead of hiding a working one.
+/// The path comes from [debugQaEngineLibraryPathOverride], else the
+/// `QA_ENGINE_PATH` environment variable CI sets, else the platform
+/// defaults. A bad override falls THROUGH to those defaults rather than
+/// failing, so a stale path degrades to "no engine" instead of hiding a
+/// working one.
 ///
 /// Absence is graceful everywhere this is called: every caller keeps a
 /// Dart reference, a platform fallback, or an honest stand-down.
-DynamicLibrary? openQaEngineLibrary({String? overridePath}) {
-  final library = _open(overridePath);
+DynamicLibrary? openQaEngineLibrary() {
+  final library = _open(
+    debugQaEngineLibraryPathOverride ??
+        Platform.environment['QA_ENGINE_PATH'],
+  );
   if (library == null) {
     return null;
   }
@@ -102,8 +121,7 @@ bool qaEngineAbiMatches(DynamicLibrary library) {
   }
 }
 
-DynamicLibrary? _open(String? overridePath) {
-  final path = overridePath ?? Platform.environment['QA_ENGINE_PATH'];
+DynamicLibrary? _open(String? path) {
   if (path != null && path.isNotEmpty) {
     try {
       return DynamicLibrary.open(path);

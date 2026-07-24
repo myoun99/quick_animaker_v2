@@ -63,9 +63,6 @@ final class QaAudioDecoder {
   static QaAudioDecoder? _instance;
   static bool _tried = false;
 
-  /// Test hook: point the loader at a locally built binary.
-  static String? debugLibraryPathOverride;
-
   static void debugResetForTests() {
     _instance = null;
     _tried = false;
@@ -81,7 +78,7 @@ final class QaAudioDecoder {
   }
 
   static QaAudioDecoder? _load() {
-    final library = openQaEngineLibrary(overridePath: debugLibraryPathOverride);
+    final library = openQaEngineLibrary();
     if (library == null) {
       return null;
     }

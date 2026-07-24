@@ -16,6 +16,7 @@ import 'dart:typed_data';
 
 import '../../native/qa_audio_decoder.dart';
 import '../../native/qa_audio_native.dart';
+import '../../native/qa_engine_abi.dart';
 import 'audio_conform_pipeline.dart';
 import 'audio_resampler_reference.dart';
 
@@ -109,9 +110,12 @@ Float32List runResampleHere(ResampleRequest request) {
 }
 
 void _applyLibraryOverride(String? override) {
+  // A worker isolate re-resolves the singletons from scratch, so the test
+  // path has to travel with the request. One assignment now covers every
+  // loader — this used to name two of six, which was fine only because
+  // the conform path happens to touch exactly those two.
   if (override != null) {
-    QaAudioDecoder.debugLibraryPathOverride = override;
-    QaAudioNative.debugLibraryPathOverride = override;
+    debugQaEngineLibraryPathOverride = override;
   }
 }
 

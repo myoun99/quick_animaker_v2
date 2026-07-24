@@ -84,8 +84,31 @@ void main() {
         isEmpty,
         reason: 'these open the engine themselves, so they carry their own '
             'copy of the candidate list AND skip the version gate. Call '
-            'openQaEngineLibrary(overridePath: debugLibraryPathOverride) '
-            'instead — it opens and gates in one step.',
+            'openQaEngineLibrary() instead — it resolves the path, opens, '
+            'and gates in one step.',
+      );
+    });
+
+    test('no loader keeps its own path override', () {
+      final offenders = <String>[];
+      for (final file in loaders) {
+        final name = file.uri.pathSegments.last;
+        // qa_tablet_bridge.dart overrides a DIFFERENT binary's path
+        // (QA_TABLET_PATH), so its own hook is the correct shape.
+        if (name == 'qa_tablet_bridge.dart') {
+          continue;
+        }
+        if (file.readAsStringSync().contains('debugLibraryPathOverride')) {
+          offenders.add(name);
+        }
+      }
+      expect(
+        offenders,
+        isEmpty,
+        reason: 'where the engine binary is, is ONE fact about the process. '
+            'Six statics meant a caller could set some and miss the rest — '
+            'the conform worker set two of six. Use '
+            'debugQaEngineLibraryPathOverride.',
       );
     });
 
@@ -112,7 +135,7 @@ void main() {
 
     tearDown(() {
       QaAudioDevice.debugResetForTests();
-      QaAudioDevice.debugLibraryPathOverride = null;
+      debugQaEngineLibraryPathOverride = null;
     });
 
     test('the binary passes both gates', () {
@@ -135,7 +158,7 @@ void main() {
       // A gate that is subtly wrong looks exactly like "no binary" —
       // playback quietly drops to the platform player and nothing fails.
       QaAudioDevice.debugResetForTests();
-      QaAudioDevice.debugLibraryPathOverride = libraryPath;
+      debugQaEngineLibraryPathOverride = libraryPath;
       expect(QaAudioDevice.instance, isNotNull);
     }, skip: skip);
   });

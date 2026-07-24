@@ -12,7 +12,7 @@ import 'qa_engine_abi.dart';
 /// Unlike the video encoder there is NO test gate: encoding a buffer is
 /// a pure function with no device side effects, and the widget tests
 /// exercise the real thing when the standalone binary is around
-/// (debugLibraryPathOverride, same as the parity suites).
+/// ([debugQaEngineLibraryPathOverride], same as the parity suites).
 final class QaImageEncoder {
   QaImageEncoder._(this._library);
 
@@ -20,9 +20,6 @@ final class QaImageEncoder {
 
   static QaImageEncoder? _instance;
   static bool _tried = false;
-
-  /// Test hook: point the loader at a locally built binary.
-  static String? debugLibraryPathOverride;
 
   static void debugResetForTests() {
     _instance = null;
@@ -32,9 +29,7 @@ final class QaImageEncoder {
   static QaImageEncoder? get instance {
     if (!_tried) {
       _tried = true;
-      final library = openQaEngineLibrary(
-        overridePath: debugLibraryPathOverride,
-      );
+      final library = openQaEngineLibrary();
       _instance = library == null ? null : QaImageEncoder._(library);
     }
     return _instance;

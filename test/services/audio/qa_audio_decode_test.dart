@@ -2,6 +2,7 @@ import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:quick_animaker_v2/src/native/qa_audio_decoder.dart';
+import 'package:quick_animaker_v2/src/native/qa_engine_abi.dart';
 import 'package:quick_animaker_v2/src/services/audio/conform_wav_codec.dart';
 
 import '../../helpers/native_engine_path.dart';
@@ -19,12 +20,12 @@ void main() {
 
   setUp(() {
     QaAudioDecoder.debugResetForTests();
-    QaAudioDecoder.debugLibraryPathOverride = libraryPath;
+    debugQaEngineLibraryPathOverride = libraryPath;
   });
 
   tearDown(() {
     QaAudioDecoder.debugResetForTests();
-    QaAudioDecoder.debugLibraryPathOverride = null;
+    debugQaEngineLibraryPathOverride = null;
   });
 
   QaAudioDecoder requireDecoder() {

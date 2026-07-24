@@ -27,9 +27,6 @@ final class QaAudioDevice {
   static QaAudioDevice? _instance;
   static bool _tried = false;
 
-  /// Test hook: point the loader at a locally built binary.
-  static String? debugLibraryPathOverride;
-
   static void debugResetForTests() {
     _instance = null;
     _tried = false;
@@ -48,9 +45,7 @@ final class QaAudioDevice {
   static QaAudioDevice? get instance {
     if (!_tried) {
       _tried = true;
-      final library = openQaEngineLibrary(
-        overridePath: debugLibraryPathOverride,
-      );
+      final library = openQaEngineLibrary();
       _instance = library == null || !qaAudioStructLayoutsMatch(library)
           ? null
           : QaAudioDevice._(library);

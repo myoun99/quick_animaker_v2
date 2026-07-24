@@ -3,6 +3,7 @@ import 'dart:math';
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:quick_animaker_v2/src/native/qa_engine_abi.dart';
 import 'package:quick_animaker_v2/src/native/qa_native_engine.dart';
 import 'package:quick_animaker_v2/src/services/canvas_flood_fill.dart';
 
@@ -21,7 +22,7 @@ void main() {
 
   tearDown(() {
     QaNativeEngine.debugResetForTests();
-    QaNativeEngine.debugLibraryPathOverride = null;
+    debugQaEngineLibraryPathOverride = null;
     QaNativeEngine.debugForceDartFallback = false;
   });
 
@@ -218,7 +219,7 @@ void main() {
 
       // Native path: stage the SAME rgb into the engine's flood raster.
       QaNativeEngine.debugResetForTests();
-      QaNativeEngine.debugLibraryPathOverride = dllPath;
+      debugQaEngineLibraryPathOverride = dllPath;
       QaNativeEngine.debugForceDartFallback = false;
       final engine = QaNativeEngine.instance;
       expect(engine, isNotNull, reason: 'the locally built engine must load');

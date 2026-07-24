@@ -88,10 +88,9 @@ final class QaAudioNative {
   static QaAudioNative? _instance;
   static bool _tried = false;
 
-  /// Test hook: point the loader at a locally built binary.
-  static String? debugLibraryPathOverride;
-
   /// Test hook: force the Dart reference path even when a binary loads.
+  /// (Where the binary IS lives in [debugQaEngineLibraryPathOverride] —
+  /// one switch for every loader.)
   static bool debugForceDartFallback = false;
 
   static void debugResetForTests() {
@@ -113,7 +112,7 @@ final class QaAudioNative {
   }
 
   static QaAudioNative? _load() {
-    final library = openQaEngineLibrary(overridePath: debugLibraryPathOverride);
+    final library = openQaEngineLibrary();
     if (library == null || !qaAudioStructLayoutsMatch(library)) {
       return null;
     }

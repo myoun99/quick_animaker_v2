@@ -5,6 +5,7 @@ import 'dart:ui' show Color;
 import 'package:flutter_test/flutter_test.dart';
 
 import '../helpers/native_engine_path.dart';
+import 'package:quick_animaker_v2/src/native/qa_engine_abi.dart';
 import 'package:quick_animaker_v2/src/native/qa_native_engine.dart';
 import 'package:quick_animaker_v2/src/ui/timeline/timeline_grid_tile_ops.dart';
 
@@ -21,13 +22,13 @@ void main() {
 
   setUp(() {
     QaNativeEngine.debugResetForTests();
-    QaNativeEngine.debugLibraryPathOverride = dllPath;
+    debugQaEngineLibraryPathOverride = dllPath;
     QaNativeEngine.debugForceDartFallback = false;
   });
 
   tearDown(() {
     QaNativeEngine.debugResetForTests();
-    QaNativeEngine.debugLibraryPathOverride = null;
+    debugQaEngineLibraryPathOverride = null;
     QaNativeEngine.debugForceDartFallback = false;
   });
 

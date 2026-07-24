@@ -10,6 +10,7 @@ import 'package:quick_animaker_v2/src/models/brush_blend_mode.dart';
 import 'package:quick_animaker_v2/src/models/canvas_size.dart';
 import 'package:quick_animaker_v2/src/models/dirty_region.dart';
 import 'package:quick_animaker_v2/src/models/tile_coord.dart';
+import 'package:quick_animaker_v2/src/native/qa_engine_abi.dart';
 import 'package:quick_animaker_v2/src/native/qa_native_engine.dart';
 import 'package:quick_animaker_v2/src/services/bitmap_surface_brush_commit.dart';
 import 'package:quick_animaker_v2/src/services/bitmap_surface_geometry.dart';
@@ -26,13 +27,13 @@ void main() {
 
   setUp(() {
     QaNativeEngine.debugResetForTests();
-    QaNativeEngine.debugLibraryPathOverride = dllPath;
+    debugQaEngineLibraryPathOverride = dllPath;
     QaNativeEngine.debugForceDartFallback = false;
   });
 
   tearDown(() {
     QaNativeEngine.debugResetForTests();
-    QaNativeEngine.debugLibraryPathOverride = null;
+    debugQaEngineLibraryPathOverride = null;
     QaNativeEngine.debugForceDartFallback = false;
   });
 

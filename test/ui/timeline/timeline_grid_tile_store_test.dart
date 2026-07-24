@@ -10,6 +10,7 @@ import 'package:quick_animaker_v2/src/models/layer.dart';
 import 'package:quick_animaker_v2/src/models/layer_id.dart';
 import 'package:quick_animaker_v2/src/models/timeline_coverage.dart';
 import 'package:quick_animaker_v2/src/models/timeline_exposure.dart';
+import 'package:quick_animaker_v2/src/native/qa_engine_abi.dart';
 import 'package:quick_animaker_v2/src/native/qa_native_engine.dart';
 import 'package:quick_animaker_v2/src/ui/timeline/timeline_cell_exposure_state.dart';
 import 'package:quick_animaker_v2/src/ui/timeline/timeline_grid_tile_ops.dart';
@@ -64,14 +65,14 @@ void main() {
 
   setUp(() {
     QaNativeEngine.debugResetForTests();
-    QaNativeEngine.debugLibraryPathOverride = dllPath;
+    debugQaEngineLibraryPathOverride = dllPath;
     QaNativeEngine.debugForceDartFallback = false;
     TimelineGridTileStore.instance.clear();
   });
 
   tearDown(() {
     QaNativeEngine.debugResetForTests();
-    QaNativeEngine.debugLibraryPathOverride = null;
+    debugQaEngineLibraryPathOverride = null;
     QaNativeEngine.debugForceDartFallback = false;
     TimelineGridTileStore.instance.clear();
   });

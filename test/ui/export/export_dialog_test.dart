@@ -16,6 +16,7 @@ import 'package:quick_animaker_v2/src/models/project.dart';
 import 'package:quick_animaker_v2/src/models/project_id.dart';
 import 'package:quick_animaker_v2/src/models/track.dart';
 import 'package:quick_animaker_v2/src/models/track_id.dart';
+import 'package:quick_animaker_v2/src/native/qa_engine_abi.dart';
 import 'package:quick_animaker_v2/src/native/qa_image_encoder.dart';
 import 'package:quick_animaker_v2/src/services/persistence/app_export_settings.dart';
 import 'package:quick_animaker_v2/src/services/persistence/app_export_settings_store.dart';
@@ -731,9 +732,9 @@ void main() {
         return;
       }
       QaImageEncoder.debugResetForTests();
-      QaImageEncoder.debugLibraryPathOverride = enginePath;
+      debugQaEngineLibraryPathOverride = enginePath;
       addTearDown(() {
-        QaImageEncoder.debugLibraryPathOverride = null;
+        debugQaEngineLibraryPathOverride = null;
         QaImageEncoder.debugResetForTests();
       });
       final state = await pumpDialog(

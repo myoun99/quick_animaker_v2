@@ -4,6 +4,7 @@ import 'dart:typed_data';
 import 'package:flutter_test/flutter_test.dart';
 
 import '../helpers/native_engine_path.dart';
+import 'package:quick_animaker_v2/src/native/qa_engine_abi.dart';
 import 'package:quick_animaker_v2/src/models/bitmap_surface.dart';
 import 'package:quick_animaker_v2/src/models/bitmap_tile.dart';
 import 'package:quick_animaker_v2/src/models/brush_dab.dart';
@@ -40,13 +41,13 @@ void main() {
 
   setUp(() {
     QaNativeEngine.debugResetForTests();
-    QaNativeEngine.debugLibraryPathOverride = dllPath;
+    debugQaEngineLibraryPathOverride = dllPath;
     QaNativeEngine.debugForceDartFallback = false;
   });
 
   tearDown(() {
     QaNativeEngine.debugResetForTests();
-    QaNativeEngine.debugLibraryPathOverride = null;
+    debugQaEngineLibraryPathOverride = null;
     QaNativeEngine.debugForceDartFallback = false;
   });
 
