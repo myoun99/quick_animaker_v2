@@ -237,56 +237,17 @@ BrushDab transformStampDab(BrushDab stampDab, SelectionAffine affine) {
       // R(−θ) then S⁻¹, back into stamp pixel space.
       final px = (qx * cos + qy * sin) * invSx + affine.pivot.x;
       final py = (-qx * sin + qy * cos) * invSy + affine.pivot.y;
-      final sampleX = px - srcLeft - 0.5;
-      final sampleY = py - srcTop - 0.5;
-      final x0 = sampleX.floor();
-      final y0 = sampleY.floor();
-      final fx = sampleX - x0;
-      final fy = sampleY - y0;
-      _catmullRomWeights(fx, _cubicWeightsX);
-      _catmullRomWeights(fy, _cubicWeightsY);
-
-      var alphaAcc = 0.0;
-      var redAcc = 0.0, greenAcc = 0.0, blueAcc = 0.0;
-      for (var tapJ = 0; tapJ < 4; tapJ += 1) {
-        final tapY = y0 - 1 + tapJ;
-        if (tapY < 0 || tapY >= stamp.height) {
-          continue;
-        }
-        final weightY = _cubicWeightsY[tapJ];
-        if (weightY == 0) {
-          continue;
-        }
-        final rowOffset = tapY * stamp.width;
-        for (var tapI = 0; tapI < 4; tapI += 1) {
-          final tapX = x0 - 1 + tapI;
-          if (tapX < 0 || tapX >= stamp.width) {
-            continue;
-          }
-          final weight = _cubicWeightsX[tapI] * weightY;
-          if (weight == 0) {
-            continue;
-          }
-          final offset = (rowOffset + tapX) * 4;
-          final alpha = source[offset + 3];
-          if (alpha == 0) {
-            continue;
-          }
-          final weightedAlpha = weight * alpha;
-          alphaAcc += weightedAlpha;
-          redAcc += weightedAlpha * source[offset];
-          greenAcc += weightedAlpha * source[offset + 1];
-          blueAcc += weightedAlpha * source[offset + 2];
-        }
-      }
-      if (alphaAcc <= 0) {
-        continue;
-      }
-      final offset = (oy * outWidth + ox) * 4;
-      bytes[offset] = (redAcc / alphaAcc).round().clamp(0, 255);
-      bytes[offset + 1] = (greenAcc / alphaAcc).round().clamp(0, 255);
-      bytes[offset + 2] = (blueAcc / alphaAcc).round().clamp(0, 255);
-      bytes[offset + 3] = alphaAcc.round().clamp(0, 255);
+      _bicubicSampleInto(
+        bytes,
+        (oy * outWidth + ox) * 4,
+        source,
+        stamp.width,
+        stamp.height,
+        px,
+        py,
+        srcLeft,
+        srcTop,
+      );
     }
   }
 
@@ -426,54 +387,17 @@ BrushDab transformStampDabQuad(BrushDab stampDab, List<CanvasPoint> corners) {
       }
       final px = (h[0] * qx + h[1] * qy + h[2]) / w;
       final py = (h[3] * qx + h[4] * qy + h[5]) / w;
-      final sampleX = px - srcLeft - 0.5;
-      final sampleY = py - srcTop - 0.5;
-      final x0 = sampleX.floor();
-      final y0 = sampleY.floor();
-      _catmullRomWeights(sampleX - x0, _cubicWeightsX);
-      _catmullRomWeights(sampleY - y0, _cubicWeightsY);
-
-      var alphaAcc = 0.0;
-      var redAcc = 0.0, greenAcc = 0.0, blueAcc = 0.0;
-      for (var tapJ = 0; tapJ < 4; tapJ += 1) {
-        final tapY = y0 - 1 + tapJ;
-        if (tapY < 0 || tapY >= stamp.height) {
-          continue;
-        }
-        final weightY = _cubicWeightsY[tapJ];
-        if (weightY == 0) {
-          continue;
-        }
-        final rowOffset = tapY * stamp.width;
-        for (var tapI = 0; tapI < 4; tapI += 1) {
-          final tapX = x0 - 1 + tapI;
-          if (tapX < 0 || tapX >= stamp.width) {
-            continue;
-          }
-          final weight = _cubicWeightsX[tapI] * weightY;
-          if (weight == 0) {
-            continue;
-          }
-          final offset = (rowOffset + tapX) * 4;
-          final alpha = source[offset + 3];
-          if (alpha == 0) {
-            continue;
-          }
-          final weightedAlpha = weight * alpha;
-          alphaAcc += weightedAlpha;
-          redAcc += weightedAlpha * source[offset];
-          greenAcc += weightedAlpha * source[offset + 1];
-          blueAcc += weightedAlpha * source[offset + 2];
-        }
-      }
-      if (alphaAcc <= 0) {
-        continue;
-      }
-      final offset = (oy * outWidth + ox) * 4;
-      bytes[offset] = (redAcc / alphaAcc).round().clamp(0, 255);
-      bytes[offset + 1] = (greenAcc / alphaAcc).round().clamp(0, 255);
-      bytes[offset + 2] = (blueAcc / alphaAcc).round().clamp(0, 255);
-      bytes[offset + 3] = alphaAcc.round().clamp(0, 255);
+      _bicubicSampleInto(
+        bytes,
+        (oy * outWidth + ox) * 4,
+        source,
+        stamp.width,
+        stamp.height,
+        px,
+        py,
+        srcLeft,
+        srcTop,
+      );
     }
   }
 
@@ -597,54 +521,20 @@ BrushDab transformStampDabMesh(
         }
         final px = s0.x * w0 + s1.x * w1 + s2.x * w2;
         final py = s0.y * w0 + s1.y * w1 + s2.y * w2;
-        final sampleX = px - srcLeft - 0.5;
-        final sampleY = py - srcTop - 0.5;
-        final x0 = sampleX.floor();
-        final y0 = sampleY.floor();
-        _catmullRomWeights(sampleX - x0, _cubicWeightsX);
-        _catmullRomWeights(sampleY - y0, _cubicWeightsY);
-        var alphaAcc = 0.0;
-        var redAcc = 0.0, greenAcc = 0.0, blueAcc = 0.0;
-        for (var tapJ = 0; tapJ < 4; tapJ += 1) {
-          final tapY = y0 - 1 + tapJ;
-          if (tapY < 0 || tapY >= stamp.height) {
-            continue;
-          }
-          final weightY = _cubicWeightsY[tapJ];
-          if (weightY == 0) {
-            continue;
-          }
-          final rowOffset = tapY * stamp.width;
-          for (var tapI = 0; tapI < 4; tapI += 1) {
-            final tapX = x0 - 1 + tapI;
-            if (tapX < 0 || tapX >= stamp.width) {
-              continue;
-            }
-            final weight = _cubicWeightsX[tapI] * weightY;
-            if (weight == 0) {
-              continue;
-            }
-            final offset = (rowOffset + tapX) * 4;
-            final alpha = source[offset + 3];
-            if (alpha == 0) {
-              continue;
-            }
-            final weightedAlpha = weight * alpha;
-            alphaAcc += weightedAlpha;
-            redAcc += weightedAlpha * source[offset];
-            greenAcc += weightedAlpha * source[offset + 1];
-            blueAcc += weightedAlpha * source[offset + 2];
-          }
-        }
+        // The pixel is inside this triangle regardless of what it samples,
+        // so it is covered even when the sampled color is fully transparent.
         covered[index] = 1;
-        if (alphaAcc <= 0) {
-          continue;
-        }
-        final offset = index * 4;
-        bytes[offset] = (redAcc / alphaAcc).round().clamp(0, 255);
-        bytes[offset + 1] = (greenAcc / alphaAcc).round().clamp(0, 255);
-        bytes[offset + 2] = (blueAcc / alphaAcc).round().clamp(0, 255);
-        bytes[offset + 3] = alphaAcc.round().clamp(0, 255);
+        _bicubicSampleInto(
+          bytes,
+          index * 4,
+          source,
+          stamp.width,
+          stamp.height,
+          px,
+          py,
+          srcLeft,
+          srcTop,
+        );
       }
     }
   }
@@ -700,6 +590,72 @@ void _catmullRomWeights(double f, Float64List out) {
 
 final Float64List _cubicWeightsX = Float64List(4);
 final Float64List _cubicWeightsY = Float64List(4);
+
+/// Bicubic (Catmull-Rom) resample of the stamp at source pixel [px], [py]
+/// into [bytes] at [outOffset], premultiplied-weighted so transparent taps
+/// never bleed. The three warp paths (affine, homography, mesh) differ only
+/// in how they derive [px]/[py] — this is the sampling kernel they share,
+/// byte-for-byte. Uses the shared per-pixel weight scratch; single-threaded
+/// like its callers. Writes nothing when the accumulated coverage is zero.
+void _bicubicSampleInto(
+  Uint8List bytes,
+  int outOffset,
+  Uint8List source,
+  int stampWidth,
+  int stampHeight,
+  double px,
+  double py,
+  double srcLeft,
+  double srcTop,
+) {
+  final sampleX = px - srcLeft - 0.5;
+  final sampleY = py - srcTop - 0.5;
+  final x0 = sampleX.floor();
+  final y0 = sampleY.floor();
+  _catmullRomWeights(sampleX - x0, _cubicWeightsX);
+  _catmullRomWeights(sampleY - y0, _cubicWeightsY);
+
+  var alphaAcc = 0.0;
+  var redAcc = 0.0, greenAcc = 0.0, blueAcc = 0.0;
+  for (var tapJ = 0; tapJ < 4; tapJ += 1) {
+    final tapY = y0 - 1 + tapJ;
+    if (tapY < 0 || tapY >= stampHeight) {
+      continue;
+    }
+    final weightY = _cubicWeightsY[tapJ];
+    if (weightY == 0) {
+      continue;
+    }
+    final rowOffset = tapY * stampWidth;
+    for (var tapI = 0; tapI < 4; tapI += 1) {
+      final tapX = x0 - 1 + tapI;
+      if (tapX < 0 || tapX >= stampWidth) {
+        continue;
+      }
+      final weight = _cubicWeightsX[tapI] * weightY;
+      if (weight == 0) {
+        continue;
+      }
+      final offset = (rowOffset + tapX) * 4;
+      final alpha = source[offset + 3];
+      if (alpha == 0) {
+        continue;
+      }
+      final weightedAlpha = weight * alpha;
+      alphaAcc += weightedAlpha;
+      redAcc += weightedAlpha * source[offset];
+      greenAcc += weightedAlpha * source[offset + 1];
+      blueAcc += weightedAlpha * source[offset + 2];
+    }
+  }
+  if (alphaAcc <= 0) {
+    return;
+  }
+  bytes[outOffset] = (redAcc / alphaAcc).round().clamp(0, 255);
+  bytes[outOffset + 1] = (greenAcc / alphaAcc).round().clamp(0, 255);
+  bytes[outOffset + 2] = (blueAcc / alphaAcc).round().clamp(0, 255);
+  bytes[outOffset + 3] = alphaAcc.round().clamp(0, 255);
+}
 
 /// The bitmap-lift pair (R14-④): an erase mask dab that cuts the
 /// selection's pixels out of the layer at their origin, and a stamp dab
