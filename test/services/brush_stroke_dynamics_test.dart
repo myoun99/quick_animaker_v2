@@ -28,7 +28,7 @@ BrushDab _dab({double x = 10, double y = 10, int sequence = 0}) {
 void main() {
   test('inactive settings pass dabs through unchanged', () {
     final dynamics = BrushStrokeDynamics(
-      settings: const BrushEditCanvasInputSettings(),
+      settings: BrushEditCanvasInputSettings(),
       random: math.Random(1),
     );
     final dabs = [_dab(), _dab(x: 12, sequence: 1)];
@@ -37,7 +37,7 @@ void main() {
 
   test('direction mode adds the stroke direction to the tip angle', () {
     final dynamics = BrushStrokeDynamics(
-      settings: const BrushEditCanvasInputSettings(
+      settings: BrushEditCanvasInputSettings(
         rotationMode: BrushTipRotationMode.direction,
       ),
       random: math.Random(1),
@@ -56,7 +56,7 @@ void main() {
   });
 
   test('scatter emits count dabs within the radius', () {
-    const settings = BrushEditCanvasInputSettings(
+    final settings = BrushEditCanvasInputSettings(
       scatterRadiusRatio: 0.5, // radius = 5 canvas px for size-10 dabs
       scatterCount: 4,
     );
@@ -83,7 +83,7 @@ void main() {
   });
 
   test('jitters only reduce size and opacity, within bounds', () {
-    const settings = BrushEditCanvasInputSettings(
+    final settings = BrushEditCanvasInputSettings(
       sizeJitter: 0.5,
       opacityJitter: 0.5,
       angleJitter: 0.25,
@@ -112,7 +112,7 @@ void main() {
   });
 
   test('same seed reproduces the same emission', () {
-    const settings = BrushEditCanvasInputSettings(
+    final settings = BrushEditCanvasInputSettings(
       scatterRadiusRatio: 1.0,
       scatterCount: 3,
       sizeJitter: 0.4,

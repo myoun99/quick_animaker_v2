@@ -1,101 +1,175 @@
 import '../../models/brush_blend_mode.dart';
 import '../../models/brush_pressure_curve.dart';
+import '../../models/brush_shape.dart';
 import '../../models/brush_tip_mask.dart';
 import '../../models/brush_tip_rotation_mode.dart';
 import '../../models/brush_tip_shape.dart';
 
 class BrushEditCanvasInputSettings {
-  const BrushEditCanvasInputSettings({
-    this.color = 0xFF000000,
-    this.size = 1.0,
-    this.opacity = 1.0,
-    this.flow = 1.0,
-    this.hardness = 1.0,
-    this.tipShape = BrushTipShape.round,
-    this.spacing = 0.25,
-    this.sizePressureCurve,
-    this.opacityPressureCurve,
-    this.flowPressureCurve,
-    this.hardnessPressureCurve,
-    this.roundness = 1.0,
-    this.angleDegrees = 0.0,
-    this.tipMask,
-    this.rotationMode = BrushTipRotationMode.fixed,
-    this.sizeJitter = 0.0,
-    this.opacityJitter = 0.0,
-    this.angleJitter = 0.0,
-    this.scatterRadiusRatio = 0.0,
-    this.scatterCount = 1,
-    this.scatterBothAxes = true,
-    this.dualMask,
-    this.dualMaskScale = 1.0,
-    this.textureMask,
-    this.textureScale = 1.0,
-    this.textureDensity = 1.0,
-    this.erase = false,
-    this.blendMode = BrushBlendMode.color,
-    this.stabilizerStrength = 0.0,
-  }) : assert(size > 0.0, 'BrushEditCanvasInputSettings.size must be > 0.'),
-       assert(
-         stabilizerStrength >= 0.0 && stabilizerStrength <= 100.0,
-         'BrushEditCanvasInputSettings.stabilizerStrength must be in '
-         '[0, 100].',
-       ),
-       assert(
-         textureScale > 0.0,
-         'BrushEditCanvasInputSettings.textureScale must be > 0.',
-       ),
-       assert(
-         textureDensity >= 0.0 && textureDensity <= 1.0,
-         'BrushEditCanvasInputSettings.textureDensity must be in [0, 1].',
-       ),
-       assert(
-         dualMaskScale > 0.0,
-         'BrushEditCanvasInputSettings.dualMaskScale must be > 0.',
-       ),
-       assert(
-         scatterRadiusRatio >= 0.0,
-         'BrushEditCanvasInputSettings.scatterRadiusRatio must be >= 0.',
-       ),
-       assert(
-         scatterCount >= 1,
-         'BrushEditCanvasInputSettings.scatterCount must be at least 1.',
-       ),
-       assert(
-         roundness > 0.0 && roundness <= 1.0,
-         'BrushEditCanvasInputSettings.roundness must be in (0, 1].',
-       ),
-       assert(
-         opacity >= 0.0 && opacity <= 1.0,
-         'BrushEditCanvasInputSettings.opacity must be between 0 and 1.',
-       ),
-       assert(
-         flow >= 0.0 && flow <= 1.0,
-         'BrushEditCanvasInputSettings.flow must be between 0 and 1.',
-       ),
-       assert(
-         hardness >= 0.0 && hardness <= 1.0,
-         'BrushEditCanvasInputSettings.hardness must be between 0 and 1.',
-       ),
-       assert(
-         spacing > 0.0,
-         'BrushEditCanvasInputSettings.spacing must be > 0.',
-       );
+  factory BrushEditCanvasInputSettings({
+    int color = 0xFF000000,
+    double size = 1.0,
+    double opacity = 1.0,
+    double flow = 1.0,
+    double hardness = 1.0,
+    BrushTipShape tipShape = BrushTipShape.round,
+    double spacing = 0.25,
+    BrushPressureCurve? sizePressureCurve,
+    BrushPressureCurve? opacityPressureCurve,
+    BrushPressureCurve? flowPressureCurve,
+    BrushPressureCurve? hardnessPressureCurve,
+    double roundness = 1.0,
+    double angleDegrees = 0.0,
+    BrushTipMask? tipMask,
+    BrushTipRotationMode rotationMode = BrushTipRotationMode.fixed,
+    double sizeJitter = 0.0,
+    double opacityJitter = 0.0,
+    double angleJitter = 0.0,
+    double scatterRadiusRatio = 0.0,
+    int scatterCount = 1,
+    bool scatterBothAxes = true,
+    BrushTipMask? dualMask,
+    double dualMaskScale = 1.0,
+    BrushTipMask? textureMask,
+    double textureScale = 1.0,
+    double textureDensity = 1.0,
+    bool erase = false,
+    BrushBlendMode blendMode = BrushBlendMode.color,
+    double stabilizerStrength = 0.0,
+  }) {
+    assert(size > 0.0, 'BrushEditCanvasInputSettings.size must be > 0.');
+    assert(
+      stabilizerStrength >= 0.0 && stabilizerStrength <= 100.0,
+      'BrushEditCanvasInputSettings.stabilizerStrength must be in [0, 100].',
+    );
+    assert(
+      textureScale > 0.0,
+      'BrushEditCanvasInputSettings.textureScale must be > 0.',
+    );
+    assert(
+      textureDensity >= 0.0 && textureDensity <= 1.0,
+      'BrushEditCanvasInputSettings.textureDensity must be in [0, 1].',
+    );
+    assert(
+      dualMaskScale > 0.0,
+      'BrushEditCanvasInputSettings.dualMaskScale must be > 0.',
+    );
+    assert(
+      scatterRadiusRatio >= 0.0,
+      'BrushEditCanvasInputSettings.scatterRadiusRatio must be >= 0.',
+    );
+    assert(
+      scatterCount >= 1,
+      'BrushEditCanvasInputSettings.scatterCount must be at least 1.',
+    );
+    assert(
+      roundness > 0.0 && roundness <= 1.0,
+      'BrushEditCanvasInputSettings.roundness must be in (0, 1].',
+    );
+    assert(
+      opacity >= 0.0 && opacity <= 1.0,
+      'BrushEditCanvasInputSettings.opacity must be between 0 and 1.',
+    );
+    assert(
+      flow >= 0.0 && flow <= 1.0,
+      'BrushEditCanvasInputSettings.flow must be between 0 and 1.',
+    );
+    assert(
+      hardness >= 0.0 && hardness <= 1.0,
+      'BrushEditCanvasInputSettings.hardness must be between 0 and 1.',
+    );
+    assert(spacing > 0.0, 'BrushEditCanvasInputSettings.spacing must be > 0.');
+    return BrushEditCanvasInputSettings._raw(
+      shape: BrushShape(
+        color: color,
+        size: size,
+        opacity: opacity,
+        flow: flow,
+        hardness: hardness,
+        spacing: spacing,
+        tipShape: tipShape,
+        sizePressureCurve: sizePressureCurve,
+        opacityPressureCurve: opacityPressureCurve,
+        flowPressureCurve: flowPressureCurve,
+        hardnessPressureCurve: hardnessPressureCurve,
+        roundness: roundness,
+        angleDegrees: angleDegrees,
+        tipMask: tipMask,
+        rotationMode: rotationMode,
+        sizeJitter: sizeJitter,
+        opacityJitter: opacityJitter,
+        angleJitter: angleJitter,
+        scatterRadiusRatio: scatterRadiusRatio,
+        scatterCount: scatterCount,
+        scatterBothAxes: scatterBothAxes,
+        dualMask: dualMask,
+        dualMaskScale: dualMaskScale,
+        textureMask: textureMask,
+        textureScale: textureScale,
+        textureDensity: textureDensity,
+      ),
+      erase: erase,
+      blendMode: blendMode,
+      stabilizerStrength: stabilizerStrength,
+    );
+  }
 
-  final int color;
-  final double size;
-  final double opacity;
-  final double flow;
-  final double hardness;
-  final BrushTipShape tipShape;
-  final double spacing;
+  const BrushEditCanvasInputSettings._raw({
+    required this.shape,
+    required this.erase,
+    required this.blendMode,
+    required this.stabilizerStrength,
+  });
+
+  /// Builds canvas input from an already-legal [BrushShape], carrying the whole
+  /// shape across in one hop (the D4 wholesale converter path — a shared brush
+  /// parameter cannot be dropped between the tool state and the canvas).
+  factory BrushEditCanvasInputSettings.fromShape(
+    BrushShape shape, {
+    bool erase = false,
+    BrushBlendMode blendMode = BrushBlendMode.color,
+    double stabilizerStrength = 0.0,
+  }) {
+    assert(
+      stabilizerStrength >= 0.0 && stabilizerStrength <= 100.0,
+      'BrushEditCanvasInputSettings.stabilizerStrength must be in [0, 100].',
+    );
+    return BrushEditCanvasInputSettings._raw(
+      shape: shape,
+      erase: erase,
+      blendMode: blendMode,
+      stabilizerStrength: stabilizerStrength,
+    );
+  }
+
+  /// The all-defaults instance, kept const so it can back a default parameter
+  /// value now that the public constructor is a (non-const) factory.
+  static const BrushEditCanvasInputSettings defaults =
+      BrushEditCanvasInputSettings._raw(
+        shape: BrushShape(size: 1.0, spacing: 0.25),
+        erase: false,
+        blendMode: BrushBlendMode.color,
+        stabilizerStrength: 0.0,
+      );
+
+  /// The shared 26-parameter spine; the fields below forward to it. See
+  /// [BrushShape].
+  final BrushShape shape;
+
+  int get color => shape.color;
+  double get size => shape.size;
+  double get opacity => shape.opacity;
+  double get flow => shape.flow;
+  double get hardness => shape.hardness;
+  BrushTipShape get tipShape => shape.tipShape;
+  double get spacing => shape.spacing;
 
   /// BB-3 (R26 #11): per-setting pressure response curves; `null` = the
   /// setting ignores pressure. See `BrushSettings` for the model story.
-  final BrushPressureCurve? sizePressureCurve;
-  final BrushPressureCurve? opacityPressureCurve;
-  final BrushPressureCurve? flowPressureCurve;
-  final BrushPressureCurve? hardnessPressureCurve;
+  BrushPressureCurve? get sizePressureCurve => shape.sizePressureCurve;
+  BrushPressureCurve? get opacityPressureCurve => shape.opacityPressureCurve;
+  BrushPressureCurve? get flowPressureCurve => shape.flowPressureCurve;
+  BrushPressureCurve? get hardnessPressureCurve => shape.hardnessPressureCurve;
 
   /// Whether any pressure curve is active (the no-pressure hot path skips
   /// the per-dab dynamics pass entirely).
@@ -105,47 +179,21 @@ class BrushEditCanvasInputSettings {
       flowPressureCurve != null ||
       hardnessPressureCurve != null;
 
-  /// Minor-to-major axis ratio of the tip in (0, 1]; 1.0 is the classic
-  /// circle/square.
-  final double roundness;
-
-  /// Visual counterclockwise rotation of the tip's major axis from the
-  /// horizontal, in degrees.
-  final double angleDegrees;
-
-  /// Sampled (bitmap) tip; when set it overrides [tipShape] and [hardness].
-  final BrushTipMask? tipMask;
-
-  /// How dab angles are chosen at placement time.
-  final BrushTipRotationMode rotationMode;
-
-  /// Random per-dab size reduction, 0..1.
-  final double sizeJitter;
-
-  /// Random per-dab opacity reduction, 0..1.
-  final double opacityJitter;
-
-  /// Random per-dab tip rotation, 0..1 of a half turn in each direction.
-  final double angleJitter;
-
-  /// Scatter radius as a ratio of the dab size; 0 disables scattering.
-  final double scatterRadiusRatio;
-
-  /// Dabs stamped per placement step when scattering.
-  final int scatterCount;
-
-  /// Whether scatter spreads on both axes or only across the stroke.
-  final bool scatterBothAxes;
-
-  /// Dual-brush mask multiplying every dab's coverage; tiled at
-  /// [dualMaskScale] times the dab size with a random per-dab phase.
-  final BrushTipMask? dualMask;
-  final double dualMaskScale;
-
-  /// Paper texture tiled in canvas space; see the same fields on `BrushDab`.
-  final BrushTipMask? textureMask;
-  final double textureScale;
-  final double textureDensity;
+  double get roundness => shape.roundness;
+  double get angleDegrees => shape.angleDegrees;
+  BrushTipMask? get tipMask => shape.tipMask;
+  BrushTipRotationMode get rotationMode => shape.rotationMode;
+  double get sizeJitter => shape.sizeJitter;
+  double get opacityJitter => shape.opacityJitter;
+  double get angleJitter => shape.angleJitter;
+  double get scatterRadiusRatio => shape.scatterRadiusRatio;
+  int get scatterCount => shape.scatterCount;
+  bool get scatterBothAxes => shape.scatterBothAxes;
+  BrushTipMask? get dualMask => shape.dualMask;
+  double get dualMaskScale => shape.dualMaskScale;
+  BrushTipMask? get textureMask => shape.textureMask;
+  double get textureScale => shape.textureScale;
+  double get textureDensity => shape.textureDensity;
 
   /// Eraser mode: dabs remove destination alpha (destination-out) instead
   /// of painting color.
@@ -230,82 +278,16 @@ class BrushEditCanvasInputSettings {
   bool operator ==(Object other) =>
       identical(this, other) ||
       other is BrushEditCanvasInputSettings &&
-          other.color == color &&
-          other.size == size &&
-          other.opacity == opacity &&
-          other.flow == flow &&
-          other.hardness == hardness &&
-          other.tipShape == tipShape &&
-          other.spacing == spacing &&
-          other.sizePressureCurve == sizePressureCurve &&
-          other.opacityPressureCurve == opacityPressureCurve &&
-          other.flowPressureCurve == flowPressureCurve &&
-          other.hardnessPressureCurve == hardnessPressureCurve &&
-          other.roundness == roundness &&
-          other.angleDegrees == angleDegrees &&
-          other.tipMask == tipMask &&
-          other.rotationMode == rotationMode &&
-          other.sizeJitter == sizeJitter &&
-          other.opacityJitter == opacityJitter &&
-          other.angleJitter == angleJitter &&
-          other.scatterRadiusRatio == scatterRadiusRatio &&
-          other.scatterCount == scatterCount &&
-          other.scatterBothAxes == scatterBothAxes &&
-          other.dualMask == dualMask &&
-          other.dualMaskScale == dualMaskScale &&
-          other.textureMask == textureMask &&
-          other.textureScale == textureScale &&
-          other.textureDensity == textureDensity &&
+          other.shape == shape &&
           other.erase == erase &&
           other.blendMode == blendMode &&
           other.stabilizerStrength == stabilizerStrength;
 
   @override
-  int get hashCode => Object.hashAll([
-    color,
-    size,
-    opacity,
-    flow,
-    hardness,
-    tipShape,
-    spacing,
-    sizePressureCurve,
-    opacityPressureCurve,
-    flowPressureCurve,
-    hardnessPressureCurve,
-    roundness,
-    angleDegrees,
-    tipMask,
-    rotationMode,
-    sizeJitter,
-    opacityJitter,
-    angleJitter,
-    scatterRadiusRatio,
-    scatterCount,
-    scatterBothAxes,
-    dualMask,
-    dualMaskScale,
-    textureMask,
-    textureScale,
-    textureDensity,
-    erase,
-    blendMode,
-    stabilizerStrength,
-  ]);
+  int get hashCode => Object.hash(shape, erase, blendMode, stabilizerStrength);
 
   @override
   String toString() =>
-      'BrushEditCanvasInputSettings(color: $color, size: $size, '
-      'opacity: $opacity, flow: $flow, hardness: $hardness, '
-      'tipShape: $tipShape, spacing: $spacing, '
-      'sizePressureCurve: $sizePressureCurve, '
-      'opacityPressureCurve: $opacityPressureCurve, '
-      'flowPressureCurve: $flowPressureCurve, '
-      'hardnessPressureCurve: $hardnessPressureCurve, '
-      'roundness: $roundness, angleDegrees: $angleDegrees, '
-      'tipMask: $tipMask, rotationMode: $rotationMode, '
-      'sizeJitter: $sizeJitter, '
-      'opacityJitter: $opacityJitter, angleJitter: $angleJitter, '
-      'scatterRadiusRatio: $scatterRadiusRatio, '
-      'scatterCount: $scatterCount, scatterBothAxes: $scatterBothAxes)';
+      'BrushEditCanvasInputSettings(shape: $shape, erase: $erase, '
+      'blendMode: $blendMode, stabilizerStrength: $stabilizerStrength)';
 }

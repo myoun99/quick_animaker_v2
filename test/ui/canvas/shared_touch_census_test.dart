@@ -57,7 +57,7 @@ void main() {
         ),
         layerId: LayerId('layer-$id'),
         frameId: FrameId('frame-$id'),
-        inputSettings: const BrushEditCanvasInputSettings(),
+        inputSettings: BrushEditCanvasInputSettings(),
         onSourceStrokeCommitted: commits.add,
       ),
     );

@@ -1,6 +1,7 @@
 import '../../models/brush_blend_mode.dart';
 import '../../models/brush_pressure_curve.dart';
 import '../../models/brush_settings.dart';
+import '../../models/brush_shape.dart';
 import '../../models/brush_tip_mask.dart';
 import '../../models/brush_tip_rotation_mode.dart';
 import '../../models/brush_tip_shape.dart';
@@ -32,6 +33,13 @@ bool canvasToolSelects(CanvasTool tool) =>
 /// This is UI/tool state owned by the editor session. It is intentionally
 /// separate from project, cut, layer, frame, stroke, cache, and save/load
 /// data.
+///
+/// The 26 shared brush parameters live in [shape] ([BrushShape]); the fields
+/// below forward to it, and [toBrushSettings]/[toInputSettings]/
+/// [fromBrushSettings] carry the whole shape across in one hop so a parameter
+/// can never be dropped on a converter boundary (D4). Only [tool],
+/// [stabilizerStrength], and [brushBlendMode] are the tool state's own — the
+/// three HAND settings that presets deliberately never carry (R26 #10).
 class BrushToolState {
   factory BrushToolState({
     double size = defaultSize,
@@ -98,36 +106,30 @@ class BrushToolState {
   }
 
   const BrushToolState._raw({
-    required this.size,
-    required this.opacity,
-    required this.color,
-    required this.spacing,
-    required this.hardness,
-    required this.flow,
-    required this.tipShape,
-    this.sizePressureCurve,
-    this.opacityPressureCurve,
-    this.flowPressureCurve,
-    this.hardnessPressureCurve,
-    required this.roundness,
-    required this.angleDegrees,
-    this.tipMask,
-    this.rotationMode = BrushTipRotationMode.fixed,
-    this.sizeJitter = 0.0,
-    this.opacityJitter = 0.0,
-    this.angleJitter = 0.0,
-    this.scatterRadiusRatio = 0.0,
-    this.scatterCount = 1,
-    this.scatterBothAxes = true,
-    this.dualMask,
-    this.dualMaskScale = 1.0,
-    this.textureMask,
-    this.textureScale = 1.0,
-    this.textureDensity = 1.0,
+    required this.shape,
     this.tool = CanvasTool.brush,
     this.stabilizerStrength = 0.0,
     this.brushBlendMode = BrushBlendMode.color,
   });
+
+  /// Builds tool state from a loose [BrushShape] and the three hand settings,
+  /// clamping every shared parameter into the panel's ranges (see
+  /// [_clampShape]). This is the wholesale hop the preset-load path takes —
+  /// [fromBrushSettings] routes through it — so no shared parameter can be
+  /// dropped when a preset is applied.
+  factory BrushToolState.fromShape(
+    BrushShape shape, {
+    CanvasTool tool = CanvasTool.brush,
+    double stabilizerStrength = 0.0,
+    BrushBlendMode brushBlendMode = BrushBlendMode.color,
+  }) {
+    return BrushToolState._raw(
+      shape: _clampShape(shape),
+      tool: tool,
+      stabilizerStrength: clampStabilizerStrength(stabilizerStrength),
+      brushBlendMode: brushBlendMode,
+    );
+  }
 
   factory BrushToolState.clamped({
     double? size,
@@ -160,38 +162,62 @@ class BrushToolState {
     double? stabilizerStrength,
     BrushBlendMode? brushBlendMode,
   }) {
-    return BrushToolState._raw(
-      size: clampSize(size ?? defaultSize),
-      opacity: clampOpacity(opacity ?? defaultOpacity),
-      color: color ?? defaultColor,
-      spacing: clampSpacing(spacing ?? defaultSpacing),
-      hardness: clampUnit(hardness ?? defaultHardness),
-      flow: clampUnit(flow ?? defaultFlow),
-      tipShape: tipShape ?? defaultTipShape,
-      sizePressureCurve: sizePressureCurve,
-      opacityPressureCurve: opacityPressureCurve,
-      flowPressureCurve: flowPressureCurve,
-      hardnessPressureCurve: hardnessPressureCurve,
-      roundness: clampRoundness(roundness ?? defaultRoundness),
-      angleDegrees: clampAngleDegrees(angleDegrees ?? defaultAngleDegrees),
-      tipMask: tipMask,
-      rotationMode: rotationMode ?? BrushTipRotationMode.fixed,
-      sizeJitter: clampZeroToOne(sizeJitter ?? 0.0),
-      opacityJitter: clampZeroToOne(opacityJitter ?? 0.0),
-      angleJitter: clampZeroToOne(angleJitter ?? 0.0),
-      scatterRadiusRatio: clampScatterRadius(scatterRadiusRatio ?? 0.0),
-      scatterCount: clampScatterCount(scatterCount ?? 1),
-      scatterBothAxes: scatterBothAxes ?? true,
-      dualMask: dualMask,
-      dualMaskScale: clampDualMaskScale(dualMaskScale ?? 1.0),
-      textureMask: textureMask,
-      textureScale: clampDualMaskScale(textureScale ?? 1.0),
-      textureDensity: clampZeroToOne(textureDensity ?? 1.0),
+    return BrushToolState.fromShape(
+      BrushShape(
+        color: color ?? defaultColor,
+        size: size ?? defaultSize,
+        opacity: opacity ?? defaultOpacity,
+        flow: flow ?? defaultFlow,
+        hardness: hardness ?? defaultHardness,
+        spacing: spacing ?? defaultSpacing,
+        tipShape: tipShape ?? defaultTipShape,
+        sizePressureCurve: sizePressureCurve,
+        opacityPressureCurve: opacityPressureCurve,
+        flowPressureCurve: flowPressureCurve,
+        hardnessPressureCurve: hardnessPressureCurve,
+        roundness: roundness ?? defaultRoundness,
+        angleDegrees: angleDegrees ?? defaultAngleDegrees,
+        tipMask: tipMask,
+        rotationMode: rotationMode ?? BrushTipRotationMode.fixed,
+        sizeJitter: sizeJitter ?? 0.0,
+        opacityJitter: opacityJitter ?? 0.0,
+        angleJitter: angleJitter ?? 0.0,
+        scatterRadiusRatio: scatterRadiusRatio ?? 0.0,
+        scatterCount: scatterCount ?? 1,
+        scatterBothAxes: scatterBothAxes ?? true,
+        dualMask: dualMask,
+        dualMaskScale: dualMaskScale ?? 1.0,
+        textureMask: textureMask,
+        textureScale: textureScale ?? 1.0,
+        textureDensity: textureDensity ?? 1.0,
+      ),
       tool: tool ?? CanvasTool.brush,
-      stabilizerStrength: clampStabilizerStrength(stabilizerStrength ?? 0.0),
+      stabilizerStrength: stabilizerStrength ?? 0.0,
       brushBlendMode: brushBlendMode ?? BrushBlendMode.color,
     );
   }
+
+  /// Clamps the shared parameters that have panel ranges into those ranges,
+  /// carrying every other parameter through untouched. Field-adds that are not
+  /// clampable ride along automatically; a new clampable one just needs a line
+  /// here (and, if omitted, still travels — it is simply not clamped).
+  static BrushShape _clampShape(BrushShape s) => s.copyWith(
+    size: clampSize(s.size),
+    opacity: clampOpacity(s.opacity),
+    spacing: clampSpacing(s.spacing),
+    hardness: clampUnit(s.hardness),
+    flow: clampUnit(s.flow),
+    roundness: clampRoundness(s.roundness),
+    angleDegrees: clampAngleDegrees(s.angleDegrees),
+    sizeJitter: clampZeroToOne(s.sizeJitter),
+    opacityJitter: clampZeroToOne(s.opacityJitter),
+    angleJitter: clampZeroToOne(s.angleJitter),
+    scatterRadiusRatio: clampScatterRadius(s.scatterRadiusRatio),
+    scatterCount: clampScatterCount(s.scatterCount),
+    dualMaskScale: clampDualMaskScale(s.dualMaskScale),
+    textureScale: clampDualMaskScale(s.textureScale),
+    textureDensity: clampZeroToOne(s.textureDensity),
+  );
 
   static const double minSize = 1.0;
   // CSP-parity ceiling; the settings slider maps this range exponentially so
@@ -212,73 +238,69 @@ class BrushToolState {
   static const double maxAngleDegrees = 180.0;
   static const double defaultAngleDegrees = 0.0;
   static const BrushToolState defaults = BrushToolState._raw(
-    size: defaultSize,
-    opacity: defaultOpacity,
-    color: defaultColor,
-    spacing: defaultSpacing,
-    hardness: defaultHardness,
-    flow: defaultFlow,
-    tipShape: defaultTipShape,
-    roundness: defaultRoundness,
-    angleDegrees: defaultAngleDegrees,
+    shape: BrushShape(size: defaultSize, spacing: defaultSpacing),
   );
 
-  final double size;
-  final double opacity;
-  final int color;
-  final double spacing;
+  /// The shared 26-parameter spine; the fields below forward to it, and the
+  /// converters carry it across whole. See [BrushShape].
+  final BrushShape shape;
+
+  double get size => shape.size;
+  double get opacity => shape.opacity;
+  int get color => shape.color;
+  double get spacing => shape.spacing;
 
   /// Tip edge falloff: 1.0 paints a hard edge, lower values fade linearly
   /// from `radius * hardness` to the radius (same coverage model as the
   /// commit rasterizer).
-  final double hardness;
+  double get hardness => shape.hardness;
 
   /// Per-dab paint strength; combined multiplicatively with [opacity] when a
   /// dab is sampled.
-  final double flow;
+  double get flow => shape.flow;
 
-  final BrushTipShape tipShape;
+  BrushTipShape get tipShape => shape.tipShape;
 
   /// BB-3 (R26 #11): per-setting pen-pressure response curves; `null` =
   /// the setting ignores pressure. Part of brush presets (they travel
   /// through [toBrushSettings]/[fromBrushSettings] like the sliders).
   /// [copyWith] PRESERVES them (same contract as [tipMask]); clearing one
   /// goes through [withPressureCurve].
-  final BrushPressureCurve? sizePressureCurve;
-  final BrushPressureCurve? opacityPressureCurve;
-  final BrushPressureCurve? flowPressureCurve;
-  final BrushPressureCurve? hardnessPressureCurve;
+  BrushPressureCurve? get sizePressureCurve => shape.sizePressureCurve;
+  BrushPressureCurve? get opacityPressureCurve => shape.opacityPressureCurve;
+  BrushPressureCurve? get flowPressureCurve => shape.flowPressureCurve;
+  BrushPressureCurve? get hardnessPressureCurve => shape.hardnessPressureCurve;
 
   /// Minor-to-major axis ratio of the tip; 1.0 keeps the classic
   /// circle/square, smaller values flatten it into an ellipse/rectangle.
-  final double roundness;
+  double get roundness => shape.roundness;
 
   /// Visual counterclockwise rotation of the tip's major axis from the
   /// horizontal, in degrees (0-180; an ellipse repeats every 180).
-  final double angleDegrees;
+  double get angleDegrees => shape.angleDegrees;
 
   /// Sampled (bitmap) tip applied by a preset; `null` uses the parametric
   /// [tipShape]. The panel has no direct mask picker yet — masks arrive via
   /// presets (and later ABR import). Cleared only by applying a preset
   /// without one ([BrushToolState.fromBrushSettings]); [copyWith] preserves
   /// it so slider tweaks keep the textured tip.
-  final BrushTipMask? tipMask;
+  BrushTipMask? get tipMask => shape.tipMask;
 
   /// Placement dynamics carried from presets/imports (no panel controls
   /// yet, pending the unified UI pass): see the same-named fields on
-  /// `BrushSettings`.
-  final BrushTipRotationMode rotationMode;
-  final double sizeJitter;
-  final double opacityJitter;
-  final double angleJitter;
-  final double scatterRadiusRatio;
-  final int scatterCount;
-  final bool scatterBothAxes;
-  final BrushTipMask? dualMask;
-  final double dualMaskScale;
-  final BrushTipMask? textureMask;
-  final double textureScale;
-  final double textureDensity;
+  /// `BrushShape`.
+  BrushTipRotationMode get rotationMode => shape.rotationMode;
+  double get sizeJitter => shape.sizeJitter;
+  double get opacityJitter => shape.opacityJitter;
+  double get angleJitter => shape.angleJitter;
+  double get scatterRadiusRatio => shape.scatterRadiusRatio;
+  int get scatterCount => shape.scatterCount;
+  bool get scatterBothAxes => shape.scatterBothAxes;
+  BrushTipMask? get dualMask => shape.dualMask;
+  double get dualMaskScale => shape.dualMaskScale;
+  BrushTipMask? get textureMask => shape.textureMask;
+  double get textureScale => shape.textureScale;
+  double get textureDensity => shape.textureDensity;
 
   /// The active canvas tool. Not part of presets ([toBrushSettings] omits
   /// it); applying a preset returns to the brush, CSP-style.
@@ -296,103 +318,20 @@ class BrushToolState {
 
   /// Builds tool state from a preset's model-layer [BrushSettings], clamping
   /// every value into the panel's ranges.
-  factory BrushToolState.fromBrushSettings(BrushSettings settings) {
-    return BrushToolState.clamped(
-      size: settings.size,
-      opacity: settings.opacity,
-      color: settings.color,
-      spacing: settings.spacing,
-      hardness: settings.hardness,
-      flow: settings.flow,
-      tipShape: settings.tipShape,
-      sizePressureCurve: settings.sizePressureCurve,
-      opacityPressureCurve: settings.opacityPressureCurve,
-      flowPressureCurve: settings.flowPressureCurve,
-      hardnessPressureCurve: settings.hardnessPressureCurve,
-      roundness: settings.roundness,
-      angleDegrees: settings.angleDegrees,
-      tipMask: settings.tipMask,
-      rotationMode: settings.rotationMode,
-      sizeJitter: settings.sizeJitter,
-      opacityJitter: settings.opacityJitter,
-      angleJitter: settings.angleJitter,
-      scatterRadiusRatio: settings.scatterRadiusRatio,
-      scatterCount: settings.scatterCount,
-      scatterBothAxes: settings.scatterBothAxes,
-      dualMask: settings.dualMask,
-      dualMaskScale: settings.dualMaskScale,
-      textureMask: settings.textureMask,
-      textureScale: settings.textureScale,
-      textureDensity: settings.textureDensity,
-    );
-  }
+  factory BrushToolState.fromBrushSettings(BrushSettings settings) =>
+      BrushToolState.fromShape(settings.shape);
 
   /// Snapshot of this tool state as the model-layer [BrushSettings] — the
   /// payload brush presets store.
-  BrushSettings toBrushSettings() {
-    return BrushSettings(
-      color: color,
-      size: size,
-      opacity: opacity,
-      flow: flow,
-      hardness: hardness,
-      spacing: spacing,
-      tipShape: tipShape,
-      sizePressureCurve: sizePressureCurve,
-      opacityPressureCurve: opacityPressureCurve,
-      flowPressureCurve: flowPressureCurve,
-      hardnessPressureCurve: hardnessPressureCurve,
-      roundness: roundness,
-      angleDegrees: angleDegrees,
-      tipMask: tipMask,
-      rotationMode: rotationMode,
-      sizeJitter: sizeJitter,
-      opacityJitter: opacityJitter,
-      angleJitter: angleJitter,
-      scatterRadiusRatio: scatterRadiusRatio,
-      scatterCount: scatterCount,
-      scatterBothAxes: scatterBothAxes,
-      dualMask: dualMask,
-      dualMaskScale: dualMaskScale,
-      textureMask: textureMask,
-      textureScale: textureScale,
-      textureDensity: textureDensity,
-    );
-  }
+  BrushSettings toBrushSettings() => BrushSettings.fromShape(shape);
 
   BrushEditCanvasInputSettings toInputSettings() {
-    return BrushEditCanvasInputSettings(
-      color: color,
-      size: size,
-      opacity: opacity,
-      spacing: spacing,
-      hardness: hardness,
-      flow: flow,
-      tipShape: tipShape,
-      sizePressureCurve: sizePressureCurve,
-      opacityPressureCurve: opacityPressureCurve,
-      flowPressureCurve: flowPressureCurve,
-      hardnessPressureCurve: hardnessPressureCurve,
-      roundness: roundness,
-      angleDegrees: angleDegrees,
-      tipMask: tipMask,
-      rotationMode: rotationMode,
-      sizeJitter: sizeJitter,
-      opacityJitter: opacityJitter,
-      angleJitter: angleJitter,
-      scatterRadiusRatio: scatterRadiusRatio,
-      scatterCount: scatterCount,
-      scatterBothAxes: scatterBothAxes,
-      dualMask: dualMask,
-      dualMaskScale: dualMaskScale,
-      textureMask: textureMask,
-      textureScale: textureScale,
-      textureDensity: textureDensity,
+    return BrushEditCanvasInputSettings.fromShape(
+      shape,
       // The eraser tool IS the erase blend (locked); a brush whose blend
       // is erase rides the SAME dab flag and kernels.
       erase:
-          tool == CanvasTool.eraser ||
-          brushBlendMode == BrushBlendMode.erase,
+          tool == CanvasTool.eraser || brushBlendMode == BrushBlendMode.erase,
       blendMode: tool == CanvasTool.eraser
           ? BrushBlendMode.erase
           : brushBlendMode,
@@ -431,49 +370,48 @@ class BrushToolState {
     double? stabilizerStrength,
     BrushBlendMode? brushBlendMode,
   }) {
-    return BrushToolState.clamped(
-      size: size ?? this.size,
-      opacity: opacity ?? this.opacity,
-      color: color ?? this.color,
-      spacing: spacing ?? this.spacing,
-      hardness: hardness ?? this.hardness,
-      flow: flow ?? this.flow,
-      tipShape: tipShape ?? this.tipShape,
-      sizePressureCurve: sizePressureCurve ?? this.sizePressureCurve,
-      opacityPressureCurve: opacityPressureCurve ?? this.opacityPressureCurve,
-      flowPressureCurve: flowPressureCurve ?? this.flowPressureCurve,
-      hardnessPressureCurve:
-          hardnessPressureCurve ?? this.hardnessPressureCurve,
-      roundness: roundness ?? this.roundness,
-      angleDegrees: angleDegrees ?? this.angleDegrees,
-      tipMask: tipMask ?? this.tipMask,
-      rotationMode: rotationMode ?? this.rotationMode,
-      sizeJitter: sizeJitter ?? this.sizeJitter,
-      opacityJitter: opacityJitter ?? this.opacityJitter,
-      angleJitter: angleJitter ?? this.angleJitter,
-      scatterRadiusRatio: scatterRadiusRatio ?? this.scatterRadiusRatio,
-      scatterCount: scatterCount ?? this.scatterCount,
-      scatterBothAxes: scatterBothAxes ?? this.scatterBothAxes,
-      dualMask: dualMask ?? this.dualMask,
-      dualMaskScale: dualMaskScale ?? this.dualMaskScale,
-      textureMask: textureMask ?? this.textureMask,
-      textureScale: textureScale ?? this.textureScale,
-      textureDensity: textureDensity ?? this.textureDensity,
+    return BrushToolState._raw(
+      shape: _clampShape(
+        shape.copyWith(
+          size: size,
+          opacity: opacity,
+          color: color,
+          spacing: spacing,
+          hardness: hardness,
+          flow: flow,
+          tipShape: tipShape,
+          sizePressureCurve: sizePressureCurve,
+          opacityPressureCurve: opacityPressureCurve,
+          flowPressureCurve: flowPressureCurve,
+          hardnessPressureCurve: hardnessPressureCurve,
+          roundness: roundness,
+          angleDegrees: angleDegrees,
+          tipMask: tipMask,
+          rotationMode: rotationMode,
+          sizeJitter: sizeJitter,
+          opacityJitter: opacityJitter,
+          angleJitter: angleJitter,
+          scatterRadiusRatio: scatterRadiusRatio,
+          scatterCount: scatterCount,
+          scatterBothAxes: scatterBothAxes,
+          dualMask: dualMask,
+          dualMaskScale: dualMaskScale,
+          textureMask: textureMask,
+          textureScale: textureScale,
+          textureDensity: textureDensity,
+        ),
+      ),
       tool: tool ?? this.tool,
-      stabilizerStrength: stabilizerStrength ?? this.stabilizerStrength,
+      stabilizerStrength: clampStabilizerStrength(
+        stabilizerStrength ?? this.stabilizerStrength,
+      ),
       brushBlendMode: brushBlendMode ?? this.brushBlendMode,
     );
   }
 
   /// The pressure curve driving [target], if any.
-  BrushPressureCurve? pressureCurveFor(BrushPressureTarget target) {
-    return switch (target) {
-      BrushPressureTarget.size => sizePressureCurve,
-      BrushPressureTarget.opacity => opacityPressureCurve,
-      BrushPressureTarget.flow => flowPressureCurve,
-      BrushPressureTarget.hardness => hardnessPressureCurve,
-    };
-  }
+  BrushPressureCurve? pressureCurveFor(BrushPressureTarget target) =>
+      shape.pressureCurveFor(target);
 
   /// Replaces (or CLEARS, with null) one setting's pressure curve —
   /// [copyWith] deliberately preserves curves, so disabling pressure on a
@@ -482,41 +420,8 @@ class BrushToolState {
     BrushPressureTarget target,
     BrushPressureCurve? curve,
   ) {
-    return BrushToolState.clamped(
-      size: size,
-      opacity: opacity,
-      color: color,
-      spacing: spacing,
-      hardness: hardness,
-      flow: flow,
-      tipShape: tipShape,
-      sizePressureCurve: target == BrushPressureTarget.size
-          ? curve
-          : sizePressureCurve,
-      opacityPressureCurve: target == BrushPressureTarget.opacity
-          ? curve
-          : opacityPressureCurve,
-      flowPressureCurve: target == BrushPressureTarget.flow
-          ? curve
-          : flowPressureCurve,
-      hardnessPressureCurve: target == BrushPressureTarget.hardness
-          ? curve
-          : hardnessPressureCurve,
-      roundness: roundness,
-      angleDegrees: angleDegrees,
-      tipMask: tipMask,
-      rotationMode: rotationMode,
-      sizeJitter: sizeJitter,
-      opacityJitter: opacityJitter,
-      angleJitter: angleJitter,
-      scatterRadiusRatio: scatterRadiusRatio,
-      scatterCount: scatterCount,
-      scatterBothAxes: scatterBothAxes,
-      dualMask: dualMask,
-      dualMaskScale: dualMaskScale,
-      textureMask: textureMask,
-      textureScale: textureScale,
-      textureDensity: textureDensity,
+    return BrushToolState._raw(
+      shape: _clampShape(shape.withPressureCurve(target, curve)),
       tool: tool,
       stabilizerStrength: stabilizerStrength,
       brushBlendMode: brushBlendMode,
@@ -608,32 +513,7 @@ class BrushToolState {
   bool operator ==(Object other) =>
       identical(this, other) ||
       other is BrushToolState &&
-          other.size == size &&
-          other.opacity == opacity &&
-          other.color == color &&
-          other.spacing == spacing &&
-          other.hardness == hardness &&
-          other.flow == flow &&
-          other.tipShape == tipShape &&
-          other.sizePressureCurve == sizePressureCurve &&
-          other.opacityPressureCurve == opacityPressureCurve &&
-          other.flowPressureCurve == flowPressureCurve &&
-          other.hardnessPressureCurve == hardnessPressureCurve &&
-          other.roundness == roundness &&
-          other.angleDegrees == angleDegrees &&
-          other.tipMask == tipMask &&
-          other.rotationMode == rotationMode &&
-          other.sizeJitter == sizeJitter &&
-          other.opacityJitter == opacityJitter &&
-          other.angleJitter == angleJitter &&
-          other.scatterRadiusRatio == scatterRadiusRatio &&
-          other.scatterCount == scatterCount &&
-          other.scatterBothAxes == scatterBothAxes &&
-          other.dualMask == dualMask &&
-          other.dualMaskScale == dualMaskScale &&
-          other.textureMask == textureMask &&
-          other.textureScale == textureScale &&
-          other.textureDensity == textureDensity &&
+          other.shape == shape &&
           other.tool == tool &&
           other.stabilizerStrength == stabilizerStrength &&
           // BB-3 audit fix: brushBlendMode was MISSING from ==/hashCode
@@ -642,35 +522,6 @@ class BrushToolState {
           other.brushBlendMode == brushBlendMode;
 
   @override
-  int get hashCode => Object.hashAll([
-    size,
-    opacity,
-    color,
-    spacing,
-    hardness,
-    flow,
-    tipShape,
-    sizePressureCurve,
-    opacityPressureCurve,
-    flowPressureCurve,
-    hardnessPressureCurve,
-    roundness,
-    angleDegrees,
-    tipMask,
-    rotationMode,
-    sizeJitter,
-    opacityJitter,
-    angleJitter,
-    scatterRadiusRatio,
-    scatterCount,
-    scatterBothAxes,
-    dualMask,
-    dualMaskScale,
-    textureMask,
-    textureScale,
-    textureDensity,
-    tool,
-    stabilizerStrength,
-    brushBlendMode,
-  ]);
+  int get hashCode =>
+      Object.hash(shape, tool, stabilizerStrength, brushBlendMode);
 }
