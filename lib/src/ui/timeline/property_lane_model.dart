@@ -210,6 +210,7 @@ List<TimelineDisplayRow> buildTimelineDisplayRows({
   Set<LayerId> collapsedAttachBaseIds = const {},
   LayerId? activeLayerId,
   bool Function(LayerId layerId)? fxEnabledOf,
+
   /// The MODEL stack, when [layers] is a display-ordered copy: folder
   /// membership is resolved against it so nesting reads the same in every
   /// orientation. Defaults to [layers].
@@ -232,7 +233,14 @@ List<TimelineDisplayRow> buildTimelineDisplayRows({
   // Folder rows need no synthesis: they are IN the stack, already sitting
   // directly above their members. All that is left is the nesting indent,
   // the collapse fold and the aggregate band the folder row paints.
+  //
+  // Indexed ONCE for the whole pass. The three folder questions below run
+  // per layer, and asked straight off the stack each of them re-scans it:
+  // that made this loop O(n²·depth) with a list and a set allocated per
+  // probe — and it runs in build(), where a session notify puts it on
+  // every chrome rebuild.
   final modelStack = stack ?? layers;
+  final folders = LayerFolderIndex(modelStack);
   for (var index = 0; index < layers.length; index += 1) {
     final layer = layers[index];
     // The attach run ends at the first layer that is NOT an attach of the
@@ -263,18 +271,18 @@ List<TimelineDisplayRow> buildTimelineDisplayRows({
     // included. The old active-layer exemption meant folding a folder
     // whose member was selected simply didn't look folded; the folder row
     // takes the selection instead (EditorSessionManager.toggleLayerCollapsed).
-    if (modelStack.subtreeCollapsed(layer.folderId)) {
+    if (folders.subtreeCollapsed(layer.folderId)) {
       continue;
     }
     final isFolder = layerKindGroupsLayers(layer.kind);
     final subtreeMembers = isFolder
-        ? modelStack.subtreeMembersOf(layer.id)
+        ? folders.subtreeMembersOf(layer.id)
         : const <Layer>[];
     rows.add(
       TimelineDisplayRow.layer(
         layer,
         layerIndex: index,
-        depth: modelStack.ancestryOf(layer.folderId).length,
+        depth: folders.depthOf(layer.folderId),
         aggregateRuns: isFolder
             ? folderAggregateRuns(subtreeMembers)
             : const [],
