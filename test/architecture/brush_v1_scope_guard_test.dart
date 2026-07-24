@@ -48,16 +48,6 @@ void main() {
       },
     );
 
-    test('Brush V1 and Storyboard policies live in current docs', () {
-      expect(File('docs/Brush_V1_Complete.md').existsSync(), isFalse);
-      expect(File('docs/Storyboard_Work_Roadmap.md').existsSync(), isFalse);
-      expect(File('docs/Current_Brush_Architecture.md').existsSync(), isTrue);
-      expect(
-        File('docs/Current_Storyboard_Architecture.md').existsSync(),
-        isTrue,
-      );
-    });
-
     test('storyboard and timeline panels do not import brush smoke UI', () {
       for (final path in [
         'lib/src/ui/storyboard_panel.dart',

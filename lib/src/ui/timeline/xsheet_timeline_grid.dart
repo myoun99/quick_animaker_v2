@@ -26,7 +26,7 @@ import 'timeline_exposure_block_visual.dart';
 import 'timeline_exposure_comma_drag_policy.dart';
 import '../../models/project_frame_rate.dart';
 import '../../models/timeline_repeat.dart';
-import 'timeline_block_move_handle.dart' show resolveBlockMoveTargetLayer;
+import 'timeline_row_span_resolver.dart' show resolveBlockMoveTargetLayer;
 import 'timeline_frame_range_gesture.dart';
 import 'timeline_run_end_handles.dart';
 import 'timeline_frame_cell.dart';

@@ -13,8 +13,7 @@ import '../../models/layer_id.dart';
 import '../../models/layer_kind.dart';
 import '../../models/layer_mark.dart';
 import '../../services/audio/audio_peaks_extractor.dart';
-import 'timeline_block_move_handle.dart'
-    show resolveSelectionSpanHead;
+import 'timeline_row_span_resolver.dart' show resolveSelectionSpanHead;
 import 'timeline_frame_range_gesture.dart';
 import 'timeline_run_end_handles.dart';
 import 'timeline_cell_exposure_state.dart';
