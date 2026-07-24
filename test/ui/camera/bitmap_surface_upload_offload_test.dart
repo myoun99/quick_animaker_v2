@@ -70,6 +70,11 @@ void main() {
     });
   });
 
+  // BENCHMARK-tagged (skipped by default, see dart_test.yaml): this case
+  // asserts nothing — it assembles 1920x1080 TWICE just to print the two
+  // wall-clock numbers, which is benchmark work, not a regression test. The
+  // isolate path keeps its correctness coverage in the byte-identical case
+  // above. Run it with: flutter test --run-skipped --tags benchmark
   testWidgets('canvas-sized surfaces take the isolate path by default '
       '(documented timing)', (tester) async {
     await tester.runAsync(() async {
@@ -97,5 +102,5 @@ void main() {
         'calling thread only snapshots tiles + decodes',
       );
     });
-  });
+  }, tags: 'benchmark');
 }
