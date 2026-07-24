@@ -11,17 +11,15 @@ import '../models/bitmap_surface.dart';
 import '../models/bitmap_tile.dart';
 import '../models/brush_blend_mode.dart';
 import '../models/brush_dab.dart';
-import '../models/brush_tip_shape.dart';
 import '../models/canvas_size.dart';
 import '../models/dirty_region.dart';
 import '../models/pasteboard_bounds.dart';
 import '../models/tile_coord.dart';
 import '../native/qa_native_engine.dart';
-import 'brush_dab_dirty_region.dart';
+import 'brush_dab_kernel.dart';
 import 'canvas_selection_region.dart';
 import 'brush_stroke_blend.dart'
     show preBlendStrokeOverlayPixels, strokeBlendModeNativeId;
-import 'brush_tip_mask_sampling.dart';
 
 /// A pre-blended overlay tile: the premultiplied bytes to upload, and the
 /// stroke [revision] they were blended at (pen-up hands the DECODED image
@@ -186,7 +184,8 @@ class BrushLiveStrokeRasterizer implements ActiveStrokePixelSource {
   /// insertion/refresh order — the exact bytes the commit holds at that
   /// coordinate, kept alive so pen-up can ADOPT them instead of blending
   /// the whole stroke a second time.
-  final LinkedHashMap<int, _ResultTile> _results = LinkedHashMap<int, _ResultTile>();
+  final LinkedHashMap<int, _ResultTile> _results =
+      LinkedHashMap<int, _ResultTile>();
   int _resultBytes = 0;
 
   /// Resident-result byte budget (the round's one real cost: while a
@@ -276,10 +275,7 @@ class BrushLiveStrokeRasterizer implements ActiveStrokePixelSource {
     if (buffer == null) {
       return null;
     }
-    return native.premultipliedTileScratch(
-      buffer.pointer,
-      tileSize * tileSize,
-    );
+    return native.premultipliedTileScratch(buffer.pointer, tileSize * tileSize);
   }
 
   /// Pre-blends the stroke tile at ([tileX], [tileY]) against [base]
@@ -357,7 +353,9 @@ class BrushLiveStrokeRasterizer implements ActiveStrokePixelSource {
     // needs the grids to agree — which they always do in the app. A host
     // with its own overlay grid falls to the Dart route below, where
     // staging walks whatever base tiles overlap the rect.
-    if (native != null && _nativeBuffers.isNotEmpty && base.tileSize == tileSize) {
+    if (native != null &&
+        _nativeBuffers.isNotEmpty &&
+        base.tileSize == tileSize) {
       final byteLength = tileSize * tileSize * 4;
       final blends =
           <
@@ -836,7 +834,12 @@ class BrushLiveStrokeRasterizer implements ActiveStrokePixelSource {
   /// into [target] (stride [tileSize]); missing base tiles stay zero.
   /// The base grid is the surface's own tile size — a stroke tile can
   /// overlap up to four base tiles when the two grids differ.
-  void _copyBaseRectInto(Uint8List target, BitmapSurface base, int left, int top) {
+  void _copyBaseRectInto(
+    Uint8List target,
+    BitmapSurface base,
+    int left,
+    int top,
+  ) {
     final baseTileSize = base.tileSize;
     final right = left + tileSize;
     final bottom = top + tileSize;
@@ -974,425 +977,66 @@ class BrushLiveStrokeRasterizer implements ActiveStrokePixelSource {
   }
 
   DirtyRegion? _blendDab(BrushDab dab) {
-    final region = dirtyRegionForBrushDab(dab);
-    if (region == null) {
+    // Stamp dabs never reach the LIVE rasterizer: they only enter through
+    // programmatic commits (fill, lift, paste, the stroke-blend landing),
+    // which call the materializer directly and route stamps to the
+    // dedicated 1:1 blend. There is no live stamp path, so refuse rather
+    // than fall through — the tip kernel would paint the dab's flat
+    // COLOUR where the stamp's bitmap belongs, and the overlay would show
+    // a solid blob until pen-up corrected it.
+    if (dab.stamp != null) {
+      assert(false, 'the live rasterizer has no stamp path');
       return null;
     }
 
-    final sourceArgb = dab.color;
-    final sourceA = (sourceArgb >> 24) & 0xFF;
-    if (sourceA == 0 || dab.opacity == 0.0 || dab.flow == 0.0) {
-      return null;
-    }
-    final sourceR = (sourceArgb >> 16) & 0xFF;
-    final sourceG = (sourceArgb >> 8) & 0xFF;
-    final sourceB = sourceArgb & 0xFF;
-    final sourceAlphaNorm = sourceA / 255.0;
-
-    final radius = dab.size / 2.0;
-    final hardRadius = radius * dab.hardness;
-    final edgeSpan = radius - hardRadius;
-    final isRound = dab.tipShape == BrushTipShape.round;
-    // Elliptical / rotated tips evaluate coverage in tip space: rotate the
-    // pixel offset onto the tip axes and stretch the minor axis by
-    // 1/roundness, turning the ellipse test back into the circle test. The
-    // classic circle (roundness == 1, rotation-invariant) and axis-aligned
-    // square keep their original code path so existing strokes stay
-    // byte-identical.
-    final tipMask = dab.tipMask;
-    final isEllipse = tipMask == null && isRound && dab.roundness < 1.0;
-    final isRotatedRect =
-        tipMask == null &&
-        !isRound &&
-        (dab.roundness < 1.0 || dab.angleDegrees != 0.0);
-    var tipCos = 1.0;
-    var tipSin = 0.0;
-    var inverseRoundness = 1.0;
-    if (isEllipse || isRotatedRect || tipMask != null) {
-      final angleRadians = dab.angleDegrees * (math.pi / 180.0);
-      tipCos = math.cos(angleRadians);
-      tipSin = math.sin(angleRadians);
-      inverseRoundness = 1.0 / dab.roundness;
-    }
-    final minorRadius = radius * dab.roundness;
-    final centerX = dab.center.x;
-    final centerY = dab.center.y;
-    final dabOpacity = dab.opacity;
-    final dabFlow = dab.flow;
-    // Pasteboard clip — must mirror the commit rasterizer exactly
-    // (live == commit byte parity).
-    final top = math.max(region.top, canvasSize.pasteboardTop);
-    final bottomExclusive = math.min(
-      region.bottomExclusive,
-      canvasSize.pasteboardBottomExclusive,
+    // ONE dab kernel (see brush_dab_kernel.dart) — the same hoists,
+    // lattices and clip the commit resolves. erase is false always: the
+    // live overlay never carries the erase flag, because erase strokes
+    // composite at display time.
+    final plan = BrushDabPlan.of(
+      dab,
+      canvasSize: canvasSize,
+      tileSize: tileSize,
+      erase: false,
     );
-    final left = math.max(region.left, canvasSize.pasteboardLeft);
-    final rightExclusive = math.min(
-      region.rightExclusive,
-      canvasSize.pasteboardRightExclusive,
-    );
-    if (rightExclusive <= left || bottomExclusive <= top) {
+    if (plan == null) {
       return null;
     }
-    final columnCount = rightExclusive - left;
-    final rowCount = bottomExclusive - top;
-
-    // Per-dab hoists and axis lattices (see brush_tip_mask_sampling.dart):
-    // unrotated tips and the never-rotating tiled masks sample through
-    // per-axis precomputes with the scalar samplers' exact arithmetic, so
-    // the resulting bytes are unchanged — the parity suites pin this.
-    final dualMask = dab.dualMask;
-    final textureMask = dab.textureMask;
-    final textureDensity = dab.textureDensity;
-    final textureOneMinusDensity = 1.0 - textureDensity;
-    final unrotatedTip = tipMask != null && dab.angleDegrees == 0.0;
-    // Conservative squared-distance cull for plain round tips: only pixels
-    // PROVABLY outside the radius skip the sqrt; anything within the float
-    // margin still runs the exact scalar test.
-    final radiusSqSkip = radius * radius * (1.0 + 1e-12);
-
-    final tipULattice = unrotatedTip
-        ? BrushTipMaskAxisLattice.compute(
-            mask: tipMask,
-            radius: radius,
-            start: left,
-            count: columnCount,
-            center: centerX,
-          )
-        : null;
-    final tipVLattice = unrotatedTip
-        ? BrushTipMaskAxisLattice.compute(
-            mask: tipMask,
-            radius: radius,
-            start: top,
-            count: rowCount,
-            center: centerY,
-            inverseRoundness: inverseRoundness,
-          )
-        : null;
-    final dualULattice = dualMask == null
-        ? null
-        : TiledMaskAxisLattice.compute(
-            mask: dualMask,
-            start: left,
-            count: columnCount,
-            originOffset: -centerX,
-            period: dab.size * dab.dualMaskScale,
-            offset: dab.dualOffsetU,
-          );
-    final dualVLattice = dualMask == null
-        ? null
-        : TiledMaskAxisLattice.compute(
-            mask: dualMask,
-            start: top,
-            count: rowCount,
-            originOffset: -centerY,
-            period: dab.size * dab.dualMaskScale,
-            offset: dab.dualOffsetV,
-          );
-    final textureULattice = textureMask == null
-        ? null
-        : TiledMaskAxisLattice.compute(
-            mask: textureMask,
-            start: left,
-            count: columnCount,
-            originOffset: 0.0,
-            period: textureMask.size * dab.textureScale,
-            offset: 0.0,
-          );
-    final textureVLattice = textureMask == null
-        ? null
-        : TiledMaskAxisLattice.compute(
-            mask: textureMask,
-            start: top,
-            count: rowCount,
-            originOffset: 0.0,
-            period: textureMask.size * dab.textureScale,
-            offset: 0.0,
-          );
-
-    final tileXStart = floorDiv(left, tileSize);
-    final tileXEnd = floorDiv(rightExclusive - 1, tileSize);
 
     // R21: the C kernel runs the live blend exactly like the commit —
-    // same spec, same lattices, srcOver only (the live overlay never
-    // carries the erase flag; erase strokes composite at display time).
-    // Byte-identical to the Dart loop below (parity-pinned).
+    // same spec, same lattices, srcOver only. Byte-identical to the Dart
+    // loop below (parity-pinned).
     final native = _native;
-    if (native != null && dab.stamp == null) {
-      native.prepareDab(
-        centerX: centerX,
-        centerY: centerY,
-        radius: radius,
-        hardRadius: hardRadius,
-        edgeSpan: edgeSpan,
-        minorRadius: minorRadius,
-        tipCos: tipCos,
-        tipSin: tipSin,
-        inverseRoundness: inverseRoundness,
-        dabOpacity: dabOpacity,
-        dabFlow: dabFlow,
-        sourceAlphaNorm: sourceAlphaNorm,
-        radiusSqSkip: radiusSqSkip,
-        textureDensity: textureDensity,
-        textureOneMinusDensity: textureOneMinusDensity,
-        sourceR: sourceR,
-        sourceG: sourceG,
-        sourceB: sourceB,
-        flags:
-            (isRound ? QaNativeEngine.dabFlagRound : 0) |
-            (isEllipse ? QaNativeEngine.dabFlagEllipse : 0) |
-            (isRotatedRect ? QaNativeEngine.dabFlagRotatedRect : 0) |
-            (unrotatedTip ? QaNativeEngine.dabFlagTipUnrotated : 0),
-        regionLeft: left,
-        regionTop: top,
-        tipAlpha: tipMask?.alphaNormalized,
-        tipSize: tipMask?.size ?? 0,
-        tipUTexel0: tipULattice?.texel0,
-        tipUFraction: tipULattice?.fraction,
-        tipUOneMinus: tipULattice?.oneMinusFraction,
-        tipUInRange: tipULattice?.inRange,
-        tipVTexel0: tipVLattice?.texel0,
-        tipVFraction: tipVLattice?.fraction,
-        tipVOneMinus: tipVLattice?.oneMinusFraction,
-        tipVInRange: tipVLattice?.inRange,
-        dualAlpha: dualMask?.alphaNormalized,
-        dualSize: dualMask?.size ?? 0,
-        dualUTexel0: dualULattice?.texel0,
-        dualUTexel1: dualULattice?.texel1,
-        dualUFraction: dualULattice?.fraction,
-        dualUOneMinus: dualULattice?.oneMinusFraction,
-        dualVTexel0: dualVLattice?.texel0,
-        dualVTexel1: dualVLattice?.texel1,
-        dualVFraction: dualVLattice?.fraction,
-        dualVOneMinus: dualVLattice?.oneMinusFraction,
-        texAlpha: textureMask?.alphaNormalized,
-        texSize: textureMask?.size ?? 0,
-        texUTexel0: textureULattice?.texel0,
-        texUTexel1: textureULattice?.texel1,
-        texUFraction: textureULattice?.fraction,
-        texUOneMinus: textureULattice?.oneMinusFraction,
-        texVTexel0: textureVLattice?.texel0,
-        texVTexel1: textureVLattice?.texel1,
-        texVFraction: textureVLattice?.fraction,
-        texVOneMinus: textureVLattice?.oneMinusFraction,
-      );
-      final tileYStart = floorDiv(top, tileSize);
-      final tileYEnd = floorDiv(bottomExclusive - 1, tileSize);
-      var spanCount = 0;
-      native.ensureTileSpanBatch(
-        (tileYEnd - tileYStart + 1) * (tileXEnd - tileXStart + 1),
-      );
-      for (var tileY = tileYStart; tileY <= tileYEnd; tileY += 1) {
-        final tileTop = tileY * tileSize;
-        final spanTop = math.max(top, tileTop);
-        final spanBottomExclusive = math.min(
-          bottomExclusive,
-          tileTop + tileSize,
-        );
-        for (var tileX = tileXStart; tileX <= tileXEnd; tileX += 1) {
+    if (native != null) {
+      blendDabTilesNative(
+        plan,
+        native,
+        tileSize: tileSize,
+        pointerFor: (tileX, tileY) {
+          // _tileBuffer also bumps the tile revision, which is what marks
+          // a resident pre-blend result stale.
           _tileBuffer(tileX, tileY);
-          final buffer = _nativeBuffers[_tileKey(tileX, tileY)]!;
-          final tileLeft = tileX * tileSize;
-          native.setTileSpan(
-            spanCount,
-            tilePixels: buffer.pointer,
-            tileLeft: tileLeft,
-            tileTop: tileTop,
-            spanLeft: math.max(left, tileLeft),
-            spanRightExclusive: math.min(rightExclusive, tileLeft + tileSize),
-            spanTop: spanTop,
-            spanBottomExclusive: spanBottomExclusive,
-          );
-          spanCount += 1;
-        }
-      }
-      native.dabBlendTiles(count: spanCount, tileSize: tileSize);
+          return _nativeBuffers[_tileKey(tileX, tileY)]!.pointer;
+        },
+      );
       return DirtyRegion(
-        left: left,
-        top: top,
-        rightExclusive: rightExclusive,
-        bottomExclusive: bottomExclusive,
+        left: plan.left,
+        top: plan.top,
+        rightExclusive: plan.rightExclusive,
+        bottomExclusive: plan.bottomExclusive,
       );
     }
 
-    for (var y = top; y < bottomExclusive; y += 1) {
-      final dy = y + 0.5 - centerY;
-      final dySquared = dy * dy;
-      final vIndex = y - top;
-      if (tipVLattice != null && tipVLattice.inRange[vIndex] == 0) {
-        // Same effect as the scalar |tipV| > radius per-pixel cull.
-        continue;
-      }
-      final tileY = floorDiv(y, tileSize);
-      final localRowOffset = (y - tileY * tileSize) * tileSize;
-
-      for (var tileX = tileXStart; tileX <= tileXEnd; tileX += 1) {
-        final buffer = _tileBuffer(tileX, tileY);
-        final tileLeft = tileX * tileSize;
-        final spanLeft = math.max(left, tileLeft);
-        final spanRightExclusive = math.min(
-          rightExclusive,
-          tileLeft + tileSize,
-        );
-
-        for (var x = spanLeft; x < spanRightExclusive; x += 1) {
-          double coverage;
-          if (tipMask != null) {
-            if (unrotatedTip) {
-              final uIndex = x - left;
-              if (tipULattice!.inRange[uIndex] == 0) {
-                continue;
-              }
-              coverage = sampleBrushTipMaskCoverageLattice(
-                mask: tipMask,
-                uAxis: tipULattice,
-                uIndex: uIndex,
-                vAxis: tipVLattice!,
-                vIndex: vIndex,
-              );
-            } else {
-              final dx = x + 0.5 - centerX;
-              final tipU = dx * tipCos - dy * tipSin;
-              final tipV = (dx * tipSin + dy * tipCos) * inverseRoundness;
-              if (tipU.abs() > radius || tipV.abs() > radius) {
-                continue;
-              }
-              coverage = sampleBrushTipMaskCoverage(
-                mask: tipMask,
-                tipU: tipU,
-                tipV: tipV,
-                radius: radius,
-              );
-            }
-            if (coverage <= 0.0) {
-              continue;
-            }
-          } else if (isRound) {
-            final dx = x + 0.5 - centerX;
-            double distance;
-            if (isEllipse) {
-              final tipU = dx * tipCos - dy * tipSin;
-              final tipV = (dx * tipSin + dy * tipCos) * inverseRoundness;
-              distance = math.sqrt(tipU * tipU + tipV * tipV);
-            } else {
-              final dxSquared = dx * dx;
-              if (dxSquared + dySquared > radiusSqSkip) {
-                continue;
-              }
-              distance = math.sqrt(dxSquared + dySquared);
-            }
-            if (distance > radius) {
-              continue;
-            }
-            if (distance <= hardRadius || edgeSpan <= 0.0) {
-              coverage = 1.0;
-            } else {
-              coverage = (1.0 - ((distance - hardRadius) / edgeSpan)).clamp(
-                0.0,
-                1.0,
-              );
-            }
-            if (coverage <= 0.0) {
-              continue;
-            }
-          } else {
-            if (isRotatedRect) {
-              final dx = x + 0.5 - centerX;
-              final tipU = dx * tipCos - dy * tipSin;
-              final tipV = dx * tipSin + dy * tipCos;
-              if (tipU.abs() > radius || tipV.abs() > minorRadius) {
-                continue;
-              }
-            }
-            coverage = 1.0;
-          }
-
-          // Dual-brush texture: a second tiled mask multiplies the coverage
-          // (must match the commit rasterizer and oracle exactly).
-          if (dualMask != null) {
-            coverage *= sampleBrushTipMaskTiledCoverageLattice(
-              mask: dualMask,
-              uAxis: dualULattice!,
-              uIndex: x - left,
-              vAxis: dualVLattice!,
-              vIndex: vIndex,
-            );
-            if (coverage <= 0.0) {
-              continue;
-            }
-          }
-
-          // Paper texture: canvas-anchored tiled mask, blended in by density
-          // (must match the commit rasterizer and oracle exactly).
-          if (textureMask != null) {
-            final textureSample = sampleBrushTipMaskTiledCoverageLattice(
-              mask: textureMask,
-              uAxis: textureULattice!,
-              uIndex: x - left,
-              vAxis: textureVLattice!,
-              vIndex: vIndex,
-            );
-            coverage *= textureOneMinusDensity + textureDensity * textureSample;
-            if (coverage <= 0.0) {
-              continue;
-            }
-          }
-
-          // Same grouping as the commit rasterizer:
-          // effectiveOpacity = dab.opacity * coverage,
-          // sourceAlpha = ((a/255) * effectiveOpacity) * flow.
-          final effectiveOpacity = dabOpacity * coverage;
-          if (effectiveOpacity == 0.0) {
-            continue;
-          }
-          final sourceAlpha = sourceAlphaNorm * effectiveOpacity * dabFlow;
-
-          final offset = (localRowOffset + (x - tileLeft)) * 4;
-          final destR = buffer[offset];
-          final destG = buffer[offset + 1];
-          final destB = buffer[offset + 2];
-          final destA = buffer[offset + 3];
-
-          final destinationAlpha = destA / 255.0;
-          final outAlpha = sourceAlpha + destinationAlpha * (1.0 - sourceAlpha);
-          if (outAlpha == 0.0) {
-            buffer[offset] = 0;
-            buffer[offset + 1] = 0;
-            buffer[offset + 2] = 0;
-            buffer[offset + 3] = 0;
-            continue;
-          }
-
-          final inverseSourceAlpha = 1.0 - sourceAlpha;
-          buffer[offset] =
-              ((sourceR * sourceAlpha +
-                          destR * destinationAlpha * inverseSourceAlpha) /
-                      outAlpha)
-                  .round()
-                  .clamp(0, 255);
-          buffer[offset + 1] =
-              ((sourceG * sourceAlpha +
-                          destG * destinationAlpha * inverseSourceAlpha) /
-                      outAlpha)
-                  .round()
-                  .clamp(0, 255);
-          buffer[offset + 2] =
-              ((sourceB * sourceAlpha +
-                          destB * destinationAlpha * inverseSourceAlpha) /
-                      outAlpha)
-                  .round()
-                  .clamp(0, 255);
-          buffer[offset + 3] = (outAlpha * 255.0).round().clamp(0, 255);
-        }
-      }
-    }
+    // No engine: the Dart reference blend, the same one the commit falls
+    // back to. _tileBuffer creates the tile and bumps its revision, which
+    // is exactly what the old inline loop did per (row, tile).
+    blendDabTilesDart(plan, tileSize: tileSize, bufferFor: _tileBuffer);
 
     return DirtyRegion(
-      left: left,
-      top: top,
-      rightExclusive: rightExclusive,
-      bottomExclusive: bottomExclusive,
+      left: plan.left,
+      top: plan.top,
+      rightExclusive: plan.rightExclusive,
+      bottomExclusive: plan.bottomExclusive,
     );
   }
 }
