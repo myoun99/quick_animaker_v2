@@ -3814,17 +3814,11 @@ QA_EXPORT int64_t qa_audio_resample_frames(int64_t input_frames,
   return input_frames * interpolation / decimation;
 }
 
-// Engine ABI version - the Dart loader refuses a mismatched binary.
-// v12: fill raster RGB -> RGBX (R22-D flood SIMD).
-// v13: qa_flood_fill_wave - wave-parallel flood (R22-E3).
-// v14: qa_fill_compose_batch - pooled fill compose (R25-3).
-// v15: qa_grid_raster_tile - timeline grid tile rasterizer (UI-R18 O7 T1).
-// v16: qa_audio_mix + output stage - the audio mixer core (2B).
-// v18: AUDIO-PRO R1 - pan factors, fade curves and volume envelopes in
-//      the clip struct + the shared envelope key array in qa_audio_mix.
-// v17: qa_audio_resample - the polyphase resampler (2B).
-// v19: AUDIO-PRO R5 - qa_audio_capture_* (the guide-voice recorder).
-// v20: AUDIO-PRO R7 - qa_video_export_* (the OS video encoder).
-// v21: EX4 - qa_video_export_open gains container/codec/alpha/bitrate,
-//      qa_video_export_probe, and qa_image_encode_jpg (stb).
+// Engine ABI version - ONE number for this whole binary, and the Dart
+// loader refuses a mismatched one.
+//
+// The changelog and the bump checklist live in the single place Dart
+// reads this from: lib/src/native/qa_engine_abi.dart. Bumping here
+// without bumping there fails qa_engine_abi_test.dart, which compares the
+// literal below against kQaEngineAbiVersion and needs no binary to do it.
 QA_EXPORT int32_t qa_engine_abi_version(void) { return 24; }

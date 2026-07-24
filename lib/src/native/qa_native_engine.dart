@@ -1,9 +1,10 @@
 import 'dart:collection';
 import 'dart:ffi';
-import 'dart:io';
 
 import 'package:ffi/ffi.dart';
 import 'dart:typed_data';
+
+import 'qa_engine_abi.dart';
 
 /// The native engine core's FFI bindings (R18 A-track).
 ///
@@ -16,6 +17,10 @@ import 'dart:typed_data';
 ///
 /// Tests can point at a locally built binary with the QA_ENGINE_PATH
 /// environment variable.
+///
+/// Which binary, and which ABI generation it must speak, are decided once
+/// in `qa_engine_abi.dart` — see [kQaEngineAbiVersion] for the bump
+/// checklist.
 class QaNativeEngine {
   QaNativeEngine._(
     this._premultiplyRgba,
@@ -38,26 +43,6 @@ class QaNativeEngine {
     this._fillComposeBatch,
     this._gridRasterTile,
   ) : _spec = calloc<QaDabSpecStruct>();
-
-  // v18: AUDIO-PRO R1 extended the AUDIO clip struct; the raster surface
-  // is unchanged, but the version is one number for the whole binary.
-  // v21: EX4 extended the video-export surface + added the JPG encoder.
-  // v22: BB-N1 added the stroke-blend tile kernel (the once-per-stroke
-  // brush blend) and the alpha-bounds tile scan.
-  // v23: the RNNoise round added qa_audio_denoise_f32 (voice-take
-  // suppression); the raster surface is unchanged.
-  // v24: the FUSED PRE-BLEND — qa_tile_span gained base/stroke/mask/
-  // premul fields and qa_pre_blend_tiles stages, blends and premultiplies
-  // a whole frame's overlay tiles in one pooled call (the per-tile
-  // count=1 sequence never engaged the workers). The mask field carries
-  // the selection so "draw inside the selection only" happens in the
-  // kernel instead of a painter clip.
-  static const int _abiVersion = 24;
-
-  /// The ABI this build expects — surfaced by the runtime-path report
-  /// (Preferences > System) so a user can see which engine generation
-  /// their binary carries.
-  static int get abiVersion => _abiVersion;
 
   /// R25-③ batched fill compose: packs compose-tile items + their
   /// ordered layer blends into grow-only native arrays and fans the
@@ -558,19 +543,11 @@ class QaNativeEngine {
   }
 
   static QaNativeEngine? _tryLoad() {
-    final library = _tryOpen();
+    final library = openQaEngineLibrary(overridePath: debugLibraryPathOverride);
     if (library == null) {
       return null;
     }
     try {
-      final abi = library
-          .lookupFunction<Int32 Function(), int Function()>(
-            'qa_engine_abi_version',
-          )
-          .call();
-      if (abi != _abiVersion) {
-        return null;
-      }
       // Struct-layout paranoia: both sides must agree on the spec's exact
       // byte layout, or every field read is garbage. Any mismatch means
       // Dart fallback, never a corrupt blend.
@@ -966,42 +943,6 @@ class QaNativeEngine {
     } on Object {
       return null;
     }
-  }
-
-  static DynamicLibrary? _tryOpen() {
-    final overridePath =
-        debugLibraryPathOverride ?? Platform.environment['QA_ENGINE_PATH'];
-    if (overridePath != null && overridePath.isNotEmpty) {
-      try {
-        return DynamicLibrary.open(overridePath);
-      } on Object {
-        // Fall through to the platform defaults.
-      }
-    }
-    // APPLE: the qa_native FFI plugin compiles the engine INTO the app
-    // binary (iOS forbids loading a standalone dylib from the bundle),
-    // so the symbols live in the process. `process()` itself always
-    // succeeds — a missing engine surfaces as a failed symbol lookup in
-    // the caller's try, which is the same graceful stand-down as before.
-    if (Platform.isIOS || Platform.isMacOS) {
-      try {
-        return DynamicLibrary.process();
-      } on Object {
-        // Fall through: a standalone dylib build is still honored below.
-      }
-    }
-    for (final candidate in [
-      if (Platform.isWindows) 'qa_engine.dll',
-      if (Platform.isLinux || Platform.isAndroid) 'libqa_engine.so',
-      if (Platform.isMacOS) 'libqa_engine.dylib',
-    ]) {
-      try {
-        return DynamicLibrary.open(candidate);
-      } on Object {
-        continue;
-      }
-    }
-    return null;
   }
 
   /// Uploaded stamp RGBA byte buffers keyed by the SOURCE Uint8List's

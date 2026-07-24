@@ -1,11 +1,38 @@
 import 'dart:ffi';
-import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:ffi/ffi.dart';
 
 import '../services/audio/audio_mixer_reference.dart';
 import '../services/audio/audio_resampler_reference.dart';
+import 'qa_engine_abi.dart';
+
+/// Whether [library] lays the audio structs out byte-for-byte the way
+/// this Dart build does.
+///
+/// Struct-layout paranoia, and the audio side has the sharpest version of
+/// it: if the two sides disagree on a single byte, every field read is
+/// garbage — and garbage in an audio buffer is a loud noise through
+/// someone's headphones, not a wrong pixel.
+///
+/// It lives here because this file DECLARES the structs, and it is public
+/// because [QaAudioDevice] passes those same structs to the same binary
+/// on the path that actually reaches a speaker. Both must call it; the
+/// roster test in `qa_engine_abi_test.dart` fails if one stops.
+bool qaAudioStructLayoutsMatch(DynamicLibrary library) {
+  int sizeOfSymbol(String name) =>
+      library.lookupFunction<Int32 Function(), int Function()>(name).call();
+  try {
+    return sizeOfSymbol('qa_audio_clip_sizeof') ==
+            sizeOf<QaAudioClipStruct>() &&
+        sizeOfSymbol('qa_audio_source_sizeof') ==
+            sizeOf<QaAudioSourceStruct>() &&
+        sizeOfSymbol('qa_audio_envelope_key_sizeof') ==
+            sizeOf<QaAudioEnvelopeKeyStruct>();
+  } on Object {
+    return false;
+  }
+}
 
 /// FFI binding for the native audio mixer (2B).
 ///
@@ -28,14 +55,6 @@ final class QaAudioNative {
     this._resampleFrames,
     this._denoise,
   );
-
-  /// Must match `qa_engine_abi_version()` in the C.
-  /// v23: RNNoise round (qa_audio_denoise_f32 — voice-take suppression).
-  /// v24: the fused pre-blend kernel + selection mask (raster side only;
-  /// the audio surface is unchanged, but the version is one number for
-  /// the whole binary — leaving this at 23 silently drops audio to the
-  /// Dart mixer, which is how the R26 parity wipeout happened).
-  static const int _abiVersion = 24;
 
   final void Function(
     Pointer<QaAudioClipStruct>,
@@ -94,47 +113,11 @@ final class QaAudioNative {
   }
 
   static QaAudioNative? _load() {
-    final library = _tryOpen();
-    if (library == null) {
+    final library = openQaEngineLibrary(overridePath: debugLibraryPathOverride);
+    if (library == null || !qaAudioStructLayoutsMatch(library)) {
       return null;
     }
     try {
-      final abi = library
-          .lookupFunction<Int32 Function(), int Function()>(
-            'qa_engine_abi_version',
-          )
-          .call();
-      if (abi != _abiVersion) {
-        return null;
-      }
-      // Struct-layout paranoia (the raster engine's rule): if the two
-      // sides disagree on a single byte of layout, every field read is
-      // garbage — and garbage in an audio buffer is a loud noise through
-      // someone's headphones, not a wrong pixel.
-      final clipSize = library
-          .lookupFunction<Int32 Function(), int Function()>(
-            'qa_audio_clip_sizeof',
-          )
-          .call();
-      if (clipSize != sizeOf<QaAudioClipStruct>()) {
-        return null;
-      }
-      final sourceSize = library
-          .lookupFunction<Int32 Function(), int Function()>(
-            'qa_audio_source_sizeof',
-          )
-          .call();
-      if (sourceSize != sizeOf<QaAudioSourceStruct>()) {
-        return null;
-      }
-      final envelopeKeySize = library
-          .lookupFunction<Int32 Function(), int Function()>(
-            'qa_audio_envelope_key_sizeof',
-          )
-          .call();
-      if (envelopeKeySize != sizeOf<QaAudioEnvelopeKeyStruct>()) {
-        return null;
-      }
       return QaAudioNative._(
         library.lookupFunction<
           Void Function(
@@ -204,40 +187,6 @@ final class QaAudioNative {
     } on Object {
       return null;
     }
-  }
-
-  static DynamicLibrary? _tryOpen() {
-    final overridePath =
-        debugLibraryPathOverride ?? Platform.environment['QA_ENGINE_PATH'];
-    if (overridePath != null && overridePath.isNotEmpty) {
-      try {
-        return DynamicLibrary.open(overridePath);
-      } on Object {
-        // Fall through to the platform defaults.
-      }
-    }
-    // Apple: the plugin compiles the engine INTO the app binary (iOS
-    // forbids loading a standalone dylib from a bundle), so the symbols
-    // live in the process.
-    if (Platform.isIOS || Platform.isMacOS) {
-      try {
-        return DynamicLibrary.process();
-      } on Object {
-        // Fall through: a standalone dylib build is still honored below.
-      }
-    }
-    for (final candidate in [
-      if (Platform.isWindows) 'qa_engine.dll',
-      if (Platform.isLinux || Platform.isAndroid) 'libqa_engine.so',
-      if (Platform.isMacOS) 'libqa_engine.dylib',
-    ]) {
-      try {
-        return DynamicLibrary.open(candidate);
-      } on Object {
-        continue;
-      }
-    }
-    return null;
   }
 
   /// Mixes through the native core, marshalling the clips and sources into

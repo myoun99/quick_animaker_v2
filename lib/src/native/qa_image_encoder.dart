@@ -1,8 +1,9 @@
 import 'dart:ffi';
-import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:ffi/ffi.dart';
+
+import 'qa_engine_abi.dart';
 
 /// The still-image encoder (EX4): baseline JPEG through the engine's
 /// vendored stb_image_write — memory to memory, byte-deterministic,
@@ -31,41 +32,12 @@ final class QaImageEncoder {
   static QaImageEncoder? get instance {
     if (!_tried) {
       _tried = true;
-      final library = _tryOpen();
+      final library = openQaEngineLibrary(
+        overridePath: debugLibraryPathOverride,
+      );
       _instance = library == null ? null : QaImageEncoder._(library);
     }
     return _instance;
-  }
-
-  static DynamicLibrary? _tryOpen() {
-    final overridePath =
-        debugLibraryPathOverride ?? Platform.environment['QA_ENGINE_PATH'];
-    if (overridePath != null && overridePath.isNotEmpty) {
-      try {
-        return DynamicLibrary.open(overridePath);
-      } on Object {
-        // Fall through to the platform defaults.
-      }
-    }
-    if (Platform.isIOS || Platform.isMacOS) {
-      try {
-        return DynamicLibrary.process();
-      } on Object {
-        // Fall through.
-      }
-    }
-    for (final candidate in [
-      if (Platform.isWindows) 'qa_engine.dll',
-      if (Platform.isLinux || Platform.isAndroid) 'libqa_engine.so',
-      if (Platform.isMacOS) 'libqa_engine.dylib',
-    ]) {
-      try {
-        return DynamicLibrary.open(candidate);
-      } on Object {
-        continue;
-      }
-    }
-    return null;
   }
 
   late final _encodeJpg = _library

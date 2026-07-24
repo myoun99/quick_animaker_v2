@@ -2,6 +2,7 @@ import 'dart:io';
 
 import '../native/qa_audio_decoder.dart';
 import '../native/qa_audio_native.dart';
+import '../native/qa_engine_abi.dart';
 import '../native/qa_native_engine.dart';
 import '../native/qa_tablet_bridge.dart';
 import '../native/qa_video_encoder.dart';
@@ -54,7 +55,7 @@ List<RuntimePathEntry> collectRuntimePathReport() {
     RuntimePathEntry(
       subsystem: 'Raster engine',
       active: raster != null
-          ? 'Native C (qa_engine, ABI ${QaNativeEngine.abiVersion}) — '
+          ? 'Native C (qa_engine, ABI $kQaEngineAbiVersion) — '
                 'worker-pool parallel'
           : 'Dart fallback (no native binary loaded)',
       isPrimary: raster != null,
@@ -72,7 +73,7 @@ List<RuntimePathEntry> collectRuntimePathReport() {
     RuntimePathEntry(
       subsystem: 'Audio engine',
       active: audio != null
-          ? 'Native C (qa_engine, ABI ${QaNativeEngine.abiVersion})'
+          ? 'Native C (qa_engine, ABI $kQaEngineAbiVersion)'
           : 'Dart fallback (no native binary loaded)',
       isPrimary: audio != null,
       detail:
