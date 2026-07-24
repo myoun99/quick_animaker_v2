@@ -38,7 +38,7 @@ class TimelinePanel extends StatefulWidget {
     required this.layers,
     required this.activeLayerId,
     required this.frameCursor,
-    this.cacheProgress,
+    this.frameCachedSignal,
     required this.playbackFrameCount,
     required this.exposureStateForLayer,
     this.frameNameForLayer,
@@ -153,7 +153,7 @@ class TimelinePanel extends StatefulWidget {
   final ValueListenable<int> frameCursor;
 
   /// Repaints the rulers' cached-range green strip as frames warm.
-  final Listenable? cacheProgress;
+  final Listenable? frameCachedSignal;
 
   final int playbackFrameCount;
   final TimelineCellExposureState Function(Layer layer, int frameIndex)
@@ -444,7 +444,7 @@ class _TimelinePanelState extends State<TimelinePanel> {
                     activeLayerId: widget.activeLayerId,
                     dragPreview: widget.dragPreview,
                     frameCursor: widget.frameCursor,
-                    cacheProgress: widget.cacheProgress,
+                    frameCachedSignal: widget.frameCachedSignal,
                     playbackFrameCount: widget.playbackFrameCount,
                     exposureStateForLayer: widget.exposureStateForLayer,
                     frameNameForLayer: widget.frameNameForLayer,
@@ -526,7 +526,7 @@ class _TimelinePanelState extends State<TimelinePanel> {
                     seClipMarkerTooltip: widget.seClipMarkerTooltip,
                     dragPreview: widget.dragPreview,
                     frameCursor: widget.frameCursor,
-                    cacheProgress: widget.cacheProgress,
+                    frameCachedSignal: widget.frameCachedSignal,
                     frameCount: widget.playbackFrameCount,
                     exposureStateForLayer: widget.exposureStateForLayer,
                     frameNameForLayer: widget.frameNameForLayer,

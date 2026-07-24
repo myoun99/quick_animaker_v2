@@ -75,6 +75,15 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
   /// rails, waveforms) never rebuilds on a tick.
   final ValueNotifier<int?> _playheadGlobalFrame = ValueNotifier<int?>(null);
 
+  /// Whatever can change a frame's cached-ness — warm progress AND pixel
+  /// edits (composites self-validate by signature, so an edit raises no
+  /// event of its own). The ruler's green bar repaints off this; the
+  /// timeline host carries the identical signal.
+  late final Listenable _frameCachedSignal = Listenable.merge([
+    _session.prerenderScheduler.progress,
+    _session.brushFrameStore.celPixelRevision,
+  ]);
+
   /// Identity-memoized active-track layout (R12-⑥): the playhead refresh
   /// fires per playback tick and the ruler's green bar asks per visible
   /// frame column per repaint — none of them may rebuild the layout list
@@ -438,7 +447,7 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
                   onCancel: _session.cancelMovieEndDrag,
                 ),
                 playheadFrame: _playheadGlobalFrame,
-                cacheProgress: _session.prerenderScheduler.progress,
+                frameCachedSignal: _frameCachedSignal,
                 onSeekGlobalFrame: (frame) =>
                     seekStoryboardGlobalFrame(_session, frame),
                 // Ruler drags ride the cursor path (the host rebuilds

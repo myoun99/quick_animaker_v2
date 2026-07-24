@@ -1224,13 +1224,10 @@ void main() {
     await tester.pump();
 
     expect(currentFrameIndex, 9);
-    // The selected header reads by TINT only (painter model): its
-    // background differs from a neighbor's, no red-border machinery.
-    expect(timelineHeaderModel(tester, 9).selected, isTrue);
-    expect(
-      timelineHeaderModel(tester, 9).background,
-      isNot(timelineHeaderModel(tester, 8).background),
-    );
+    // The current header reads by TINT only — no red-border machinery. The
+    // tint is painted by the ruler's cursor OVERLAY: the static strip is
+    // cursor-independent now, so a seek never re-records its labels.
+    expect(timelineRulerTintedFrame(tester), 9);
   });
 
   testWidgets('dragging frame ruler scrub area scrubs changed frames', (
@@ -1556,14 +1553,9 @@ void main() {
   ) async {
     await tester.pumpWidget(_grid(currentFrameIndex: 3));
 
-    // Selection reads by the TINT alone (painter model): the background
-    // differs from unselected neighbors; the painter has no selected
-    // border path at all.
-    expect(timelineHeaderModel(tester, 3).selected, isTrue);
-    expect(
-      timelineHeaderModel(tester, 3).background,
-      isNot(timelineHeaderModel(tester, 2).background),
-    );
+    // Selection reads by the TINT alone — there is no selected-border path
+    // anywhere. The tint rides the ruler's cursor overlay.
+    expect(timelineRulerTintedFrame(tester), 3);
   });
 
   testWidgets('named drawing start displays name and mark has priority', (

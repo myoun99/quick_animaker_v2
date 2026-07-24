@@ -50,6 +50,16 @@ class BrushFrameStore {
   /// stroke on an already-drawn cel costs nothing.
   final ValueNotifier<int> celContentRevision = ValueNotifier<int>(0);
 
+  /// Bumps on EVERY pixel edit ([markCelEdited]), crossing or not.
+  ///
+  /// Playback composites self-validate against a signature that folds in
+  /// each cel's `sourceRevision`, so a stroke silently invalidates them —
+  /// nothing raises an "invalidated" event. Cheap UI that DISPLAYS
+  /// cached-ness (the rulers' green bar) therefore has no token to compare
+  /// and must simply re-read after any edit; this is that signal. Keep the
+  /// listeners cheap: this fires as often as the user draws.
+  final ValueNotifier<int> celPixelRevision = ValueNotifier<int>(0);
+
   /// Keys last seen holding a picture — the crossing detector's memory.
   final Set<BrushFrameKey> _celsWithContent = {};
 
@@ -670,10 +680,14 @@ class BrushFrameStore {
     BrushFrameKey key, {
     DirtyTileSet? dirtyTiles,
   }) {
-    return _update(
+    final next = _update(
       _canonicalize(key),
       (state) => _markCacheDirty(state, dirtyTiles: dirtyTiles),
     );
+    // The composite caches this edit just invalidated have no event of
+    // their own (they self-validate by signature) — see [celPixelRevision].
+    celPixelRevision.value += 1;
+    return next;
   }
 
   BrushFrameDrawingState _markCacheDirty(

@@ -30,8 +30,6 @@ class TimelineFrameHeaderRow extends StatelessWidget {
     required this.onSelectFrame,
     this.framesPerSecond = 24,
     this.showSeconds = false,
-    this.isFrameCached,
-    this.cacheRepaint,
     this.windowBucket,
     this.viewportMainExtent = 0,
   });
@@ -61,15 +59,6 @@ class TimelineFrameHeaderRow extends StatelessWidget {
   /// instead of counting absolute frames.
   final bool showSeconds;
 
-  /// Whether a frame's playback composite is warmed — drawn as the AE-style
-  /// green cached-range strip along the header's bottom edge.
-  final bool Function(int frameIndex)? isFrameCached;
-
-  /// The cache-progress listenable, routed to the painter's [repaint] so the
-  /// green strip refreshes as frames warm WITHOUT the painter comparing the
-  /// churny [isFrameCached] tear-off on every unrelated session notify.
-  final Listenable? cacheRepaint;
-
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
@@ -93,8 +82,6 @@ class TimelineFrameHeaderRow extends StatelessWidget {
           colorScheme: colorScheme,
           framesPerSecond: framesPerSecond,
           showSeconds: showSeconds,
-          isFrameCached: isFrameCached,
-          cacheRepaint: cacheRepaint,
           windowBucket: windowBucket,
           viewportMainExtent: viewportMainExtent,
         ),

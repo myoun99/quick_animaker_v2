@@ -34,15 +34,13 @@ import 'timeline/property_lane_model.dart'
 import 'timeline/se_audio_lane.dart' show SeAudioLaneFrameRow;
 import 'timeline/timeline_lane_rows.dart'
     show TimelineLaneControlsRow, TimelineLaneFrameRow;
+import 'timeline/timeline_ruler_cursor_overlay.dart';
 import 'timeline/transform_lane_policy.dart'
     show transformGroupHeader, transformGroupHeaderLane, transformPropertyLanes;
 import 'timeline/timeline_block.dart';
 import 'timeline/timeline_drag_preview.dart';
 import 'timeline/timeline_cell_style.dart'
-    show
-        timelineBaseGridAlpha,
-        timelineDrawingInkColor,
-        timelineSelectedFrameBorderColor;
+    show timelineBaseGridAlpha, timelineDrawingInkColor;
 import 'timeline/timeline_exposure_comma_drag_handle.dart'
     show BlockEdgeGrip, BlockEdgeGripHooks, TimelineBlockEdgeGrip;
 import 'timeline/timeline_exposure_comma_drag_policy.dart'
@@ -181,7 +179,7 @@ class StoryboardPanel extends StatefulWidget {
     this.showSeconds = false,
     this.projectFrameRate = ProjectFrameRate.fps24,
     this.playheadFrame,
-    this.cacheProgress,
+    this.frameCachedSignal,
     this.onSeekGlobalFrame,
     this.onScrubGlobalFrame,
     this.onScrubEnd,
@@ -321,7 +319,7 @@ class StoryboardPanel extends StatefulWidget {
 
   /// Repaints the ruler's cached-range (green) bar as the prerender cache
   /// fills; null leaves the bar static per build.
-  final Listenable? cacheProgress;
+  final Listenable? frameCachedSignal;
 
   /// Tapping or scrubbing the ruler reports the track-global frame under
   /// the pointer. Null makes the ruler display-only.
@@ -1418,7 +1416,7 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
                               renderedFrames: renderedFrames,
                               contentFrames: totalFrames,
                               playhead: playheadListenable,
-                              cacheProgress: widget.cacheProgress,
+                              frameCachedSignal: widget.frameCachedSignal,
                               viewportOffset: _horizontalScrollOffset,
                               windowBucket: _horizontalWindowBucket,
                               viewportWidth: viewportWidth,
@@ -1751,7 +1749,7 @@ class _StoryboardRuler extends StatefulWidget {
     required this.renderedFrames,
     required this.contentFrames,
     required this.playhead,
-    required this.cacheProgress,
+    required this.frameCachedSignal,
     required this.viewportOffset,
     required this.windowBucket,
     required this.viewportWidth,
@@ -1780,7 +1778,7 @@ class _StoryboardRuler extends StatefulWidget {
   /// there are far more of them than in the timeline, which is exactly
   /// why the old rebuild-per-tick ruler showed up as fixed frame drops.
   final ValueListenable<int?>? playhead;
-  final Listenable? cacheProgress;
+  final Listenable? frameCachedSignal;
 
   /// The live horizontal offset (UI-R15): the strip builds ONCE with the
   /// full frame bounds; the edge-pan test reads the live offset, while
@@ -1909,26 +1907,19 @@ class _StoryboardRulerState extends State<_StoryboardRuler> {
                 viewportMainExtent: widget.viewportWidth,
               ),
               // The moving parts REPAINT only: current-frame tint + green
-              // cached bar, one thin isolated layer.
+              // cached bar, one thin isolated layer. Shared with the
+              // timeline ruler, which needs the very same split.
               Positioned.fill(
-                child: IgnorePointer(
-                  child: RepaintBoundary(
-                    child: CustomPaint(
-                      key: const ValueKey<String>(
-                        'storyboard-ruler-cursor-overlay',
-                      ),
-                      painter: _StoryboardRulerCursorPainter(
-                        playhead: widget.playhead,
-                        cacheProgress: widget.cacheProgress,
-                        windowBucket: widget.windowBucket,
-                        viewportMainExtent: widget.viewportWidth,
-                        renderedFrames: widget.renderedFrames,
-                        contentFrames: widget.contentFrames,
-                        cellWidth: cellWidth,
-                        isFrameCached: widget.isFrameCached,
-                      ),
-                    ),
-                  ),
+                child: TimelineRulerCursorOverlay(
+                  keyValue: 'storyboard-ruler-cursor-overlay',
+                  playhead: widget.playhead,
+                  repaintSignal: widget.frameCachedSignal,
+                  windowBucket: widget.windowBucket,
+                  viewportMainExtent: widget.viewportWidth,
+                  renderedFrames: widget.renderedFrames,
+                  contentFrames: widget.contentFrames,
+                  cellWidth: cellWidth,
+                  isFrameCached: widget.isFrameCached,
                 ),
               ),
             ],
@@ -1937,108 +1928,6 @@ class _StoryboardRulerState extends State<_StoryboardRuler> {
       ),
     );
   }
-}
-
-/// The storyboard ruler's per-tick layer: the current-frame tint and the
-/// green cached-range bar painted OVER the static header cells, driven by
-/// [CustomPainter.repaint] — no widget rebuilds on ticks or cache warms.
-class _StoryboardRulerCursorPainter extends CustomPainter {
-  _StoryboardRulerCursorPainter({
-    required this.playhead,
-    required Listenable? cacheProgress,
-    required this.windowBucket,
-    required this.viewportMainExtent,
-    required this.renderedFrames,
-    required this.contentFrames,
-    required this.cellWidth,
-    required this.isFrameCached,
-  }) : super(
-         repaint: Listenable.merge([?playhead, ?cacheProgress, windowBucket]),
-       );
-
-  final ValueListenable<int?>? playhead;
-
-  /// UI-R15→R16 self-windowing: paint covers the bucket-derived slice of
-  /// the full-bounds strip (repaint once per span crossing).
-  final ValueListenable<int> windowBucket;
-  final double viewportMainExtent;
-  final int renderedFrames;
-  final int contentFrames;
-  final double cellWidth;
-  final bool Function(int globalFrame)? isFrameCached;
-
-  /// The AE-style cached-range green (the header cells' own strip color).
-  static const Color _cachedBarColor = Color(0xFF54B435);
-
-  ({int startIndex, int endIndexExclusive}) _visibleWindow() {
-    if (viewportMainExtent <= 0 || cellWidth <= 0) {
-      return (startIndex: 0, endIndexExclusive: renderedFrames);
-    }
-    final window = timelineFrameWindowFor(
-      bucket: windowBucket.value,
-      cellExtent: cellWidth,
-      viewportExtent: viewportMainExtent,
-    );
-    return (
-      startIndex: math.max(0, window.startIndex),
-      endIndexExclusive: math.min(renderedFrames, window.endIndexExclusive),
-    );
-  }
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final window = _visibleWindow();
-    final frameStartIndex = window.startIndex;
-    final frameEndIndexExclusive = window.endIndexExclusive;
-    final cached = isFrameCached;
-    if (cached != null) {
-      final barPaint = Paint()..color = _cachedBarColor;
-      final end = math.min(frameEndIndexExclusive, contentFrames);
-      var runStart = -1;
-      // Consecutive cached frames coalesce into one rect per run.
-      for (var frame = frameStartIndex; frame <= end; frame += 1) {
-        if (frame < end && cached(frame)) {
-          runStart = runStart < 0 ? frame : runStart;
-          continue;
-        }
-        if (runStart >= 0) {
-          canvas.drawRect(
-            Rect.fromLTWH(
-              runStart * cellWidth,
-              size.height - 3,
-              (frame - runStart) * cellWidth,
-              3,
-            ),
-            barPaint,
-          );
-          runStart = -1;
-        }
-      }
-    }
-
-    final frame = playhead?.value;
-    if (frame != null &&
-        frame >= frameStartIndex &&
-        frame < frameEndIndexExclusive) {
-      // Matches the header cell's selected fill: the same tint over the
-      // same surface the cell would have blended it onto.
-      canvas.drawRect(
-        Rect.fromLTWH(frame * cellWidth, 0, cellWidth, size.height),
-        Paint()
-          ..color = timelineSelectedFrameBorderColor.withValues(alpha: 0.12),
-      );
-    }
-  }
-
-  @override
-  bool shouldRepaint(_StoryboardRulerCursorPainter oldDelegate) =>
-      !identical(oldDelegate.windowBucket, windowBucket) ||
-      oldDelegate.viewportMainExtent != viewportMainExtent ||
-      oldDelegate.renderedFrames != renderedFrames ||
-      oldDelegate.contentFrames != contentFrames ||
-      oldDelegate.cellWidth != cellWidth ||
-      !identical(oldDelegate.playhead, playhead) ||
-      !identical(oldDelegate.isFrameCached, isFrameCached);
 }
 
 /// SE rows under a track: one per SE slot, S1·S2… like the sheet columns.
