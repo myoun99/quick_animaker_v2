@@ -1,6 +1,3 @@
-@Tags(['benchmark'])
-library;
-
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
@@ -11,6 +8,11 @@ import 'package:quick_animaker_v2/src/services/canvas_flood_fill.dart';
 /// ensure-composed callback counted. Print-only timings plus structural
 /// pins on the callback volume: the tap used to invoke it PER VISITED
 /// PIXEL (tens of millions of dynamic calls = the multi-second freeze).
+///
+/// NOT tagged `benchmark`: the tag skips the whole file, and the callback
+/// -volume pin below is a FREEZE GUARD whose own comment says the pixel-
+/// volume call counts "must never come back". A guard that does not run
+/// is not a guard. It counts calls, which the clock cannot move.
 void main() {
   test('large-region fill: timing + ensureComposed call volume', () {
     const width = 1600;

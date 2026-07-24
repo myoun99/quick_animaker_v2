@@ -5,6 +5,25 @@
 #
 # Run the benchmarks deliberately, on their own:
 #   flutter test --run-skipped --tags benchmark
+#
+# WHAT EARNS THE TAG — and it is not the filename.
+#
+# The tag SKIPS THE WHOLE FILE, assertions included. So it belongs on a
+# file whose point IS the number: one that measures, prints, and asserts
+# nothing the clock cannot move. Tag it and you lose only noise.
+#
+# A file that also pins a CONTRACT — a count, a byte total, a geometry, a
+# call volume — must stay in the suite even if it prints times too, because
+# tagging it silently deletes that coverage. Three files were once tagged
+# for having "benchmark" in the name while carrying twenty-one such
+# assertions between them (the incremental-save architecture, the 8K flood
+# geometry, and a freeze guard whose own comment said it must never come
+# back); they are now named `*_scale_test.dart` / `*_400cut_test.dart` and
+# run every time. Their printed times are indicative only — read those from
+# a deliberate lone run.
+#
+# So: assert on the clock, or only print? Only print AND assert nothing
+# else -> tag it. Assert a contract -> leave it in the suite.
 tags:
   benchmark:
     skip: "performance benchmark — run with: flutter test --run-skipped --tags benchmark"
