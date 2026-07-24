@@ -68,7 +68,7 @@ ui.Rect surfaceContentWorldRect(BitmapSurface surface) {
 ///
 /// Byte-parity with the CPU assembly path ([bitmapSurfaceToImage]): tile
 /// bytes premultiply through the SAME mul-div-255 rounding
-/// ([BitmapTileImageCache.premultipliedTilePixels]) and are drawn 1:1 at
+/// ([BitmapTileImageCache.premultipliedTileUpload]) and are drawn 1:1 at
 /// integer offsets with [ui.FilterQuality.none] over a transparent base, so
 /// srcOver passes the premultiplied bytes through unchanged.
 ///
@@ -299,12 +299,16 @@ PositionedSurfaceImage? composePositionedSurfaceImageSyncOrNull(
 
 Future<ui.Image> _decodeTile(BitmapTile tile) {
   final completer = Completer<ui.Image>();
+  final upload = BitmapTileImageCache.premultipliedTileUpload(tile);
   ui.decodeImageFromPixels(
-    BitmapTileImageCache.premultipliedTilePixels(tile),
+    upload.view,
     tile.size,
     tile.size,
     ui.PixelFormat.rgba8888,
-    completer.complete,
+    (image) {
+      upload.free();
+      completer.complete(image);
+    },
   );
   return completer.future;
 }

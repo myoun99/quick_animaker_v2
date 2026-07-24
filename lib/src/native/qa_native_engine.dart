@@ -1413,17 +1413,6 @@ class QaNativeEngine {
     pixels.setAll(0, view);
   }
 
-  /// Premultiplied COPY straight from a native tile buffer (R19-Z): the
-  /// fused kernel reads [source] and writes premultiplied bytes into the
-  /// scratch in ONE pass, and the single VM copy out builds the result —
-  /// the decode-start path used to pay three VM copies per tile.
-  /// Byte-identical to [premultiplyRgba] on the same input.
-  Uint8List premultipliedCopyFromNative(Pointer<Uint8> source, int length) {
-    _ensurePremultiplyScratch(length);
-    _premultiplyRgbaCopy(_premultiplyScratch, source, length ~/ 4);
-    return Uint8List.fromList(_premultiplyScratch.asTypedList(length));
-  }
-
   void _ensurePremultiplyScratch(int length) {
     if (_premultiplyScratchLength < length) {
       if (_premultiplyScratch != nullptr) {

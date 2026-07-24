@@ -711,9 +711,15 @@ void main() {
       );
 
       QaNativeEngine.debugForceDartFallback = true;
-      final dartResult = BitmapTileImageCache.premultipliedTilePixels(tile);
+      final dartUpload = BitmapTileImageCache.premultipliedTileUpload(tile);
       QaNativeEngine.debugForceDartFallback = false;
-      final nativeResult = BitmapTileImageCache.premultipliedTilePixels(tile);
+      final nativeUpload = BitmapTileImageCache.premultipliedTileUpload(tile);
+      // Copy the native view out before releasing it: the comparison
+      // below outlives the scratch.
+      final dartResult = Uint8List.fromList(dartUpload.view);
+      final nativeResult = Uint8List.fromList(nativeUpload.view);
+      dartUpload.free();
+      nativeUpload.free();
 
       expect(
         nativeResult,
