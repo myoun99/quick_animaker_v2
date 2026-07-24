@@ -16,6 +16,7 @@ import 'package:quick_animaker_v2/src/services/brush_live_stroke_rasterizer.dart
 import 'package:quick_animaker_v2/src/ui/canvas/active_stroke_overlay.dart';
 import 'package:quick_animaker_v2/src/ui/canvas/bitmap_surface_painter.dart';
 import 'package:quick_animaker_v2/src/ui/canvas/bitmap_tile_image_cache.dart';
+import 'package:quick_animaker_v2/src/ui/canvas/viewport_canvas_transform.dart';
 
 void main() {
   group('BitmapSurfacePainter', () {
@@ -222,9 +223,13 @@ void main() {
       return count;
     }
 
+    // The cull rect is what the painter reads its visible range from (the
+    // engine gives a layer's recorder the paint bounds), so the harness
+    // has to supply one — an unbounded recorder would report a giant clip
+    // and call every tile visible.
     void paintOnce(CustomPainter painter, Size size) {
       final recorder = ui.PictureRecorder();
-      painter.paint(Canvas(recorder), size);
+      painter.paint(Canvas(recorder, Offset.zero & size), size);
       recorder.endRecording().dispose();
     }
 
@@ -302,6 +307,197 @@ void main() {
       expect(
         pendingCount(cache, surface),
         80 - BitmapSurfacePainter.decodeStartBudget,
+      );
+    });
+  });
+
+  // The draw walk visits only the tile coordinates the view covers, and
+  // "the view" has to be read in CANVAS space. Two production routes hand
+  // this painter a canvas somebody else transformed:
+  //
+  //   * the MERGED editing canvas — the layer stack painter applies the
+  //     viewport itself and builds this painter with `viewport: null`, so
+  //     the active layer is drawn inside the composite tree (a folder's
+  //     group buffer has to be able to enclose it);
+  //   * the selection FLOAT — a drag/warp Transform stacks on top of the
+  //     viewport.
+  //
+  // Deriving the range from `viewport` + the widget size read a SCREEN
+  // rect as canvas space in both, and culled tiles that were on screen:
+  // the active layer blanked wherever pan/zoom moved the view off the
+  // origin. These pin the fix at the pixel level.
+  group('visible-tile range is read in canvas space', () {
+    const tileSize = 4;
+
+    /// Four opaque red tiles in a row: canvas x 0..16, one tile tall.
+    BitmapSurface stripe() {
+      final tiles = <TileCoord, BitmapTile>{};
+      for (var x = 0; x < 4; x += 1) {
+        final pixels = Uint8List(tileSize * tileSize * 4);
+        for (var i = 0; i < pixels.length; i += 4) {
+          pixels[i] = 255;
+          pixels[i + 3] = 255;
+        }
+        final tile = BitmapTile(
+          coord: TileCoord(x: x, y: 0),
+          size: tileSize,
+          pixels: pixels,
+        );
+        tiles[tile.coord] = tile;
+      }
+      return BitmapSurface(
+        canvasSize: CanvasSize(width: 16, height: 4),
+        tileSize: tileSize,
+        tiles: tiles,
+      );
+    }
+
+    /// Every tile decoded up front: this has to exercise the drawImage
+    /// route, not the per-pixel fallback.
+    Future<BitmapTileImageCache> decodedCache(BitmapSurface surface) async {
+      final cache = BitmapTileImageCache();
+      for (final tile in surface.tiles.values) {
+        cache.ensureDecoded(tile);
+      }
+      for (var attempt = 0; attempt < 100; attempt += 1) {
+        if (cache.allDecoded(surface.tiles.values)) {
+          break;
+        }
+        await Future<void>.delayed(Duration.zero);
+      }
+      expect(
+        cache.allDecoded(surface.tiles.values),
+        isTrue,
+        reason: 'setup: every tile must have an image',
+      );
+      return cache;
+    }
+
+    Future<Uint8List> rasterize(
+      void Function(Canvas canvas) body, {
+      required int width,
+      required int height,
+    }) async {
+      final recorder = ui.PictureRecorder();
+      final canvas = Canvas(
+        recorder,
+        Offset.zero & Size(width.toDouble(), height.toDouble()),
+      );
+      body(canvas);
+      final image = await recorder.endRecording().toImage(width, height);
+      final bytes = await image.toByteData(format: ui.ImageByteFormat.rawRgba);
+      return bytes!.buffer.asUint8List();
+    }
+
+    /// The merged route verbatim: _LayerStackPainter.paint applies the
+    /// viewport and clips, then the _PaintActiveSurface case calls
+    /// paintContentInto on that canvas.
+    Future<Uint8List> paintMerged(
+      BitmapSurfacePainter painter,
+      CanvasViewport viewport, {
+      required int width,
+      required int height,
+    }) {
+      return rasterize(
+        (canvas) {
+          canvas.save();
+          canvas.clipRect(
+            Rect.fromLTWH(0, 0, width.toDouble(), height.toDouble()),
+          );
+          applyViewportTransform(canvas, viewport);
+          canvas.save();
+          canvas.clipRect(painter.pasteboardRect);
+          painter.paintContentInto(canvas);
+          canvas.restore();
+          canvas.restore();
+        },
+        width: width,
+        height: height,
+      );
+    }
+
+    test('merged route, PANNED: the half of the cel the view moved to is '
+        'drawn', () async {
+      final surface = stripe();
+      // No viewport on the painter — exactly what the merged canvas builds
+      // (BrushCanvasPanel._activeSurfacePainterFor).
+      final painter = BitmapSurfacePainter(
+        surface: surface,
+        showTransparentBackground: false,
+        tileImageCache: await decodedCache(surface),
+      );
+
+      // Canvas x 8..16 fills the 8-wide view.
+      final pixels = await paintMerged(
+        painter,
+        CanvasViewport(panX: -8),
+        width: 8,
+        height: 4,
+      );
+
+      expect(
+        _rgbaAt(pixels, width: 8, x: 0, y: 0),
+        [255, 0, 0, 255],
+        reason: 'canvas x=8 shows at screen x=0',
+      );
+      expect(
+        _rgbaAt(pixels, width: 8, x: 7, y: 3),
+        [255, 0, 0, 255],
+        reason: 'canvas x=15 shows at screen x=7',
+      );
+    });
+
+    test('merged route, ZOOMED OUT: the far side of the cel is drawn', () async {
+      final surface = stripe();
+      final painter = BitmapSurfacePainter(
+        surface: surface,
+        showTransparentBackground: false,
+        tileImageCache: await decodedCache(surface),
+      );
+
+      // Fit: the whole 16-wide cel inside an 8-wide view.
+      final pixels = await paintMerged(
+        painter,
+        CanvasViewport(zoom: 0.5),
+        width: 8,
+        height: 2,
+      );
+
+      expect(
+        _rgbaAt(pixels, width: 8, x: 7, y: 0),
+        [255, 0, 0, 255],
+        reason: 'canvas x=15 shows at screen x=7 under a 0.5 zoom',
+      );
+    });
+
+    test('selection float: a Transform above the painter moves what is '
+        'visible', () async {
+      final surface = stripe();
+      final painter = BitmapSurfacePainter(
+        surface: surface,
+        viewport: CanvasViewport(panX: -8),
+        showTransparentBackground: false,
+        tileImageCache: await decodedCache(surface),
+      );
+
+      // CanvasSelectionLayer wraps the float painter in a Transform
+      // carrying the live drag delta; here it drags the float 8px right,
+      // which brings canvas x 0..8 (screen -8..0) back into view.
+      final pixels = await rasterize(
+        (canvas) {
+          canvas.save();
+          canvas.translate(8, 0);
+          painter.paint(canvas, const Size(8, 4));
+          canvas.restore();
+        },
+        width: 8,
+        height: 4,
+      );
+
+      expect(
+        _rgbaAt(pixels, width: 8, x: 4, y: 0),
+        [255, 0, 0, 255],
+        reason: 'the dragged float must draw where the drag put it',
       );
     });
   });
@@ -418,8 +614,11 @@ Future<Uint8List> _paintPixels(
   required int height,
 }) async {
   final recorder = ui.PictureRecorder();
-  final canvas = Canvas(recorder);
-  painter.paint(canvas, Size(width.toDouble(), height.toDouble()));
+  final size = Size(width.toDouble(), height.toDouble());
+  // Cull rect like the engine's: the painter reads its visible range from
+  // the canvas clip.
+  final canvas = Canvas(recorder, Offset.zero & size);
+  painter.paint(canvas, size);
   final image = await recorder.endRecording().toImage(width, height);
   final byteData = await image.toByteData(format: ui.ImageByteFormat.rawRgba);
   return byteData!.buffer.asUint8List();
