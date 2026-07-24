@@ -580,43 +580,11 @@ class TimelineLaneFrameRow extends StatelessWidget {
         laneSelectionCoversBandRow(selection, layer.id, lane.laneId);
 
     List<Widget> markerChildren(TimelineLaneSelection? selection) => [
-      // The lane-selection WASH (UI-R23 #3 part 2, the #4 style): a thin
-      // accent-1 outline + low wash over the selected span, UNDER the
-      // markers.
-      if (selectionCoversRow(selection) &&
-          selection!.endIndexExclusive > frameStartIndex &&
-          selection.startIndex < frameEndIndexExclusive)
-        () {
-          final start = selection.startIndex < frameStartIndex
-              ? frameStartIndex
-              : selection.startIndex;
-          final endExclusive =
-              selection.endIndexExclusive > frameEndIndexExclusive
-              ? frameEndIndexExclusive
-              : selection.endIndexExclusive;
-          final main = (start - frameStartIndex) * cellExtent;
-          final extent = (endExclusive - start) * cellExtent;
-          return Positioned(
-            key: ValueKey<String>(
-              '$keyPrefix-lane-selection-${layer.id}-${lane.laneId}',
-            ),
-            left: horizontal ? main : 0,
-            top: horizontal ? 0 : main,
-            width: horizontal ? extent : crossExtent,
-            height: horizontal ? crossExtent : extent,
-            child: IgnorePointer(
-              child: DecoratedBox(
-                decoration: BoxDecoration(
-                  color: AppColors.accent.withValues(alpha: 0.10),
-                  border: Border.all(
-                    color: AppColors.accent,
-                    width: _selectedLaneKeyBorderWidth,
-                  ),
-                ),
-              ),
-            ),
-          );
-        }(),
+      // R27 #14: the selection BAND is no longer painted here. It rides
+      // the cursor overlay with the cell selection's exact geometry and
+      // decoration, so a key span and a cell span read as one language.
+      // (The band is above the markers there; the key RING below still
+      // marks which keys are in the span.)
       for (final frame in lane.keyedFrames)
         if (frame >= frameStartIndex && frame < frameEndIndexExclusive)
           Positioned(

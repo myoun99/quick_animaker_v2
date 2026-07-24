@@ -1,4 +1,4 @@
-import 'package:flutter/gestures.dart' show kPrimaryButton;
+import 'package:flutter/gestures.dart' show PointerDeviceKind, kPrimaryButton;
 import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
 
@@ -9,13 +9,17 @@ import '../../models/brush_history_policy.dart';
 import '../../models/canvas_point.dart';
 import '../../models/canvas_size.dart';
 import '../../models/canvas_viewport.dart';
+import '../../models/project_background.dart';
+import '../theme/app_workspace_colors.dart';
 import '../../services/brush_frame_edit_session_store.dart';
 import '../../services/brush_frame_store.dart';
 import '../../services/brush_frame_editing_coordinator.dart';
 import '../../services/canvas_selection.dart' show SelectionMaskOptions;
 import '../../services/cache_invalidation_executor.dart';
 import '../../services/history_manager.dart';
+import '../canvas/active_stroke_overlay.dart';
 import '../canvas/layer_pose_paint.dart';
+import '../input/app_input_settings.dart' show AppInput;
 import 'brush_canvas_panel.dart';
 import 'brush_editor_selection.dart';
 import 'canvas_selection_commands.dart';
@@ -45,11 +49,16 @@ class MainCanvasBrushHost extends StatefulWidget {
     this.brushToolState = BrushToolState.defaults,
     this.viewportOverlayBuilder,
     this.viewportUnderlayBuilder,
+    this.activeStrokeOverlayModel,
     this.interactiveContentOpacity = 1.0,
     this.interactiveContentPose,
     this.contentOverride,
     this.fitFocusRect,
     this.sampleColorAt,
+    this.paperColor = ProjectBackground.defaultPaperArgb,
+    this.onPaperColorChanged,
+    this.pasteboardColor = AppWorkspaceColors.defaultPasteboardArgb,
+    this.onPasteboardColorChanged,
     this.onTemporaryToolHold,
     this.onTemporaryToolRelease,
     this.onInvokeAction,
@@ -92,9 +101,14 @@ class MainCanvasBrushHost extends StatefulWidget {
   viewportOverlayBuilder;
 
   /// Forwarded to [BrushCanvasPanel]: painted under the interactive canvas
-  /// (paper + layers below the active one).
-  final Widget Function(BuildContext context, CanvasViewport viewport)?
-  viewportUnderlayBuilder;
+  /// (paper + layers below the active one) — or, in merged mode, the whole
+  /// composite tree with the active layer inside it.
+  final CanvasUnderlayBuilder? viewportUnderlayBuilder;
+
+  /// Forwarded to [BrushCanvasPanel]: the host-owned live-stroke overlay
+  /// that puts the canvas in MERGED mode (the active layer painted inside
+  /// the composite tree, so folder buffers can enclose it).
+  final ActiveStrokeOverlayModel? activeStrokeOverlayModel;
 
   /// Forwarded to [BrushCanvasPanel]: the active layer's display opacity.
   final double interactiveContentOpacity;
@@ -116,6 +130,13 @@ class MainCanvasBrushHost extends StatefulWidget {
   /// Forwarded to [BrushCanvasPanel]: the P5 eyedropper's composite sampler
   /// and pick handlers, and the P6 fill dab builder.
   final int? Function(CanvasPoint point)? sampleColorAt;
+
+  /// R28 #9 pass-through: the canvas paper (project) and the pasteboard
+  /// (app setting), with their commit handlers.
+  final int paperColor;
+  final ValueChanged<int>? onPaperColorChanged;
+  final int pasteboardColor;
+  final ValueChanged<int>? onPasteboardColorChanged;
 
   /// PEN-7a mapped-hold pass-through (canvas right/wheel mappings).
   final void Function(CanvasTool tool)? onTemporaryToolHold;
@@ -225,6 +246,13 @@ class _MainCanvasBrushHostState extends State<MainCanvasBrushHost> {
         if (!canvasToolPaints(tool) && tool != CanvasTool.fill) {
           return; // Eyedropper/selection/pan have their own meaning.
         }
+        // R27 #15: only a press that would actually DRAW earns the
+        // notice. A finger whose one-finger slot is flip/pan/none is
+        // navigating, not drawing — telling it "no frame here" was noise
+        // on every page flip.
+        if (event.kind == PointerDeviceKind.touch && !AppInput.touchDraws) {
+          return;
+        }
         onDrawRefused();
       },
       child: panel,
@@ -249,11 +277,16 @@ class _MainCanvasBrushHostState extends State<MainCanvasBrushHost> {
       brushToolState: widget.brushToolState,
       viewportOverlayBuilder: widget.viewportOverlayBuilder,
       viewportUnderlayBuilder: widget.viewportUnderlayBuilder,
+      activeStrokeOverlayModel: widget.activeStrokeOverlayModel,
       interactiveContentOpacity: widget.interactiveContentOpacity,
       interactiveContentPose: widget.interactiveContentPose,
       contentOverride: contentOverride,
       fitFocusRect: widget.fitFocusRect,
       sampleColorAt: widget.sampleColorAt,
+      paperColor: widget.paperColor,
+      onPaperColorChanged: widget.onPaperColorChanged,
+      pasteboardColor: widget.pasteboardColor,
+      onPasteboardColorChanged: widget.onPasteboardColorChanged,
       onTemporaryToolHold: widget.onTemporaryToolHold,
       onTemporaryToolRelease: widget.onTemporaryToolRelease,
       onInvokeAction: widget.onInvokeAction,

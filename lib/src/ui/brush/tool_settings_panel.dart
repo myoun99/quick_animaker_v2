@@ -1,8 +1,11 @@
 import 'package:flutter/material.dart';
 
 import '../../models/app_language.dart';
+import '../../services/canvas_color_sampler.dart'
+    show CanvasColorSampleSource;
 import '../../services/canvas_flood_fill.dart';
 import '../../services/canvas_selection.dart';
+import '../../services/canvas_selection_region.dart';
 import '../widgets/drag_value_label.dart';
 import '../widgets/field_slider.dart';
 import 'brush_settings_panel.dart';
@@ -25,6 +28,8 @@ class ToolSettingsPanel extends StatelessWidget {
     this.onSelectionMaskOptionsChanged,
     this.selectionCommands,
     this.language = AppLanguage.en,
+    this.eyedropperSource = CanvasColorSampleSource.display,
+    this.onEyedropperSourceChanged,
   });
 
   /// The program language (BB-2): the brush blend labels localize
@@ -45,37 +50,50 @@ class ToolSettingsPanel extends StatelessWidget {
   /// numeric inputs read and write the live transform through it.
   final CanvasSelectionCommands? selectionCommands;
 
+  /// R28 #6: where the eyedropper reads from (PS/CSP's 참조원). Null
+  /// handler = the picker shows but cannot be changed (hosts that do not
+  /// own the setting).
+  final CanvasColorSampleSource eyedropperSource;
+  final ValueChanged<CanvasColorSampleSource>? onEyedropperSourceChanged;
+
   @override
   Widget build(BuildContext context) {
-    switch (state.tool) {
-      case CanvasTool.brush:
-      case CanvasTool.eraser:
-        return BrushSettingsPanel(
+    // Own Material (the tool LIBRARY panel's rule, same reason): the dock
+    // body paints a background color, and the Switch/ListTile ink and
+    // selection tints render on the nearest Material ancestor — without
+    // one Flutter asserts that those effects would be invisible. R26 #31
+    // surfaced it by docking this panel open by default, so every tool's
+    // settings now build for real instead of only when its tab is picked.
+    return Material(
+      type: MaterialType.transparency,
+      child: switch (state.tool) {
+        CanvasTool.brush || CanvasTool.eraser => BrushSettingsPanel(
           state: state,
           onChanged: onChanged,
           language: language,
-        );
-      case CanvasTool.fill:
-        return _FillSettings(
+        ),
+        CanvasTool.fill => _FillSettings(
           options: fillOptions,
           onChanged: onFillOptionsChanged,
-        );
-      case CanvasTool.eyedropper:
-        return const _SettingsNote(
-          keyValue: 'tool-settings-eyedropper',
-          note: 'Eyedropper has no settings — it picks the visible color.',
-        );
-      case CanvasTool.selectRect:
-      case CanvasTool.lasso:
-        return _SelectionSettings(
+        ),
+        // R28 #6: the eyedropper has a REFERENCE SOURCE setting now.
+        CanvasTool.eyedropper => _EyedropperSettings(
+          source: eyedropperSource,
+          onChanged: onEyedropperSourceChanged,
+        ),
+        CanvasTool.selectRect || CanvasTool.lasso => _SelectionSettings(
           state: state,
           onChanged: onChanged,
           maskOptions: selectionMaskOptions,
           onMaskOptionsChanged: onSelectionMaskOptionsChanged,
-        );
-      case CanvasTool.move:
-        return _MoveSettings(selectionCommands: selectionCommands);
-    }
+          selectionCommands: selectionCommands,
+          language: language,
+        ),
+        CanvasTool.move => _MoveSettings(
+          selectionCommands: selectionCommands,
+        ),
+      },
+    );
   }
 }
 
@@ -88,17 +106,22 @@ class _SelectionSettings extends StatelessWidget {
     required this.onChanged,
     required this.maskOptions,
     required this.onMaskOptionsChanged,
+    required this.selectionCommands,
+    required this.language,
   });
 
   final BrushToolState state;
   final ValueChanged<BrushToolState> onChanged;
   final SelectionMaskOptions maskOptions;
   final ValueChanged<SelectionMaskOptions>? onMaskOptionsChanged;
+  final CanvasSelectionCommands? selectionCommands;
+  final AppLanguage language;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final onMask = onMaskOptionsChanged;
+    final commands = selectionCommands;
     return ListView(
       key: const ValueKey<String>('tool-settings-selection'),
       padding: const EdgeInsets.all(12),
@@ -107,6 +130,19 @@ class _SelectionSettings extends StatelessWidget {
         // (two tools there), so the settings panel no longer duplicates
         // it — only the mask knobs remain.
         Text('Select', style: theme.textTheme.titleSmall),
+        // R26 #16: 갱신 / 추가 / 삭제 / 선택중 — how the next drag folds
+        // into the region already selected. Default 추가 (유저 원문).
+        if (commands != null) ...[
+          const SizedBox(height: 8),
+          ListenableBuilder(
+            listenable: commands,
+            builder: (context, _) => _SelectionModeRow(
+              mode: commands.combineMode,
+              language: language,
+              onChanged: (mode) => commands.combineMode = mode,
+            ),
+          ),
+        ],
         if (onMask != null) ...[
           const SizedBox(height: 8),
           FieldSlider(
@@ -146,6 +182,61 @@ class _SelectionSettings extends StatelessWidget {
                 onMask(maskOptions.copyWith(antiAlias: value)),
           ),
         ],
+      ],
+    );
+  }
+}
+
+/// R26 #16: the four selection modes as one segmented row — the same
+/// "selection shows in COLOR only" rule the rest of the app follows
+/// ([[ui-selection-style]]: no check marks).
+class _SelectionModeRow extends StatelessWidget {
+  const _SelectionModeRow({
+    required this.mode,
+    required this.language,
+    required this.onChanged,
+  });
+
+  final SelectionCombineMode mode;
+  final AppLanguage language;
+  final ValueChanged<SelectionCombineMode> onChanged;
+
+  static const Map<SelectionCombineMode, IconData> _icons = {
+    SelectionCombineMode.replace: Icons.crop_square,
+    SelectionCombineMode.add: Icons.add_box_outlined,
+    SelectionCombineMode.subtract: Icons.indeterminate_check_box_outlined,
+    SelectionCombineMode.intersect: Icons.join_inner,
+  };
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    return Row(
+      key: const ValueKey<String>('selection-mode-row'),
+      children: [
+        for (final candidate in SelectionCombineMode.values)
+          Padding(
+            padding: const EdgeInsets.only(right: 4),
+            child: IconButton(
+              key: ValueKey<String>('selection-mode-${candidate.name}'),
+              tooltip: candidate.labelFor(language),
+              onPressed: () => onChanged(candidate),
+              icon: Icon(_icons[candidate]),
+              iconSize: 20,
+              isSelected: candidate == mode,
+              style: IconButton.styleFrom(
+                foregroundColor: candidate == mode
+                    ? colorScheme.primary
+                    : colorScheme.onSurfaceVariant,
+                backgroundColor: candidate == mode
+                    ? colorScheme.surfaceContainerHigh
+                    : Colors.transparent,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(4),
+                ),
+              ),
+            ),
+          ),
       ],
     );
   }
@@ -357,6 +448,69 @@ class _MoveSettingsState extends State<_MoveSettings> {
   }
 }
 
+/// R28 #6: the eyedropper's REFERENCE SOURCE — Photoshop's "current
+/// layer / all layers", Clip Studio's 참조원. The tool itself works in
+/// every section and on every layer kind; this only decides which pixels
+/// it reads. A row with nothing drawable (an SE row) simply reads the
+/// canvas color, which is what the user described.
+class _EyedropperSettings extends StatelessWidget {
+  const _EyedropperSettings({required this.source, required this.onChanged});
+
+  final CanvasColorSampleSource source;
+  final ValueChanged<CanvasColorSampleSource>? onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final handler = onChanged;
+    return ListView(
+      key: const ValueKey<String>('tool-settings-eyedropper'),
+      padding: const EdgeInsets.all(12),
+      children: [
+        Text('Eyedropper', style: theme.textTheme.titleSmall),
+        const SizedBox(height: 8),
+        Text(
+          'Reference',
+          style: theme.textTheme.labelSmall?.copyWith(
+            color: theme.colorScheme.onSurfaceVariant,
+          ),
+        ),
+        const SizedBox(height: 4),
+        // Selection shows through COLOR only — no check glyphs (the
+        // program's selection style).
+        SegmentedButton<CanvasColorSampleSource>(
+          key: const ValueKey<String>('eyedropper-source-segments'),
+          showSelectedIcon: false,
+          segments: const [
+            ButtonSegment<CanvasColorSampleSource>(
+              value: CanvasColorSampleSource.display,
+              label: Text('Display'),
+            ),
+            ButtonSegment<CanvasColorSampleSource>(
+              value: CanvasColorSampleSource.layer,
+              label: Text('Layer'),
+            ),
+          ],
+          selected: {source},
+          onSelectionChanged: handler == null
+              ? null
+              : (selection) => handler(selection.first),
+        ),
+        const SizedBox(height: 8),
+        Text(
+          source == CanvasColorSampleSource.display
+              ? 'Picks the color you SEE — every visible layer, blended.'
+              : 'Picks the ACTIVE layer\'s own pixels; empty areas read the '
+                    'canvas color.',
+          style: theme.textTheme.bodySmall?.copyWith(
+            color: theme.colorScheme.onSurfaceVariant,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
 class _FillSettings extends StatelessWidget {
   const _FillSettings({required this.options, required this.onChanged});
 
@@ -432,27 +586,3 @@ class _FillSettings extends StatelessWidget {
   }
 }
 
-class _SettingsNote extends StatelessWidget {
-  const _SettingsNote({required this.keyValue, required this.note});
-
-  final String keyValue;
-  final String note;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return Padding(
-      key: ValueKey<String>(keyValue),
-      padding: const EdgeInsets.all(12),
-      child: Align(
-        alignment: Alignment.topLeft,
-        child: Text(
-          note,
-          style: theme.textTheme.bodySmall?.copyWith(
-            color: theme.colorScheme.onSurfaceVariant,
-          ),
-        ),
-      ),
-    );
-  }
-}

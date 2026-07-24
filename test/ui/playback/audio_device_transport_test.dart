@@ -1,6 +1,7 @@
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:quick_animaker_v2/src/native/qa_engine_abi.dart';
 import 'package:quick_animaker_v2/src/models/audio_clip.dart';
 import 'package:quick_animaker_v2/src/models/canvas_size.dart';
 import 'package:quick_animaker_v2/src/models/cut.dart';
@@ -134,7 +135,7 @@ void main() {
 
   setUp(() {
     QaAudioDevice.debugResetForTests();
-    QaAudioDevice.debugLibraryPathOverride = libraryPath;
+    debugQaEngineLibraryPathOverride = libraryPath;
     controller = buildController();
   });
 
@@ -146,7 +147,7 @@ void main() {
       // A device that never opened is fine to "close".
     }
     QaAudioDevice.debugResetForTests();
-    QaAudioDevice.debugLibraryPathOverride = null;
+    debugQaEngineLibraryPathOverride = null;
   });
 
   /// A null-backend device, pre-opened so the transport's lazy open is a

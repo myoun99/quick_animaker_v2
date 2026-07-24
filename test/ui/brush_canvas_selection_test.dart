@@ -7,6 +7,7 @@ import 'package:quick_animaker_v2/src/models/brush_tip_shape.dart';
 import 'package:quick_animaker_v2/src/models/canvas_point.dart';
 import 'package:quick_animaker_v2/src/services/brush_frame_editing_coordinator.dart';
 import 'package:quick_animaker_v2/src/services/canvas_color_sampler.dart';
+import 'package:quick_animaker_v2/src/services/canvas_selection_region.dart';
 import 'package:quick_animaker_v2/src/services/history_manager.dart';
 import 'package:quick_animaker_v2/src/ui/brush/brush_canvas_panel.dart';
 import 'package:quick_animaker_v2/src/ui/brush/brush_edit_cache_invalidation_sink.dart';
@@ -209,6 +210,59 @@ void main() {
       reason: 'one undo restores the pre-lift picture',
     );
   });
+
+  testWidgets('R28 #10: a SECOND transform on the same tool works — the '
+      'first one\'s confirm must not leave the layer unable to lift', (
+    tester,
+  ) async {
+    // The user\'s report is about transforming twice in a row WITHOUT
+    // switching tools ("변형 한번하고 다시 변형하면"), which is the one path
+    // the R27 #18 fix did not cover — it hung the cleanup on a tool
+    // change. Both rounds here run on the Move tool.
+    final env = await pumpSelectionPanel(tester, tool: CanvasTool.move);
+
+    // Round 1: implicit whole-picture transform, confirmed.
+    env.commands.beginTransform();
+    await tester.pump();
+    expect(env.commands.transformActive, isTrue);
+    await dragOnLayer(tester, const Offset(45, 45), const Offset(55, 45));
+    env.commands.commitTransform();
+    await tester.pump();
+    expect(env.commands.transformActive, isFalse);
+    expect(inkAt(env.coordinator, 40, 30), isNonZero, reason: '+10 landed');
+    expect(
+      inkAt(env.coordinator, 30, 30),
+      0,
+      reason: 'the origin is empty — the lift erased it',
+    );
+
+    // Round 2: the SAME thing again.
+    env.commands.beginTransform();
+    await tester.pump();
+    expect(
+      env.commands.transformActive,
+      isTrue,
+      reason: 'R28 #10: the second transform must actually OPEN',
+    );
+    expect(
+      inkAt(env.coordinator, 40, 30),
+      0,
+      reason: 'R28 #10: the second lift has to ERASE its origin too — '
+          'leaving it is how the user saw "원본그림 존재하고 변형된 그림도 존재"',
+    );
+
+    // The picture moved +10, so the box did too — grab it where it now is.
+    await dragOnLayer(tester, const Offset(55, 45), const Offset(65, 45));
+    env.commands.commitTransform();
+    await tester.pump();
+    expect(
+      inkAt(env.coordinator, 50, 30),
+      isNonZero,
+      reason: 'the second +10 landed',
+    );
+    expect(inkAt(env.coordinator, 40, 30), 0);
+  });
+
 
   testWidgets('R26 #13: REVERTING the implicit whole-picture session '
       'restores the picture, leaves NO selection and records NOTHING', (
@@ -434,9 +488,19 @@ void main() {
     await tester.pump();
     expect(env.commands.hasSelection, isFalse);
 
-    // Re-select, then a click (degenerate marquee) deselects too.
+    // Re-select. R26 #16: in the DEFAULT 추가 mode a click is inert —
+    // clicking away must not throw a composite selection away.
     await dragOnLayer(tester, const Offset(20, 20), const Offset(70, 70));
     expect(env.commands.hasSelection, isTrue);
+    await tester.tapAt(
+      tester.getTopLeft(find.byKey(layerKey)) + const Offset(150, 150),
+    );
+    await tester.pump();
+    expect(env.commands.hasSelection, isTrue);
+
+    // In 갱신 (replace) mode the click-away deselect is back — Photoshop's.
+    env.commands.combineMode = SelectionCombineMode.replace;
+    await tester.pump();
     await tester.tapAt(
       tester.getTopLeft(find.byKey(layerKey)) + const Offset(150, 150),
     );

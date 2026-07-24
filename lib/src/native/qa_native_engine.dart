@@ -1,9 +1,10 @@
 import 'dart:collection';
 import 'dart:ffi';
-import 'dart:io';
 
 import 'package:ffi/ffi.dart';
 import 'dart:typed_data';
+
+import 'qa_engine_abi.dart';
 
 /// The native engine core's FFI bindings (R18 A-track).
 ///
@@ -16,6 +17,10 @@ import 'dart:typed_data';
 ///
 /// Tests can point at a locally built binary with the QA_ENGINE_PATH
 /// environment variable.
+///
+/// Which binary, and which ABI generation it must speak, are decided once
+/// in `qa_engine_abi.dart` — see [kQaEngineAbiVersion] for the bump
+/// checklist.
 class QaNativeEngine {
   QaNativeEngine._(
     this._premultiplyRgba,
@@ -26,6 +31,7 @@ class QaNativeEngine {
     this._stampBlendTiles,
     this._strokeBlendTiles,
     this._alphaBoundsTiles,
+    this._preBlendTiles,
     this._premultiplyRgbaCopy,
     this._copyBytes,
     this._tileAlloc,
@@ -37,20 +43,6 @@ class QaNativeEngine {
     this._fillComposeBatch,
     this._gridRasterTile,
   ) : _spec = calloc<QaDabSpecStruct>();
-
-  // v18: AUDIO-PRO R1 extended the AUDIO clip struct; the raster surface
-  // is unchanged, but the version is one number for the whole binary.
-  // v21: EX4 extended the video-export surface + added the JPG encoder.
-  // v22: BB-N1 added the stroke-blend tile kernel (the once-per-stroke
-  // brush blend) and the alpha-bounds tile scan.
-  // v23: the RNNoise round added qa_audio_denoise_f32 (voice-take
-  // suppression); the raster surface is unchanged.
-  static const int _abiVersion = 23;
-
-  /// The ABI this build expects — surfaced by the runtime-path report
-  /// (Preferences > System) so a user can see which engine generation
-  /// their binary carries.
-  static int get abiVersion => _abiVersion;
 
   /// R25-③ batched fill compose: packs compose-tile items + their
   /// ordered layer blends into grow-only native arrays and fans the
@@ -419,6 +411,18 @@ class QaNativeEngine {
   )
   _alphaBoundsTiles;
 
+  /// ABI 24: the fused pre-blend (stage + blend + premultiply, masked).
+  /// Reference = `preBlendStrokeOverlayPixels`.
+  final void Function(
+    Pointer<QaTileSpanStruct> tiles,
+    int tileCount,
+    int tileSize,
+    int kind,
+    int mode,
+    Pointer<Uint8> changedOut,
+  )
+  _preBlendTiles;
+
   final int Function(
     Pointer<Uint8> pixels,
     int tileWidth,
@@ -515,10 +519,9 @@ class QaNativeEngine {
   static QaNativeEngine? _instance;
   static bool _loadAttempted = false;
 
-  /// Test hooks: an explicit binary path (parity tests point at the
-  /// locally built DLL) and a force-Dart switch (the parity test's
-  /// reference side).
-  static String? debugLibraryPathOverride;
+  /// Test hook: the parity test's reference side, forcing Dart even when
+  /// a binary loads. Which binary is [debugQaEngineLibraryPathOverride],
+  /// shared by every loader.
   static bool debugForceDartFallback = false;
 
   static void debugResetForTests() {
@@ -539,19 +542,11 @@ class QaNativeEngine {
   }
 
   static QaNativeEngine? _tryLoad() {
-    final library = _tryOpen();
+    final library = openQaEngineLibrary();
     if (library == null) {
       return null;
     }
     try {
-      final abi = library
-          .lookupFunction<Int32 Function(), int Function()>(
-            'qa_engine_abi_version',
-          )
-          .call();
-      if (abi != _abiVersion) {
-        return null;
-      }
       // Struct-layout paranoia: both sides must agree on the spec's exact
       // byte layout, or every field read is garbage. Any mismatch means
       // Dart fallback, never a corrupt blend.
@@ -736,6 +731,25 @@ class QaNativeEngine {
             ),
             void Function(Pointer<QaTileSpanStruct>, int, int, Pointer<Int32>)
           >('qa_alpha_bounds_tiles');
+      final preBlendTiles = library
+          .lookupFunction<
+            Void Function(
+              Pointer<QaTileSpanStruct>,
+              Int32,
+              Int32,
+              Int32,
+              Int32,
+              Pointer<Uint8>,
+            ),
+            void Function(
+              Pointer<QaTileSpanStruct>,
+              int,
+              int,
+              int,
+              int,
+              Pointer<Uint8>,
+            )
+          >('qa_pre_blend_tiles');
       final premultiplyRgbaCopy = library
           .lookupFunction<
             Void Function(Pointer<Uint8>, Pointer<Uint8>, Int32),
@@ -913,6 +927,7 @@ class QaNativeEngine {
         stampBlendTiles,
         strokeBlendTiles,
         alphaBoundsTiles,
+        preBlendTiles,
         premultiplyRgbaCopy,
         copyBytes,
         tileAlloc,
@@ -927,42 +942,6 @@ class QaNativeEngine {
     } on Object {
       return null;
     }
-  }
-
-  static DynamicLibrary? _tryOpen() {
-    final overridePath =
-        debugLibraryPathOverride ?? Platform.environment['QA_ENGINE_PATH'];
-    if (overridePath != null && overridePath.isNotEmpty) {
-      try {
-        return DynamicLibrary.open(overridePath);
-      } on Object {
-        // Fall through to the platform defaults.
-      }
-    }
-    // APPLE: the qa_native FFI plugin compiles the engine INTO the app
-    // binary (iOS forbids loading a standalone dylib from the bundle),
-    // so the symbols live in the process. `process()` itself always
-    // succeeds — a missing engine surfaces as a failed symbol lookup in
-    // the caller's try, which is the same graceful stand-down as before.
-    if (Platform.isIOS || Platform.isMacOS) {
-      try {
-        return DynamicLibrary.process();
-      } on Object {
-        // Fall through: a standalone dylib build is still honored below.
-      }
-    }
-    for (final candidate in [
-      if (Platform.isWindows) 'qa_engine.dll',
-      if (Platform.isLinux || Platform.isAndroid) 'libqa_engine.so',
-      if (Platform.isMacOS) 'libqa_engine.dylib',
-    ]) {
-      try {
-        return DynamicLibrary.open(candidate);
-      } on Object {
-        continue;
-      }
-    }
-    return null;
   }
 
   /// Uploaded stamp RGBA byte buffers keyed by the SOURCE Uint8List's
@@ -1031,6 +1010,14 @@ class QaNativeEngine {
     final buffer = malloc<Uint8>(pixelCount * 4);
     _premultiplyRgbaCopy(buffer, source, pixelCount);
     return QaStampScratch._(buffer.asTypedList(pixelCount * 4), buffer);
+  }
+
+  /// An EMPTY upload buffer for a kernel to fill (ABI 24: the fused
+  /// pre-blend writes the premultiplied result straight into it). Free it
+  /// once the decode has consumed the view.
+  QaStampScratch acquireScratch(int byteLength) {
+    final buffer = malloc<Uint8>(byteLength);
+    return QaStampScratch._(buffer.asTypedList(byteLength), buffer);
   }
 
   // -------------------------------------------------------------------
@@ -1483,6 +1470,12 @@ class QaNativeEngine {
     required int spanRightExclusive,
     required int spanTop,
     required int spanBottomExclusive,
+    // ABI 24 — only the fused pre-blend reads these; every other kernel
+    // ignores them, so they default to "absent".
+    Pointer<Uint8>? basePixels,
+    Pointer<Uint8>? strokePixels,
+    Pointer<Uint8>? maskPixels,
+    Pointer<Uint8>? premulOut,
   }) {
     final span = _tileSpans[index];
     span.tilePixels = tilePixels;
@@ -1493,7 +1486,34 @@ class QaNativeEngine {
     span.spanTop = spanTop;
     span.spanBottomExclusive = spanBottomExclusive;
     span.reserved = 0;
+    span.basePixels = basePixels ?? nullptr;
+    span.strokePixels = strokePixels ?? nullptr;
+    span.maskPixels = maskPixels ?? nullptr;
+    span.premulOut = premulOut ?? nullptr;
   }
+
+  /// ABI 24: stages, blends and premultiplies every staged span in ONE
+  /// pooled call — the live overlay's whole frame of tiles.
+  ///
+  /// [kind] picks the composite the stroke lands with
+  /// ([preBlendKindSrcOver] / [preBlendKindErase] / [preBlendKindStroke]),
+  /// and [mode] carries the `QA_STROKE_BLEND_*` id when the kind is
+  /// STROKE. Returns per-tile changed flags (valid until the next batch);
+  /// a tile reports unchanged when the stroke moved no byte of the base,
+  /// which is what keeps untouched coordinates out of the commit.
+  Uint8List preBlendTiles({
+    required int count,
+    required int tileSize,
+    required int kind,
+    int mode = 0,
+  }) {
+    _preBlendTiles(_tileSpans, count, tileSize, kind, mode, _batchChanged);
+    return _batchChanged.asTypedList(count);
+  }
+
+  static const int preBlendKindSrcOver = 0;
+  static const int preBlendKindErase = 1;
+  static const int preBlendKindStroke = 2;
 
   /// Blends the prepared dab ([prepareDab]) into every staged span in ONE
   /// call, fanned across the worker pool (tiles are disjoint, so results
@@ -1912,6 +1932,9 @@ class QaStampScratch {
   final Uint8List view;
   final Pointer<Uint8> _buffer;
 
+  /// The raw buffer — a kernel writing INTO this scratch needs it.
+  Pointer<Uint8> get pointer => _buffer;
+
   void free() {
     malloc.free(_buffer);
   }
@@ -1965,6 +1988,13 @@ final class QaTileSpanStruct extends Struct {
   external int spanBottomExclusive;
   @Int32()
   external int reserved;
+
+  /// ABI 24 — the fused pre-blend's per-tile buffers, all tile-local on
+  /// the same grid as [tilePixels]. The older kernels ignore them.
+  external Pointer<Uint8> basePixels;
+  external Pointer<Uint8> strokePixels;
+  external Pointer<Uint8> maskPixels;
+  external Pointer<Uint8> premulOut;
 }
 
 /// Mirror of the C `qa_dab_spec` — field order/types must match EXACTLY

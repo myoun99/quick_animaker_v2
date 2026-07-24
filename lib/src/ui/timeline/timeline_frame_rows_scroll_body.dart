@@ -265,10 +265,11 @@ class _TimelineFrameRowsScrollBodyState
   /// waveform peaks that load asynchronously, and lane rows are few.
   final Map<Object, _RowMemoEntry> _rowMemo = {};
 
-  /// Folder rows key off their FOLDER id — the representative layer they
-  /// carry would collide with its own layer row otherwise.
-  String _rowKeySuffix(TimelineDisplayRow row) => row.folder != null
-      ? 'folder-${row.folder!.id}'
+  /// Folder rows key off their own id like every other row — the header's
+  /// representative member (which DID collide with that member's own row)
+  /// is gone; the prefix just keeps the band's key readable.
+  String _rowKeySuffix(TimelineDisplayRow row) => row.isFolder
+      ? 'folder-${row.layer.id}'
       : row.lane?.laneId ?? 'cells';
 
   bool _rowIsMemoizable(TimelineDisplayRow row) {
@@ -434,6 +435,9 @@ class _TimelineFrameRowsScrollBodyState
                 leadingFrameSpacerWidth: widget.leadingFrameSpacerWidth,
                 trailingFrameSpacerWidth: widget.trailingFrameSpacerWidth,
                 metrics: widget.metrics,
+                // R28 #11: the empty-cel grey reaches the folder band.
+                members: row.members,
+                memberHasContentAt: widget.celHasContentForLayer,
               )
             : row.isLane
             ? _buildLaneRow(row, layer)

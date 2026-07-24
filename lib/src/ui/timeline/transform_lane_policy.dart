@@ -1,7 +1,6 @@
 import 'dart:ui' show Offset;
 
 import '../../models/canvas_point.dart';
-import '../../models/folder_id.dart';
 import '../../models/layer_id.dart';
 import '../../models/property_track.dart';
 import '../../models/timeline_frame_range.dart' show TimelineLaneSelection;
@@ -132,8 +131,7 @@ const List<String> transformLaneDisplayOrder = [
 /// (R26 #3 — the cell selection's Excel span rule applied to lane rows,
 /// within one layer's lane group). The group HEADER as either endpoint
 /// selects the WHOLE group ("모두에 적용되는 그 행"). Ids outside the
-/// canonical order (folder-FX lanes keep their own machinery) fall back
-/// to the anchor lane alone.
+/// canonical order fall back to the anchor lane alone.
 List<String> transformLaneSpan(String anchorLaneId, String headLaneId) {
   if (anchorLaneId == transformGroupHeaderLane.laneId ||
       headLaneId == transformGroupHeaderLane.laneId) {
@@ -154,7 +152,8 @@ List<String> transformLaneSpan(String anchorLaneId, String headLaneId) {
 /// counts as covered when the selection spans its WHOLE member group, so
 /// the header washes, rings, and (follow-up) grabs the whole group for a
 /// move. One predicate, shared by the paint and the gesture's
-/// move-vs-select decision.
+/// move-vs-select decision. A FOLDER row's lanes ride this same order —
+/// they are layer lanes now, not a private `folder-fx:` address space.
 bool laneSelectionCoversBandRow(
   TimelineLaneSelection? selection,
   LayerId layerId,
@@ -170,51 +169,11 @@ bool laneSelectionCoversBandRow(
   return selection.coversLane(layerId, laneId);
 }
 
-/// Folder FX lanes (L5c): lane ids carry the folder ADDRESS so the
-/// single laneEdit callback set can route commits into the folder's own
-/// track — `folder-fx:<folderId>:<base>`. The composite already consumes
-/// the track (L3); these lanes are the editing surface.
-const String folderLanePrefix = 'folder-fx:';
-
-String folderLaneId(FolderId folderId, String base) =>
-    '$folderLanePrefix${folderId.value}:$base';
-
-/// Splits a folder lane id back into its address; null for ordinary
-/// layer/camera lanes.
-({FolderId folderId, String baseLaneId})? parseFolderLaneId(String laneId) {
-  if (!laneId.startsWith(folderLanePrefix)) {
-    return null;
-  }
-  final rest = laneId.substring(folderLanePrefix.length);
-  final split = rest.indexOf(':');
-  if (split <= 0 || split == rest.length - 1) {
-    return null;
-  }
-  return (
-    folderId: FolderId(rest.substring(0, split)),
-    baseLaneId: rest.substring(split + 1),
-  );
-}
-
-/// The folder's Transform lanes under its header row (no group header —
-/// the folder row itself is the group). Value columns arrive later;
-/// the key diamonds and hold squares are the editing surface.
-List<PropertyLaneRow> folderTransformPropertyLanes(
-  FolderId folderId,
-  TransformTrack track,
-) {
-  return [
-    _lane(
-      folderLaneId(folderId, 'anchor-point'),
-      'Anchor Point',
-      track.anchorPoint,
-    ),
-    _lane(folderLaneId(folderId, 'position'), 'Position', track.position),
-    _lane(folderLaneId(folderId, 'scale'), 'Scale', track.scale),
-    _lane(folderLaneId(folderId, 'rotation'), 'Rotation', track.rotation),
-    _lane(folderLaneId(folderId, 'opacity'), 'Opacity', track.opacity),
-  ];
-}
+// A folder's FX lanes used to carry a `folder-fx:<folderId>:<base>`
+// ADDRESS in the lane id, so the one laneEdit callback set could route
+// commits into a folder table the layer path could not reach. A folder is
+// a layer now: its lanes ARE layer lanes, keyed by the plain base lane id
+// and routed by the row's own layer id like every other row's.
 
 /// AE-style value formatting for a transform lane.
 String formatTransformLaneValue(String laneId, TransformPose pose) {

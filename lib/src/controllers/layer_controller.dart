@@ -1,18 +1,15 @@
 import '../models/attached_layer_resolve.dart';
 import '../models/cut.dart';
 import '../models/cut_id.dart';
-import '../models/folder_id.dart';
 import '../models/frame.dart';
 import '../models/frame_id.dart';
 import '../models/layer.dart';
 import '../models/layer_blend_mode.dart';
-import '../models/layer_folder.dart';
 import '../models/layer_id.dart';
 import '../models/layer_kind.dart';
 import '../models/project.dart';
 import 'default_layer_helpers.dart';
 import '../services/commands/add_layer_command.dart';
-import '../services/commands/folder_mirror.dart';
 import '../services/history_manager.dart';
 import '../services/project_lookup.dart';
 import '../services/project_repository.dart';
@@ -175,76 +172,16 @@ class LayerController {
     }
   }
 
-  /// Folder eye (L5): a shared STATIC property like the layer eye — every
-  /// 겸용 counterpart folder SETS the toggled value (same anti-drift rule
-  /// as [toggleLayerVisibility]).
-  void toggleFolderVisibility({
-    required CutId cutId,
-    required FolderId folderId,
-  }) {
-    final project = _repository.requireProject();
-    final folder = requireCut(project, cutId).folders.byId(folderId);
-    if (folder == null) {
-      return;
-    }
-    final nextVisible = !folder.isVisible;
-    for (final target in folderMirrorFolderTargets(
-      project,
-      cutId: cutId,
-      folderId: folderId,
-    )) {
-      _repository.updateCutFolders(
-        cutId: target.cutId,
-        update: (folders) => [
-          for (final other in folders)
-            other.id == target.folderId
-                ? other.copyWith(isVisible: nextVisible)
-                : other,
-        ],
-      );
-    }
-  }
-
-  /// Folder static opacity (L5): mirrors like the folder eye; per-use
-  /// fades belong to the folder's local FX opacity lane instead.
-  void setFolderOpacity({
-    required CutId cutId,
-    required FolderId folderId,
-    required double opacity,
-  }) {
-    final clamped = opacity.clamp(0.0, 1.0).toDouble();
-    final project = _repository.requireProject();
-    for (final target in folderMirrorFolderTargets(
-      project,
-      cutId: cutId,
-      folderId: folderId,
-    )) {
-      _repository.updateCutFolders(
-        cutId: target.cutId,
-        update: (folders) => [
-          for (final other in folders)
-            other.id == target.folderId
-                ? other.copyWith(opacity: clamped)
-                : other,
-        ],
-      );
-    }
-  }
-
-  /// The layer-list twirl (L5): PER-USE view state — never mirrored
-  /// ("레인만 각자" applies to display state too), persisted like CSP.
-  void toggleFolderCollapsed({
-    required CutId cutId,
-    required FolderId folderId,
-  }) {
-    _repository.updateCutFolders(
-      cutId: cutId,
-      update: (folders) => [
-        for (final folder in folders)
-          folder.id == folderId
-              ? folder.copyWith(collapsed: !folder.collapsed)
-              : folder,
-      ],
+  /// The layer-list twirl: PER-USE view state — never mirrored ("레인만
+  /// 각자" applies to display state too), persisted like CSP. Folder rows
+  /// use it to swallow their members; the eye, static opacity and blend a
+  /// folder carries need no method of their own, because a folder IS a
+  /// layer and rides [toggleLayerVisibility] / [setLayerOpacity] /
+  /// [setLayerBlendMode] — mirroring included.
+  void toggleLayerCollapsed(LayerId layerId) {
+    _repository.updateLayer(
+      layerId: layerId,
+      update: (layer) => layer.copyWith(collapsed: !layer.collapsed),
     );
   }
 

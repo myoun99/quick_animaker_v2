@@ -89,16 +89,25 @@ void main() {
     );
   });
 
-  test('the only drawing layer cannot be deleted despite the camera row', () {
+  test('R28 #14: the only drawing layer IS deletable — the camera row is '
+      'still fixed', () {
     final s = session();
 
-    // Active cut has 1 drawing layer + 1 camera layer = 2 layers total, but
-    // the drawing layer is still the last drawable one.
+    // Active cut has 1 drawing layer + 1 camera layer.
     expect(s.activeLayer?.kind, LayerKind.animation);
-    expect(s.canDeleteActiveLayer, isFalse);
+    expect(
+      s.canDeleteActiveLayer,
+      isTrue,
+      reason: 'R28 #14: "액션 레이어가 1개도 없는상황 허용" — the drawing floor '
+          'is gone',
+    );
 
-    s.addLayer();
-    expect(s.canDeleteActiveLayer, isTrue);
+    // The CAMERA row keeps its floor: it is a fixture of the cut.
+    final cameraLayer = s.layers.firstWhere(
+      (layer) => layer.kind == LayerKind.camera,
+    );
+    s.selectLayer(cameraLayer.id);
+    expect(s.canDeleteActiveLayer, isFalse);
   });
 
   test('camera layer id derives from the cut id', () {

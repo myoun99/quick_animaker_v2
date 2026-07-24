@@ -29,10 +29,47 @@ class TimesheetDocumentLayout {
   const TimesheetDocumentLayout({
     required this.document,
     this.continuous = false,
+    this.singlePage,
   });
 
   final TimesheetDocument document;
   final bool continuous;
+
+  /// R26 #41 — PAGE VIEW shows ONE sheet of paper at a time.
+  ///
+  /// Non-null (paged mode only) makes the document exactly one page tall
+  /// with that page printed alone at the top margin; the bottom bar's
+  /// ◀ / n/N / ▶ cluster moves the index. Null keeps the pre-#41 stack of
+  /// every page (still what exports and focused tests build).
+  ///
+  /// Every geometry accessor already routes through [pageTop], so the
+  /// painter, the ink windows and the header/memo tap zones follow just by
+  /// iterating [visiblePageIndexes] instead of `document.pages`.
+  final int? singlePage;
+
+  /// The single page actually on screen, clamped into range; null when the
+  /// whole document prints (continuous view, exports, tests).
+  int? get resolvedSinglePage {
+    final page = singlePage;
+    if (page == null || continuous || document.pages.isEmpty) {
+      return null;
+    }
+    return page.clamp(0, document.pages.length - 1);
+  }
+
+  /// Page indexes this layout prints, in order. One entry in continuous
+  /// view (the single strip) and in single-page mode; every page
+  /// otherwise.
+  List<int> get visiblePageIndexes {
+    if (continuous) {
+      return const [0];
+    }
+    final page = resolvedSinglePage;
+    if (page != null) {
+      return [page];
+    }
+    return [for (final page in document.pages) page.index];
+  }
 
   static const double rowHeight = 18;
   static const double actionColumnWidth = 24;
@@ -44,6 +81,12 @@ class TimesheetDocumentLayout {
   /// when a cut carries more instruction rows (user rule): extra CAM
   /// columns split this allotment into narrower cells instead.
   static const double cameraGroupWidth = cameraColumnWidth * 2;
+
+  /// R27 #32: the SE group's FIXED total width, the CAM rule applied to
+  /// the sound columns — adding SE tracks must not lengthen the B4 paper
+  /// either. Past the base two slots the extra columns split this
+  /// allotment into narrower cells.
+  static const double seGroupWidth = seColumnWidth * 2;
 
   /// Bare frame numbers print in this space LEFT of each half — no boxed
   /// rail inside the columns (removed by user direction).
@@ -62,22 +105,30 @@ class TimesheetDocumentLayout {
   static const double pageGap = 32;
   static const double documentMargin = 24;
 
-  int get _cameraColumnCount {
+  int _columnCountOf(TimesheetColumnKind kind) {
     var count = 0;
     for (final column in document.columns) {
-      if (column.kind == TimesheetColumnKind.camera) {
+      if (column.kind == kind) {
         count += 1;
       }
     }
     return count;
   }
 
-  /// Per-column width. Instance-level because CAM cells share the fixed
-  /// [cameraGroupWidth]: past the base two slots each CAM column narrows so
-  /// the paper width stays put.
+  int get _cameraColumnCount => _columnCountOf(TimesheetColumnKind.camera);
+
+  int get _seColumnCount => _columnCountOf(TimesheetColumnKind.se);
+
+  /// Per-column width. Instance-level because the CAM and SE cells share
+  /// a fixed group allotment ([cameraGroupWidth] / [seGroupWidth]): past
+  /// the base two slots each column in that group narrows so the paper
+  /// width stays put.
   double columnWidthFor(TimesheetColumnKind kind) {
     if (kind == TimesheetColumnKind.camera && _cameraColumnCount > 2) {
       return cameraGroupWidth / _cameraColumnCount;
+    }
+    if (kind == TimesheetColumnKind.se && _seColumnCount > 2) {
+      return seGroupWidth / _seColumnCount;
     }
     return switch (kind) {
       TimesheetColumnKind.action => actionColumnWidth,
@@ -139,7 +190,10 @@ class TimesheetDocumentLayout {
 
   double get paperLeft => documentMargin;
 
-  double pageTop(int pageIndex) => continuous
+  /// Top of a page's paper. In single-page mode the visible page is the
+  /// only paper in the document, so it sits at the top margin — the page
+  /// turn is a document swap, not a scroll (R26 #41).
+  double pageTop(int pageIndex) => continuous || resolvedSinglePage != null
       ? documentMargin
       : documentMargin + pageIndex * (paperHeight + pageGap);
 
@@ -277,10 +331,17 @@ class TimesheetDocumentLayout {
     );
   }
 
-  /// Logical size of the whole document.
+  /// The sheet's page notation ('1/2'). The printed ページ header box and
+  /// the panel's page readout (R26 #41) share this one spelling so they
+  /// can never drift apart.
+  String pageLabel(int pageIndex) =>
+      continuous ? '1/1' : '${pageIndex + 1}/${document.pages.length}';
+
+  /// Logical size of the whole document — one paper in continuous and
+  /// single-page (R26 #41) modes, the stack otherwise.
   Size get documentSize {
     final pageCount = document.pages.length;
-    final height = continuous
+    final height = continuous || resolvedSinglePage != null
         ? documentMargin * 2 + paperHeight
         : documentMargin * 2 +
               pageCount * paperHeight +
@@ -391,7 +452,10 @@ class TimesheetDocumentPainter extends CustomPainter {
         drawTexts: drawTexts,
       );
     } else {
-      for (final page in document.pages) {
+      // Page view prints only the page on screen (R26 #41); the stacked
+      // document prints them all.
+      for (final pageIndex in layout.visiblePageIndexes) {
+        final page = document.pages[pageIndex];
         if (_drawForm) {
           _paintPaper(canvas, page.index);
         }
@@ -514,8 +578,7 @@ class TimesheetDocumentPainter extends CustomPainter {
         ' + ',
       ),
       TimesheetHeaderField.name => document.artist,
-      TimesheetHeaderField.sheet =>
-        layout.continuous ? '1/1' : '${pageIndex + 1}/${document.pages.length}',
+      TimesheetHeaderField.sheet => layout.pageLabel(pageIndex),
     };
   }
 
@@ -555,6 +618,11 @@ class TimesheetDocumentPainter extends CustomPainter {
       return;
     }
     final line = layout.cutEndLine;
+    // In page view the cut may end on a page that isn't on screen (R26
+    // #41) — its row geometry belongs to another sheet, so nothing prints.
+    if (!layout.visiblePageIndexes.contains(line.page)) {
+      return;
+    }
     final left = layout.halfLeft(line.page, line.half);
     canvas.drawLine(
       Offset(left, line.y),
@@ -1500,6 +1568,7 @@ class TimesheetDocumentPainter extends CustomPainter {
   bool shouldRepaint(covariant TimesheetDocumentPainter oldDelegate) {
     return !identical(oldDelegate.document, document) ||
         oldDelegate.layout.continuous != layout.continuous ||
+        oldDelegate.layout.resolvedSinglePage != layout.resolvedSinglePage ||
         oldDelegate.viewport != viewport ||
         !identical(oldDelegate.notation, notation) ||
         oldDelegate.paintLayer != paintLayer ||
@@ -1548,6 +1617,12 @@ class TimesheetPlayheadPainter extends CustomPainter {
       canvas.scale(resolvedViewport.zoom, resolvedViewport.zoom);
     }
     final position = layout.positionOfFrame(frame);
+    // Page view (R26 #41): the playhead highlights nothing while the user
+    // is looking at another page.
+    if (!layout.visiblePageIndexes.contains(position.page)) {
+      canvas.restore();
+      return;
+    }
     final left = layout.halfLeft(position.page, position.half);
     canvas.drawRect(
       Rect.fromLTWH(
@@ -1565,6 +1640,7 @@ class TimesheetPlayheadPainter extends CustomPainter {
   bool shouldRepaint(covariant TimesheetPlayheadPainter oldDelegate) {
     return !identical(oldDelegate.document, document) ||
         oldDelegate.layout.continuous != layout.continuous ||
+        oldDelegate.layout.resolvedSinglePage != layout.resolvedSinglePage ||
         oldDelegate.viewport != viewport;
   }
 }

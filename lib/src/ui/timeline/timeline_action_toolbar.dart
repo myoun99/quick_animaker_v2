@@ -3,12 +3,12 @@ import 'package:flutter/material.dart';
 
 import '../../models/attached_mode.dart';
 import '../../models/attached_placement.dart';
-import '../../models/layer_blend_mode.dart';
 import '../../models/layer_kind.dart';
 import '../../models/project_frame_rate.dart';
 import '../cut_command_group.dart';
 import '../dialogs/fps_audio_choice_dialog.dart';
 import '../editor_session_manager.dart';
+import '../widgets/app_icon_button.dart';
 import '../widgets/panel_flyout.dart';
 import '../widgets/split_icon_button.dart';
 import 'timeline_section_policy.dart';
@@ -287,6 +287,31 @@ class TimelineActionToolbar extends StatelessWidget {
         onSelected: onImportAudio,
       ),
       const PanelFlyoutDivider(),
+      // R27 #21: the FOLDER and LINK commands reach the timeline. They
+      // only lived in the top menu bar, which is a long way from the rail
+      // where their result shows up.
+      PanelFlyoutItem(
+        keyValue: 'timeline-group-into-folder-button',
+        label: 'Group into folder',
+        icon: Icons.create_new_folder_outlined,
+        enabled: session.canGroupActiveLayerIntoFolder,
+        onSelected: session.groupActiveLayerIntoFolder,
+      ),
+      PanelFlyoutItem(
+        keyValue: 'timeline-link-duplicate-button',
+        label: 'Link duplicate layer',
+        icon: Icons.link,
+        enabled: session.canLinkDuplicateActiveLayer,
+        onSelected: session.linkDuplicateActiveLayer,
+      ),
+      PanelFlyoutItem(
+        keyValue: 'timeline-unlink-layer-button',
+        label: 'Unlink layer',
+        icon: Icons.link_off,
+        enabled: session.canUnlinkActiveLayer,
+        onSelected: session.unlinkActiveLayer,
+      ),
+      const PanelFlyoutDivider(),
       PanelFlyoutItem(
         keyValue: 'toggle-storyboard-layer-button',
         label: 'Storyboard layer',
@@ -335,31 +360,6 @@ class TimelineActionToolbar extends StatelessWidget {
   /// R26 #30-1: whether the ACTIVE layer takes a blend mode (drawing
   /// section rows — attach rows included, their pixels blend on their
   /// own).
-  bool get _blendCapableActiveLayer {
-    final layer = session.activeLayer;
-    return layer != null &&
-        timelineSectionForLayerKind(layer.kind) == TimelineSection.drawing;
-  }
-
-  /// The PS/CSP blend dropdown's entries — commits through the same
-  /// repo-direct, link-mirrored path as the eye/opacity.
-  List<PanelFlyoutEntry> _blendEntries() {
-    final layer = session.activeLayer;
-    if (layer == null) {
-      return const [];
-    }
-    final language = session.languageSettings.value.programLanguage;
-    return [
-      for (final mode in LayerBlendMode.values)
-        PanelFlyoutItem(
-          keyValue: 'timeline-layer-blend-${mode.name}',
-          label: mode.labelFor(language),
-          checked: layer.blendMode == mode,
-          onSelected: () => session.setLayerBlendMode(layer.id, mode),
-        ),
-    ];
-  }
-
   /// R26 #32: the frame-rate presets. RT made the project rate an exact
   /// rational, so the NTSC pulldown rates are here alongside the whole
   /// ones — 23.976 is stored and played as 24000/1001, never as a
@@ -480,21 +480,19 @@ class TimelineActionToolbar extends StatelessWidget {
     ];
   }
 
+  /// R26 #42: the app's standard icon button (the canvas bottom bar's
+  /// style, promoted) — this toolbar used to size its own.
   Widget _iconButton({
     required ValueKey<String> key,
     required String tooltip,
     required IconData icon,
     required VoidCallback? onPressed,
   }) {
-    return IconButton(
-      key: key,
+    return AppIconButton(
+      keyValue: key.value,
       tooltip: tooltip,
       onPressed: onPressed,
       icon: Icon(icon),
-      iconSize: 18,
-      padding: const EdgeInsets.all(5),
-      constraints: const BoxConstraints(minWidth: 30, minHeight: 30),
-      visualDensity: VisualDensity.compact,
     );
   }
 
@@ -566,23 +564,9 @@ class TimelineActionToolbar extends StatelessWidget {
                     tooltip: 'Layer commands',
                     entriesBuilder: _layerEntries,
                   ),
-                  // R26 #30-1 (user rule 07-22): the layer BLEND dropdown,
-                  // PS/CSP style — the ACTIVE layer's mode name as a
-                  // flyout button, ACTION-section rows only (the type
-                  // button went back to function-TBD).
-                  if (_blendCapableActiveLayer) ...[
-                    const SizedBox(width: 4),
-                    PanelFlyoutButton(
-                      key: const ValueKey<String>(
-                        'timeline-layer-blend-menu-button',
-                      ),
-                      label: session.activeLayer!.blendMode.labelFor(
-                        session.languageSettings.value.programLanguage,
-                      ),
-                      tooltip: 'Layer blend mode',
-                      entriesBuilder: _blendEntries,
-                    ),
-                  ],
+                  // R27 #6: the layer BLEND dropdown left this toolbar for
+                  // the layer LABEL's rightmost column (user placement) —
+                  // per-row reading, PS/CSP style. See LayerBlendModeChip.
                 ],
               ),
               _groupDivider(context),

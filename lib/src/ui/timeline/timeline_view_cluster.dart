@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
+import '../widgets/app_icon_button.dart';
 import '../widgets/field_slider.dart';
 import 'timeline_frame_range_policy.dart' show timelineSecondsLabel;
 import 'timeline_panel.dart' show TimelinePanel;
@@ -69,35 +70,20 @@ class TimelineViewCluster extends StatelessWidget {
     );
   }
 
-  Widget _zoomStepButton({
-    required bool zoomIn,
-    required ColorScheme colorScheme,
-  }) {
+  /// R26 #42: the app's standard icon button — the disabled look is
+  /// IconButton's own (no hand-mixed alpha), same as the canvas bar.
+  Widget _zoomStepButton({required bool zoomIn}) {
     final atBound = zoomIn
         ? pixelsPerFrame >= TimelinePanel.maxPixelsPerFrame
         : pixelsPerFrame <= TimelinePanel.minPixelsPerFrame;
     final enabled = onPixelsPerFrameChanged != null && !atBound;
-    return SizedBox(
-      width: 22,
-      height: 22,
-      child: IconButton(
-        key: ValueKey<String>(
-          zoomIn ? 'timeline-zoom-in-button' : 'timeline-zoom-out-button',
-        ),
-        tooltip: zoomIn ? 'Zoom In' : 'Zoom Out',
-        padding: EdgeInsets.zero,
-        constraints: const BoxConstraints.tightFor(width: 22, height: 22),
-        icon: Icon(
-          zoomIn ? Icons.zoom_in : Icons.zoom_out,
-          size: 16,
-          color: enabled
-              ? colorScheme.onSurfaceVariant
-              : colorScheme.onSurfaceVariant.withValues(alpha: 0.4),
-        ),
-        onPressed: enabled
-            ? () => onPixelsPerFrameChanged!(_steppedZoom(zoomIn: zoomIn))
-            : null,
-      ),
+    return AppIconButton(
+      keyValue: zoomIn ? 'timeline-zoom-in-button' : 'timeline-zoom-out-button',
+      tooltip: zoomIn ? 'Zoom In' : 'Zoom Out',
+      icon: Icon(zoomIn ? Icons.zoom_in : Icons.zoom_out),
+      onPressed: enabled
+          ? () => onPixelsPerFrameChanged!(_steppedZoom(zoomIn: zoomIn))
+          : null,
     );
   }
 
@@ -128,20 +114,18 @@ class TimelineViewCluster extends StatelessWidget {
           },
         ),
         const SizedBox(width: 4),
-        IconButton(
-          key: const ValueKey<String>('timeline-time-display-toggle-button'),
+        AppIconButton(
+          keyValue: 'timeline-time-display-toggle-button',
           tooltip: showSeconds ? 'Show Frames' : 'Show Seconds',
           onPressed: onShowSecondsChanged == null
               ? null
               : () => onShowSecondsChanged!(!showSeconds),
-          icon: Icon(
-            showSeconds ? Icons.timer : Icons.timer_outlined,
-            size: 18,
-          ),
+          isSelected: showSeconds,
+          icon: Icon(showSeconds ? Icons.timer : Icons.timer_outlined),
         ),
         // UI-R11 #11: the flanking glyphs are real STEP buttons now, not
         // decorations — click-to-zoom without the slider's drag precision.
-        _zoomStepButton(zoomIn: false, colorScheme: colorScheme),
+        _zoomStepButton(zoomIn: false),
         SizedBox(
           width: 140,
           child: FieldSlider(
@@ -173,7 +157,7 @@ class TimelineViewCluster extends StatelessWidget {
                   },
           ),
         ),
-        _zoomStepButton(zoomIn: true, colorScheme: colorScheme),
+        _zoomStepButton(zoomIn: true),
         ...trailing,
       ],
     );

@@ -9,7 +9,6 @@ import 'package:quick_animaker_v2/src/models/cut_id.dart';
 import 'package:quick_animaker_v2/src/models/attached_mode.dart';
 import 'package:quick_animaker_v2/src/models/frame.dart';
 import 'package:quick_animaker_v2/src/models/frame_id.dart';
-import 'package:quick_animaker_v2/src/models/folder_id.dart';
 import 'package:quick_animaker_v2/src/models/layer.dart';
 import 'package:quick_animaker_v2/src/models/layer_folder.dart';
 import 'package:quick_animaker_v2/src/models/layer_id.dart';
@@ -58,7 +57,7 @@ void main() {
   int markerOf(CutFrameCompositeLayer layer) =>
       layer.surface.tiles.values.single.pixels[0];
 
-  group('folder composite (L3)', () {
+  group('folder composite', () {
     Layer memberLayer({String folder = 'f'}) => Layer(
       id: const LayerId('member'),
       name: 'A',
@@ -66,36 +65,49 @@ void main() {
       timeline: {
         0: TimelineExposure.drawing(const FrameId('frame-1'), length: 1),
       },
-      folderId: FolderId(folder),
+      folderId: LayerId(folder),
     );
+
+    // Folder ROWS sit directly above their member run in the stack.
+    Layer folderRow(
+      String id, {
+      String? parent,
+      bool isVisible = true,
+      double opacity = 1,
+      TransformTrack? transformTrack,
+    }) => createFolderLayer(
+      id: LayerId(id),
+      name: id.toUpperCase(),
+      parentId: parent == null ? null : LayerId(parent),
+    ).copyWith(
+      isVisible: isVisible,
+      opacity: opacity,
+      transformTrack: transformTrack,
+    );
+
+    test('a folder row paints nothing of its own', () {
+      final plan = planCutFrameComposite(
+        cut: cut([memberLayer(), folderRow('f')]),
+        frameIndex: 0,
+        surfaceResolver: resolver,
+      );
+      expect(plan, hasLength(1), reason: 'only the member contributes pixels');
+    });
 
     test('a hidden folder (or hidden ancestor) hides its subtree', () {
       final hidden = planCutFrameComposite(
-        cut: cut([memberLayer()]).copyWith(
-          folders: [
-            LayerFolder(id: const FolderId('f'), name: 'F', isVisible: false),
-          ],
-        ),
+        cut: cut([memberLayer(), folderRow('f', isVisible: false)]),
         frameIndex: 0,
         surfaceResolver: resolver,
       );
       expect(hidden, isEmpty);
 
       final nestedHidden = planCutFrameComposite(
-        cut: cut([memberLayer(folder: 'inner')]).copyWith(
-          folders: [
-            LayerFolder(
-              id: const FolderId('outer'),
-              name: 'O',
-              isVisible: false,
-            ),
-            LayerFolder(
-              id: const FolderId('inner'),
-              name: 'I',
-              parentId: const FolderId('outer'),
-            ),
-          ],
-        ),
+        cut: cut([
+          memberLayer(folder: 'inner'),
+          folderRow('inner', parent: 'outer'),
+          folderRow('outer', isVisible: false),
+        ]),
         frameIndex: 0,
         surfaceResolver: resolver,
       );
@@ -105,21 +117,11 @@ void main() {
     test('folder opacity folds into the member (nested folders multiply)',
         () {
       final plan = planCutFrameComposite(
-        cut: cut([memberLayer(folder: 'inner')]).copyWith(
-          folders: [
-            LayerFolder(
-              id: const FolderId('outer'),
-              name: 'O',
-              opacity: 0.5,
-            ),
-            LayerFolder(
-              id: const FolderId('inner'),
-              name: 'I',
-              parentId: const FolderId('outer'),
-              opacity: 0.5,
-            ),
-          ],
-        ),
+        cut: cut([
+          memberLayer(folder: 'inner'),
+          folderRow('inner', parent: 'outer', opacity: 0.5),
+          folderRow('outer', opacity: 0.5),
+        ]),
         frameIndex: 0,
         surfaceResolver: resolver,
       );
@@ -134,15 +136,10 @@ void main() {
         },
       );
       final plan = planCutFrameComposite(
-        cut: cut([memberLayer()]).copyWith(
-          folders: [
-            LayerFolder(
-              id: const FolderId('f'),
-              name: 'F',
-              transformTrack: folderTrack,
-            ),
-          ],
-        ),
+        cut: cut([
+          memberLayer(),
+          folderRow('f', transformTrack: folderTrack),
+        ]),
         frameIndex: 0,
         surfaceResolver: resolver,
       );
@@ -160,19 +157,35 @@ void main() {
       final composedPlan = planCutFrameComposite(
         cut: cut([
           memberLayer().copyWith(transformTrack: layerTrack),
-        ]).copyWith(
-          folders: [
-            LayerFolder(
-              id: const FolderId('f'),
-              name: 'F',
-              transformTrack: folderTrack,
-            ),
-          ],
-        ),
+          folderRow('f', transformTrack: folderTrack),
+        ]),
         frameIndex: 0,
         surfaceResolver: resolver,
       );
       expect(composedPlan.single.pose!.zoom, 6);
+    });
+
+    test('the folder fx switch IS the layer fx switch', () {
+      final folderTrack = TransformTrack(
+        keyframes: {
+          0: TransformPose(center: CanvasPoint(x: 3, y: 2), zoom: 2),
+        },
+      );
+      final bypassed = planCutFrameComposite(
+        cut: cut([
+          memberLayer(),
+          folderRow('f', transformTrack: folderTrack),
+        ]),
+        frameIndex: 0,
+        surfaceResolver: resolver,
+        fxBypassedLayerIds: {const LayerId('f')},
+      );
+      expect(
+        bypassed.single.pose,
+        isNull,
+        reason: 'R28 #13: a bypassed folder contributes no FX — and it now '
+            'sits in the ONE bypass set, keyed by its own layer id',
+      );
     });
   });
 

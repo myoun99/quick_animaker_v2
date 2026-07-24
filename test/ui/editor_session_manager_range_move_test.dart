@@ -1101,4 +1101,158 @@ void main() {
     expect(s.activeLayerId, b.id);
     expect(s.laneRangeSelection.value!.layerId, b.id);
   });
+
+  group('R27 #8: the row hop is a DISPLAY fact, not a lattice one', () {
+    /// The reported layout: A · S1 · S2 · CAM1 (the default cut's rows),
+    /// with one sound block sitting on S2.
+    (EditorSessionManager, List<LayerId> se, LayerId cam) soundOnS2() {
+      final s = EditorSessionManager(initialProject: createDefaultProject());
+      addTearDown(s.dispose);
+      final seIds = [for (final l in s.activeTrack.seLayers) l.id];
+      expect(seIds, hasLength(2));
+      s.repository.replaceLayer(
+        layer: s.activeTrack.seLayers[1].copyWith(
+          frames: [
+            Frame(id: const FrameId('se-cel'), duration: 1, strokes: const []),
+          ],
+          timeline: const {
+            0: TimelineExposure.drawing(FrameId('se-cel'), length: 1),
+          },
+        ),
+      );
+      final cam = s.layers
+          .firstWhere((l) => l.kind == LayerKind.instruction)
+          .id;
+      return (s, seIds, cam);
+    }
+
+    Layer seRow(EditorSessionManager s, LayerId id) =>
+        s.activeTrack.seLayers.firstWhere((l) => l.id == id);
+
+    test('a span ANCHORED on the CAM row still carries the sound block to '
+        'the empty S1 — the anchor row owns no lattice, which used to '
+        'kill the whole move', () {
+      final (s, seIds, cam) = soundOnS2();
+
+      // Drag out the selection from CAM1 up over S2: the anchor is the
+      // CAM row, which is on neither the drawing nor the SE lattice.
+      s.updateFrameRangeSelectionDrag(
+        layerId: cam,
+        anchorIndex: 0,
+        headIndex: 0,
+        headLayerId: seIds[1],
+      );
+      expect(
+        s.frameRangeSelection.value!.spanLayerIds,
+        containsAll(<LayerId>[seIds[1], cam]),
+      );
+      expect(s.frameRangeSelection.value!.layerId, cam);
+
+      // The pointer went down on the SOUND block (S2) — that row, not the
+      // selection's anchor, is what lands on the row under the pointer.
+      expect(s.beginFrameRangeMoveDrag(seIds[1]), isTrue);
+      s.updateFrameRangeMoveDrag(frameDelta: 0, targetLayerId: seIds[0]);
+      s.endFrameRangeMoveDrag();
+
+      expect(
+        seRow(s, seIds[1]).timeline,
+        isEmpty,
+        reason: 'the sound left S2',
+      );
+      expect(seRow(s, seIds[0]).timeline.containsKey(0), isTrue);
+
+      s.undo();
+      expect(seRow(s, seIds[1]).timeline.containsKey(0), isTrue);
+      expect(seRow(s, seIds[0]).timeline, isEmpty);
+    });
+
+    test('a CAM row carrying instruction keys RIDES the frame axis instead '
+        'of vetoing the row move', () {
+      final (s, seIds, cam) = soundOnS2();
+      // Put an instruction event inside the selected range.
+      final camLayer = s.layers.firstWhere((l) => l.id == cam);
+      s.repository.replaceLayer(
+        layer: camLayer.copyWith(
+          instructions: const {
+            0: InstructionEvent(instructionId: 'pan', length: 1),
+          },
+        ),
+      );
+
+      s.updateFrameRangeSelectionDrag(
+        layerId: seIds[1],
+        anchorIndex: 0,
+        headIndex: 0,
+        headLayerId: cam,
+      );
+      expect(s.beginFrameRangeMoveDrag(), isTrue);
+      // Up one row AND one frame right: the sound changes rows, the
+      // instruction key stays on CAM1 but travels the frame delta.
+      s.updateFrameRangeMoveDrag(frameDelta: 1, targetLayerId: seIds[0]);
+      s.endFrameRangeMoveDrag();
+
+      expect(seRow(s, seIds[1]).timeline, isEmpty);
+      expect(seRow(s, seIds[0]).timeline.containsKey(1), isTrue);
+      final camAfter = s.layers.firstWhere((l) => l.id == cam);
+      expect(camAfter.instructions.containsKey(1), isTrue);
+      expect(camAfter.instructions.containsKey(0), isFalse);
+
+      // ONE undo puts both back.
+      s.undo();
+      expect(seRow(s, seIds[1]).timeline.containsKey(0), isTrue);
+      expect(
+        s.layers
+            .firstWhere((l) => l.id == cam)
+            .instructions
+            .containsKey(0),
+        isTrue,
+      );
+    });
+  });
+
+  test('R28 #5: dragging back to the START returns the block home — a zero '
+      'delta is the origin, not a blocked landing', () {
+    final (s, a, _) = fixture();
+    s.updateFrameRangeSelectionDrag(
+      layerId: a.id,
+      anchorIndex: 0,
+      headIndex: 0,
+    );
+    expect(s.beginFrameRangeMoveDrag(), isTrue);
+
+    // Out to the right…
+    s.updateFrameRangeMoveDrag(frameDelta: 2);
+    expect(s.dragPreview.value, isNotNull);
+    expect(s.frameRangeSelection.value!.startIndex, 2);
+
+    // …and back home. This used to read as "blocked" — planDrawingRangeMove
+    // answers null for a no-op exactly as it does for an impossible
+    // landing — so the preview HELD at +2 and the block refused to come
+    // back: "더 이상 왼쪽으로 이동이 안먹혀버리고 그 자리에서 멈춰버린다".
+    s.updateFrameRangeMoveDrag(frameDelta: 0);
+    expect(
+      s.dragPreview.value,
+      isNull,
+      reason: 'R28 #5: at zero delta the block shows at its REAL position',
+    );
+    expect(
+      s.frameRangeSelection.value!.startIndex,
+      0,
+      reason: 'the outline comes home with it',
+    );
+
+    // …and the drag still works afterwards, in both directions.
+    s.updateFrameRangeMoveDrag(frameDelta: 1);
+    expect(s.frameRangeSelection.value!.startIndex, 1);
+    s.updateFrameRangeMoveDrag(frameDelta: 0);
+    expect(s.frameRangeSelection.value!.startIndex, 0);
+
+    s.endFrameRangeMoveDrag();
+    // Ending at the origin commits nothing.
+    expect(
+      s.layers.firstWhere((l) => l.id == a.id).timeline[0],
+      isNotNull,
+      reason: 'the block never left frame 0',
+    );
+  });
 }

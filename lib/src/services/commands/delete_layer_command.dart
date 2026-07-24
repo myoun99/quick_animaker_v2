@@ -58,15 +58,10 @@ class DeleteLayerCommand implements Command {
           );
         }(),
     ];
-    for (final target in _targets!) {
-      final cut = requireCut(repository.requireProject(), target.cutId);
-      if (cut.layers.length <= 1) {
-        throw StateError(
-          'Cannot delete the last layer in cut ${target.cutId}.',
-        );
-      }
-    }
-
+    // R28 #14: a cut may end up with NO layers. The floor used to live
+    // here as well as in the coordinator's section rules; both are gone —
+    // an empty cut is a representable state (the canvas shows its blank
+    // paper, and drawing refuses with the R26 #35 notice).
     _registryBefore ??= project.linkRegistry;
     for (final target in _targets!) {
       repository.deleteLayer(cutId: target.cutId, layerId: target.layerId);

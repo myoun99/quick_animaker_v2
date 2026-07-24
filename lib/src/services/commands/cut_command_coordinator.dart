@@ -11,9 +11,7 @@ import '../../models/cut.dart';
 import '../../models/cut_camera.dart';
 import '../../models/cut_id.dart';
 import '../../models/cut_metadata.dart';
-import '../../models/folder_id.dart';
 import '../../models/frame.dart';
-import '../../models/layer_folder.dart';
 import '../../models/frame_id.dart';
 import '../../models/layer.dart';
 import '../../models/layer_id.dart';
@@ -39,7 +37,6 @@ import 'create_cut_command.dart';
 import 'create_folder_command.dart';
 import 'create_linked_cut_command.dart';
 import 'dissolve_folder_command.dart';
-import 'rename_folder_command.dart';
 import 'delete_cut_command.dart';
 import 'delete_layer_command.dart';
 import 'duplicate_cut_command.dart';
@@ -57,7 +54,6 @@ import 'update_cut_note_command.dart';
 import 'update_cut_transform_command.dart';
 import 'update_cut_fade_target_command.dart';
 import 'update_cut_thumbnail_frame_command.dart';
-import 'update_folder_transform_command.dart';
 import 'update_layer_audio_clips_command.dart';
 import 'update_layer_instructions_command.dart';
 import 'update_layer_kind_command.dart';
@@ -387,7 +383,6 @@ class CutCommandCoordinator {
         newCutId: plan.newCutId,
         newName: name ?? nextNumericCutName(project),
         layerIdMap: plan.layerIdMap,
-        folderIdMap: plan.folderIdMap,
         newGroupIdBySource: plan.newGroupIdBySource,
       ),
     );
@@ -485,12 +480,15 @@ class CutCommandCoordinator {
     );
   }
 
-  /// 폴더 생성 (L5): folds [layerId]'s whole attach group into a new
-  /// folder (attach groups never split across a folder boundary; the
-  /// group is already a contiguous stack run). Mirrors into 겸용 cuts.
-  /// Returns the new folder's id in [cutId], null when the layer can't
-  /// fold (non-drawing kinds).
-  FolderId? createFolderFromLayer({
+  /// 폴더 생성: folds [layerId]'s whole attach group into a new folder ROW
+  /// inserted directly above the group (attach groups never split across a
+  /// folder boundary; the group is already a contiguous stack run).
+  /// Mirrors into 겸용 cuts. Returns the new folder layer's id in [cutId],
+  /// null when the layer can't fold (non-drawing kinds).
+  ///
+  /// Renaming the folder afterwards is just [renameLayer] — a folder is a
+  /// layer, so it needs no command of its own.
+  LayerId? createFolderFromLayer({
     required CutId cutId,
     required LayerId layerId,
     String? name,
@@ -523,35 +521,20 @@ class CutCommandCoordinator {
         name: name ?? nextFolderName(cut),
         memberLayerIds: memberIds,
         folderIdByCut: plan.folderIdByCut,
+        groupId: plan.folderGroupId,
       ),
     );
     return plan.folderIdByCut[cutId];
   }
 
-  /// 폴더 해산 (L5): releases members to the parent and removes the
-  /// folder (layers stay). Mirrors into 겸용 cuts.
-  void dissolveFolder({required CutId cutId, required FolderId folderId}) {
+  /// 폴더 해산: releases members to the parent and removes the folder row
+  /// (layers stay). Mirrors into 겸용 cuts.
+  void dissolveFolder({required CutId cutId, required LayerId folderId}) {
     historyManager.execute(
       DissolveFolderCommand(
         repository: repository,
         cutId: cutId,
         folderId: folderId,
-      ),
-    );
-  }
-
-  /// 폴더 이름 변경 (L5): mirrors into 겸용 cuts (shared structure).
-  void renameFolder({
-    required CutId cutId,
-    required FolderId folderId,
-    required String name,
-  }) {
-    historyManager.execute(
-      RenameFolderCommand(
-        repository: repository,
-        cutId: cutId,
-        folderId: folderId,
-        name: name,
       ),
     );
   }
@@ -583,6 +566,13 @@ class CutCommandCoordinator {
   void deleteLayer({required CutId cutId, required LayerId layerId}) {
     final cut = _requireCut(cutId);
     final layer = _requireLayer(cutId: cutId, layerId: layerId);
+    // Deleting a FOLDER row means dissolving it: the members are rows in
+    // their own right and stay where they are. (Deleting the pictures too
+    // would make one Delete key destroy work the row itself never held.)
+    if (layerKindGroupsLayers(layer.kind)) {
+      dissolveFolder(cutId: cutId, folderId: layerId);
+      return;
+    }
     // Attach rows are accessories — always deletable, never counted toward
     // the section floors below.
     if (!isAttachedLayer(layer)) {
@@ -597,17 +587,11 @@ class CutCommandCoordinator {
                   .where((other) => other.kind == LayerKind.instruction)
                   .length <=
               1,
-        LayerKind.animation || LayerKind.storyboard || LayerKind.art =>
-          cut.layers
-                  .where(
-                    (other) =>
-                        !isAttachedLayer(other) &&
-                        (other.kind == LayerKind.animation ||
-                            other.kind == LayerKind.storyboard ||
-                            other.kind == LayerKind.art),
-                  )
-                  .length <=
-              1,
+        // R28 #14: no drawing floor — the action section may empty out.
+        LayerKind.animation ||
+        LayerKind.storyboard ||
+        LayerKind.art ||
+        LayerKind.folder => false,
       };
       if (refused) {
         return;
@@ -654,7 +638,7 @@ class CutCommandCoordinator {
   }) {
     final cut = _requireCut(cutId);
     final sourceLayer = _requireLayer(cutId: cutId, layerId: sourceLayerId);
-    if (sourceLayer.kind == LayerKind.camera) {
+    if (layerKindIsFixed(sourceLayer.kind)) {
       throw StateError('The camera layer cannot be duplicated.');
     }
     final sourceIndex = cut.layers.indexWhere(
@@ -676,7 +660,7 @@ class CutCommandCoordinator {
     required LayerCopyPayload payload,
     required int insertionIndex,
   }) {
-    if (payload.kind == LayerKind.camera) {
+    if (layerKindIsFixed(payload.kind)) {
       throw StateError('The camera layer cannot be pasted.');
     }
 
@@ -870,7 +854,7 @@ class CutCommandCoordinator {
     String description = 'Edit layer transform',
   }) {
     final layer = _requireLayer(cutId: cutId, layerId: layerId);
-    if (layer.kind == LayerKind.camera) {
+    if (!layerKindHasLayerTransform(layer.kind)) {
       throw StateError(
         'The camera layer transforms through the cut camera track.',
       );
@@ -884,32 +868,6 @@ class CutCommandCoordinator {
         repository: repository,
         cutId: cutId,
         layerId: layerId,
-        transformTrack: transformTrack,
-        description: description,
-      ),
-    );
-  }
-
-  /// Replaces a FOLDER's FX transform track (L5c); one undo step, no-op
-  /// when unchanged. Folder FX lanes are per-use — never mirrored.
-  void updateFolderTransformTrack({
-    required CutId cutId,
-    required FolderId folderId,
-    required TransformTrack transformTrack,
-    String description = 'Edit folder transform',
-  }) {
-    final folder = requireCut(
-      repository.requireProject(),
-      cutId,
-    ).folders.byId(folderId);
-    if (folder == null || folder.transformTrack == transformTrack) {
-      return;
-    }
-    historyManager.execute(
-      UpdateFolderTransformCommand(
-        repository: repository,
-        cutId: cutId,
-        folderId: folderId,
         transformTrack: transformTrack,
         description: description,
       ),
@@ -979,7 +937,7 @@ class CutCommandCoordinator {
     if (isAttachedLayer(layer)) {
       throw StateError('Attach layers keep their base\'s kind: $layerId');
     }
-    if (layer.kind == LayerKind.camera || kind == LayerKind.camera) {
+    if (layerKindIsFixed(layer.kind) || layerKindIsFixed(kind)) {
       throw StateError(
         'The camera layer kind is fixed; layers cannot become cameras.',
       );
@@ -1049,26 +1007,28 @@ class CutCommandCoordinator {
     );
   }
 
+  /// R28 #14: deleting the LAST cut leaves the track empty rather than
+  /// conjuring a replacement.
+  ///
+  /// "컷도 1개도 없는 상황 허용" — the empty track is the same state the
+  /// editor already shows over a storyboard GAP (no active cut): the
+  /// canvas paints its blank paper and every `requireActiveCut` consumer
+  /// is behind a guard. Auto-replacing meant a delete could not actually
+  /// clear the track, and the replacement was indistinguishable from a
+  /// real cut in the undo stack.
   void deleteCut({required CutId cutId}) {
-    final project = repository.requireProject();
-    final replacementPlan = _cutCount(project) == 1
-        ? planDeleteLastCutReplacementInput(project)
-        : null;
-
     historyManager.execute(
       DeleteCutCommand(
         repository: repository,
         editingSession: editingSession,
         cutId: cutId,
         brushFrameStore: brushFrameStore,
-        replacementCutId: replacementPlan?.replacementCutId,
-        replacementLayerId: replacementPlan?.replacementLayerId,
       ),
     );
   }
 
-  /// Deletes a batch of cuts as ONE undo step. Callers must leave at least
-  /// one cut in the project (no last-cut replacement plan here).
+  /// Deletes a batch of cuts as ONE undo step; emptying the track is
+  /// allowed (R28 #14).
   void deleteCuts({required List<CutId> cutIds}) {
     if (cutIds.isEmpty) {
       return;
@@ -1076,10 +1036,6 @@ class CutCommandCoordinator {
     if (cutIds.length == 1) {
       deleteCut(cutId: cutIds.single);
       return;
-    }
-    final project = repository.requireProject();
-    if (_cutCount(project) <= cutIds.length) {
-      throw StateError('deleteCuts would remove every cut');
     }
 
     historyManager.execute(
@@ -1157,13 +1113,6 @@ class CutCommandCoordinator {
     );
   }
 
-  int _cutCount(Project project) {
-    var count = 0;
-    for (final track in project.tracks) {
-      count += track.cuts.length;
-    }
-    return count;
-  }
 
   Cut _requireCut(CutId cutId) {
     return requireCut(repository.requireProject(), cutId);

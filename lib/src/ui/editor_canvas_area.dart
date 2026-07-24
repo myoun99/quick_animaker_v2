@@ -6,6 +6,8 @@ import 'package:flutter/material.dart';
 import '../models/canvas_size.dart';
 import '../models/canvas_viewport.dart';
 import '../models/layer_id.dart';
+import '../models/project_background.dart';
+import 'theme/app_workspace_colors.dart';
 import '../services/canvas_color_sampler.dart';
 import '../services/canvas_flood_fill.dart';
 import '../services/canvas_selection.dart' show SelectionMaskOptions;
@@ -17,6 +19,7 @@ import 'brush/canvas_view_commands.dart';
 import 'canvas/viewport_canvas_transform.dart';
 import 'brush/main_canvas_brush_host.dart';
 import 'camera/camera_frame_overlay.dart';
+import 'canvas/active_stroke_overlay.dart';
 import 'canvas/canvas_layer_stack_view.dart';
 import 'canvas/layer_pose_paint.dart';
 import 'canvas/layer_position_gizmo.dart';
@@ -27,7 +30,7 @@ import 'playback/canvas_scrub_preview.dart';
 import 'storyboard_cut_fade_policy.dart' show cutFadeTargetColor;
 import 'text/app_strings.dart';
 import 'timeline/layer_label_controls.dart';
-import 'timeline/timeline_section_policy.dart';
+import '../models/layer_kind.dart' show layerKindAcceptsBrushInput;
 import 'widgets/cursor_notice.dart';
 import 'timeline/transform_lane_editing.dart';
 
@@ -52,6 +55,7 @@ class EditorCanvasArea extends StatefulWidget {
     this.expandedLaneLayerIds,
     this.fillOptions,
     this.selectionMaskOptions,
+    this.eyedropperSource,
     this.onInvokeAction,
   });
 
@@ -90,6 +94,10 @@ class EditorCanvasArea extends StatefulWidget {
   /// keeps the defaults.
   final ValueListenable<FloodFillOptions>? fillOptions;
 
+  /// R28 #6: the eyedropper's reference source (Tool Settings knob); null
+  /// keeps "pick what you see".
+  final ValueListenable<CanvasColorSampleSource>? eyedropperSource;
+
   /// The Select tool's lift-time mask knobs (R26); null keeps the
   /// classic byte-preserving hard mask.
   final ValueListenable<SelectionMaskOptions>? selectionMaskOptions;
@@ -109,6 +117,68 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
   double? _brushSizeDragStartSize;
 
   CanvasViewport _canvasViewport = CanvasViewport();
+
+  /// [nodes] with the onion ghosts inserted directly UNDER the active
+  /// layer — where they belong visually, and (since the merge) inside
+  /// whatever folder buffer the active layer sits in.
+  static List<CanvasLayerStackNode> _stackNodesWithGhosts(
+    List<CanvasLayerStackNode> nodes,
+    List<CanvasLayerImageRequest> ghosts,
+  ) {
+    if (ghosts.isEmpty) {
+      return nodes;
+    }
+    final ghostNodes = [
+      for (final ghost in ghosts) CanvasLayerImageNode(ghost),
+    ];
+    var placed = false;
+    List<CanvasLayerStackNode> walk(List<CanvasLayerStackNode> list) {
+      final out = <CanvasLayerStackNode>[];
+      for (final node in list) {
+        switch (node) {
+          case CanvasActiveLayerNode():
+            if (!placed) {
+              out.addAll(ghostNodes);
+              placed = true;
+            }
+            out.add(node);
+          case CanvasLayerGroupNode(
+            :final children,
+            :final opacity,
+            :final blendMode,
+          ):
+            out.add(
+              CanvasLayerGroupNode(
+                children: walk(children),
+                opacity: opacity,
+                blendMode: blendMode,
+              ),
+            );
+          case CanvasLayerImageNode():
+            out.add(node);
+        }
+      }
+      return out;
+    }
+
+    final result = walk(nodes);
+    // No active node (a brush-banned row, or nothing exposed): the ghosts
+    // still show, on top like the old below-stack put them.
+    return placed ? result : [...result, ...ghostNodes];
+  }
+
+  /// The live-stroke overlay, owned HERE so the layer stack can paint the
+  /// active layer inside the composite tree — that is what lets a folder's
+  /// group buffer enclose the layer being drawn on. The interactive view
+  /// writes into it (input) and the merged stack painter reads it (paint).
+  final ActiveStrokeOverlayModel _activeStrokeOverlay =
+      ActiveStrokeOverlayModel();
+
+  @override
+  void dispose() {
+    _activeStrokeOverlay.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -138,6 +208,10 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
         widget.cameraViewEnabled,
         widget.cameraDimOpacity,
         ?widget.expandedLaneLayerIds,
+        // R28 #9: the pasteboard color is app state — the backdrop and
+        // the swatch both read it, so the area follows it the way it
+        // follows camera view.
+        AppWorkspaceColors.settings,
       ]),
       builder: (context, _) {
         // Playback swaps only the viewport CONTENT (via the panel's
@@ -212,13 +286,14 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
       session.languageSettings.value.programLanguage,
     );
     final activeLayer = session.activeLayer;
+    // R27 #16: the question is whether THIS LAYER takes strokes, not
+    // which section it sits in — the CAM section is no longer uniformly
+    // undrawable in the user's model, so the refusal names the layer.
     final drawable =
-        activeLayer != null &&
-        timelineSectionForLayerKind(activeLayer.kind) ==
-            TimelineSection.drawing;
+        activeLayer != null && layerKindAcceptsBrushInput(activeLayer.kind);
     return drawable
         ? strings.noticeNoFrameHere
-        : strings.noticeActionSectionOnly;
+        : strings.noticeLayerNotDrawable;
   }
 
   Widget _buildInteractiveCanvas(
@@ -236,14 +311,8 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
     final inGap =
         !isPlaybackActive && !isScrubbing && session.editingPlayheadInGap;
     final layerStack = inGap
-        ? (
-            below: const <CanvasLayerImageRequest>[],
-            above: const <CanvasLayerImageRequest>[],
-            activeLayerOpacity: 1.0,
-          )
+        ? (nodes: const <CanvasLayerStackNode>[], activeLayerOpacity: 1.0)
         : session.editingCanvasStack;
-    final showAboveLayers =
-        !isPlaybackActive && !isScrubbing && layerStack.above.isNotEmpty;
     final selection = inGap
         ? null
         : isCameraLayerActive
@@ -307,6 +376,14 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
           valueListenable: widget.brushToolState,
           builder: (context, toolState, _) {
             return MainCanvasBrushHost(
+              // MERGED canvas: we own the live-stroke overlay, so the
+              // layer stack can paint the active layer inside the
+              // composite tree and a folder's group buffer can enclose
+              // the layer being drawn on. Playback/scrub swap the whole
+              // viewport content, so merged mode stands down there (no
+              // underlay builder, no active painter).
+              activeStrokeOverlayModel:
+                  isPlaybackActive || isScrubbing ? null : _activeStrokeOverlay,
               // Camera mode still needs artwork on screen: fall
               // back to the first drawn layer at the playhead.
               selection: selection,
@@ -334,10 +411,14 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
               // cursor. Which refusal applies is a SECTION question, so
               // only the shell can answer it.
               onDrawRefused: () => cursorNotices.show(_drawRefusalFor(session)),
-              // P5 eyedropper: sample the VISIBLE composite ("pick what you
-              // see"). Picks NEVER switch tools (R11-②): the eyedropper stays
-              // armed until the user changes tools, Alt-picks keep the
-              // painting tool.
+              // P5 eyedropper. Picks NEVER switch tools (R11-②): the
+              // eyedropper stays armed until the user changes tools,
+              // Alt-picks keep the painting tool.
+              // R28 #6: the reference is a SETTING — display (the visible
+              // composite) or the active layer alone. Either way the
+              // sampler maps through a posed layer's inverse (R28 #7), so
+              // a transformed layer picks what the screen shows instead of
+              // silently reading as paper.
               // Lazy: only reachable with an editable selection, which a
               // gap state never offers (requireActiveCut = backstop).
               sampleColorAt: (point) => sampleCompositeColor(
@@ -347,7 +428,19 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
                 point: point,
                 fxBypassedLayerIds: session.fxBypassedLayerIds,
                 paperColor: session.projectBackground.argb,
+                source:
+                    widget.eyedropperSource?.value ??
+                    CanvasColorSampleSource.display,
+                activeLayerId: session.activeLayer?.id,
               ),
+              // R28 #9: the canvas paper is PROJECT data (it goes out in
+              // exports, so it undoes with everything else); the
+              // pasteboard is app state that outlives the project.
+              paperColor: session.projectBackground.argb,
+              onPaperColorChanged: (argb) =>
+                  session.setProjectBackground(ProjectBackground.color(argb)),
+              pasteboardColor: AppWorkspaceColors.settings.value.pasteboardArgb,
+              onPasteboardColorChanged: session.setPasteboardColor,
               onEyedropperPick: (color) => widget.onBrushToolStateChanged?.call(
                 widget.brushToolState.value.copyWith(color: color),
               ),
@@ -430,16 +523,22 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
               // canvas is the static stage, only the content rides the pose.
               viewportUnderlayBuilder: isPlaybackActive || isScrubbing
                   ? null
-                  : (context, viewport) {
+                  : (context, viewport, activeSurfacePainter) {
                       final below = CanvasLayerStackView(
-                        layers: [
-                          ...layerStack.below,
-                          // Onion ghosts (P2) sit ABOVE the other layers and
-                          // directly UNDER the active drawing; playback and
-                          // scrubs never reach here, so they auto-hide. A gap
-                          // parking shows the VOID (R16-⑥): no ghosts either.
-                          if (!inGap) ...session.onionSkinCanvasRequests(),
-                        ],
+                        // MERGED: the whole tree, active layer included, so
+                        // a folder's group buffer encloses the layer being
+                        // drawn on. Onion ghosts (P2) sit above the other
+                        // layers and directly UNDER the active drawing;
+                        // playback and scrubs never reach here, so they
+                        // auto-hide. A gap parking shows the VOID (R16-⑥):
+                        // no ghosts either.
+                        nodes: _stackNodesWithGhosts(
+                          layerStack.nodes,
+                          inGap
+                              ? const []
+                              : session.onionSkinCanvasRequests(),
+                        ),
+                        activeSurfacePainter: activeSurfacePainter,
                         imageCache: session.layerFrameImageCache,
                         canvasSize: canvasSize,
                         viewport: viewport,
@@ -455,7 +554,7 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
                         children: [
                           Positioned.fill(
                             child: CanvasLayerStackView(
-                              layers: const [],
+                              nodes: const [],
                               imageCache: session.layerFrameImageCache,
                               canvasSize: canvasSize,
                               viewport: viewport,
@@ -481,30 +580,15 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
               // keeps the CAMERA overlay only — the preview is the current view
               // moving through time, so the frame stays visible and rides the
               // cursor.
+              // The ABOVE-layers stack is gone from here: the merged
+              // underlay paints the whole tree in one picture now, which is
+              // the only way a group buffer can span the active layer. What
+              // is left in the overlay is chrome.
               viewportOverlayBuilder:
-                  (showCameraOverlay ||
-                          showAboveLayers ||
-                          showPositionGizmo ||
-                          showFadeWash) &&
+                  (showCameraOverlay || showPositionGizmo || showFadeWash) &&
                       !isPlaybackActive
                   ? (context, viewport) => Stack(
                       children: [
-                        if (showAboveLayers)
-                          Positioned.fill(
-                            // Above-layers ride the cut pose too (R9-B); the
-                            // camera overlay stays unposed (canvas chrome).
-                            child: _wrapInCutPose(
-                              CanvasLayerStackView(
-                                layers: layerStack.above,
-                                imageCache: session.layerFrameImageCache,
-                                canvasSize: canvasSize,
-                                viewport: viewport,
-                              ),
-                              sample: cutPoseSample,
-                              canvasSize: canvasSize,
-                              viewport: viewport,
-                            ),
-                          ),
                         if (showFadeWash)
                           Positioned.fill(
                             // The cut fade as a wash of the fade target color

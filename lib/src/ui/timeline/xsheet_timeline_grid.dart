@@ -1334,6 +1334,13 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
                                                                 widget
                                                                     .rangeHooks
                                                                     ?.selection,
+                                                            // R27 #14: one band
+                                                            // for cells and
+                                                            // lanes alike.
+                                                            laneRangeSelection:
+                                                                widget
+                                                                    .laneRange
+                                                                    ?.selection,
                                                             frameCursor: widget
                                                                 .frameCursor,
                                                             dragPreview: widget
@@ -2462,29 +2469,17 @@ class _LayerHeader extends StatelessWidget {
                     children: [
                       if (onToggleLayerFx != null &&
                           layerKindShowsFxToggle(layer.kind))
-                        LayerFxToggleButton(
-                          keyPrefix: 'xsheet',
-                          layerId: layer.id,
+                        FxToggleButton(
+                          keyValue: 'xsheet-layer-fx-${layer.id}',
                           fxEnabled: fxEnabled,
-                          onToggle: onToggleLayerFx!,
+                          onToggle: () => onToggleLayerFx!(layer.id),
                         ),
-                      IconButton(
-                        key: ValueKey<String>(
-                          'xsheet-layer-visibility-${layer.id}',
-                        ),
-                        tooltip: layer.isVisible ? 'Hide layer' : 'Show layer',
-                        padding: EdgeInsets.zero,
-                        constraints: const BoxConstraints.tightFor(
-                          width: 28,
-                          height: 28,
-                        ),
-                        icon: Icon(
-                          layer.isVisible
-                              ? Icons.visibility
-                              : Icons.visibility_off,
-                          size: 16,
-                        ),
-                        onPressed: () => onToggleLayerVisibility(layer.id),
+                      LayerVisibilityToggleButton(
+                        keyValue: 'xsheet-layer-visibility-${layer.id}',
+                        isVisible: layer.isVisible,
+                        onToggle: () => onToggleLayerVisibility(layer.id),
+                        size: 28,
+                        iconSize: 16,
                       ),
                       // SE columns carry the mute speaker beside the eye. Tight
                       // SizedBox: the M3 IconButton otherwise inflates to the
@@ -2511,28 +2506,13 @@ class _LayerHeader extends StatelessWidget {
                                     context,
                                     details.globalPosition,
                                   ),
-                            child: IconButton(
-                              key: ValueKey<String>(
-                                'xsheet-layer-mute-${layer.id}',
-                              ),
-                              tooltip: layer.muted
-                                  ? 'Unmute layer'
-                                  : 'Mute layer',
-                              padding: EdgeInsets.zero,
-                              constraints: const BoxConstraints.tightFor(
-                                width: 24,
-                                height: 28,
-                              ),
-                              icon: Icon(
-                                layer.muted
-                                    ? Icons.volume_off
-                                    : Icons.volume_up,
-                                size: 16,
-                                color: isLayerSoloed
-                                    ? colorScheme.primary
-                                    : null,
-                              ),
-                              onPressed: () => onToggleLayerMuted!(layer.id),
+                            child: LayerMuteToggleButton(
+                              keyValue: 'xsheet-layer-mute-${layer.id}',
+                              muted: layer.muted,
+                              soloed: isLayerSoloed,
+                              width: 24,
+                              height: 28,
+                              onToggle: () => onToggleLayerMuted!(layer.id),
                             ),
                           ),
                         ),

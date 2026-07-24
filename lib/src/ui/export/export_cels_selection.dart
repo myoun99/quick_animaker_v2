@@ -51,6 +51,8 @@ ExportCelsSelection resolveExportCelsSelection({
     switch (layer.kind) {
       case LayerKind.camera:
       case LayerKind.se:
+      // A folder holds its members' cels, never one of its own.
+      case LayerKind.folder:
         return false;
       case LayerKind.instruction:
         if (!spec.includeInstructionLayers) {
@@ -103,9 +105,8 @@ ExportCelsSelection resolveExportCelsSelection({
   for (var i = 0; i < layers.length; i += 1) {
     final forced = overrides[layers[i].id];
     if (forced != null) {
-      // The kind gates stay hard: camera/SE rows never export as cels.
-      final kind = layers[i].kind;
-      if (kind == LayerKind.camera || kind == LayerKind.se) {
+      // The kind gates stay hard: rows that hold no cel never export one.
+      if (!layerKindExportsCels(layers[i].kind)) {
         continue;
       }
       included[i] = forced;

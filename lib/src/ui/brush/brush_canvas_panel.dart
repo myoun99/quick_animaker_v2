@@ -12,6 +12,8 @@ import '../../models/bitmap_surface.dart';
 import '../../models/brush_dab.dart';
 import '../../models/brush_frame_key.dart';
 import '../../services/canvas_selection.dart';
+import '../../services/canvas_selection_paint_clip.dart';
+import '../../services/canvas_selection_region.dart';
 import '../../models/canvas_point.dart';
 import '../../models/canvas_size.dart';
 import '../../models/canvas_viewport.dart';
@@ -21,9 +23,14 @@ import '../../services/commands/brush_lift_move_history_command.dart';
 import '../../services/commands/brush_stroke_history_command.dart';
 import '../../services/cache_invalidation_executor.dart';
 import '../../services/history_manager.dart';
+import '../canvas/bitmap_surface_painter.dart';
+import '../canvas/active_stroke_overlay.dart';
 import '../canvas/canvas_selection_layer.dart';
+import '../canvas/selection_ants_painter.dart';
 import '../canvas/canvas_viewport_gesture_layer.dart';
-import '../theme/app_theme.dart' show AppColors;
+import '../../models/project_background.dart';
+import '../theme/app_workspace_colors.dart';
+import '../widgets/color_swatch_button.dart';
 import '../canvas/interactive_brush_edit_canvas_view.dart';
 import '../canvas/layer_pose_paint.dart';
 import 'brush_canvas_defaults.dart';
@@ -33,6 +40,7 @@ import 'canvas_selection_commands.dart';
 import 'selection_shape_history_command.dart';
 import 'canvas_view_commands.dart';
 import 'canvas_viewport_pan_metrics.dart';
+import '../widgets/app_icon_button.dart';
 import '../widgets/app_scrollbar.dart';
 import '../widgets/drag_value_label.dart';
 
@@ -59,6 +67,17 @@ class CanvasAutoFrameRequest {
 /// This widget is route-agnostic and behaves as an embedded canvas panel for
 /// the main editor canvas area. Temporary debug controls are intentionally not
 /// part of this panel.
+/// Builds the layer content painted under (and, in merged mode, around)
+/// the interactive canvas. [activeSurfacePainter] is non-null only in
+/// merged mode: draw it where the ACTIVE layer belongs in the composite
+/// tree, so a folder's group buffer can enclose it.
+typedef CanvasUnderlayBuilder =
+    Widget Function(
+      BuildContext context,
+      CanvasViewport viewport,
+      BitmapSurfacePainter? activeSurfacePainter,
+    );
+
 class BrushCanvasPanel extends StatefulWidget {
   const BrushCanvasPanel({
     super.key,
@@ -73,6 +92,7 @@ class BrushCanvasPanel extends StatefulWidget {
     this.selectionLabels = const CanvasEditorSelectionLabels(),
     this.viewportOverlayBuilder,
     this.viewportUnderlayBuilder,
+    this.activeStrokeOverlayModel,
     this.interactiveContentOpacity = 1.0,
     this.interactiveContentPose,
     this.contentOverride,
@@ -80,6 +100,10 @@ class BrushCanvasPanel extends StatefulWidget {
     this.autoFrame,
     this.contentStrokeActive,
     this.sampleColorAt,
+    this.paperColor = ProjectBackground.defaultPaperArgb,
+    this.onPaperColorChanged,
+    this.pasteboardColor = AppWorkspaceColors.defaultPasteboardArgb,
+    this.onPasteboardColorChanged,
     this.onTemporaryToolHold,
     this.onTemporaryToolRelease,
     this.onInvokeAction,
@@ -96,6 +120,8 @@ class BrushCanvasPanel extends StatefulWidget {
     this.onSelectionInteractionChanged,
     this.allowViewRotation = true,
     this.statusStripActions = const <Widget>[],
+    this.bottomBarLeading = const <Widget>[],
+    this.bottomBarLeadingToken,
   }) : assert(
          coordinator != null || contentOverride != null,
          'Without a coordinator the panel needs a content override.',
@@ -118,6 +144,18 @@ class BrushCanvasPanel extends StatefulWidget {
   /// (UI-R10 #18); always visible — the title ellipsizes first.
   final List<Widget> statusStripActions;
 
+  /// R26 #41: host controls that live at the FAR LEFT of the bottom bar,
+  /// immediately before the horizontal panbar (the timesheet's sheet-mode
+  /// and page navigation). They share the bar's row, so they scroll with
+  /// it in the slim-dock fallback like every other control.
+  final List<Widget> bottomBarLeading;
+
+  /// Equality token for [bottomBarLeading] — the bottom bar is memoized by
+  /// its inputs (R13-3) and widget instances are rebuilt per host build,
+  /// so the host names what its leading controls actually DEPEND on. Null
+  /// with a non-empty leading list means "rebuild the bar every time".
+  final Object? bottomBarLeadingToken;
+
   /// Optional layer stacked over the canvas inside the editor viewport,
   /// receiving the live viewport so it can transform canvas coordinates
   /// (e.g. the camera frame overlay, layers above the active one).
@@ -127,8 +165,39 @@ class BrushCanvasPanel extends StatefulWidget {
   /// Optional layer painted UNDER the interactive canvas (layers below the
   /// active one + the paper). When present, the interactive view skips its
   /// own opaque background so the underlay shows through.
-  final Widget Function(BuildContext context, CanvasViewport viewport)?
-  viewportUnderlayBuilder;
+  ///
+  /// In MERGED mode ([activeStrokeOverlayModel] non-null) this paints the
+  /// WHOLE stack, active layer included: the builder receives the active
+  /// layer's [BitmapSurfacePainter] so it can draw the live surface at the
+  /// right place in its composite tree.
+  final CanvasUnderlayBuilder? viewportUnderlayBuilder;
+
+  /// MERGED canvas mode: the host owns the live-stroke overlay and paints
+  /// the active layer itself, inside its composite tree, so a folder's
+  /// group buffer can enclose the layer being drawn on. The interactive
+  /// view then runs input-only. Null keeps the classic split (the view
+  /// owns its overlay and paints itself between the two stacks).
+  final ActiveStrokeOverlayModel? activeStrokeOverlayModel;
+
+  /// The active layer's painter for [viewportUnderlayBuilder] in merged
+  /// mode — built here because the surface lives on the coordinator.
+  BitmapSurfacePainter? _activeSurfacePainterFor(
+    BrushFrameEditingCoordinator coordinator,
+  ) {
+    final overlay = activeStrokeOverlayModel;
+    if (overlay == null) {
+      return null;
+    }
+    final activeKey = coordinator.activeFrameKey;
+    return BitmapSurfacePainter(
+      surface: coordinator.activeSessionState.canvasState.currentSurface,
+      overlayModel: overlay,
+      // The stack painter applies the viewport itself, so the surface
+      // painter draws in canvas space.
+      showTransparentBackground: false,
+      staleScope: (activeKey.layerId, activeKey.frameId),
+    );
+  }
 
   /// Display opacity of the interactive layer itself (the active layer's
   /// visibility/opacity preview); strokes still commit at full strength.
@@ -167,6 +236,15 @@ class BrushCanvasPanel extends StatefulWidget {
   /// Samples the VISIBLE composite color at a canvas point (P5); null
   /// disables the eyedropper tool and Alt-picks.
   final int? Function(CanvasPoint point)? sampleColorAt;
+
+  /// R28 #9: the surface colors and their commit handlers. The paper is
+  /// the PROJECT's (it goes out in exports); the pasteboard is app state
+  /// (the working environment around the stage). Null handlers hide the
+  /// respective swatch.
+  final int paperColor;
+  final ValueChanged<int>? onPaperColorChanged;
+  final int pasteboardColor;
+  final ValueChanged<int>? onPasteboardColorChanged;
 
   /// A committed eyedropper pick (switches back to the painting tool).
   final ValueChanged<int>? onEyedropperPick;
@@ -222,7 +300,8 @@ class BrushCanvasPanel extends StatefulWidget {
   State<BrushCanvasPanel> createState() => _BrushCanvasPanelState();
 }
 
-class _BrushCanvasPanelState extends State<BrushCanvasPanel> {
+class _BrushCanvasPanelState extends State<BrushCanvasPanel>
+    with SingleTickerProviderStateMixin {
   late CanvasViewport _viewport = widget.viewport ?? CanvasViewport();
   CanvasViewport? _lastWidgetViewport;
   Size? _editorViewportSize;
@@ -250,12 +329,88 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel> {
   /// sample nothing (the fill bucket).
   final ValueNotifier<Offset?> _toolCursorHover = ValueNotifier<Offset?>(null);
 
+  /// R28-S: the dash phase for the ants the panel paints when NO selection
+  /// layer is mounted — the region belongs to the document, so it keeps
+  /// showing while the brush/eraser/fill is armed (R26 #18).
+  late final AnimationController _idleAnts = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 600),
+  );
+
   @override
   void initState() {
     super.initState();
     _bindViewCommands();
     _altHeld = HardwareKeyboard.instance.isAltPressed;
     HardwareKeyboard.instance.addHandler(_handleKeyEvent);
+    widget.selectionCommands?.addListener(_handleSelectionChannelChanged);
+    _bindSelectionHistoryRecorder();
+    _syncIdleAnts();
+  }
+
+  /// One undoable selection step (R11-⑧) — the layer's marquee commits and
+  /// the channel's layer-less Ctrl+D both land here, so a selection change
+  /// is recorded the same way whatever tool is armed. Null while this
+  /// panel has no history host (focused tests apply directly).
+  void Function(CanvasSelectionRegion? before, CanvasSelectionRegion? after)?
+  get _recordSelectionChange {
+    final history = widget.historyManager;
+    final commands = widget.selectionCommands;
+    if (history == null || commands == null) {
+      return null;
+    }
+    return (before, after) => history.execute(
+      SelectionShapeHistoryCommand(
+        channel: commands,
+        before: before,
+        after: after,
+      ),
+    );
+  }
+
+  void _bindSelectionHistoryRecorder() {
+    widget.selectionCommands?.regionHistoryRecorder = _recordSelectionChange;
+  }
+
+  /// The region this panel last painted ants for — the rebuild guard.
+  CanvasSelectionRegion? _paintedIdleRegion;
+
+  void _handleSelectionChannelChanged() {
+    if (!mounted) {
+      return;
+    }
+    // The channel pings on EVERY selection mutation, including each step
+    // of a marquee/move drag. Those all happen with a selection tool
+    // armed, where the mounted layer draws and this panel has nothing to
+    // redraw — so the guard keeps the notify structure (R27 #7/#20) out
+    // of the drag loop and only rebuilds when the ants this panel owns
+    // actually change.
+    final next = _idleSelectionRegion;
+    if (next == _paintedIdleRegion) {
+      return;
+    }
+    setState(_syncIdleAnts);
+  }
+
+  /// The idle ants animate only when they are the ones on screen: the
+  /// mounted selection layer runs its own ticker.
+  void _syncIdleAnts() {
+    _paintedIdleRegion = _idleSelectionRegion;
+    final show = _paintedIdleRegion != null;
+    if (show && !_idleAnts.isAnimating) {
+      _idleAnts.repeat();
+    } else if (!show && _idleAnts.isAnimating) {
+      _idleAnts.stop();
+    }
+  }
+
+  /// The region to paint when no selection layer is mounted (null while
+  /// one is — it draws its own, session state included).
+  CanvasSelectionRegion? get _idleSelectionRegion {
+    if (canvasToolSelects(widget.brushToolState.tool)) {
+      return null;
+    }
+    return widget.selectionCommands?.region;
   }
 
   @override
@@ -270,6 +425,9 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel> {
       widget.onSelectionInteractionChanged?.call(false);
     }
     HardwareKeyboard.instance.removeHandler(_handleKeyEvent);
+    widget.selectionCommands?.removeListener(_handleSelectionChannelChanged);
+    widget.selectionCommands?.regionHistoryRecorder = null;
+    _idleAnts.dispose();
     _eyedropperHover.dispose();
     _toolCursorHover.dispose();
     widget.viewCommands?.unbind();
@@ -304,7 +462,64 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel> {
     return _altHeld && canvasToolPaints(tool) && widget.onAltColorPick != null;
   }
 
-  void _updateEyedropperHover(Offset localPosition) {
+  /// R27 #17: the last pointer position seen on the canvas — hovers AND
+  /// button-held moves alike.
+  ///
+  /// The eyedropper's icon and swatch only appeared once a fresh hover
+  /// event reached their tracker. Entering the tool from a HELD button
+  /// (the pen's barrel / right-click mapping) captures the pointer at the
+  /// press, so no hover ever arrives — leaving the system cursor hidden
+  /// (the tracker's `MouseCursor.none` is mounted regardless) and nothing
+  /// drawn in its place: the "커서가 사라짐" report. Seeding from here on
+  /// the first frame the cursor arms gives the icon somewhere to be.
+  Offset? _lastCanvasPointer;
+
+  /// Guards the seeding to once per arming.
+  bool _eyedropperHoverSeeded = false;
+
+  /// [sample] false on pointer DOWN: the tap layer's pick samples that
+  /// same press, and sampling here too would double the composite read.
+  void _noteCanvasPointer(Offset localPosition, {bool sample = true}) {
+    _lastCanvasPointer = localPosition;
+    if (!sample) {
+      return;
+    }
+    // R28 #8: the ALWAYS-MOUNTED census drives the eyedropper cursor too.
+    //
+    // The cursor's own tracker mounts at the moment the tool arms, and
+    // Flutter routes an in-flight pointer to the handlers captured at
+    // pointer DOWN — so under a mapped HOLD (the pen barrel / right-click
+    // switching to the eyedropper mid-press) that tracker never receives a
+    // single move. R27 #17 seeded a starting position, which is why the
+    // icon then sat wherever the seed put it and refused to follow: "커서가
+    // 이상한데로 이동하고 안움직임". This layer was mounted before the press,
+    // so it is in the route and keeps reporting.
+    if (_eyedropperCursorActive) {
+      _sampleEyedropperHover(localPosition);
+    }
+  }
+
+  void _seedEyedropperHoverIfNeeded() {
+    if (!_eyedropperCursorActive) {
+      _eyedropperHoverSeeded = false;
+      return;
+    }
+    if (_eyedropperHoverSeeded || _eyedropperHover.value != null) {
+      return;
+    }
+    final position = _lastCanvasPointer;
+    if (position == null) {
+      return;
+    }
+    _eyedropperHoverSeeded = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted && _eyedropperCursorActive && _eyedropperHover.value == null) {
+        _sampleEyedropperHover(position);
+      }
+    });
+  }
+
+  void _sampleEyedropperHover(Offset localPosition) {
     final sample = widget.sampleColorAt;
     if (sample == null) {
       return;
@@ -335,6 +550,14 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel> {
       oldWidget.viewCommands?.unbind();
       _bindViewCommands();
     }
+    if (!identical(oldWidget.selectionCommands, widget.selectionCommands)) {
+      oldWidget.selectionCommands?.removeListener(
+        _handleSelectionChannelChanged,
+      );
+      widget.selectionCommands?.addListener(_handleSelectionChannelChanged);
+    }
+    _bindSelectionHistoryRecorder();
+    _syncIdleAnts();
     final request = widget.autoFrame;
     if (request == null || request.token == oldWidget.autoFrame?.token) {
       return;
@@ -424,6 +647,7 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel> {
     CanvasSize canvasSize,
     bool rotation,
     String title,
+    Object? leading,
   })?
   _shellBarsToken;
   Widget? _memoRightStripBar;
@@ -436,8 +660,14 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel> {
       canvasSize: widget.canvasSize,
       rotation: widget.allowViewRotation,
       title: widget.selectionLabels.title,
+      leading: widget.bottomBarLeadingToken,
     );
-    if (token == _shellBarsToken &&
+    // A leading list without a token can't be memoized (see
+    // [bottomBarLeadingToken]) — rebuild rather than serve a stale bar.
+    final memoizable =
+        widget.bottomBarLeading.isEmpty || widget.bottomBarLeadingToken != null;
+    if (memoizable &&
+        token == _shellBarsToken &&
         _memoRightStripBar != null &&
         _memoBottomBar != null) {
       return;
@@ -451,9 +681,14 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel> {
       onViewportChangeEnd: _syncViewportParent,
     );
     _memoBottomBar = _CanvasViewportBottomBar(
+      leading: widget.bottomBarLeading,
       viewport: _viewport,
       editorViewportSize: _resolvedEditorViewportSize(),
       canvasSize: widget.canvasSize,
+      paperColor: widget.paperColor,
+      onPaperColorChanged: widget.onPaperColorChanged,
+      pasteboardColor: widget.pasteboardColor,
+      onPasteboardColorChanged: widget.onPasteboardColorChanged,
       onViewportChanged: _setViewportDuringPanbarDrag,
       onViewportChangeEnd: _syncViewportParent,
       onZoomIn: _zoomInFromBar,
@@ -494,6 +729,8 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel> {
       _viewport = widget.viewport!;
       _lastWidgetViewport = widget.viewport;
     }
+    // R27 #17: a cursor that armed mid-gesture gets a starting position.
+    _seedEyedropperHoverIfNeeded();
 
     return Padding(
       key: const ValueKey<String>('brush-canvas-panel'),
@@ -543,6 +780,10 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel> {
                   final selectionLayerActive = canvasToolSelects(
                     widget.brushToolState.tool,
                   );
+                  // R28-S: with a painting tool armed the panel paints the
+                  // committed region's ants itself (the interaction layer
+                  // is not mounted, but the selection still exists).
+                  final idleSelection = _idleSelectionRegion;
 
                   Widget gestureLayer(bool contentStrokeIsActive) {
                     return CanvasViewportGestureLayer(
@@ -563,11 +804,35 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel> {
                       // Nothing drawn in the viewport (canvas, playback
                       // frames, camera overlay) may paint outside the panel.
                       child: ClipRect(
-                        child:
+                        // R28 #9: the PASTEBOARD — the surface the stage
+                        // floats on. It is the user's working environment,
+                        // never artwork, so it is an app setting rather
+                        // than project data and it is painted here rather
+                        // than by the canvas painter.
+                        child: ColoredBox(
+                        color: Color(widget.pasteboardColor),
+                        // R27 #17: a passive census of where the pointer
+                        // is — button-held moves included — so a cursor
+                        // that arms mid-gesture knows where to appear.
+                        // Translucent and handler-only: it consumes
+                        // nothing.
+                        child: Listener(
+                          behavior: HitTestBehavior.translucent,
+                          onPointerHover: (event) =>
+                              _noteCanvasPointer(event.localPosition),
+                          onPointerDown: (event) =>
+                              _noteCanvasPointer(
+                                event.localPosition,
+                                sample: false,
+                              ),
+                          onPointerMove: (event) =>
+                              _noteCanvasPointer(event.localPosition),
+                          child:
                             overlayBuilder == null &&
                                 underlayBuilder == null &&
                                 _toolTapHandler() == null &&
                                 !selectionLayerActive &&
+                                idleSelection == null &&
                                 !_eyedropperCursorActive
                             ? canvasView
                             : Stack(
@@ -577,6 +842,11 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel> {
                                       child: underlayBuilder(
                                         context,
                                         _viewport,
+                                        widget.coordinator == null
+                                            ? null
+                                            : widget._activeSurfacePainterFor(
+                                                widget.coordinator!,
+                                              ),
                                       ),
                                     ),
                                   Positioned.fill(child: canvasView),
@@ -602,7 +872,22 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel> {
                                           // every pan click deposited a
                                           // stray fill, which is why one
                                           // fill sometimes took two undos.
-                                          if (event.buttons != kPrimaryButton) {
+                                          //
+                                          // R28 #8: the EYEDROPPER is
+                                          // exempt. Its whole point under a
+                                          // mapped hold (pen barrel /
+                                          // right-click) is that the held
+                                          // NON-primary button is what
+                                          // picks — the strict test meant
+                                          // the mapping switched the tool
+                                          // and then refused every press,
+                                          // so it "제대로 작동하지도않고".
+                                          // A pick writes no pixels, so
+                                          // there is no stray-edit hazard
+                                          // to guard against here.
+                                          if (widget.brushToolState.tool !=
+                                                  CanvasTool.eyedropper &&
+                                              event.buttons != kPrimaryButton) {
                                             return;
                                           }
                                           _toolTapHandler()!(
@@ -634,22 +919,18 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel> {
                                             HitTestBehavior.translucent,
                                         onExit: (_) =>
                                             _eyedropperHover.value = null,
-                                        child: Listener(
-                                          key: const ValueKey<String>(
+                                        // R28 #8: the swatch/icon is fed by
+                                        // the panel's always-mounted pointer
+                                        // census, not by a tracker mounted
+                                        // here — one mounted at arming time
+                                        // is outside an in-flight pointer's
+                                        // route and hears nothing. This
+                                        // region only hides the system
+                                        // cursor and clears on exit.
+                                        child: const SizedBox.expand(
+                                          key: ValueKey<String>(
                                             'eyedropper-hover-tracker',
                                           ),
-                                          behavior: HitTestBehavior.translucent,
-                                          // Hover + move only: sampling on
-                                          // pointer DOWN would double the
-                                          // pick tap's composite sample.
-                                          onPointerHover: (event) =>
-                                              _updateEyedropperHover(
-                                                event.localPosition,
-                                              ),
-                                          onPointerMove: (event) =>
-                                              _updateEyedropperHover(
-                                                event.localPosition,
-                                              ),
                                         ),
                                       ),
                                     ),
@@ -782,19 +1063,7 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel> {
                                             widget.brushToolState.tool ==
                                             CanvasTool.move,
                                         onShapeCommitted:
-                                            widget.historyManager == null ||
-                                                widget.selectionCommands == null
-                                            ? null
-                                            : (before, after) => widget
-                                                  .historyManager!
-                                                  .execute(
-                                                    SelectionShapeHistoryCommand(
-                                                      channel: widget
-                                                          .selectionCommands!,
-                                                      before: before,
-                                                      after: after,
-                                                    ),
-                                                  ),
+                                            _recordSelectionChange,
                                         viewport: _viewport,
                                         canvasSize: widget.canvasSize,
                                         // No frame = a stable sentinel:
@@ -837,8 +1106,35 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel> {
                                             .onSelectionInteractionChanged,
                                       ),
                                     ),
+                                  // R28-S: the selection is a DOCUMENT
+                                  // fact, so its ants stay on screen under
+                                  // every other tool too — that is what
+                                  // makes "선택하고 다른 툴" legible (R26
+                                  // #18). Purely decorative: the layer
+                                  // above owns all interaction.
+                                  if (idleSelection != null)
+                                    Positioned.fill(
+                                      key: const ValueKey<String>(
+                                        'canvas-idle-selection-ants',
+                                      ),
+                                      child: IgnorePointer(
+                                        child: CustomPaint(
+                                          painter: SelectionAntsPainter(
+                                            repaint: _idleAnts,
+                                            viewport: _viewport,
+                                            committedRegion: idleSelection,
+                                            screenOffset: Offset.zero,
+                                            marqueeShape: null,
+                                            lassoTrail: const [],
+                                          ),
+                                          child: const SizedBox.expand(),
+                                        ),
+                                      ),
+                                    ),
                                 ],
                               ),
+                        ),
+                        ),
                       ),
                     );
                   }
@@ -903,6 +1199,9 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel> {
       fillDabAt: widget.brushToolState.tool == CanvasTool.fill
           ? widget.fillDabAt
           : null,
+      // R26 #18: the live stroke shows clipped to the selection, exactly
+      // as the commit will clip it.
+      selectionRegion: widget.selectionCommands?.region,
       onActiveStrokeChanged: (active) {
         if (_strokeActive != active) {
           widget.onStrokeInputActiveChanged?.call(active);
@@ -912,6 +1211,11 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel> {
       // The underlay paints the paper (and the layers below); an opaque
       // background here would hide them.
       showTransparentBackground: widget.viewportUnderlayBuilder == null,
+      // MERGED mode: the host owns the overlay model and paints this
+      // surface itself, in composite-tree order, so a group buffer can
+      // wrap the layer being drawn on. The view keeps the input.
+      overlayModel: widget.activeStrokeOverlayModel,
+      paintsContent: widget.activeStrokeOverlayModel == null,
     );
     // The draw-through wrap: display AND hit testing share one screen
     // matrix, so the active layer draws posed and pointers inverse-map to
@@ -1136,7 +1440,7 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel> {
 
   /// shape covers no pixels.
   ({int liftToken, BrushDab stampDab})? _handleSelectionLift(
-    CanvasSelectionShape shape,
+    CanvasSelectionRegion region,
   ) {
     final coordinator = widget.coordinator;
     if (coordinator == null) {
@@ -1144,7 +1448,7 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel> {
     }
     final preLift = coordinator.currentSurfaceOf(coordinator.activeFrameKey);
     final lift = buildSelectionLiftDabs(
-      shape: shape,
+      region: region,
       surface: preLift,
       liftId: '${DateTime.now().microsecondsSinceEpoch}',
       options: widget.selectionMaskOptions?.value ?? SelectionMaskOptions.none,
@@ -1255,10 +1559,74 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel> {
     }
   }
 
-  void _commitSourceStroke(BrushStrokeCommitData strokeData) {
+  /// R26 #18 ("선택하고 그리면 선택 내부만 그려진다"): a stroke that lands
+  /// with a live selection is CLIPPED to it before it reaches the commit.
+  ///
+  /// The clip runs on the stroke's own straight-alpha buffer, where alpha
+  /// 0 is every commit kernel's "leave the destination alone" input — so
+  /// one pass covers brush, eraser, fill and every brush blend mode with
+  /// no per-mode branches. Null return = the whole stroke fell outside
+  /// the selection and there is nothing to commit.
+  BrushStrokeCommitData? _clipStrokeToSelection(BrushStrokeCommitData data) {
+    final region = widget.selectionCommands?.region;
+    if (region == null) {
+      return data;
+    }
+    if (data.promotedTiles != null) {
+      // The stroke was pre-blended THROUGH the selection mask (R28): the
+      // promoted tiles are already clipped, and re-deriving them here
+      // would throw away the finished pixels to rasterize the dabs again.
+      // An empty list means the whole stroke fell outside the selection.
+      return data.promotedTiles!.isEmpty ? null : data;
+    }
+    var pixels = data.strokePixels;
+    var bounds = data.strokeBounds;
+    if (pixels == null || bounds == null) {
+      // No live raster (programmatic strokes, a redo replaying dabs):
+      // rasterize the coverage first so the clip has bytes to work on.
+      final rasterized = rasterizeStrokeForClipping(
+        dabs: data.sourceDabs,
+        canvasSize: widget.canvasSize,
+        tileSize: widget.coordinator == null
+            ? BitmapSurface(canvasSize: widget.canvasSize).tileSize
+            : widget.coordinator!
+                  .currentSurfaceOf(widget.coordinator!.activeFrameKey)
+                  .tileSize,
+      );
+      if (rasterized == null) {
+        return null;
+      }
+      pixels = rasterized.pixels;
+      bounds = rasterized.bounds;
+    }
+    final clipped = clipStrokePixelsToSelection(
+      pixels: pixels,
+      bounds: bounds,
+      region: region,
+    );
+    if (clipped == null) {
+      return null;
+    }
+    return BrushStrokeCommitData(
+      sourceDabs: data.sourceDabs,
+      strokePixels: clipped.pixels,
+      strokeBounds: clipped.bounds,
+      blendMode: data.blendMode,
+    );
+  }
+
+  void _commitSourceStroke(BrushStrokeCommitData rawStrokeData) {
     // Only reachable from the interactive canvas, which requires the
     // coordinator to exist.
     final coordinator = widget.coordinator!;
+    final strokeData = _clipStrokeToSelection(rawStrokeData);
+    if (strokeData == null) {
+      // Entirely outside the selection: nothing lands, nothing undoes.
+      // The live overlay already showed it clipped, so the pen-up is
+      // simply the overlay clearing.
+      setState(() {});
+      return;
+    }
     setState(() {
       final historyManager = widget.historyManager;
       if (historyManager == null) {
@@ -1268,6 +1636,8 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel> {
           prerasterizedStrokePixels: strokeData.strokePixels,
           prerasterizedStrokeBounds: strokeData.strokeBounds,
           blendMode: strokeData.blendMode,
+          promotedBase: strokeData.promotedBase,
+          promotedTiles: strokeData.promotedTiles,
         );
         return;
       }
@@ -1451,10 +1821,22 @@ class _CanvasViewportBottomBar extends StatelessWidget {
   /// scrollable instead of overflowing (slim edge docks land here).
   static const double _scrollFallbackWidth = 200;
 
+  /// What one host control in [leading] adds to that threshold: the widest
+  /// control in the shared vocabulary (a [DragValueLabel] readout) plus
+  /// breathing room. The bar cannot measure widgets it did not build, so
+  /// it budgets generously on purpose — over-budgeting only makes the bar
+  /// scroll a little sooner, while under-budgeting OVERFLOWS.
+  static const double _leadingControlBudget = 44;
+
   const _CanvasViewportBottomBar({
+    this.leading = const <Widget>[],
     required this.viewport,
     required this.editorViewportSize,
     required this.canvasSize,
+    required this.paperColor,
+    required this.onPaperColorChanged,
+    required this.pasteboardColor,
+    required this.onPasteboardColorChanged,
     required this.onViewportChanged,
     required this.onViewportChangeEnd,
     required this.onZoomIn,
@@ -1470,9 +1852,21 @@ class _CanvasViewportBottomBar extends StatelessWidget {
     required this.onFlipVertical,
   });
 
+  /// R26 #41: host controls at the far left, before the panbar.
+  final List<Widget> leading;
+
   final CanvasViewport viewport;
   final Size editorViewportSize;
   final CanvasSize canvasSize;
+
+  /// R28 #9: the surface colors, right of the horizontal scrollbar where
+  /// the user placed them. Null handlers hide the pair (hosts that own
+  /// neither, e.g. the timesheet ink layer).
+  final int paperColor;
+  final ValueChanged<int>? onPaperColorChanged;
+  final int pasteboardColor;
+  final ValueChanged<int>? onPasteboardColorChanged;
+
   final ValueChanged<CanvasViewport> onViewportChanged;
   final VoidCallback onViewportChangeEnd;
   final VoidCallback onZoomIn;
@@ -1626,11 +2020,58 @@ class _CanvasViewportBottomBar extends StatelessWidget {
       onViewportChangeEnd: onViewportChangeEnd,
     );
 
+    // R28 #9: the surface colors sit immediately right of the scrollbar
+    // ("색 바꾸는 버튼 위치는 밑의 가로스크롤바의 바로오른쪽에"). Both use the
+    // shared round-swatch control, so the picker looks and behaves the
+    // same here as anywhere else the app asks for a color.
+    final onPaper = onPaperColorChanged;
+    final onPasteboard = onPasteboardColorChanged;
+    final colorControls = <Widget>[
+      if (onPaper != null)
+        ColorSwatchButton(
+          keyValue: 'canvas-paper-color-button',
+          title: 'Canvas',
+          tooltip: 'Canvas color',
+          color: paperColor,
+          onChanged: onPaper,
+        ),
+      if (onPasteboard != null) ...[
+        const SizedBox(width: 4),
+        ColorSwatchButton(
+          keyValue: 'canvas-pasteboard-color-button',
+          title: 'Pasteboard',
+          tooltip: 'Pasteboard color',
+          color: pasteboardColor,
+          onChanged: onPasteboard,
+        ),
+      ],
+      if (onPaper != null || onPasteboard != null) const SizedBox(width: 2),
+    ];
+
+    // Non-empty clusters joined by hairlines — so a host that supplies no
+    // leading controls (or a rotation-disabled host with no view controls)
+    // never shows a divider with nothing on one side.
+    List<Widget> joined(List<List<Widget>> clusters) {
+      final row = <Widget>[];
+      for (final cluster in clusters) {
+        if (cluster.isEmpty) {
+          continue;
+        }
+        if (row.isNotEmpty) {
+          row.add(divider());
+        }
+        row.addAll(cluster);
+      }
+      return row;
+    }
+
     return SizedBox(
       height: height,
       child: LayoutBuilder(
         builder: (context, constraints) {
-          if (constraints.maxWidth < _scrollFallbackWidth) {
+          final scrollFallbackWidth =
+              _scrollFallbackWidth + leading.length * _leadingControlBudget;
+          if (constraints.maxWidth < scrollFallbackWidth) {
             // Too tight for an Expanded scrollbar between the controls —
             // scroll the whole bar so nothing overflows (slim edge docks).
             return SingleChildScrollView(
@@ -1639,25 +2080,37 @@ class _CanvasViewportBottomBar extends StatelessWidget {
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   const SizedBox(width: 4),
-                  ...viewControls,
-                  divider(),
-                  SizedBox(width: 80, child: scrollbar()),
-                  divider(),
-                  ...zoomCluster,
+                  // R28 #9: the surface swatches ride with the scrollbar
+                  // cluster, so they stay immediately right of it in the
+                  // scrolled layout too.
+                  ...joined([
+                    leading,
+                    viewControls,
+                    [
+                      SizedBox(width: 80, child: scrollbar()),
+                      ...colorControls,
+                    ],
+                    zoomCluster,
+                  ]),
                   const SizedBox(width: 4),
                 ],
               ),
             );
           }
-          final wide = constraints.maxWidth >= _wideLayoutMinWidth;
+          final wide =
+              constraints.maxWidth >=
+              _wideLayoutMinWidth + leading.length * _leadingControlBudget;
           return Row(
             children: [
               const SizedBox(width: 4),
-              // Narrow panels drop the rotation cluster; the ZOOM cluster
+              // Host controls first (R26 #41), then the view controls —
+              // narrow panels drop the rotation cluster; the ZOOM cluster
               // (fit/1:1/−/%/+, UI-R18 #17/#20) always shows on the right.
-              if (wide) ...viewControls,
-              if (wide) divider(),
+              ...joined([leading, if (wide) viewControls]),
+              if (leading.isNotEmpty || (wide && viewControls.isNotEmpty))
+                divider(),
               Expanded(child: scrollbar()),
+              ...colorControls,
               divider(),
               ...zoomCluster,
               const SizedBox(width: 4),
@@ -1668,6 +2121,8 @@ class _CanvasViewportBottomBar extends StatelessWidget {
     );
   }
 
+  /// R26 #42: this bar's button style is now the app-wide default, so it
+  /// lives in [AppIconButton] — this is just the local spelling.
   Widget _barIconButton({
     required String keyValue,
     required String tooltip,
@@ -1675,23 +2130,12 @@ class _CanvasViewportBottomBar extends StatelessWidget {
     required VoidCallback? onPressed,
     bool isSelected = false,
   }) {
-    return IconButton(
-      key: ValueKey<String>(keyValue),
+    return AppIconButton(
+      keyValue: keyValue,
       tooltip: tooltip,
+      icon: icon,
       onPressed: onPressed,
       isSelected: isSelected,
-      style: IconButton.styleFrom(
-        minimumSize: const Size(26, 24),
-        maximumSize: const Size(30, 24),
-        padding: EdgeInsets.zero,
-        iconSize: 18,
-        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-        // UI-R21 #1: the state accent is EXPLICIT ink — the M3 isSelected
-        // default was invisible in this theme, so a rotated/flipped view
-        // never showed on its button. Color only (the selection rule).
-        foregroundColor: isSelected ? AppColors.accent : null,
-      ),
-      icon: icon,
     );
   }
 }

@@ -82,6 +82,65 @@ class CompositeLayerSignature {
       'anchorPoint: $anchorPoint)';
 }
 
+/// One node of a composited cut frame's identity: a layer's contribution,
+/// or a FOLDER's group buffer around the ones inside it.
+///
+/// The playback cache paints straight off these — the signature IS the
+/// compose input — so the group buffer has to live here or playback would
+/// disagree with every other route.
+sealed class CompositeNodeSignature {
+  const CompositeNodeSignature();
+}
+
+final class CompositeLeafSignature extends CompositeNodeSignature {
+  const CompositeLeafSignature(this.layer);
+
+  final CompositeLayerSignature layer;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is CompositeLeafSignature && other.layer == layer;
+
+  @override
+  int get hashCode => layer.hashCode;
+
+  @override
+  String toString() => 'CompositeLeafSignature($layer)';
+}
+
+/// A group buffer's identity: what the folder applies to the composed
+/// children, plus the children themselves. A blend/opacity change on the
+/// FOLDER must invalidate the composite exactly as a layer's does.
+final class CompositeGroupSignature extends CompositeNodeSignature {
+  CompositeGroupSignature({
+    required List<CompositeNodeSignature> children,
+    required this.opacity,
+    required this.blendMode,
+  }) : children = List.unmodifiable(children);
+
+  final List<CompositeNodeSignature> children;
+  final double opacity;
+  final LayerBlendMode blendMode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is CompositeGroupSignature &&
+          other.opacity == opacity &&
+          other.blendMode == blendMode &&
+          listEquals(other.children, children);
+
+  @override
+  int get hashCode =>
+      Object.hash(opacity, blendMode, Object.hashAll(children));
+
+  @override
+  String toString() =>
+      'CompositeGroupSignature(opacity: $opacity, blendMode: $blendMode, '
+      'children: $children)';
+}
+
 /// Identity of a composited cut frame's pixels.
 ///
 /// A cached composite is valid iff its stored signature equals the freshly
@@ -95,14 +154,34 @@ class CutFrameCompositeSignature {
   CutFrameCompositeSignature({
     required this.canvasSize,
     required this.quality,
-    required List<CompositeLayerSignature> layers,
-  }) : layers = List.unmodifiable(layers);
+    required List<CompositeNodeSignature> nodes,
+  }) : nodes = List.unmodifiable(nodes);
 
   final CanvasSize canvasSize;
   final PlaybackQuality quality;
 
-  /// Bottom → top, matching [planCutFrameComposite] order.
-  final List<CompositeLayerSignature> layers;
+  /// The composite TREE, bottom → top, matching
+  /// [planCutFrameCompositeTree] order.
+  final List<CompositeNodeSignature> nodes;
+
+  /// Every painted layer under [nodes], depth-first bottom → top — for
+  /// the readers that only need "which cels does this frame use".
+  Iterable<CompositeLayerSignature> get layers sync* {
+    Iterable<CompositeLayerSignature> walk(
+      List<CompositeNodeSignature> list,
+    ) sync* {
+      for (final node in list) {
+        switch (node) {
+          case CompositeLeafSignature(:final layer):
+            yield layer;
+          case CompositeGroupSignature(:final children):
+            yield* walk(children);
+        }
+      }
+    }
+
+    yield* walk(nodes);
+  }
 
   @override
   bool operator ==(Object other) =>
@@ -110,22 +189,23 @@ class CutFrameCompositeSignature {
       other is CutFrameCompositeSignature &&
           other.canvasSize == canvasSize &&
           other.quality == quality &&
-          listEquals(other.layers, layers);
+          listEquals(other.nodes, nodes);
 
   @override
-  int get hashCode => Object.hash(canvasSize, quality, Object.hashAll(layers));
+  int get hashCode => Object.hash(canvasSize, quality, Object.hashAll(nodes));
 
   @override
   String toString() =>
       'CutFrameCompositeSignature(canvasSize: $canvasSize, '
-      'quality: $quality, layers: $layers)';
+      'quality: $quality, nodes: $nodes)';
 }
 
 /// Computes the signature of the cut's picture at [frameIndex] from the
 /// SAME shared visit the composite plan consumes
-/// ([resolveCutFrameCompositeEntries] — skip rules, exposure resolution,
-/// fx-bypass view state and the attach-layer expansion agree by
-/// construction, so composites self-invalidate on any of those changing).
+/// ([resolveCutFrameCompositeTree] — skip rules, exposure resolution,
+/// fx-bypass view state, the attach-layer expansion AND the group buffers
+/// agree by construction, so composites self-invalidate on any of those
+/// changing).
 CutFrameCompositeSignature computeCutFrameCompositeSignature({
   required Cut cut,
   required int frameIndex,
@@ -133,24 +213,47 @@ CutFrameCompositeSignature computeCutFrameCompositeSignature({
   required BrushFrameRevisionResolver revisionOf,
   Set<LayerId> fxBypassedLayerIds = const {},
 }) {
+  List<CompositeNodeSignature> mapNodes(
+    List<CutFrameCompositeEntryNode> nodes,
+  ) => [
+    for (final node in nodes)
+      switch (node) {
+        // R28 #13: the folder bypass rides the ENTRIES (poses and opacity
+        // resolve through it), so the signature self-invalidates on a
+        // folder fx toggle exactly as it does on a layer's.
+        CutFrameCompositeEntryLeaf(:final entry) => CompositeLeafSignature(
+          CompositeLayerSignature(
+            layerId: entry.layer.id,
+            frameId: entry.frame.id,
+            opacity: entry.opacity,
+            sourceRevision: revisionOf(entry.layer.id, entry.frame.id),
+            blendMode: entry.blendMode,
+            pose: entry.pose,
+            anchorPoint: entry.anchorPoint,
+          ),
+        ),
+        CutFrameCompositeEntryGroup(
+          :final children,
+          :final opacity,
+          :final blendMode,
+        ) =>
+          CompositeGroupSignature(
+            children: mapNodes(children),
+            opacity: opacity,
+            blendMode: blendMode,
+          ),
+      },
+  ];
+
   return CutFrameCompositeSignature(
     canvasSize: cut.canvasSize,
     quality: quality,
-    layers: [
-      for (final entry in resolveCutFrameCompositeEntries(
+    nodes: mapNodes(
+      resolveCutFrameCompositeTree(
         cut: cut,
         frameIndex: frameIndex,
         fxBypassedLayerIds: fxBypassedLayerIds,
-      ))
-        CompositeLayerSignature(
-          layerId: entry.layer.id,
-          frameId: entry.frame.id,
-          opacity: entry.opacity,
-          sourceRevision: revisionOf(entry.layer.id, entry.frame.id),
-          blendMode: entry.blendMode,
-          pose: entry.pose,
-          anchorPoint: entry.anchorPoint,
-        ),
-    ],
+      ),
+    ),
   );
 }

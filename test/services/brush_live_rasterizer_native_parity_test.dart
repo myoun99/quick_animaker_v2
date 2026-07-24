@@ -7,6 +7,7 @@ import 'package:quick_animaker_v2/src/models/brush_dab.dart';
 import 'package:quick_animaker_v2/src/models/brush_tip_shape.dart';
 import 'package:quick_animaker_v2/src/models/canvas_point.dart';
 import 'package:quick_animaker_v2/src/models/canvas_size.dart';
+import 'package:quick_animaker_v2/src/native/qa_engine_abi.dart';
 import 'package:quick_animaker_v2/src/native/qa_native_engine.dart';
 import 'package:quick_animaker_v2/src/services/brush_live_stroke_rasterizer.dart';
 import 'package:quick_animaker_v2/src/services/brush_tip_stamp_cache.dart';
@@ -23,7 +24,7 @@ void main() {
 
   tearDown(() {
     QaNativeEngine.debugResetForTests();
-    QaNativeEngine.debugLibraryPathOverride = null;
+    debugQaEngineLibraryPathOverride = null;
     QaNativeEngine.debugForceDartFallback = false;
   });
 
@@ -71,7 +72,7 @@ void main() {
     final dartPixels = dart.strokePixelsWithinBounds();
 
     QaNativeEngine.debugResetForTests();
-    QaNativeEngine.debugLibraryPathOverride = dllPath;
+    debugQaEngineLibraryPathOverride = dllPath;
     QaNativeEngine.debugForceDartFallback = false;
     expect(QaNativeEngine.instance, isNotNull);
     final native = BrushLiveStrokeRasterizer(canvasSize: canvasSize)

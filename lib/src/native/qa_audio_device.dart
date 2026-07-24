@@ -1,10 +1,10 @@
 import 'dart:ffi';
-import 'dart:io';
 
 import 'package:ffi/ffi.dart';
 
 import '../services/audio/audio_mixer_reference.dart';
 import 'qa_audio_native.dart';
+import 'qa_engine_abi.dart';
 
 /// The output device and the transport (audio program 2C).
 ///
@@ -27,52 +27,30 @@ final class QaAudioDevice {
   static QaAudioDevice? _instance;
   static bool _tried = false;
 
-  /// Test hook: point the loader at a locally built binary.
-  static String? debugLibraryPathOverride;
-
   static void debugResetForTests() {
     _instance = null;
     _tried = false;
   }
 
+  /// The device, or null when no binary loads, the binary speaks a
+  /// different ABI, or it disagrees about the audio struct layout.
+  ///
+  /// That last check matters more here than anywhere else: this class
+  /// hands [QaAudioClipStruct] and friends — declared next door in
+  /// `qa_audio_native.dart` — straight to the C on the path that reaches
+  /// a real speaker. Until the AUDIO-PRO ABI consolidation it was the one
+  /// loader with NO gate at all, so a layout change would have stood the
+  /// verification mixer down correctly while the device kept pushing
+  /// misread fields at someone's headphones.
   static QaAudioDevice? get instance {
     if (!_tried) {
       _tried = true;
-      final library = _tryOpen();
-      _instance = library == null ? null : QaAudioDevice._(library);
+      final library = openQaEngineLibrary();
+      _instance = library == null || !qaAudioStructLayoutsMatch(library)
+          ? null
+          : QaAudioDevice._(library);
     }
     return _instance;
-  }
-
-  static DynamicLibrary? _tryOpen() {
-    final overridePath =
-        debugLibraryPathOverride ?? Platform.environment['QA_ENGINE_PATH'];
-    if (overridePath != null && overridePath.isNotEmpty) {
-      try {
-        return DynamicLibrary.open(overridePath);
-      } on Object {
-        // Fall through to the platform defaults.
-      }
-    }
-    if (Platform.isIOS || Platform.isMacOS) {
-      try {
-        return DynamicLibrary.process();
-      } on Object {
-        // Fall through.
-      }
-    }
-    for (final candidate in [
-      if (Platform.isWindows) 'qa_engine.dll',
-      if (Platform.isLinux || Platform.isAndroid) 'libqa_engine.so',
-      if (Platform.isMacOS) 'libqa_engine.dylib',
-    ]) {
-      try {
-        return DynamicLibrary.open(candidate);
-      } on Object {
-        continue;
-      }
-    }
-    return null;
   }
 
   late final _open = _library

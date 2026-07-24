@@ -2,6 +2,7 @@ import 'dart:io';
 
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:quick_animaker_v2/src/native/qa_engine_abi.dart';
 import 'package:quick_animaker_v2/src/native/qa_native_engine.dart';
 import 'package:quick_animaker_v2/src/services/canvas_flood_fill.dart';
 
@@ -19,7 +20,7 @@ void main() {
       return;
     }
     QaNativeEngine.debugResetForTests();
-    QaNativeEngine.debugLibraryPathOverride = dllPath;
+    debugQaEngineLibraryPathOverride = dllPath;
     final engine = QaNativeEngine.instance;
     expect(engine, isNotNull);
 
@@ -116,7 +117,7 @@ void main() {
       return;
     }
     QaNativeEngine.debugResetForTests();
-    QaNativeEngine.debugLibraryPathOverride = dllPath;
+    debugQaEngineLibraryPathOverride = dllPath;
     final engine = QaNativeEngine.instance;
     expect(engine, isNotNull);
 

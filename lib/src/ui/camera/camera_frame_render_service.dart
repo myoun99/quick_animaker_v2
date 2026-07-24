@@ -140,27 +140,45 @@ class CameraFrameRenderService {
 
   /// [outputSize] defaults to [cameraFrameSize]; a smaller value renders a
   /// scaled-down preview of the exact same view.
+  /// [layers] is the flat list; [nodes] is the composite TREE (group
+  /// buffers included). Callers hand one or the other — a flat list is
+  /// simply a tree of leaves.
   Future<ui.Image> renderThroughCamera({
-    required List<CutFrameCompositeLayer> layers,
+    List<CutFrameCompositeLayer> layers = const [],
+    List<CutFrameCompositeSurfaceNode>? nodes,
     required CameraPose pose,
     required CanvasSize cameraFrameSize,
     CanvasSize? outputSize,
   }) async {
+    final tree =
+        nodes ??
+        [for (final layer in layers) CutFrameCompositeSurfaceLeaf(layer)];
     final resolvedOutput = outputSize ?? cameraFrameSize;
-    final layerImages = <ui.Image>[];
-    for (final layer in layers) {
-      // Per-tile GPU compose (already-decoded tiles draw without any new
-      // upload — the storyboard thumbnail after a stroke reuses the editing
-      // canvas's tiles); the camera transform then samples the composed
-      // full-res image exactly as before.
-      layerImages.add(
-        // Non-null without shouldAbort (on-demand render, never abandoned).
-        (await composeTiledSurfaceImage(
-          layer.surface,
-          reuse: BitmapTileImageCache.instance,
-        ))!,
-      );
+    final layerImages = <CutFrameCompositeLayer, ui.Image>{};
+    Future<void> composeImages(
+      List<CutFrameCompositeSurfaceNode> list,
+    ) async {
+      for (final node in list) {
+        switch (node) {
+          case CutFrameCompositeSurfaceLeaf(:final layer):
+            // Per-tile GPU compose (already-decoded tiles draw without any
+            // new upload — the storyboard thumbnail after a stroke reuses
+            // the editing canvas's tiles); the camera transform then
+            // samples the composed full-res image exactly as before.
+            layerImages[layer] =
+                // Non-null without shouldAbort (on-demand render, never
+                // abandoned).
+                (await composeTiledSurfaceImage(
+                  layer.surface,
+                  reuse: BitmapTileImageCache.instance,
+                ))!;
+          case CutFrameCompositeSurfaceGroup(:final children):
+            await composeImages(children);
+        }
+      }
     }
+
+    await composeImages(tree);
 
     final recorder = ui.PictureRecorder();
     final canvas = Canvas(recorder);
@@ -182,39 +200,66 @@ class CameraFrameRenderService {
     canvas.rotate(-pose.rotationDegrees * math.pi / 180);
     canvas.translate(-pose.center.x, -pose.center.y);
 
-    for (var index = 0; index < layerImages.length; index += 1) {
-      // Layer transforms apply at composite time (never baked); identity
-      // layers skip the save/restore.
-      final layerPose = layers[index].pose;
-      if (layerPose != null) {
-        canvas.save();
-        applyLayerPoseTransform(
-          canvas,
-          layerPose,
-          layers[index].surface.canvasSize,
-          anchorPoint: layers[index].anchorPoint,
-        );
-      }
-      canvas.drawImage(
-        layerImages[index],
-        Offset.zero,
-        Paint()
-          ..filterQuality = filterQuality
-          ..color = Color.fromRGBO(0, 0, 0, layers[index].opacity)
-          // R26 #30: the layer blend applies at composite time.
-          ..blendMode = layers[index].blendMode.paintBlendMode,
-      );
-      if (layerPose != null) {
-        canvas.restore();
+    final groupBounds = Rect.fromLTWH(
+      0,
+      0,
+      cameraFrameSize.width.toDouble(),
+      cameraFrameSize.height.toDouble(),
+    );
+    void paintNodes(List<CutFrameCompositeSurfaceNode> list) {
+      for (final node in list) {
+        switch (node) {
+          case CutFrameCompositeSurfaceGroup(
+            :final children,
+            :final opacity,
+            :final blendMode,
+          ):
+            // R27 #29: one buffer for the group, one blend on it.
+            canvas.saveLayer(
+              groupBounds,
+              Paint()
+                ..color = Color.fromRGBO(0, 0, 0, opacity)
+                ..blendMode = blendMode.paintBlendMode,
+            );
+            paintNodes(children);
+            canvas.restore();
+          case CutFrameCompositeSurfaceLeaf(:final layer):
+            // Layer transforms apply at composite time (never baked);
+            // identity layers skip the save/restore.
+            final layerPose = layer.pose;
+            if (layerPose != null) {
+              canvas.save();
+              applyLayerPoseTransform(
+                canvas,
+                layerPose,
+                layer.surface.canvasSize,
+                anchorPoint: layer.anchorPoint,
+              );
+            }
+            canvas.drawImage(
+              layerImages[layer]!,
+              Offset.zero,
+              Paint()
+                ..filterQuality = filterQuality
+                ..color = Color.fromRGBO(0, 0, 0, layer.opacity)
+                // R26 #30: the layer blend applies at composite time.
+                ..blendMode = layer.blendMode.paintBlendMode,
+            );
+            if (layerPose != null) {
+              canvas.restore();
+            }
+        }
       }
     }
+
+    paintNodes(tree);
 
     final picture = recorder.endRecording();
     try {
       return await picture.toImage(resolvedOutput.width, resolvedOutput.height);
     } finally {
       picture.dispose();
-      for (final image in layerImages) {
+      for (final image in layerImages.values) {
         image.dispose();
       }
     }

@@ -1,4 +1,4 @@
-import 'dart:ffi' show Uint8Pointer;
+
 import 'dart:math' as math;
 import 'dart:typed_data';
 
@@ -21,7 +21,9 @@ import '../models/tile_coord.dart';
 ///   Co = [ αs(1-αd)Cs + αd(1-αs)Cd + αs·αd·B(Cs,Cd) ] / αo
 /// in doubles per channel (softLight needs floats anyway; this is a
 /// one-shot pen-up pass over stroke bounds, not a per-frame path). The
-/// GPU preview approximates this within ±1/255; the commit is the truth.
+/// live overlay runs the SAME math per dirty tile (R27 #4,
+/// [preBlendStrokeOverlayPixels]) — live and committed pixels are one
+/// set of bytes, no GPU approximation anywhere.
 ///
 /// Untouched pixels stay BYTE-EXACT: source alpha 0 copies the
 /// destination verbatim (the erase-rect landing pass covers the whole
@@ -48,9 +50,6 @@ Uint8List bitmapSurfaceRegionPixels(BitmapSurface surface, DirtyRegion bounds) {
       if (tile == null) {
         continue;
       }
-      final tilePixels = tile.nativePixels.asTypedList(
-        tileSize * tileSize * 4,
-      );
       final worldLeft = tileX * tileSize;
       final worldTop = tileY * tileSize;
       final copyLeft = math.max(bounds.left, worldLeft);
@@ -58,16 +57,64 @@ Uint8List bitmapSurfaceRegionPixels(BitmapSurface surface, DirtyRegion bounds) {
       final copyRight = math.min(bounds.rightExclusive, worldLeft + tileSize);
       final copyBottom = math.min(bounds.bottomExclusive, worldTop + tileSize);
       final rowBytes = (copyRight - copyLeft) * 4;
-      for (var y = copyTop; y < copyBottom; y += 1) {
-        final srcOffset =
-            ((y - worldTop) * tileSize + (copyLeft - worldLeft)) * 4;
-        final dstOffset =
-            ((y - bounds.top) * width + (copyLeft - bounds.left)) * 4;
-        region.setRange(dstOffset, dstOffset + rowBytes, tilePixels, srcOffset);
-      }
+      // Inside readPixels: the tile is the receiver, so its buffer cannot
+      // be finalized out from under these reads (see BitmapTile.readPixels).
+      tile.readPixels((_, tilePixels) {
+        for (var y = copyTop; y < copyBottom; y += 1) {
+          final srcOffset =
+              ((y - worldTop) * tileSize + (copyLeft - worldLeft)) * 4;
+          final dstOffset =
+              ((y - bounds.top) * width + (copyLeft - bounds.left)) * 4;
+          region.setRange(
+            dstOffset,
+            dstOffset + rowBytes,
+            tilePixels,
+            srcOffset,
+          );
+        }
+      });
     }
   }
   return region;
+}
+
+/// THE selection rule (R26 #18): scales a straight-alpha stroke buffer's
+/// ALPHA by [mask]'s coverage, in place.
+///
+/// Every path that confines a stroke to a selection goes through this —
+/// the live pre-blend's Dart route, the commit's clip for strokes with no
+/// live raster, and a fill's stamp bytes — and the C kernel's
+/// `qa_mask_alpha` is a transcription of it. One rule, one rounding
+/// (Skia's mul-div-255), so the preview, the committed pixels and a redo
+/// cannot disagree about where the selection ends. Three separate rules
+/// is what this replaced, and they only agreed by accident: while masks
+/// are binary, "zero the texel" and "scale alpha by 0" are the same
+/// thing; the moment a mask goes soft (the selection tool's feather / AA
+/// knobs) they stop being.
+///
+/// RGB is left alone deliberately. Alpha 0 is the documented "the
+/// destination survives untouched" input of every commit kernel — none
+/// of them read colour behind it — and premultiplying for display zeroes
+/// those bytes anyway.
+void applySelectionMaskToStrokeAlpha({
+  required Uint8List pixels,
+  required Uint8List mask,
+  required int pixelCount,
+}) {
+  for (var i = 0; i < pixelCount; i += 1) {
+    final coverage = mask[i];
+    if (coverage == 255) {
+      continue;
+    }
+    final offset = i * 4 + 3;
+    final alpha = pixels[offset];
+    if (coverage == 0 || alpha == 0) {
+      pixels[offset] = 0;
+      continue;
+    }
+    final product = alpha * coverage + 128;
+    pixels[offset] = (product + (product >> 8)) >> 8;
+  }
 }
 
 /// The C-side `QA_STROKE_BLEND_*` id for [mode] (BB-N1, ABI 22) — a fixed
@@ -152,6 +199,149 @@ double _blendChannel(BrushBlendMode mode, double cs, double cd) {
 int _clampByte(double value) {
   final rounded = (value * 255).round();
   return rounded < 0 ? 0 : (rounded > 255 ? 255 : rounded);
+}
+
+/// R27 #4: the live overlay's PRE-BLEND — the exact bytes the pen-up
+/// commit will land for the region, computed the moment the tile shows.
+///
+/// The GPU preview approximated non-plain modes within ±1/255 because it
+/// re-derived the blend in float; the user's rule is ZERO drift in every
+/// mode. So the overlay stops handing the GPU anything to blend: this
+/// runs the SAME per-pixel math the commit runs — [blendStrokeRegionPixels]
+/// for the kernel modes, and for erase a byte-exact mirror of the stamp
+/// kernel's destination-out at opacity 1 (the erase landing IS one stamp
+/// of the stroke buffer — see `compositeStrokePixelsOntoBitmapSurface`).
+/// The result draws as a plain REPLACEMENT tile, so pen-up cannot move a
+/// byte: identical bytes flow into identical composites.
+///
+/// [dst]/[src] are BOUNDS-LOCAL straight RGBA; [erase] covers both the
+/// eraser tool and the 소거 blend mode (the tool locks the mode, so the
+/// two arrive together). [BrushBlendMode.color] mirrors the stamp
+/// kernel's srcOver at opacity 1 (the color landing is one stamp of the
+/// stroke buffer) — every stroke mode pre-blends now (user rule 07-23:
+/// ONE display pipeline, live == commit unconditionally).
+/// [mask] (R28 selection): 1 byte of coverage per pixel, scaling the
+/// STROKE's alpha before the composite — `a = mul255(a, mask)`, the same
+/// rounding the kernel uses. Null means no selection and is byte-for-byte
+/// the pre-mask path. It applies to the ACCUMULATED stroke, never per
+/// dab: masking dabs individually would break soft masks, because
+/// srcOver(a₁·m, a₂·m) ≠ srcOver(a₁, a₂)·m.
+Uint8List preBlendStrokeOverlayPixels({
+  required Uint8List dst,
+  required Uint8List src,
+  required BrushBlendMode mode,
+  required bool erase,
+  required int pixelCount,
+  Uint8List? mask,
+}) {
+  if (mask != null) {
+    // One masked copy up front keeps the kernels below untouched — they
+    // are the commit's own code and must stay byte-identical to it.
+    final masked = Uint8List.fromList(src);
+    applySelectionMaskToStrokeAlpha(
+      pixels: masked,
+      mask: mask,
+      pixelCount: pixelCount,
+    );
+    src = masked;
+  }
+  if (erase || mode == BrushBlendMode.erase) {
+    // Mirror of the stamp-ERASE per-pixel path at dabOpacity 1
+    // (bitmap_surface_brush_commit): sa==0 leaves the pixel verbatim,
+    // sa==255 zeroes it byte-hard, and the general case scales alpha
+    // through the same double expression — the parity test pins this
+    // against the real commit, native kernel included.
+    final result = Uint8List(pixelCount * 4);
+    for (var i = 0; i < pixelCount; i += 1) {
+      final o = i * 4;
+      final sa = src[o + 3];
+      if (sa == 0) {
+        result[o] = dst[o];
+        result[o + 1] = dst[o + 1];
+        result[o + 2] = dst[o + 2];
+        result[o + 3] = dst[o + 3];
+        continue;
+      }
+      if (sa == 255) {
+        continue; // Already zeroed.
+      }
+      final sourceAlpha = sa / 255.0;
+      final outAlpha = (dst[o + 3] / 255.0) * (1.0 - sourceAlpha);
+      if (outAlpha == 0.0) {
+        continue; // Already zeroed.
+      }
+      result[o] = dst[o];
+      result[o + 1] = dst[o + 1];
+      result[o + 2] = dst[o + 2];
+      result[o + 3] = (outAlpha * 255.0).round().clamp(0, 255);
+    }
+    return result;
+  }
+  if (mode == BrushBlendMode.color) {
+    // Mirror of the stamp srcOver per-pixel path at dabOpacity 1
+    // (bitmap_surface_brush_commit) — the same fast paths, the same
+    // double expressions in the same order, so the doubles round to the
+    // same bytes. sa==0 leaves the pixel verbatim (junk α==0 RGB
+    // included, exactly like the commit's skip).
+    final result = Uint8List(pixelCount * 4);
+    for (var i = 0; i < pixelCount; i += 1) {
+      final o = i * 4;
+      final sa = src[o + 3];
+      if (sa == 0) {
+        result[o] = dst[o];
+        result[o + 1] = dst[o + 1];
+        result[o + 2] = dst[o + 2];
+        result[o + 3] = dst[o + 3];
+        continue;
+      }
+      if (sa == 255) {
+        result[o] = src[o];
+        result[o + 1] = src[o + 1];
+        result[o + 2] = src[o + 2];
+        result[o + 3] = 255;
+        continue;
+      }
+      final sourceAlpha = sa / 255.0;
+      final destinationAlpha = dst[o + 3] / 255.0;
+      final outAlpha = sourceAlpha + destinationAlpha * (1.0 - sourceAlpha);
+      if (outAlpha == 0.0) {
+        continue; // Already zeroed.
+      }
+      final inverseSourceAlpha = 1.0 - sourceAlpha;
+      for (var c = 0; c < 3; c += 1) {
+        result[o + c] =
+            ((src[o + c] * sourceAlpha +
+                        dst[o + c] * destinationAlpha * inverseSourceAlpha) /
+                    outAlpha)
+                .round()
+                .clamp(0, 255);
+      }
+      result[o + 3] = (outAlpha * 255.0).round().clamp(0, 255);
+    }
+    return result;
+  }
+  final result = blendStrokeRegionPixels(
+    dst: dst,
+    src: src,
+    mode: mode,
+    pixelCount: pixelCount,
+  );
+  // Mirror the LANDING normalization: the commit lands the kernel result
+  // through an erase-clear + srcOver stamp, whose srcOver skips α==0
+  // pixels — a fully transparent result pixel therefore lands as
+  // (0,0,0,0) whatever RGB the kernel's verbatim-copy rule carried (the
+  // native kernel mirrors the same rule). Without this the straight
+  // bytes differ where the base held α==0 junk RGB, even though both
+  // display identically after premultiply.
+  for (var i = 0; i < pixelCount; i += 1) {
+    final o = i * 4;
+    if (result[o + 3] == 0) {
+      result[o] = 0;
+      result[o + 1] = 0;
+      result[o + 2] = 0;
+    }
+  }
+  return result;
 }
 
 /// Blends the stroke buffer [src] against the cel region [dst] (both

@@ -18,9 +18,17 @@ class ProjectBackground {
   /// [transparent], the color exports bake instead.
   final int argb;
 
-  /// The classic paper the editor always used.
+  /// The default paper — R28 #9: PURE white.
+  ///
+  /// It used to be 0xFFEDEDED, the "near white" the user spotted ("캔버스
+  /// 색이 애초에 흰색일텐데 완전흰색이아니네?"), and the same literal was
+  /// spelled out in four other places. This constant is the single source
+  /// now; the canvas painter, the eyedropper's paper fallback and the
+  /// playback painter all read it.
+  static const int defaultPaperArgb = 0xFFFFFFFF;
+
   static const ProjectBackground defaultBackground = ProjectBackground.color(
-    0xFFEDEDED,
+    defaultPaperArgb,
   );
 
   static const ProjectBackground white = ProjectBackground.color(0xFFFFFFFF);
@@ -35,7 +43,7 @@ class ProjectBackground {
     if (json['transparent'] == true) {
       return const ProjectBackground.transparent();
     }
-    return ProjectBackground.color(json['argb'] as int? ?? 0xFFEDEDED);
+    return ProjectBackground.color(json['argb'] as int? ?? defaultPaperArgb);
   }
 
   @override

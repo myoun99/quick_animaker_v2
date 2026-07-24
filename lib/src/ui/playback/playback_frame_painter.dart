@@ -39,7 +39,8 @@ class PlaybackFramePainter extends CustomPainter {
     this.fadeOpacity = 1,
     this.fadeColor = const Color(0xFF000000),
     this.letterboxColor = const Color(0xFF15191C),
-    this.paperColor = const Color(0xFFEDEDED),
+    // R28 #9: the one paper constant, not a repeated literal.
+    this.paperColor = const Color(ProjectBackground.defaultPaperArgb),
     this.paperBackground,
     this.paintPaper = true,
   }) : assert(

@@ -5,7 +5,6 @@ import '../core/copy_with_sentinel.dart';
 import 'attached_mode.dart';
 import 'attached_placement.dart';
 import 'audio_clip.dart';
-import 'folder_id.dart';
 import 'camera_instruction.dart';
 import 'frame.dart';
 import 'frame_id.dart';
@@ -34,6 +33,7 @@ class Layer {
     Map<int, InstructionEvent>? instructions,
     List<AudioClip> audioClips = const [],
     this.isVisible = true,
+    this.collapsed = false,
     this.muted = false,
     this.audioGain = 1.0,
     this.audioPan = 0.0,
@@ -71,6 +71,11 @@ class Layer {
   final List<AudioClip> audioClips;
   final bool isVisible;
 
+  /// The row's twirl: a collapsed FOLDER swallows its member rows in the
+  /// layer list (persisted, like CSP). Meaningless on other kinds today —
+  /// the attach-group fold is still session view state.
+  final bool collapsed;
+
   /// Whether this layer's sounds are silenced (SE rows' speaker button —
   /// the audio counterpart of [isVisible]): playback and export skip the
   /// clips of muted layers, the waveforms keep displaying.
@@ -101,11 +106,13 @@ class Layer {
   /// Organizational color label; see [LayerMark].
   final LayerMark mark;
 
-  /// The enclosing folder in the cut's folder table (L1); null = top
-  /// level. Pure organization — render/timeline order stays the cut's
-  /// flat layer list. Attach groups share one folder (never split across
-  /// a folder boundary; the commands keep the invariant).
-  final FolderId? folderId;
+  /// The enclosing FOLDER LAYER ([LayerKind.folder]); null = top level.
+  /// Render/timeline order stays the cut's flat layer list: a folder's
+  /// members occupy a contiguous run with the folder row directly above
+  /// it, and the members composite into the folder's buffer. Attach groups
+  /// share one folder (never split across a folder boundary; the commands
+  /// keep the invariant).
+  final LayerId? folderId;
 
   /// Reference layer for the FILL tool (R20-C2, the CSP lighthouse):
   /// when any visible layer of the cut carries this flag, fills read
@@ -159,6 +166,7 @@ class Layer {
     Map<int, InstructionEvent>? instructions,
     List<AudioClip>? audioClips,
     bool? isVisible,
+    bool? collapsed,
     bool? muted,
     double? audioGain,
     double? audioPan,
@@ -185,6 +193,7 @@ class Layer {
       instructions: instructions ?? this.instructions,
       audioClips: audioClips ?? this.audioClips,
       isVisible: isVisible ?? this.isVisible,
+      collapsed: collapsed ?? this.collapsed,
       muted: muted ?? this.muted,
       audioGain: audioGain ?? this.audioGain,
       audioPan: audioPan ?? this.audioPan,
@@ -206,7 +215,7 @@ class Layer {
       // expressible.
       folderId: identical(folderId, copyWithSentinel)
           ? this.folderId
-          : folderId as FolderId?,
+          : folderId as LayerId?,
     );
   }
 
@@ -222,6 +231,7 @@ class Layer {
     if (audioClips.isNotEmpty)
       'audioClips': audioClips.map((clip) => clip.toJson()).toList(),
     'isVisible': isVisible,
+    if (collapsed) 'collapsed': true,
     if (muted) 'muted': true,
     if (audioGain != 1.0) 'audioGain': audioGain,
     if (audioPan != 0.0) 'audioPan': audioPan,
@@ -297,6 +307,7 @@ class Layer {
                 ?_audioClipFromJson(clip as Map<String, dynamic>, timeline),
             ],
       isVisible: json['isVisible'] as bool,
+      collapsed: json['collapsed'] as bool? ?? false,
       muted: json['muted'] as bool? ?? false,
       audioGain: (json['audioGain'] as num?)?.toDouble() ?? 1.0,
       audioPan: (json['audioPan'] as num?)?.toDouble() ?? 0.0,
@@ -330,7 +341,7 @@ class Layer {
       attachedMode: AttachedMode.fromJson(json['attachedMode']),
       folderId: json['folderId'] == null
           ? null
-          : FolderId.fromJson(json['folderId'] as Map<String, dynamic>),
+          : LayerId.fromJson(json['folderId'] as Map<String, dynamic>),
       baseFrameLinks: json['baseFrameLinks'] == null
           ? const {}
           : {
@@ -356,6 +367,7 @@ class Layer {
           mapEquals(other.instructions, instructions) &&
           listEquals(other.audioClips, audioClips) &&
           other.isVisible == isVisible &&
+          other.collapsed == collapsed &&
           other.muted == muted &&
           other.audioGain == audioGain &&
           other.audioPan == audioPan &&
@@ -385,7 +397,8 @@ class Layer {
       instructions.entries.map((entry) => Object.hash(entry.key, entry.value)),
     ),
     Object.hashAll(audioClips),
-    isVisible,
+    // Folded with isVisible: Object.hash caps at 20 positional args.
+    Object.hash(isVisible, collapsed),
     muted,
     Object.hash(audioGain, audioPan),
     // Folded with opacity: Object.hash caps at 20 positional args.
@@ -412,6 +425,44 @@ class Layer {
       'instructions: $instructions, '
       'isVisible: $isVisible, opacity: $opacity, kind: $kind, '
       'onTimesheet: $onTimesheet, mark: $mark)';
+}
+
+/// Stack-shaped queries over a cut's flat layer list. The list is the
+/// single truth of render/timeline order, so everything that needs to find
+/// a row BY WHAT IT IS asks here instead of open-coding a kind comparison.
+extension LayerStackQueries on List<Layer> {
+  Layer? byId(LayerId id) {
+    for (final layer in this) {
+      if (layer.id == id) {
+        return layer;
+      }
+    }
+    return null;
+  }
+
+  /// The cut's camera row (exactly one per cut; null only mid-migration).
+  Layer? get cameraLayer {
+    for (final layer in this) {
+      if (layer.kind == LayerKind.camera) {
+        return layer;
+      }
+    }
+    return null;
+  }
+
+  /// The camera row's stack index, or -1.
+  int get cameraIndex {
+    for (var index = 0; index < length; index += 1) {
+      if (this[index].kind == LayerKind.camera) {
+        return index;
+      }
+    }
+    return -1;
+  }
+
+  /// The rows that take part in the composited picture, bottom → top.
+  Iterable<Layer> get compositingLayers =>
+      where((layer) => layerKindComposites(layer.kind));
 }
 
 SplayTreeMap<int, TimelineExposure> _immutableTimeline(

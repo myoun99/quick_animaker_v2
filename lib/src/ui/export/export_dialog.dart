@@ -134,9 +134,16 @@ class ExportDialogState extends State<ExportDialog> {
 
   EditorSessionManager get _session => widget.session;
 
+  /// R27 #31: the cut this window is built around, resolved ONCE (the film
+  /// cannot change under a modal dialog). Null = the project has no cuts
+  /// at all, and the window degrades to an empty state instead of taking
+  /// the app down with a `requireActiveCut` throw.
+  Cut? _anchorCut;
+
   @override
   void initState() {
     super.initState();
+    _anchorCut = _session.exportAnchorCutOrNull;
     final restored = AppExport.settings.value;
     _specs = restored.lastSpecs;
     _location = restored.lastLocation;
@@ -159,8 +166,16 @@ class ExportDialogState extends State<ExportDialog> {
     _availability.addListener(_onAvailabilityChanged);
     _imageFrame = _session.editingFrameCursor.value.clamp(
       0,
-      math.max(1, _session.requireActiveCut.duration) - 1,
+      math.max(1, _anchorCut?.duration ?? 1) - 1,
     );
+    if (_session.exportAnchorIsFallback) {
+      // Standing in a gap: "active cut" would name a cut the user is not
+      // on, so the window opens project-scoped.
+      _specs = _specs
+          .withSpec(_specs.sequence.copyWith(scope: ExportScopeKind.project))
+          .withSpec(_specs.cels.copyWith(scope: ExportScopeKind.project))
+          .withSpec(_specs.timesheet.copyWith(scope: ExportScopeKind.project));
+    }
     _syncControllersFromSpecs();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) {
@@ -275,7 +290,7 @@ class ExportDialogState extends State<ExportDialog> {
 
   // --- plans ----------------------------------------------------------------
 
-  Cut get _activeCut => _session.requireActiveCut;
+  Cut get _activeCut => _anchorCut!;
 
   bool _cutInScope(Cut cut) => _session.repository
       .requireProject()
@@ -463,6 +478,10 @@ class ExportDialogState extends State<ExportDialog> {
 
   @visibleForTesting
   int get debugImageFrame => _currentImageFrame();
+
+  /// Test seam: the live tab specs (scope defaults, formats).
+  @visibleForTesting
+  ExportTabSpecs get debugSpecs => _specs;
 
   /// Test seam: awaits the debounced preview render (call inside
   /// `tester.runAsync` so the raster completes).
@@ -1470,6 +1489,21 @@ class ExportDialogState extends State<ExportDialog> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    if (_anchorCut == null) {
+      // R27 #31: nothing to export. An empty state, never a throw.
+      final strings = _session.uiStrings;
+      return AlertDialog(
+        key: const ValueKey<String>('export-dialog-no-cuts'),
+        title: const Text('Export'),
+        content: Text(strings.exportNoCuts),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: Text(strings.commonClose),
+          ),
+        ],
+      );
+    }
     return Dialog(
       child: LayoutBuilder(
         builder: (context, constraints) {
@@ -2274,10 +2308,7 @@ class ExportDialogState extends State<ExportDialog> {
       for (final layer in _activeCut.layers)
         if (!includedIds.contains(layer.id) &&
             !_isAttachedRow(layer) &&
-            (layer.kind == LayerKind.instruction ||
-                layerKindHoldsDrawings(layer.kind)) &&
-            layer.kind != LayerKind.se &&
-            layer.kind != LayerKind.camera)
+            layerKindExportsCels(layer.kind))
           layer,
     ];
 

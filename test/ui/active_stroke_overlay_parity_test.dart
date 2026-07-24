@@ -4,6 +4,7 @@ import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:quick_animaker_v2/src/models/bitmap_surface.dart';
+import 'package:quick_animaker_v2/src/models/brush_blend_mode.dart';
 import 'package:quick_animaker_v2/src/models/brush_dab.dart';
 import 'package:quick_animaker_v2/src/models/brush_dab_sequence.dart';
 import 'package:quick_animaker_v2/src/models/brush_tip_mask.dart';
@@ -504,6 +505,13 @@ void main() {
             baseSurface ?? BitmapSurface(canvasSize: _canvasSize, tileSize: 64),
         overlayModel: model,
         showTransparentBackground: false,
+        // The shared tile-image cache's stale fallback is keyed by
+        // COORDINATE within a scope; without a distinct scope per paint,
+        // a not-yet-decoded tile here can show a PREVIOUS test's artwork
+        // at the same coordinate (the per-pixel fallback is skipped when
+        // a stale image exists). A fresh scope forces the deterministic
+        // per-pixel path.
+        staleScope: Object(),
       ).paint(
         Canvas(recorder),
         const Size(_canvasWidth * 1.0, _canvasHeight * 1.0),
@@ -626,6 +634,140 @@ void main() {
         // ...and the live stroke paints its own pixels above it.
         expect(painted[offsetOf(20, 20) + 3], 255);
         expect(painted[offsetOf(20, 20)], 0x22);
+      },
+    );
+
+    test(
+      'R27 #4: a PRE-BLENDED stroke displays byte-identically to the '
+      'committed surface — multiply / behind / erase, translucent inks '
+      'over translucent base',
+      () async {
+        // Translucent everything: exactly where the old GPU-float preview
+        // drifted ±1/255 from the integer commit.
+        final baseDabs = [
+          _dab(
+            x: 12.5,
+            y: 12.5,
+            size: 14,
+            color: 0xB0994411,
+            opacity: 0.8,
+            flow: 0.9,
+            hardness: 0.5,
+          ),
+        ];
+        final base = materializeBrushDabSequenceOnBitmapSurface(
+          surface: BitmapSurface(canvasSize: _canvasSize, tileSize: 64),
+          sequence: BrushDabSequence(baseDabs),
+        ).surface;
+
+        for (final mode in const [
+          BrushBlendMode.color,
+          BrushBlendMode.multiply,
+          BrushBlendMode.behind,
+          BrushBlendMode.erase,
+        ]) {
+          final strokeDabs = [
+            _dab(
+              x: 16.5,
+              y: 14.2,
+              size: 12,
+              color: 0x902266AA,
+              opacity: 0.7,
+              flow: 0.8,
+              hardness: 0.4,
+            ),
+          ];
+          final rasterizer = BrushLiveStrokeRasterizer(
+            canvasSize: _canvasSize,
+          );
+          final region = rasterizer.blendFrom(strokeDabs, from: 0)!;
+
+          // On screen AFTER PEN-UP: the committed surface, no overlay.
+          final committed = compositeStrokePixelsOntoBitmapSurface(
+            surface: base,
+            strokePixels: rasterizer.strokePixelsWithinBounds()!,
+            bounds: rasterizer.strokeBounds!,
+            erase: mode == BrushBlendMode.erase,
+            blendMode: mode,
+          );
+          final emptyOverlay = ActiveStrokeOverlayModel();
+          addTearDown(emptyOverlay.dispose);
+          final committedDisplay = await paintedCanvasBytes(
+            emptyOverlay,
+            baseSurface: committed.surface,
+          );
+
+          // PROMOTION round: BOTH display routes must hold the parity —
+          // the ALIGNED grid (overlay tile == surface tile: the base
+          // pass skips replaced coordinates, srcOver result tiles, no
+          // isolation layer) and the MISMATCHED grid (isolation layer +
+          // BlendMode.src replacement).
+          for (final overlayTileSize in const [64, 16]) {
+            final model = ActiveStrokeOverlayModel(tileSize: overlayTileSize)
+              ..blendMode = mode
+              ..erase = mode == BrushBlendMode.erase
+              ..preBlendBase = base;
+            addTearDown(model.dispose);
+            updateRegion(model, rasterizer, region);
+            await model.waitForPendingDecodes();
+            expect(model.preBlended, isTrue);
+
+            final route = overlayTileSize == 64
+                ? 'aligned replacement route'
+                : 'isolation fallback route';
+            _expectExact(
+              await paintedCanvasBytes(model, baseSurface: base),
+              committedDisplay,
+              '${mode.name} ($route): live display == committed display',
+            );
+          }
+        }
+      },
+    );
+
+    test(
+      'a pre-blended tile at the PASTEBOARD EDGE still covers its whole '
+      'coordinate — the base pass skipped that tile, so a clamped image '
+      'would cut a transparent strip through committed artwork',
+      () async {
+        // The overlay grid divides the canvas but NOT the pasteboard
+        // (3× the canvas), so the last coordinate is a partial rect: 40×3
+        // = 120 wide, and a 32px grid puts the wall mid-tile.
+        const overlayTile = 32;
+        final base = materializeBrushDabSequenceOnBitmapSurface(
+          surface: BitmapSurface(canvasSize: _canvasSize, tileSize: overlayTile),
+          sequence: BrushDabSequence([
+            _dab(
+              x: 113.5,
+              y: 12.5,
+              size: 20,
+              color: 0xFF994411,
+              opacity: 1,
+              flow: 1,
+              hardness: 1,
+            ),
+          ]),
+        ).surface;
+        final rasterizer = BrushLiveStrokeRasterizer(canvasSize: _canvasSize);
+        final region = rasterizer.blendFrom([
+          _dab(x: 112.5, y: 14.5, size: 10, color: 0xFF2266AA),
+        ], from: 0)!;
+
+        final model = ActiveStrokeOverlayModel(tileSize: overlayTile)
+          ..preBlendBase = base;
+        addTearDown(model.dispose);
+        model.updateRegion(source: rasterizer, region: region);
+        await model.waitForPendingDecodes();
+
+        expect(model.tileImages, isNotEmpty);
+        for (final entry in model.tileImages.entries) {
+          expect(
+            entry.value.width,
+            overlayTile,
+            reason: '${entry.key}: a pre-blended tile is never clamped',
+          );
+          expect(entry.value.height, overlayTile);
+        }
       },
     );
 

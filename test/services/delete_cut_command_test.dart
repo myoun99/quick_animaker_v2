@@ -1,5 +1,4 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:quick_animaker_v2/src/controllers/default_cut_helpers.dart';
 import 'package:quick_animaker_v2/src/controllers/editing_session_state.dart';
 import 'package:quick_animaker_v2/src/models/canvas_size.dart';
 import 'package:quick_animaker_v2/src/models/cut.dart';
@@ -175,8 +174,8 @@ void main() {
     });
 
     test(
-      'deleting the only cut creates a caller-provided replacement default cut '
-      'and makes it active',
+      'R28 #14: deleting the only cut EMPTIES the track and clears the '
+      'active cut — no replacement is conjured',
       () {
         final onlyCut = _cut(id: 'only-cut', name: 'Only Cut');
         final repository = ProjectRepository(
@@ -192,60 +191,10 @@ void main() {
           repository: repository,
           editingSession: editingSession,
           cutId: onlyCut.id,
-          replacementCutId: const CutId('replacement-cut'),
-          replacementLayerId: const LayerId('replacement-layer'),
         ).execute();
 
-        final replacement = createDefaultCut(
-          cutId: const CutId('replacement-cut'),
-          name: '1',
-          layerId: const LayerId('replacement-layer'),
-        );
-        expect(repository.requireProject().tracks.single.cuts, [replacement]);
-        expect(
-          repository.requireProject().tracks.single.cuts.single.id,
-          const CutId('replacement-cut'),
-        );
-        expect(
-          repository.requireProject().tracks.single.cuts.single.layers.first.id,
-          const LayerId('replacement-layer'),
-        );
-        expect(editingSession.activeCutId, const CutId('replacement-cut'));
-      },
-    );
-
-    test(
-      'replacement default cut supports caller-provided name and canvas size',
-      () {
-        final onlyCut = _cut(id: 'only-cut', name: 'Only Cut');
-        final repository = ProjectRepository(
-          initialProject: _project(
-            tracks: [
-              _track(id: 'track-1', cuts: [onlyCut]),
-            ],
-          ),
-        );
-        final editingSession = EditingSessionState(activeCutId: onlyCut.id);
-
-        DeleteCutCommand(
-          repository: repository,
-          editingSession: editingSession,
-          cutId: onlyCut.id,
-          replacementCutId: const CutId('replacement-cut'),
-          replacementLayerId: const LayerId('replacement-layer'),
-          replacementName: 'Replacement',
-          replacementCanvasSize: const CanvasSize(width: 640, height: 360),
-        ).execute();
-
-        expect(
-          repository.requireProject().tracks.single.cuts.single,
-          createDefaultCut(
-            cutId: const CutId('replacement-cut'),
-            name: 'Replacement',
-            layerId: const LayerId('replacement-layer'),
-            canvasSize: const CanvasSize(width: 640, height: 360),
-          ),
-        );
+        expect(repository.requireProject().tracks.single.cuts, isEmpty);
+        expect(editingSession.activeCutId, isNull);
       },
     );
 
@@ -295,8 +244,6 @@ void main() {
           repository: repository,
           editingSession: editingSession,
           cutId: onlyCut.id,
-          replacementCutId: const CutId('replacement-cut'),
-          replacementLayerId: const LayerId('replacement-layer'),
         ),
       );
       historyManager.undo();
@@ -359,7 +306,8 @@ void main() {
       expect(editingSession.activeCutId, cutA.id);
     });
 
-    test('redo recreates replacement default cut when needed', () {
+    test('R28 #14: undo/redo round-trips the EMPTY track — the real cut '
+        'comes back on undo and leaves again on redo', () {
       final onlyCut = _cut(id: 'only-cut', name: 'Only Cut');
       final repository = ProjectRepository(
         initialProject: _project(
@@ -376,21 +324,17 @@ void main() {
           repository: repository,
           editingSession: editingSession,
           cutId: onlyCut.id,
-          replacementCutId: const CutId('replacement-cut'),
-          replacementLayerId: const LayerId('replacement-layer'),
         ),
       );
-      historyManager.undo();
-      historyManager.redo();
+      expect(repository.requireProject().tracks.single.cuts, isEmpty);
 
-      expect(repository.requireProject().tracks.single.cuts, [
-        createDefaultCut(
-          cutId: const CutId('replacement-cut'),
-          name: '1',
-          layerId: const LayerId('replacement-layer'),
-        ),
-      ]);
-      expect(editingSession.activeCutId, const CutId('replacement-cut'));
+      historyManager.undo();
+      expect(repository.requireProject().tracks.single.cuts, [onlyCut]);
+      expect(editingSession.activeCutId, onlyCut.id);
+
+      historyManager.redo();
+      expect(repository.requireProject().tracks.single.cuts, isEmpty);
+      expect(editingSession.activeCutId, isNull);
     });
 
     test('missing target CutId causes execute to throw StateError', () {
@@ -415,8 +359,8 @@ void main() {
     });
 
     test(
-      'last-cut deletion without replacement ids throws StateError and does not '
-      'change state',
+      'R28 #14: last-cut deletion no longer throws — an empty track is a '
+      'representable state',
       () {
         final onlyCut = _cut(id: 'only-cut', name: 'Only Cut');
         final project = _project(
@@ -427,16 +371,14 @@ void main() {
         final repository = ProjectRepository(initialProject: project);
         final editingSession = EditingSessionState(activeCutId: onlyCut.id);
 
-        expect(
-          () => DeleteCutCommand(
-            repository: repository,
-            editingSession: editingSession,
-            cutId: onlyCut.id,
-          ).execute(),
-          throwsStateError,
-        );
-        expect(repository.requireProject(), project);
-        expect(editingSession.activeCutId, onlyCut.id);
+        DeleteCutCommand(
+          repository: repository,
+          editingSession: editingSession,
+          cutId: onlyCut.id,
+        ).execute();
+
+        expect(repository.requireProject().tracks.single.cuts, isEmpty);
+        expect(editingSession.activeCutId, isNull);
       },
     );
 
@@ -457,8 +399,6 @@ void main() {
             repository: repository,
             editingSession: editingSession,
             cutId: const CutId('missing-cut'),
-            replacementCutId: const CutId('replacement-cut'),
-            replacementLayerId: const LayerId('replacement-layer'),
           ).execute(),
           throwsStateError,
         );

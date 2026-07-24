@@ -1,8 +1,9 @@
 import 'dart:ffi';
-import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:ffi/ffi.dart';
+
+import 'qa_engine_abi.dart';
 
 /// Which decoder read a file — reported so a log can say what happened
 /// instead of just "it worked". [os] is the platform's own codec stack
@@ -62,9 +63,6 @@ final class QaAudioDecoder {
   static QaAudioDecoder? _instance;
   static bool _tried = false;
 
-  /// Test hook: point the loader at a locally built binary.
-  static String? debugLibraryPathOverride;
-
   static void debugResetForTests() {
     _instance = null;
     _tried = false;
@@ -80,7 +78,7 @@ final class QaAudioDecoder {
   }
 
   static QaAudioDecoder? _load() {
-    final library = _tryOpen();
+    final library = openQaEngineLibrary();
     if (library == null) {
       return null;
     }
@@ -112,37 +110,6 @@ final class QaAudioDecoder {
     } on Object {
       return null;
     }
-  }
-
-  static DynamicLibrary? _tryOpen() {
-    final overridePath =
-        debugLibraryPathOverride ?? Platform.environment['QA_ENGINE_PATH'];
-    if (overridePath != null && overridePath.isNotEmpty) {
-      try {
-        return DynamicLibrary.open(overridePath);
-      } on Object {
-        // Fall through to the platform defaults.
-      }
-    }
-    if (Platform.isIOS || Platform.isMacOS) {
-      try {
-        return DynamicLibrary.process();
-      } on Object {
-        // Fall through: a standalone dylib build is still honored below.
-      }
-    }
-    for (final candidate in [
-      if (Platform.isWindows) 'qa_engine.dll',
-      if (Platform.isLinux || Platform.isAndroid) 'libqa_engine.so',
-      if (Platform.isMacOS) 'libqa_engine.dylib',
-    ]) {
-      try {
-        return DynamicLibrary.open(candidate);
-      } on Object {
-        continue;
-      }
-    }
-    return null;
   }
 
   /// Decodes [bytes]; null when no decoder recognized the container.

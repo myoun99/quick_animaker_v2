@@ -154,6 +154,49 @@ void main() {
       expect(_isStrictlyIncreasing(sequences), isTrue);
     });
 
+    testWidgets(
+      'a REAL pointer stroke runs the pre-blend pipeline on the surface '
+      'grid (the R27 #4 ordering regression: reset() after setup nulled '
+      'preBlendBase, silently reverting every live stroke to the classic '
+      'GPU path)',
+      (tester) async {
+        final sessionState = _sessionState();
+        await tester.pumpWidget(_app(_view(sessionState, (_) {})));
+
+        final gesture = await tester.startGesture(
+          canvasGlobalOffset(tester, const Offset(1.5, 1.5)),
+          pointer: 1,
+        );
+        await tester.pump();
+
+        final overlay = tester
+            .widget<BrushEditCanvasView>(find.byType(BrushEditCanvasView))
+            .overlayModel!;
+        expect(
+          overlay.preBlended,
+          isTrue,
+          reason: 'mid-stroke the overlay must be in pre-blend mode',
+        );
+        expect(
+          identical(
+            overlay.preBlendBase,
+            sessionState.canvasState.currentSurface,
+          ),
+          isTrue,
+          reason: 'the pre-blend base is the cel surface at stroke start',
+        );
+        expect(
+          overlay.tileSize,
+          sessionState.canvasState.currentSurface.tileSize,
+          reason: 'the overlay grid aligns with the committed grid '
+              '(coordinate replacement in the painter requires it)',
+        );
+
+        await gesture.up();
+        await tester.pump();
+      },
+    );
+
     testWidgets('fast drag commits sampled source dabs beyond raw endpoints', (
       tester,
     ) async {
@@ -259,34 +302,22 @@ void main() {
         expect(results, isEmpty);
 
         await gesture.up();
-        // R25-④: the commit DEFERS one frame past pen-up (the
-        // synchronous materialize was the stroke-end hitch); the
-        // overlay stays visible throughout and settling starts inside
-        // the deferred flush, with the PRE-stroke tiles pinned so
-        // progressive post-commit decodes never double-blend with the
-        // overlay (fresh canvas: every touched coordinate was empty).
-        await tester.pump();
+        // PROMOTION round: pen-up commits INSIDE the pointer event and
+        // the overlay clears with it — one atomic handoff, no deferred
+        // flush and no settling window. (Both existed to hide a commit
+        // that re-derived pixels the screen already had; the commit now
+        // installs the tiles the overlay was showing.)
         canvasView = tester.widget<BrushEditCanvasView>(
           find.byType(BrushEditCanvasView),
         );
         expect(results, hasLength(1));
-        expect(canvasView.overlayModel!.dabs, isNotEmpty);
-        final hold = canvasView.overlayModel!.settleHoldTiles;
-        expect(hold, isNotNull);
-        expect(hold, isNotEmpty);
-        expect(hold!.values.every((tile) => tile == null), isTrue);
-
-        // This fixture's commit callback does not materialize tiles into
-        // the surface, so the settling gate (all committed tiles decoded)
-        // passes on its first post-frame check and the pin + overlay
-        // release together — one atomic swap.
-        await tester.pump();
-        await tester.pump(const Duration(milliseconds: 350));
-        canvasView = tester.widget<BrushEditCanvasView>(
-          find.byType(BrushEditCanvasView),
-        );
         expect(canvasView.overlayModel!.dabs, isEmpty);
+        expect(canvasView.overlayModel!.tileImages, isEmpty);
         expect(canvasView.overlayModel!.settleHoldTiles, isNull);
+        expect(canvasView.overlayModel!.preBlended, isFalse);
+
+        await tester.pump();
+        expect(tester.takeException(), isNull);
       },
     );
 

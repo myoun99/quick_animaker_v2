@@ -9,9 +9,9 @@ import 'package:quick_animaker_v2/src/ui/timeline/timeline_cell_exposure_state.d
 import 'package:quick_animaker_v2/src/ui/timeline/timeline_frame_cells_row.dart';
 import 'package:quick_animaker_v2/src/ui/timeline/timeline_grid_metrics.dart';
 
-/// R26 #7: every frame block prints its own length at the block's end,
-/// bottom-right — frames (`6f`) or seconds+frames (`0+06`) per the shared
-/// display toggle, the storyboard cut block's TIME-label idiom.
+/// R26 #7 + R27 #3: every frame block prints ITS OWN length — one label
+/// per block (never the glued run's total), bare number (no `f`), bold,
+/// bottom-CENTRE of the block's last cell.
 void main() {
   Layer drawingLayer(Map<int, TimelineExposure> timeline) => Layer(
     id: const LayerId('a-1'),
@@ -23,6 +23,8 @@ void main() {
 
   TimelineCellExposureState stateFor(Layer layer, int frameIndex) =>
       TimelineCellExposureState.uncovered;
+
+  const cellWidth = 48.0;
 
   Widget harness({required Layer layer, bool showSeconds = false}) {
     return MaterialApp(
@@ -37,7 +39,7 @@ void main() {
             leadingFrameSpacerWidth: 0,
             trailingFrameSpacerWidth: 0,
             metrics: const TimelineGridMetrics(
-              frameCellWidth: 48,
+              frameCellWidth: cellWidth,
               layerRowHeight: 52,
             ),
             exposureStateForLayer: stateFor,
@@ -50,7 +52,7 @@ void main() {
     );
   }
 
-  testWidgets('a block prints its frame count at its end cell', (
+  testWidgets('a block prints its frame count as a bare bold number', (
     tester,
   ) async {
     await tester.pumpWidget(
@@ -64,7 +66,11 @@ void main() {
       find.byKey(const ValueKey<String>('timeline-run-duration-a-1-2')),
       findsOneWidget,
     );
-    expect(find.text('6f'), findsOneWidget);
+    expect(find.text('6'), findsOneWidget);
+    expect(find.text('6f'), findsNothing);
+
+    final label = tester.widget<Text>(find.text('6'));
+    expect(label.style?.fontWeight, FontWeight.w700);
   });
 
   testWidgets('the seconds toggle switches the label to seconds+frames', (
@@ -80,7 +86,44 @@ void main() {
     );
     // 6 frames at the default 24-base: under a second.
     expect(find.text('0+06'), findsOneWidget);
-    expect(find.text('6f'), findsNothing);
+    expect(find.text('6'), findsNothing);
+  });
+
+  testWidgets('R27 #3: GLUED blocks each label their own length', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      harness(
+        layer: drawingLayer({
+          // Two blocks that touch — the glued run totals 5, which must
+          // NOT be what shows.
+          0: const TimelineExposure.drawing(FrameId('f1'), length: 2),
+          2: const TimelineExposure.drawing(FrameId('f2'), length: 3),
+        }),
+      ),
+    );
+    expect(find.text('2'), findsOneWidget);
+    expect(find.text('3'), findsOneWidget);
+    expect(find.text('5'), findsNothing);
+  });
+
+  testWidgets('R27 #3: the label centres on the block LAST cell', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      harness(
+        layer: drawingLayer({
+          0: const TimelineExposure.drawing(FrameId('f1'), length: 4),
+        }),
+      ),
+    );
+    // Block spans frames 0..4 → last cell is [144, 192), centre 168.
+    final centre = tester.getCenter(find.text('4'));
+    expect(centre.dx, closeTo(168, 1.5));
+
+    // Bottom-anchored inside the row (52 tall, 1px padding).
+    final bottom = tester.getRect(find.text('4')).bottom;
+    expect(bottom, greaterThan(40));
   });
 
   testWidgets('separate blocks label separately; SE rows stay clean', (
@@ -94,8 +137,8 @@ void main() {
         }),
       ),
     );
-    expect(find.text('2f'), findsOneWidget);
-    expect(find.text('3f'), findsOneWidget);
+    expect(find.text('2'), findsOneWidget);
+    expect(find.text('3'), findsOneWidget);
 
     await tester.pumpWidget(
       harness(
@@ -110,8 +153,11 @@ void main() {
         ),
       ),
     );
-    expect(find.text('4f'), findsNothing,
-        reason: 'SE sheet rows carry dialogue and waveforms, not exposure '
-            'durations');
+    expect(
+      find.text('4'),
+      findsNothing,
+      reason:
+          'SE sheet rows carry dialogue and waveforms, not exposure durations',
+    );
   });
 }

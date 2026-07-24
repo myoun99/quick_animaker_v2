@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../../models/app_language.dart' show AppLanguage;
+import '../../models/layer_blend_mode.dart';
 import '../../models/layer_id.dart';
 import '../../models/layer_kind.dart';
 import '../../models/layer_mark.dart';
@@ -119,14 +121,107 @@ const double layerMuteSlotWidth = 18;
 // across all three panels' rails.
 const double layerOpacitySlotWidth = 42;
 
+/// R27 #6: the BLEND column — the layer's compositing mode, moved out of
+/// the timeline toolbar and into the label itself (PS/CSP reading: the
+/// mode belongs to the row, not to a far-away command bar). Rightmost
+/// slot, immediately right of the opacity bar, per the user's placement.
+const double layerBlendSlotWidth = 58;
+
 /// The per-layer onion-skin toggle column (UI-R17 #5, TVPaint style).
 const double layerOnionSlotWidth = 22;
 const double layerControlChipGap = 4;
 
-/// Every layer kind carries the timesheet-output toggle — one entrance for
-/// every row (unified layer controls, user rule): cel/art/SE gate their
-/// sheet columns and the CAMERA layer gates the printed CAM column.
-bool layerKindEligibleForTimesheetToggle(LayerKind kind) => true;
+/// Whether [kind] carries a blend mode at all. Only the ACTION-section
+/// kinds composite artwork — plus FOLDERS, which blend their whole group
+/// (R27 #29); SE/CAM/instruction rows reserve the slot so the control
+/// columns and the legend header stay aligned.
+bool layerKindShowsBlendControl(LayerKind kind) =>
+    layerKindIsDrawingCel(kind) || layerKindGroupsLayers(kind);
+
+/// R27 #6 / R28 #2: the row's blend-mode BUTTON. Reads the current mode's
+/// name; accent while non-normal (selection style: color only, no check
+/// glyph in the row itself).
+///
+/// R28 #2: this is the tool-settings blend control — the shared
+/// [PanelFlyoutButton] — with the caret dropped, per the user's rule that
+/// everything touching blend modes speaks one UI. It used to be a bare
+/// left-aligned InkWell label, which read as text rather than a button and
+/// sat flush against the opacity bar instead of centered under the
+/// legend's BLND header.
+class LayerBlendModeChip extends StatelessWidget {
+  const LayerBlendModeChip({
+    super.key,
+    required this.keyValue,
+    required this.optionKeyPrefix,
+    required this.blendMode,
+    required this.language,
+    required this.onBlendModeSelected,
+    this.subject = 'Layer',
+    this.isGroup = false,
+  });
+
+  /// The full widget key string ('timeline-layer-blend-a').
+  final String keyValue;
+
+  /// Prefix for the flyout option keys
+  /// ('timeline-layer-blend-option-' + mode name).
+  final String optionKeyPrefix;
+
+  final LayerBlendMode blendMode;
+  final AppLanguage language;
+  final ValueChanged<LayerBlendMode> onBlendModeSelected;
+
+  /// Names the row kind in the tooltip ('Layer', 'Folder').
+  final String subject;
+
+  /// GROUP rows get [LayerBlendMode.passThrough] in the list; a drawing
+  /// layer has no members to pass through, so it never sees the option.
+  final bool isGroup;
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final nonNormal = blendMode != LayerBlendMode.normal;
+    return SizedBox(
+      width: layerBlendSlotWidth,
+      height: 20,
+      // Centered in the slot so the button lines up under the legend's
+      // BLND column header (R28 #2).
+      child: Center(
+        child: PanelFlyoutButton(
+          key: ValueKey<String>(keyValue),
+          label: blendMode.labelFor(language),
+          tooltip: '$subject blend mode',
+          showCaret: false,
+          expand: true,
+          fontSize: 9.5,
+          fontWeight: nonNormal ? FontWeight.w700 : FontWeight.w400,
+          labelColor: nonNormal
+              ? AppColors.accent
+              : colorScheme.onSurfaceVariant,
+          padding: const EdgeInsets.symmetric(horizontal: 3, vertical: 2),
+          entriesBuilder: () => [
+            for (final mode in LayerBlendMode.optionsFor(isGroup: isGroup))
+              PanelFlyoutItem(
+                keyValue: '$optionKeyPrefix${mode.name}',
+                label: mode.labelFor(language),
+                checked: mode == blendMode,
+                onSelected: () => onBlendModeSelected(mode),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Every layer kind that PRINTS carries the timesheet-output toggle — one
+/// entrance for every row (unified layer controls, user rule): cel/art/SE
+/// gate their sheet columns and the CAMERA layer gates the printed CAM
+/// column. A folder prints nothing of its own, so its slot stays reserved
+/// but empty.
+bool layerKindEligibleForTimesheetToggle(LayerKind kind) =>
+    !layerKindGroupsLayers(kind);
 
 /// Every layer kind shows the opacity slider (unified layer controls —
 /// "레이어는 싹 다 공통화"): compositing cels use it directly, the CAMERA
@@ -145,49 +240,173 @@ bool layerKindShowsFxToggle(LayerKind kind) => true;
 /// The AE-style layer fx switch: bypasses the layer's FX (transform +
 /// animated opacity) on EVERY composite route while off — session view
 /// state, not persisted.
-class LayerFxToggleButton extends StatelessWidget {
-  const LayerFxToggleButton({
+/// The `fx` GLYPH — italic, bold, accent when the FX apply and dim when
+/// bypassed. Defined ONCE (R28 follow-up).
+///
+/// Four copies of this styling existed: the layer switch, the folder
+/// switch, the storyboard's cut switch and the legend's column header.
+/// Restyling fx meant finding all four, which is exactly the failure the
+/// user keeps calling out — change it in one place, it changes
+/// everywhere.
+Widget fxGlyph({
+  required BuildContext context,
+  required bool active,
+  double fontSize = 13,
+}) {
+  return Text(
+    'fx',
+    style: TextStyle(
+      fontSize: fontSize,
+      fontStyle: FontStyle.italic,
+      fontWeight: FontWeight.w700,
+      color: active
+          ? AppColors.accent
+          : Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.35),
+    ),
+  );
+}
+
+/// The ONE eye: whether this row shows.
+///
+/// It was written inline in three rails (timeline, x-sheet, storyboard)
+/// and had already drifted — the glyph was 18px in one and 16px in the
+/// other two. Same lesson as the fx switch: a control that exists three
+/// times is a control nobody can restyle.
+class LayerVisibilityToggleButton extends StatelessWidget {
+  const LayerVisibilityToggleButton({
     super.key,
-    required this.keyPrefix,
-    required this.layerId,
-    required this.fxEnabled,
+    required this.keyValue,
+    required this.isVisible,
     required this.onToggle,
+    this.subject = 'layer',
+    this.size = layerVisibilitySlotWidth,
+    this.iconSize = 18,
   });
 
-  final String keyPrefix;
-  final LayerId layerId;
-  final bool fxEnabled;
-  final ValueChanged<LayerId> onToggle;
+  /// Names the row kind in the tooltip ('layer', 'folder').
+  final String subject;
+
+  /// The full widget key string ('timeline-layer-visibility-a').
+  final String keyValue;
+
+  final bool isVisible;
+  final VoidCallback onToggle;
+  final double size;
+
+  /// The x-sheet's column header runs a hair smaller than the rails.
+  final double iconSize;
 
   @override
   Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
-    // Tight SizedBox: the M3 IconButton otherwise inflates its layout box
-    // to the 48px minimum tap target and overflows the row (same gotcha as
-    // the timesheet toggle).
     return SizedBox(
-      width: layerFxSlotWidth,
+      width: size,
       height: 26,
       child: IconButton(
-        key: ValueKey<String>('$keyPrefix-layer-fx-$layerId'),
-        tooltip: fxEnabled ? 'Bypass layer FX' : 'Apply layer FX',
+        key: ValueKey<String>(keyValue),
+        tooltip: isVisible ? 'Hide $subject' : 'Show $subject',
         padding: EdgeInsets.zero,
-        constraints: const BoxConstraints.tightFor(
-          width: layerFxSlotWidth,
-          height: 26,
+        constraints: BoxConstraints.tightFor(width: size, height: 26),
+        icon: Icon(
+          isVisible ? Icons.visibility : Icons.visibility_off,
+          size: iconSize,
         ),
-        icon: Text(
-          'fx',
-          style: TextStyle(
-            fontSize: 13,
-            fontStyle: FontStyle.italic,
-            fontWeight: FontWeight.w700,
-            color: fxEnabled
-                ? AppColors.accent
-                : colorScheme.onSurface.withValues(alpha: 0.35),
-          ),
-        ),
-        onPressed: () => onToggle(layerId),
+        onPressed: onToggle,
+      ),
+    );
+  }
+}
+
+/// The ONE mute speaker (SE rows).
+///
+/// Also written inline three times, also drifted — 14px glyph in the
+/// storyboard, 16px in the two timeline rails, and the storyboard's copy
+/// had silently lost the SOLO accent the other two carry.
+///
+/// The button itself is unwrapped: the rails put their own secondary-tap
+/// mix menu around it, which is host wiring, not the control.
+class LayerMuteToggleButton extends StatelessWidget {
+  const LayerMuteToggleButton({
+    super.key,
+    required this.keyValue,
+    required this.muted,
+    required this.onToggle,
+    this.soloed = false,
+    this.width = layerMuteSlotWidth,
+    this.height = 26,
+  });
+
+  /// The full widget key string ('timeline-layer-mute-a').
+  final String keyValue;
+
+  final bool muted;
+  final VoidCallback onToggle;
+
+  /// Soloed rows tint accent (selection style: color only, no checkmarks).
+  final bool soloed;
+
+  final double width;
+  final double height;
+
+  @override
+  Widget build(BuildContext context) {
+    return IconButton(
+      key: ValueKey<String>(keyValue),
+      tooltip: muted ? 'Unmute layer' : 'Mute layer',
+      padding: EdgeInsets.zero,
+      constraints: BoxConstraints.tightFor(width: width, height: height),
+      icon: Icon(
+        muted ? Icons.volume_off : Icons.volume_up,
+        size: 16,
+        color: soloed ? Theme.of(context).colorScheme.primary : null,
+      ),
+      onPressed: onToggle,
+    );
+  }
+}
+
+/// The ONE fx SWITCH: whether this row's FX apply or are bypassed.
+///
+/// Every row kind that has FX mounts this and binds its own identity —
+/// layers, folders and storyboard cuts. It is deliberately id-agnostic:
+/// a per-type wrapper is how the copies started.
+///
+/// Tight SizedBox: the M3 IconButton otherwise inflates its layout box to
+/// the 48px minimum tap target and overflows the row (same gotcha as the
+/// timesheet toggle).
+class FxToggleButton extends StatelessWidget {
+  const FxToggleButton({
+    super.key,
+    required this.keyValue,
+    required this.fxEnabled,
+    required this.onToggle,
+    this.subject = 'layer',
+    this.size = layerFxSlotWidth,
+  });
+
+  /// The full widget key string — callers spell their own identity in
+  /// ('timeline-layer-fx-a', 'storyboard-cut-fx-3').
+  final String keyValue;
+
+  final bool fxEnabled;
+  final VoidCallback onToggle;
+
+  /// Names the row kind in the tooltip ('layer', 'folder', 'cut').
+  final String subject;
+
+  final double size;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: size,
+      height: 26,
+      child: IconButton(
+        key: ValueKey<String>(keyValue),
+        tooltip: fxEnabled ? 'Bypass $subject FX' : 'Apply $subject FX',
+        padding: EdgeInsets.zero,
+        constraints: BoxConstraints.tightFor(width: size, height: 26),
+        icon: fxGlyph(context: context, active: fxEnabled),
+        onPressed: onToggle,
       ),
     );
   }
@@ -203,6 +422,7 @@ IconData layerKindIcon(LayerKind kind) {
     LayerKind.se => Icons.music_note_outlined,
     LayerKind.instruction => Icons.theaters_outlined,
     LayerKind.camera => Icons.videocam_outlined,
+    LayerKind.folder => Icons.folder_outlined,
   };
 }
 
@@ -215,6 +435,7 @@ String layerKindDisplayName(LayerKind kind) {
     LayerKind.se => 'SE',
     LayerKind.instruction => 'Instruction',
     LayerKind.camera => 'Camera',
+    LayerKind.folder => 'Folder',
   };
 }
 

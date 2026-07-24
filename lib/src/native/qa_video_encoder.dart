@@ -1,9 +1,10 @@
 import 'dart:convert' show utf8;
 import 'dart:ffi';
-import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:ffi/ffi.dart';
+
+import 'qa_engine_abi.dart';
 
 /// The OS video encoder (AUDIO-PRO R7): frames + mixed PCM in, an
 /// H.264/AAC MP4 out through the operating system's own codec stack —
@@ -21,9 +22,6 @@ final class QaVideoEncoder {
   static QaVideoEncoder? _instance;
   static bool _tried = false;
 
-  /// Test hook: point the loader at a locally built binary.
-  static String? debugLibraryPathOverride;
-
   static void debugResetForTests() {
     _instance = null;
     _tried = false;
@@ -32,41 +30,10 @@ final class QaVideoEncoder {
   static QaVideoEncoder? get instance {
     if (!_tried) {
       _tried = true;
-      final library = _tryOpen();
+      final library = openQaEngineLibrary();
       _instance = library == null ? null : QaVideoEncoder._(library);
     }
     return _instance;
-  }
-
-  static DynamicLibrary? _tryOpen() {
-    final overridePath =
-        debugLibraryPathOverride ?? Platform.environment['QA_ENGINE_PATH'];
-    if (overridePath != null && overridePath.isNotEmpty) {
-      try {
-        return DynamicLibrary.open(overridePath);
-      } on Object {
-        // Fall through to the platform defaults.
-      }
-    }
-    if (Platform.isIOS || Platform.isMacOS) {
-      try {
-        return DynamicLibrary.process();
-      } on Object {
-        // Fall through.
-      }
-    }
-    for (final candidate in [
-      if (Platform.isWindows) 'qa_engine.dll',
-      if (Platform.isLinux || Platform.isAndroid) 'libqa_engine.so',
-      if (Platform.isMacOS) 'libqa_engine.dylib',
-    ]) {
-      try {
-        return DynamicLibrary.open(candidate);
-      } on Object {
-        continue;
-      }
-    }
-    return null;
   }
 
   late final _supported = _library

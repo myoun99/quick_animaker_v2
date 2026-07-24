@@ -269,5 +269,48 @@ void main() {
         TimesheetDocumentLayout.cameraColumnWidth,
       );
     });
+
+    test('R27 #32: adding SE tracks NEVER lengthens the paper either — the '
+        'SE group keeps its fixed width and its columns narrow instead', () {
+      TimesheetDocument documentWithSeLayers(int count) {
+        return TimesheetDocument.fromCut(
+          cut: Cut(
+            id: const CutId('cut-se'),
+            name: 'Cut SE',
+            layers: [
+              for (var index = 0; index < count; index += 1)
+                Layer(
+                  id: LayerId('se-$index'),
+                  name: 'S${index + 1}',
+                  kind: LayerKind.se,
+                  frames: const [],
+                  timeline: const {},
+                ),
+            ],
+            duration: 48,
+            canvasSize: const CanvasSize(width: 1280, height: 720),
+          ),
+          projectName: 'Project',
+          fps: 24,
+        );
+      }
+
+      final base = TimesheetDocumentLayout(document: documentWithSeLayers(2));
+      final crowded = TimesheetDocumentLayout(
+        document: documentWithSeLayers(6),
+      );
+
+      // (Sub-picometre float drift from the 40/6 split, not a layout change.)
+      expect(crowded.paperWidth, moreOrLessEquals(base.paperWidth));
+      expect(crowded.halfWidth, moreOrLessEquals(base.halfWidth));
+      expect(
+        crowded.columnWidthFor(TimesheetColumnKind.se) * 6,
+        moreOrLessEquals(TimesheetDocumentLayout.seGroupWidth),
+      );
+      expect(
+        base.columnWidthFor(TimesheetColumnKind.se),
+        TimesheetDocumentLayout.seColumnWidth,
+      );
+    });
   });
 }

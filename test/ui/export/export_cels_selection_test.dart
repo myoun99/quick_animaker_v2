@@ -5,9 +5,8 @@ import 'package:quick_animaker_v2/src/models/cut.dart';
 import 'package:quick_animaker_v2/src/models/cut_id.dart';
 import 'package:quick_animaker_v2/src/models/export_overrides.dart';
 import 'package:quick_animaker_v2/src/models/export_spec.dart';
-import 'package:quick_animaker_v2/src/models/folder_id.dart';
-import 'package:quick_animaker_v2/src/models/layer.dart';
 import 'package:quick_animaker_v2/src/models/layer_folder.dart';
+import 'package:quick_animaker_v2/src/models/layer.dart';
 import 'package:quick_animaker_v2/src/models/layer_id.dart';
 import 'package:quick_animaker_v2/src/models/layer_kind.dart';
 import 'package:quick_animaker_v2/src/ui/export/export_cels_selection.dart';
@@ -31,16 +30,15 @@ void main() {
     onTimesheet: onTimesheet,
     attachedToLayerId: attachedTo == null ? null : LayerId(attachedTo),
     attachedMode: attachedMode,
-    folderId: folder == null ? null : FolderId(folder),
+    folderId: folder == null ? null : LayerId(folder),
   );
 
-  Cut cut(List<Layer> layers, {List<LayerFolder> folders = const []}) => Cut(
+  Cut cut(List<Layer> layers) => Cut(
     id: const CutId('cut'),
     name: 'CUT1',
     duration: 12,
     canvasSize: const CanvasSize(width: 8, height: 8),
     layers: layers,
-    folders: folders,
   );
 
   List<String> celIds(ExportCelsSelection selection) => [
@@ -118,26 +116,25 @@ void main() {
     final layers = [
       layer('a', folder: 'f'),
       layer('b', folder: 'f', onTimesheet: false),
+      createFolderLayer(id: const LayerId('f'), name: 'F'),
       layer('c'),
-    ];
-    final folders = [
-      LayerFolder(id: const FolderId('f'), name: 'F'),
     ];
     // Without expansion the timesheet filter drops b.
     expect(
       celIds(
         resolveExportCelsSelection(
-          cut: cut(layers, folders: folders),
+          cut: cut(layers),
           spec: const CelsExportSpec(onTimesheetOnly: true),
         ),
       ),
       ['a', 'c'],
+      reason: 'the folder ROW itself never exports a cel of its own',
     );
     // With expansion b rides its folder back in.
     expect(
       celIds(
         resolveExportCelsSelection(
-          cut: cut(layers, folders: folders),
+          cut: cut(layers),
           spec: const CelsExportSpec(
             onTimesheetOnly: true,
             includeFolderMembers: true,

@@ -7,6 +7,7 @@ import '../models/cut.dart';
 import '../models/cut_id.dart';
 import '../models/layer_id.dart';
 import '../models/transform_track.dart';
+import 'camera/camera_view_toggle_button.dart';
 import 'cut_command_group.dart';
 import 'editor_session_manager.dart';
 import 'playback/canvas_playback_controller.dart';
@@ -35,6 +36,7 @@ class StoryboardTabHost extends StatefulWidget {
     required this.showSeconds,
     required this.onShowSecondsChanged,
     required this.thumbnailFor,
+    this.cameraViewEnabled,
   });
 
   final EditorSessionManager session;
@@ -46,6 +48,11 @@ class StoryboardTabHost extends StatefulWidget {
   /// Build-time thumbnail resolver, owned above the tabs so the cache
   /// survives tab switches.
   final ui.Image? Function(Cut cut)? thumbnailFor;
+
+  /// R28 #1: the workspace's camera-view state. The storyboard's command
+  /// bar carries the same toggle the timeline's does — one notifier, so
+  /// the two entrances can never disagree. Null = no button.
+  final ValueNotifier<bool>? cameraViewEnabled;
 
   @override
   State<StoryboardTabHost> createState() => _StoryboardTabHostState();
@@ -316,6 +323,12 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
                     playbackStartFrame: () =>
                         storyboardPlayheadFrame(_session) ?? 0,
                     onSkipToStart: _seekPlayheadToTrackStart,
+                  ),
+                  // R28 #1: camera view is a VIEW MODE, so every panel
+                  // with a transport carries the toggle beside it.
+                  CameraViewToggleButton(
+                    enabled: widget.cameraViewEnabled,
+                    keyValue: 'storyboard-camera-view-button',
                   ),
                   const SizedBox(width: 8),
                   CutCommandGroup(session: _session),

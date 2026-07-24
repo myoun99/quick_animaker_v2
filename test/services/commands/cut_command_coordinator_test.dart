@@ -820,34 +820,29 @@ void main() {
         Cut cut() => _cutById(fixture.project, const CutId('cut-1'));
         Layer layerOf(String id) =>
             cut().layers.firstWhere((layer) => layer.id.value == id);
-        expect(cut().folders.single.id, folderId);
-        expect(cut().folders.single.name, 'Folder 1');
+        expect(cut().layers.folderLayers.single.id, folderId);
+        expect(cut().layers.folderLayers.single.name, 'Folder 1');
         expect(layerOf('base').folderId, folderId);
         expect(layerOf('color').folderId, folderId);
         expect(layerOf('unrelated').folderId, isNull);
-        expect(
-          folderStructureProblem(
-            folders: cut().folders,
-            layerFolderIdsInStackOrder: [
-              for (final layer in cut().layers) layer.folderId,
-            ],
-          ),
-          isNull,
-        );
+        // The folder ROW sits directly above its member run — the stack
+        // position the group buffer walks.
+        expect(folderStructureProblem(cut().layers), isNull);
 
         fixture.coordinator.dissolveFolder(
           cutId: const CutId('cut-1'),
           folderId: folderId,
         );
-        expect(cut().folders, isEmpty);
+        expect(cut().layers.folderLayers, isEmpty);
         expect(layerOf('base').folderId, isNull);
 
         fixture.historyManager.undo();
-        expect(cut().folders.single.id, folderId);
+        expect(cut().layers.folderLayers.single.id, folderId);
         expect(layerOf('base').folderId, folderId);
+        expect(folderStructureProblem(cut().layers), isNull);
 
         fixture.historyManager.undo();
-        expect(cut().folders, isEmpty);
+        expect(cut().layers.folderLayers, isEmpty);
         expect(layerOf('base').folderId, isNull);
       });
 
@@ -880,40 +875,46 @@ void main() {
         Cut linked() => _cutById(fixture.project, linkedCutId);
         Layer linkedBase() =>
             linked().layers.firstWhere((layer) => layer.name == 'base');
-        expect(origin().folders.single.id, folderId);
-        final mirrored = linked().folders.single;
+        expect(origin().layers.folderLayers.single.id, folderId);
+        final mirrored = linked().layers.folderLayers.single;
         expect(mirrored.id, isNot(folderId), reason: 'folder ids are per-cut');
         expect(mirrored.name, 'Folder 1');
         expect(linkedBase().folderId, mirrored.id,
             reason: 'the counterpart member sits in the mirrored folder');
+        expect(folderStructureProblem(linked().layers), isNull);
 
-        fixture.coordinator.renameFolder(
+        // Renaming a folder is renaming a LAYER — no folder-shaped command
+        // survives, and the mirror rides the folder rows' link group.
+        fixture.coordinator.renameLayer(
           cutId: const CutId('cut-1'),
-          folderId: folderId,
+          layerId: folderId,
           name: 'Cel A',
         );
-        expect(origin().folders.single.name, 'Cel A');
-        expect(linked().folders.single.name, 'Cel A');
+        expect(origin().layers.folderLayers.single.name, 'Cel A');
+        expect(linked().layers.folderLayers.single.name, 'Cel A');
         fixture.historyManager.undo();
-        expect(linked().folders.single.name, 'Folder 1');
+        expect(linked().layers.folderLayers.single.name, 'Folder 1');
         fixture.historyManager.redo();
 
         fixture.coordinator.dissolveFolder(
           cutId: const CutId('cut-1'),
           folderId: folderId,
         );
-        expect(origin().folders, isEmpty);
-        expect(linked().folders, isEmpty);
+        expect(origin().layers.folderLayers, isEmpty);
+        expect(linked().layers.folderLayers, isEmpty);
         expect(linkedBase().folderId, isNull);
 
         fixture.historyManager.undo();
-        expect(origin().folders.single.name, 'Cel A');
-        expect(linked().folders.single.name, 'Cel A');
-        expect(linkedBase().folderId, linked().folders.single.id);
+        expect(origin().layers.folderLayers.single.name, 'Cel A');
+        expect(linked().layers.folderLayers.single.name, 'Cel A');
+        expect(
+          linkedBase().folderId,
+          linked().layers.folderLayers.single.id,
+        );
       });
 
-      test('updateFolderTransformTrack replaces the folder FX track in one '
-          'undo (per-use — the 겸용 counterpart keeps its own)', () {
+      test('a folder FX track rides updateLayerTransformTrack in one undo '
+          '(per-use — the 겸용 counterpart keeps its own)', () {
         final fixture = _fixture(
           _project(
             tracks: [
@@ -940,14 +941,14 @@ void main() {
             0: TransformPose(center: CanvasPoint(x: 5, y: 5), zoom: 2),
           },
         );
-        fixture.coordinator.updateFolderTransformTrack(
+        fixture.coordinator.updateLayerTransformTrack(
           cutId: const CutId('cut-1'),
-          folderId: folderId,
+          layerId: folderId,
           transformTrack: track,
         );
 
-        LayerFolder folderOf(CutId cutId) =>
-            _cutById(fixture.project, cutId).folders.single;
+        Layer folderOf(CutId cutId) =>
+            _cutById(fixture.project, cutId).layers.folderLayers.single;
         expect(folderOf(const CutId('cut-1')).transformTrack, track);
         expect(
           folderOf(linkedCutId).transformTrack.isNotEmpty,
@@ -1565,7 +1566,8 @@ void main() {
       expect(fixture.historyManager.undoCount, 1);
     });
 
-    test('deleteCut plans replacement IDs when deleting the last cut', () {
+    test('R28 #14: deleting the LAST cut empties the track — no replacement '
+        'is conjured, and undo brings the real cut back', () {
       final onlyCut = _cut(
         id: 'cut-1',
         name: 'Only',
@@ -1582,11 +1584,18 @@ void main() {
 
       fixture.coordinator.deleteCut(cutId: onlyCut.id);
 
-      var cuts = fixture.cutsFor(const TrackId('track-1'));
-      expect(cuts, hasLength(1));
-      expect(cuts.single.id, const CutId('cut-2'));
-      expect(cuts.single.layers.first.id, const LayerId('layer-2'));
-      expect(fixture.editingSession.activeCutId, const CutId('cut-2'));
+      expect(
+        fixture.cutsFor(const TrackId('track-1')),
+        isEmpty,
+        reason: 'R28 #14: "컷도 1개도 없는 상황 허용" — a delete must actually '
+            'be able to clear the track',
+      );
+      expect(
+        fixture.editingSession.activeCutId,
+        isNull,
+        reason: 'the empty track is the no-active-cut state the editor '
+            'already shows over a storyboard gap',
+      );
       expect(fixture.historyManager.undoCount, 1);
 
       fixture.historyManager.undo();
@@ -1597,9 +1606,8 @@ void main() {
 
       fixture.historyManager.redo();
 
-      cuts = fixture.cutsFor(const TrackId('track-1'));
-      expect(cuts.single.id, const CutId('cut-2'));
-      expect(fixture.editingSession.activeCutId, const CutId('cut-2'));
+      expect(fixture.cutsFor(const TrackId('track-1')), isEmpty);
+      expect(fixture.editingSession.activeCutId, isNull);
     });
 
     test(
@@ -2155,7 +2163,8 @@ void main() {
       expect(copy.audioClips.single.filePath, 'voice.wav');
     });
 
-    test('deleteLayer keeps the SE, instruction and drawing floors', () {
+    test('R28 #14: deleteLayer keeps the SE and instruction floors, but the '
+        'DRAWING floor is gone — the action section may empty out', () {
       final cel = _layer(id: 'layer-1');
       final se1 = _layer(id: 'layer-2', kind: LayerKind.se);
       final se2 = _layer(id: 'layer-3', kind: LayerKind.se);
@@ -2185,11 +2194,24 @@ void main() {
       fixture.coordinator.deleteLayer(cutId: cutA.id, layerId: instruction.id);
       expect(fixture.historyManager.undoCount, 1);
 
-      // The last drawing-section layer does not delete even though SE and
-      // instruction rows remain.
+      // R28 #14: the LAST drawing-section layer DOES delete now — "액션
+      // 레이어가 1개도 없는상황 허용". The sheet fixtures (SE pair,
+      // instruction row) keep their floors; the action section does not.
       fixture.coordinator.deleteLayer(cutId: cutA.id, layerId: cel.id);
-      expect(fixture.historyManager.undoCount, 1);
-      expect(fixture.project.tracks.single.cuts.single.layers, hasLength(4));
+      expect(fixture.historyManager.undoCount, 2);
+      final remaining = fixture.project.tracks.single.cuts.single.layers;
+      expect(remaining, hasLength(3));
+      expect(
+        remaining.where((layer) => layer.kind == LayerKind.animation),
+        isEmpty,
+      );
+
+      // ...and it comes back.
+      fixture.historyManager.undo();
+      expect(
+        fixture.project.tracks.single.cuts.single.layers.map((l) => l.id),
+        contains(cel.id),
+      );
     });
 
     test('setLayerTimesheet flips the flag through history', () {

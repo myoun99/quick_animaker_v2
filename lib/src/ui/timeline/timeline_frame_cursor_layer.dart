@@ -45,6 +45,7 @@ class TimelineCursorLayer extends StatelessWidget {
     this.axis = Axis.horizontal,
     this.dragPreview,
     this.frameRangeSelection,
+    this.laneRangeSelection,
     this.windowBucket,
     this.viewportMainExtent = 0,
     this.selectedSemanticsKey = const ValueKey<String>(
@@ -58,6 +59,13 @@ class TimelineCursorLayer extends StatelessWidget {
   /// span over the selected layer's row — this layer repaints, the rows
   /// never rebuild for it (value-only channel, cursor-layer pattern).
   final ValueListenable<TimelineFrameRangeSelection?>? frameRangeSelection;
+
+  /// R27 #14: the LANE (fx/key) selection draws here too, with the very
+  /// same band as the cell selection. It used to be a flat accent
+  /// rectangle painted inside each lane band — a different silhouette,
+  /// a different colour, a different corner, for what is the same idea
+  /// ("다른 프레임셀선택이랑 완전동일화").
+  final ValueListenable<TimelineLaneSelection?>? laneRangeSelection;
 
   /// The session's edit-drag preview channel: while a comma drag targets
   /// the active layer, the selection visuals (the selected-exposure
@@ -124,6 +132,7 @@ class TimelineCursorLayer extends StatelessWidget {
         frameCursor,
         ?dragPreview,
         ?frameRangeSelection,
+        ?laneRangeSelection,
         ?windowBucket,
       ]),
       builder: (context, _) {
@@ -189,19 +198,73 @@ class TimelineCursorLayer extends StatelessWidget {
               label: 'selected frame range',
               container: true,
               child: DecoratedBox(
-                decoration: BoxDecoration(
-                  color: timelineSelectedFrameBorderColor.withValues(
-                    alpha: 0.18,
-                  ),
-                  border: Border.all(
-                    color: timelineSelectedFrameBorderColor,
-                    width: 2,
-                  ),
-                  borderRadius: const BorderRadius.all(Radius.circular(6)),
-                ),
+                decoration: timelineRangeSelectionBandDecoration,
               ),
             );
             final bandCross = rangeRowCount * metrics.layerRowHeight;
+            children.add(
+              horizontal
+                  ? Positioned(
+                      left: spanStart,
+                      top: rowOffset,
+                      width: spanEnd - spanStart,
+                      height: bandCross,
+                      child: band,
+                    )
+                  : Positioned(
+                      top: spanStart,
+                      left: rowOffset,
+                      height: spanEnd - spanStart,
+                      width: bandCross,
+                      child: band,
+                    ),
+            );
+          }
+        }
+
+        // R27 #14: the LANE (fx/key) selection — the SAME band, drawn by
+        // the same overlay across the spanned lane rows. Lane bands used
+        // to paint their own flat rectangle each, which is why a key span
+        // read as a different kind of selection than a cell span.
+        final laneRange = laneRangeSelection?.value;
+        if (laneRange != null &&
+            laneRange.endIndexExclusive > window.startIndex &&
+            laneRange.startIndex < window.endIndexExclusive) {
+          int? laneRowIndex;
+          var laneRowCount = 1;
+          for (var index = 0; index < rows.length; index += 1) {
+            final row = rows[index];
+            final lane = row.lane;
+            if (lane == null ||
+                !laneRange.coversLane(row.layer.id, lane.laneId)) {
+              continue;
+            }
+            laneRowIndex ??= index;
+            laneRowCount = index - laneRowIndex + 1;
+          }
+          if (laneRowIndex != null) {
+            final spanStart = frameVisibleX(
+              frameIndex: laneRange.startIndex,
+              frameStartIndex: frameStartIndex,
+              frameCellWidth: metrics.frameCellWidth,
+              leadingFrameSpacerWidth: leadingFrameSpacerWidth,
+            );
+            final spanEnd = frameVisibleX(
+              frameIndex: laneRange.endIndexExclusive,
+              frameStartIndex: frameStartIndex,
+              frameCellWidth: metrics.frameCellWidth,
+              leadingFrameSpacerWidth: leadingFrameSpacerWidth,
+            );
+            final rowOffset = laneRowIndex * metrics.layerRowHeight;
+            final bandCross = laneRowCount * metrics.layerRowHeight;
+            final band = Semantics(
+              key: const ValueKey<String>('timeline-lane-range-selection'),
+              label: 'selected lane range',
+              container: true,
+              child: DecoratedBox(
+                decoration: timelineRangeSelectionBandDecoration,
+              ),
+            );
             children.add(
               horizontal
                   ? Positioned(
@@ -229,9 +292,19 @@ class TimelineCursorLayer extends StatelessWidget {
         int? activeRowIndex;
         Layer? activeLayer;
         for (var index = 0; index < rows.length; index += 1) {
-          if (!rows[index].isLane && rows[index].layer.id == activeLayerId) {
+          final row = rows[index];
+          // R28 #12 used to need a FOLDER clause here: the header row
+          // carried its first member as a REPRESENTATIVE layer, so this
+          // search found the folder's row index first and the block
+          // outline drew one row too high. A folder row answers to its own
+          // id now, so only lanes (which share their layer's id) are
+          // skipped.
+          if (row.isLane) {
+            continue;
+          }
+          if (row.layer.id == activeLayerId) {
             activeRowIndex = index;
-            activeLayer = rows[index].layer;
+            activeLayer = row.layer;
             break;
           }
         }

@@ -8,6 +8,7 @@ import '../controllers/default_layer_helpers.dart';
 import '../models/app_language.dart';
 import '../services/persistence/app_language_settings_store.dart';
 import '../services/persistence/app_accent_settings_store.dart';
+import '../services/persistence/app_workspace_colors_store.dart';
 import '../services/persistence/app_input_settings_store.dart';
 import '../services/persistence/app_documents.dart' show appRecordingsDirectory;
 import '../services/persistence/app_save_settings.dart';
@@ -16,6 +17,7 @@ import '../services/persistence/audio_sync_settings_store.dart';
 import 'input/app_input_settings.dart';
 import 'theme/app_accents.dart';
 import 'theme/app_theme.dart' show AppColors;
+import 'theme/app_workspace_colors.dart';
 import '../controllers/editing_session_state.dart';
 import '../controllers/layer_controller.dart';
 import '../controllers/timeline_controller.dart';
@@ -35,7 +37,7 @@ import '../models/cut_camera.dart';
 import '../models/transform_track.dart';
 import '../models/cut_id.dart';
 import '../models/cut_metadata.dart';
-import '../models/folder_id.dart';
+import '../models/layer_folder.dart';
 import '../models/frame.dart';
 import '../models/frame_id.dart';
 import '../models/layer.dart';
@@ -130,6 +132,7 @@ import 'audio/audio_conform_store.dart';
 import 'brush/brush_canvas_panel.dart';
 import 'brush/brush_editor_selection.dart';
 import 'timeline/instruction_span_editing.dart';
+import 'timeline/layer_label_controls.dart' show layerKindShowsBlendControl;
 import 'timeline/layer_timeline_display_adapter.dart'
     show horizontalLayerDisplayOrder;
 import 'timeline/timeline_cell_exposure_state.dart';
@@ -170,6 +173,7 @@ class EditorSessionManager extends ChangeNotifier {
     AppInputSettingsStore? inputSettingsStore,
     AppSaveSettingsStore? saveSettingsStore,
     AudioSyncSettingsStore? audioSyncSettingsStore,
+    AppWorkspaceColorsStore? workspaceColorsStore,
   }) : _editingSession = EditingSessionState.forProject(initialProject),
        _injectedAudioConformStore = audioConformStore,
        _audioSyncSettingsStore = audioSyncSettingsStore,
@@ -177,9 +181,11 @@ class EditorSessionManager extends ChangeNotifier {
        _accentSettingsStore = accentSettingsStore,
        _inputSettingsStore = inputSettingsStore,
        _saveSettingsStore = saveSettingsStore,
+       _workspaceColorsStore = workspaceColorsStore,
        _repository = ProjectRepository(initialProject: initialProject) {
     unawaited(_restoreLanguageSettings());
     unawaited(_restoreAccentSettings());
+    unawaited(_restoreWorkspaceColors());
     unawaited(_restoreInputSettings());
     unawaited(_restoreSaveSettings());
     unawaited(_restoreAudioSyncSettings());
@@ -270,6 +276,35 @@ class EditorSessionManager extends ChangeNotifier {
     final store = _accentSettingsStore;
     if (store != null) {
       unawaited(store.save(settings));
+    }
+  }
+
+  // --- Workspace colors (R28 #9) --------------------------------------------
+
+  /// Injectable persistence; null (tests) keeps the in-memory defaults.
+  final AppWorkspaceColorsStore? _workspaceColorsStore;
+
+  /// The PASTEBOARD color is app state (the accents' idiom): it is the
+  /// working environment around the stage, never part of the artwork.
+  /// The canvas paper is the project's, through [setProjectBackground].
+  Future<void> _restoreWorkspaceColors() async {
+    final restored = await _workspaceColorsStore?.load();
+    if (restored != null) {
+      AppWorkspaceColors.settings.value = restored;
+    }
+  }
+
+  void setPasteboardColor(int argb) {
+    final next = AppWorkspaceColors.settings.value.copyWith(
+      pasteboardArgb: argb,
+    );
+    if (next == AppWorkspaceColors.settings.value) {
+      return;
+    }
+    AppWorkspaceColors.settings.value = next;
+    final store = _workspaceColorsStore;
+    if (store != null) {
+      unawaited(store.save(next));
     }
   }
 
@@ -1168,6 +1203,33 @@ class EditorSessionManager extends ChangeNotifier {
   int get activeCutPlaybackFrameCount =>
       math.max(1, activeCutOrNull?.duration ?? 1);
 
+  /// R27 #31: the cut an EXPORT anchors on. Parking the playhead in a gap
+  /// leaves no active cut, but that is a playhead position — not "no
+  /// film" — so the export window must still open (it used to throw
+  /// [requireActiveCut] straight through the dialog's build and take the
+  /// whole app down with it). Falls back to the first cut on the axis;
+  /// null only when the project genuinely has no cuts at all, which is
+  /// what disables the Export entry point.
+  Cut? get exportAnchorCutOrNull {
+    final active = activeCutOrNull;
+    if (active != null) {
+      return active;
+    }
+    for (final track in _repository.requireProject().tracks) {
+      if (track.cuts.isNotEmpty) {
+        return track.cuts.first;
+      }
+    }
+    return null;
+  }
+
+  /// Whether an export would run off [exportAnchorCutOrNull]'s FALLBACK
+  /// rather than a live selection — the window then defaults its scope to
+  /// the whole project instead of silently exporting a cut the user is
+  /// not standing on.
+  bool get exportAnchorIsFallback =>
+      activeCutOrNull == null && exportAnchorCutOrNull != null;
+
   /// The active cut, THROWING when none is selected (gap state) — every
   /// caller is a conscious decision that a cut must exist here (UI-R9 #3
   /// audit rename; reach for [activeCutOrNull] on read paths instead).
@@ -1335,37 +1397,34 @@ class EditorSessionManager extends ChangeNotifier {
 
   /// Whether [cut]'s camera layer sits in the fx-bypass set.
   bool _cameraFxBypassedFor(Cut cut) {
-    for (final layer in cut.layers) {
-      if (layer.kind == LayerKind.camera) {
-        return _fxBypassedLayerIds.contains(layer.id);
-      }
-    }
-    return false;
+    final camera = cut.layers.cameraLayer;
+    return camera != null && _fxBypassedLayerIds.contains(camera.id);
   }
 
-  /// The editing canvas's layer stack at the playhead: which non-active
-  /// layers composite below/above the interactive layer (bottom → top,
-  /// hidden/transparent/undrawn layers skipped) and the active layer's own
-  /// display opacity (0 while hidden; includes its animated Opacity). The
-  /// active layer's pose rides separately ([layerCanvasPoseSample]) into
-  /// the interactive view's draw-through wrap.
-  ({
-    List<CanvasLayerImageRequest> below,
-    List<CanvasLayerImageRequest> above,
-    double activeLayerOpacity,
-  })
+  /// The editing canvas's composite TREE at the playhead — the same tree
+  /// playback and export composite, with the ACTIVE layer standing in it
+  /// as a [CanvasActiveLayerNode] instead of a cached image.
+  ///
+  /// That node is the whole point: the stack used to be two flat lists
+  /// painted around the interactive view, so a folder's group buffer —
+  /// one `saveLayer` — could never span the layer you were drawing on.
+  /// Now one painter opens the buffer, draws the live surface inside it,
+  /// and closes it.
+  ///
+  /// [activeLayerOpacity] is the active row's display opacity (0 while
+  /// hidden; includes its animated Opacity); its pose rides separately
+  /// through [layerCanvasPoseSample] into the interactive draw-through
+  /// wrap, so it is repeated on the node for the merged painter.
+  ({List<CanvasLayerStackNode> nodes, double activeLayerOpacity})
   get editingCanvasStack {
     final cut = activeCutOrNull;
     final activeLayerId = this.activeLayerId;
-    final below = <CanvasLayerImageRequest>[];
-    final above = <CanvasLayerImageRequest>[];
-    var activeLayerOpacity = 1.0;
     if (cut == null) {
-      return (below: below, above: above, activeLayerOpacity: 1.0);
+      return (nodes: const <CanvasLayerStackNode>[], activeLayerOpacity: 1.0);
     }
 
     final frameIndex = _timelineController.currentFrameIndex;
-    var seenActiveLayer = false;
+    var activeLayerOpacity = 1.0;
     // Opacity drag preview (R4 #4/#6, DISPLAY only): the dragged rows'
     // static opacity substitutes in before the shared visit, so the canvas
     // follows the drag without any repo write per move.
@@ -1375,52 +1434,94 @@ class EditorSessionManager extends ChangeNotifier {
         : [
             for (final layer in source)
               preview.layerIds.contains(layer.id) &&
-                      layer.kind != LayerKind.camera
+                      layerKindHasPictureOpacity(layer.kind)
                   ? layer.copyWith(opacity: preview.opacity)
                   : layer,
           ];
     final stackCut = preview == null
         ? cut
         : cut.copyWith(layers: withOpacityPreview(cut.layers));
-    // The CUT layers ride the shared composite visit (skip rules, fx
-    // sharing and the W5 attach-layer expansion agree with playback by
-    // construction); the split around the active layer happens here.
-    final entryByLayerId = {
-      for (final entry in resolveCutFrameCompositeEntries(
+
+    // The CUT layers ride the shared composite TREE (skip rules, fx
+    // sharing, the W5 attach-layer expansion AND the group buffers agree
+    // with playback by construction).
+    CanvasLayerStackNode? mapNode(CutFrameCompositeEntryNode node) {
+      switch (node) {
+        case CutFrameCompositeEntryGroup(
+          :final children,
+          :final opacity,
+          :final blendMode,
+        ):
+          final mapped = <CanvasLayerStackNode>[
+            for (final child in children) ?mapNode(child),
+          ];
+          if (mapped.isEmpty) {
+            return null;
+          }
+          return CanvasLayerGroupNode(
+            children: List.unmodifiable(mapped),
+            opacity: opacity,
+            blendMode: blendMode,
+          );
+        case CutFrameCompositeEntryLeaf(:final entry):
+          // A brush-banned active layer (SE/instruction, R6-④) has no
+          // interactive surface — it composites like any other stack row
+          // so its existing cels keep displaying read-only.
+          if (entry.layer.id == activeLayerId &&
+              layerKindAcceptsBrushInput(entry.layer.kind)) {
+            activeLayerOpacity = !entry.layer.isVisible
+                ? 0.0
+                : _stackLayerOpacity(entry.layer, stackCut.layers, frameIndex);
+            return CanvasActiveLayerNode(
+              opacity: entry.opacity,
+              pose: entry.pose,
+              anchorPoint: entry.anchorPoint,
+            );
+          }
+          return CanvasLayerImageNode(
+            CanvasLayerImageRequest(
+              frameKey: brushFrameKeyForCut(
+                cut,
+                entry.layer.id,
+                entry.frame.id,
+              ),
+              opacity: entry.opacity,
+              blendMode: entry.blendMode,
+              pose: entry.pose,
+              anchorPoint: entry.anchorPoint,
+            ),
+          );
+      }
+    }
+
+    final nodes = <CanvasLayerStackNode>[
+      for (final node in resolveCutFrameCompositeTree(
         cut: stackCut,
         frameIndex: frameIndex,
         fxBypassedLayerIds: fxBypassedLayerIds,
       ))
-        entry.layer.id: entry,
-    };
-    for (final layer in stackCut.layers) {
-      // A brush-banned active layer (SE/instruction, R6-④) has no
-      // interactive surface — it composites like any other stack layer so
-      // its existing cels keep displaying read-only.
-      if (layer.id == activeLayerId && layerKindAcceptsBrushInput(layer.kind)) {
-        seenActiveLayer = true;
-        activeLayerOpacity = !layer.isVisible
-            ? 0.0
-            : _stackLayerOpacity(layer, stackCut.layers, frameIndex);
-        continue;
-      }
-      final entry = entryByLayerId[layer.id];
-      if (entry == null) {
-        continue;
-      }
-      (seenActiveLayer ? above : below).add(
-        CanvasLayerImageRequest(
-          frameKey: brushFrameKeyForCut(cut, entry.layer.id, entry.frame.id),
-          opacity: entry.opacity,
-          blendMode: entry.blendMode,
-          pose: entry.pose,
-          anchorPoint: entry.anchorPoint,
-        ),
-      );
+        ?mapNode(node),
+    ];
+
+    // An ACTIVE layer with nothing exposed at this frame resolves no entry
+    // at all, so the walk above never reaches it. It still needs its node:
+    // the interactive surface is where the next stroke lands.
+    if (activeLayerId != null &&
+        !_treeHoldsActiveLayer(nodes) &&
+        layerKindAcceptsBrushInput(
+          stackCut.layers.byId(activeLayerId)?.kind ?? LayerKind.camera,
+        )) {
+      final active = stackCut.layers.byId(activeLayerId)!;
+      activeLayerOpacity = !active.isVisible
+          ? 0.0
+          : _stackLayerOpacity(active, stackCut.layers, frameIndex);
+      nodes.add(CanvasActiveLayerNode(opacity: activeLayerOpacity));
     }
+
     // Track-owned SE rows join as their cut-local display clones — they
     // composite read-only like before the ownership move (their transform
-    // tracks are stripped, so the plain resolve path suffices).
+    // tracks are stripped, so the plain resolve path suffices). They live
+    // outside the cut's stack, so they land at the top level.
     for (final layer in withOpacityPreview(trackSeDisplayLayers)) {
       final fxEnabled = isLayerFxEnabled(layer.id);
       if (!layer.isVisible || layer.opacity <= 0) {
@@ -1436,16 +1537,37 @@ class EditorSessionManager extends ChangeNotifier {
       if (frame == null) {
         continue;
       }
-      (seenActiveLayer ? above : below).add(
-        CanvasLayerImageRequest(
-          frameKey: brushFrameKeyForCut(cut, layer.id, frame.id),
-          opacity: opacity,
-          pose: null,
-          anchorPoint: null,
+      nodes.add(
+        CanvasLayerImageNode(
+          CanvasLayerImageRequest(
+            frameKey: brushFrameKeyForCut(cut, layer.id, frame.id),
+            opacity: opacity,
+            pose: null,
+            anchorPoint: null,
+          ),
         ),
       );
     }
-    return (below: below, above: above, activeLayerOpacity: activeLayerOpacity);
+    return (
+      nodes: List.unmodifiable(nodes),
+      activeLayerOpacity: activeLayerOpacity,
+    );
+  }
+
+  static bool _treeHoldsActiveLayer(List<CanvasLayerStackNode> nodes) {
+    for (final node in nodes) {
+      switch (node) {
+        case CanvasActiveLayerNode():
+          return true;
+        case CanvasLayerGroupNode(:final children):
+          if (_treeHoldsActiveLayer(children)) {
+            return true;
+          }
+        case CanvasLayerImageNode():
+          break;
+      }
+    }
+    return false;
   }
 
   /// The display opacity the editing stack (and the interactive view's
@@ -2053,17 +2175,17 @@ class EditorSessionManager extends ChangeNotifier {
       LayerKind.se => activeTrack.seLayers.length > 2,
       LayerKind.instruction =>
         layers.where((layer) => layer.kind == LayerKind.instruction).length > 1,
-      // Keep at least one drawing-section layer in the cut.
-      LayerKind.animation || LayerKind.storyboard || LayerKind.art =>
-        layers
-                .where(
-                  (layer) =>
-                      !isAttachedLayer(layer) &&
-                      timelineSectionForLayerKind(layer.kind) ==
-                          TimelineSection.drawing,
-                )
-                .length >=
-            2,
+      // R28 #14: NO drawing floor. The action section may stand empty —
+      // the last action layer is deletable ("액션 레이어가 1개도 없는상황
+      // 허용"). The global track is the thing that has to exist, not any
+      // particular row inside a cut, and every drawing path already
+      // handles "no editable cel" (that is the R26 #35 refusal notice).
+      // A folder row deletes by DISSOLVING (the coordinator routes it) —
+      // its members are rows of their own and survive.
+      LayerKind.animation ||
+      LayerKind.storyboard ||
+      LayerKind.art ||
+      LayerKind.folder => true,
     };
   }
 
@@ -2080,7 +2202,7 @@ class EditorSessionManager extends ChangeNotifier {
     }
     final frameIndex = _timelineController.currentFrameIndex;
     for (final layer in cut.layers) {
-      if (layer.kind == LayerKind.camera || !layer.isVisible) {
+      if (!layerKindPaintsArtwork(layer.kind) || !layer.isVisible) {
         continue;
       }
       final frame = _timelineController.resolveFrameForLayer(
@@ -2159,8 +2281,7 @@ class EditorSessionManager extends ChangeNotifier {
     // cut-owned SE shape; stands down for now. Attach rows stand down too
     // (their cel links point into THIS cut's base).
     if (activeLayer == null ||
-        activeLayer.kind == LayerKind.camera ||
-        activeLayer.kind == LayerKind.se ||
+        !layerKindIsClipboardCopyable(activeLayer.kind) ||
         isAttachedLayer(activeLayer)) {
       return;
     }
@@ -2203,8 +2324,7 @@ class EditorSessionManager extends ChangeNotifier {
     // reason as copyActiveLayer); attach rows too (v1 — a duplicate would
     // double-link the same base cels).
     if (activeLayer == null ||
-        activeLayer.kind == LayerKind.camera ||
-        activeLayer.kind == LayerKind.se ||
+        !layerKindIsClipboardCopyable(activeLayer.kind) ||
         isAttachedLayer(activeLayer)) {
       return;
     }
@@ -2238,8 +2358,7 @@ class EditorSessionManager extends ChangeNotifier {
     // Same stand-downs as plain duplication; an attach row's LINK
     // duplicate is reached through its base (the group goes whole).
     return activeLayer != null &&
-        activeLayer.kind != LayerKind.camera &&
-        activeLayer.kind != LayerKind.se &&
+        layerKindIsClipboardCopyable(activeLayer.kind) &&
         !isAttachedLayer(activeLayer);
   }
 
@@ -2432,14 +2551,17 @@ class EditorSessionManager extends ChangeNotifier {
     if (activeLayer == null) {
       return;
     }
+    renameLayer(activeLayer.id, name);
+  }
 
-    final activeLayerId = activeLayer.id;
+  /// Renames any row by id — folders included, because a folder is a row.
+  void renameLayer(LayerId layerId, String name) {
     _cutCommandCoordinator.renameLayer(
       cutId: requireActiveCut.id,
-      layerId: activeLayerId,
+      layerId: layerId,
       name: name,
     );
-    _refreshAfterCutCommand(preferredActiveLayerId: activeLayerId);
+    _refreshAfterCutCommand(preferredActiveLayerId: layerId);
     notifyListeners();
   }
 
@@ -2523,6 +2645,10 @@ class EditorSessionManager extends ChangeNotifier {
         }
         _layerController.addLayerWithDefaults(layerId: layerId, kind: kind);
       case LayerKind.camera:
+      // Folders are MADE, not added: 폴더 생성 wraps existing rows
+      // ([groupActiveLayerIntoFolder]). Add Layer with a folder row active
+      // adds a drawing cel, like it does with the camera active.
+      case LayerKind.folder:
         _layerController.addLayerWithDefaults(layerId: layerId);
     }
     notifyListeners();
@@ -2629,13 +2755,19 @@ class EditorSessionManager extends ChangeNotifier {
     }
   }
 
-  // --- Folders (L5) ---------------------------------------------------------
+  // --- Folders ---------------------------------------------------------------
+  //
+  // A folder is a LAYER. Everything a folder does that a layer already does
+  // — select, rename, eye, static opacity, blend, fx switch, FX lanes,
+  // mark, delete — rides the layer API above; the nine folder-shaped
+  // methods that used to live here are gone. What is left is the two
+  // structural verbs (make one, take one apart) and the twirl.
 
   bool get canGroupActiveLayerIntoFolder =>
       activeLayer != null && activeLayer!.kind == LayerKind.animation;
 
   /// 폴더 생성: folds the active layer's whole attach group into a new
-  /// folder (mirrors into 겸용 cuts through the coordinator).
+  /// folder row (mirrors into 겸용 cuts through the coordinator).
   void groupActiveLayerIntoFolder() {
     if (!canGroupActiveLayerIntoFolder) {
       return;
@@ -2649,7 +2781,7 @@ class EditorSessionManager extends ChangeNotifier {
     notifyListeners();
   }
 
-  void dissolveFolder(FolderId folderId) {
+  void dissolveFolder(LayerId folderId) {
     final cutId = _editingSession.activeCutId;
     if (cutId == null) {
       return;
@@ -2659,69 +2791,26 @@ class EditorSessionManager extends ChangeNotifier {
     notifyListeners();
   }
 
-  void renameFolder(FolderId folderId, String name) {
-    final cutId = _editingSession.activeCutId;
-    if (cutId == null) {
+  /// The row's twirl. R27 #24: FOLDING a folder that holds the active
+  /// layer moves the selection to the folder row itself — otherwise the
+  /// fold simply wouldn't look folded (the member row would have to stay
+  /// on screen to keep something selected).
+  void toggleLayerCollapsed(LayerId layerId) {
+    final cut = activeCutOrNull;
+    if (cut == null) {
       return;
     }
-    _cutCommandCoordinator.renameFolder(
-      cutId: cutId,
-      folderId: folderId,
-      name: name,
-    );
-    _refreshAfterCutCommand();
-    notifyListeners();
-  }
-
-  void toggleFolderVisibility(FolderId folderId) {
-    final cutId = _editingSession.activeCutId;
-    if (cutId == null) {
-      return;
+    final wasCollapsed = cut.layers.folderById(layerId)?.collapsed ?? false;
+    _layerController.toggleLayerCollapsed(layerId);
+    final activeId = activeLayerId;
+    if (!wasCollapsed &&
+        activeId != null &&
+        cut.layers.isInsideFolder(
+          cut.layers.byId(activeId)?.folderId,
+          layerId,
+        )) {
+      _layerController.selectLayer(layerId);
     }
-    _layerController.toggleFolderVisibility(cutId: cutId, folderId: folderId);
-    notifyListeners();
-  }
-
-  void setFolderOpacity(FolderId folderId, double opacity) {
-    final cutId = _editingSession.activeCutId;
-    if (cutId == null) {
-      return;
-    }
-    _layerController.setFolderOpacity(
-      cutId: cutId,
-      folderId: folderId,
-      opacity: opacity,
-    );
-    notifyListeners();
-  }
-
-  void toggleFolderCollapsed(FolderId folderId) {
-    final cutId = _editingSession.activeCutId;
-    if (cutId == null) {
-      return;
-    }
-    _layerController.toggleFolderCollapsed(cutId: cutId, folderId: folderId);
-    notifyListeners();
-  }
-
-  /// Replaces a folder's FX transform track (L5c) — one undo step;
-  /// per-use lanes, never mirrored.
-  void updateFolderTransformTrack(
-    FolderId folderId,
-    TransformTrack transformTrack, {
-    String description = 'Edit folder transform',
-  }) {
-    final cutId = _editingSession.activeCutId;
-    if (cutId == null) {
-      return;
-    }
-    _cutCommandCoordinator.updateFolderTransformTrack(
-      cutId: cutId,
-      folderId: folderId,
-      transformTrack: transformTrack,
-      description: description,
-    );
-    _refreshAfterCutCommand();
     notifyListeners();
   }
 
@@ -2814,12 +2903,32 @@ class EditorSessionManager extends ChangeNotifier {
     lastMasterOpacity = clamped;
     for (final layer in layers) {
       if (layerIds.contains(layer.id) &&
-          layer.kind != LayerKind.camera &&
+          layerKindHasPictureOpacity(layer.kind) &&
           layer.opacity != clamped) {
         _layerController.setLayerOpacity(layerId: layer.id, opacity: clamped);
       }
     }
     notifyListeners();
+  }
+
+  /// R27 #6: the legend's BLEND bulk — the master opacity bar's rule for
+  /// the mode. Only rows that actually composite take it (the camera and
+  /// the sound/instruction rows have no blend), and only rows that would
+  /// change are written, so a no-op pick costs nothing.
+  void setBlendModeForLayers(Set<LayerId> layerIds, LayerBlendMode mode) {
+    var changed = false;
+    for (final layer in layers) {
+      if (!layerIds.contains(layer.id) ||
+          !layerKindShowsBlendControl(layer.kind) ||
+          layer.blendMode == mode) {
+        continue;
+      }
+      _layerController.setLayerBlendMode(layerId: layer.id, blendMode: mode);
+      changed = true;
+    }
+    if (changed) {
+      notifyListeners();
+    }
   }
 
   /// Filter-set hook (UI-R6 #3): when the active layer fails [passes], the
@@ -2950,12 +3059,12 @@ class EditorSessionManager extends ChangeNotifier {
   /// opacity — it stays untouched.
   void resetAllLayersOpacity() => setAllLayersOpacity(1.0);
 
-  /// Sets every non-camera layer's opacity to [opacity] (the legend's
+  /// Sets every picture-opacity layer's opacity to [opacity] (the legend's
   /// numeric bulk set). Camera stays untouched (its slider is the dim).
   void setAllLayersOpacity(double opacity) {
     final clamped = opacity.clamp(0.0, 1.0);
     for (final layer in layers) {
-      if (layer.kind != LayerKind.camera && layer.opacity != clamped) {
+      if (layerKindHasPictureOpacity(layer.kind) && layer.opacity != clamped) {
         _layerController.setLayerOpacity(layerId: layer.id, opacity: clamped);
       }
     }
@@ -4790,6 +4899,7 @@ class EditorSessionManager extends ChangeNotifier {
       LayerKind.se => 'SE Layer',
       LayerKind.instruction => 'Instruction Layer',
       LayerKind.camera => 'Camera Layer',
+      LayerKind.folder => 'Folder',
       null => 'No Layer',
     };
   }
@@ -6659,6 +6769,12 @@ class EditorSessionManager extends ChangeNotifier {
   /// step leaves the last valid plan in place (UI-R23 #10).
   MultiRowRangeMovePlan? _rangeMoveMultiRowPlan;
 
+  /// R27 #8: the row the move drag GRABBED — the hop origin. The
+  /// selection's anchor row is a different thing (selecting upward makes
+  /// them differ), and using it made "this block lands on that row" come
+  /// out shifted by however far the two were apart.
+  LayerId? _rangeMoveGrabLayerId;
+
   /// KEY sources riding the range move (P3b-2, #2 second half): the
   /// camera row's keyframe snapshot and the spanned instruction rows —
   /// their keys shift with the same delta the blocks slide.
@@ -6706,11 +6822,15 @@ class EditorSessionManager extends ChangeNotifier {
   /// selected blocks slide together along the frame axis, one composite
   /// undo on release. Row-changing drops stay single-layer (the kind
   /// guard would make partial rect drops ambiguous).
-  bool beginFrameRangeMoveDrag() {
+  /// [grabLayerId] = the row the pointer went down on (R27 #8); null falls
+  /// back to the selection's anchor row (the callers that have no pointer,
+  /// e.g. tests of a single-row move).
+  bool beginFrameRangeMoveDrag([LayerId? grabLayerId]) {
     final selection = frameRangeSelection.value;
     if (selection == null || !_rangeSelectionEligible(selection.layerId)) {
       return false;
     }
+    _rangeMoveGrabLayerId = grabLayerId ?? selection.layerId;
     _rangeMoveMultiSources = null;
     _rangeMoveMultiPlans = null;
     _rangeMoveMultiRowPlan = null;
@@ -6948,6 +7068,87 @@ class EditorSessionManager extends ChangeNotifier {
     ];
   }
 
+  /// R27 #8: EVERY row the timeline shows, in the order it shows them —
+  /// drawing rows, SE rows (track clones included) and the camera /
+  /// instruction rows alike.
+  ///
+  /// A range move's row hop is a fact about what the POINTER did on
+  /// screen; deriving it from one content lattice (the old behaviour)
+  /// made the hop uncomputable whenever the drag was anchored on a row
+  /// that lattice does not contain — a camera or instruction row — and
+  /// the whole multi-row move silently died even though the selected
+  /// blocks had a perfectly legal home. Each moving row translates this
+  /// display hop into its own lattice below.
+  List<Layer> _rangeRowOrder() => sectionedLayerOrder(layers);
+
+  /// The display-row hop from [anchorId] to [targetId]; null when either
+  /// row is not on screen.
+  int? _displayRowDelta(
+    List<Layer> rows,
+    LayerId anchorId,
+    LayerId targetId,
+  ) {
+    final anchorIndex = rows.indexWhere((layer) => layer.id == anchorId);
+    final targetIndex = rows.indexWhere((layer) => layer.id == targetId);
+    if (anchorIndex == -1 || targetIndex == -1) {
+      return null;
+    }
+    return targetIndex - anchorIndex;
+  }
+
+  /// What [displayDelta] means INSIDE [lattice] for the row [layerId]:
+  /// walk the display rows by the hop, then read where the row it landed
+  /// on sits in the lattice. Null when the hop leaves the screen or lands
+  /// on a row this kind of content cannot live on.
+  int? _latticeHopFor({
+    required List<Layer> rows,
+    required List<Layer> lattice,
+    required LayerId layerId,
+    required int displayDelta,
+  }) {
+    final rowIndex = rows.indexWhere((layer) => layer.id == layerId);
+    if (rowIndex == -1) {
+      return null;
+    }
+    final landingIndex = rowIndex + displayDelta;
+    if (landingIndex < 0 || landingIndex >= rows.length) {
+      return null;
+    }
+    final landingId = rows[landingIndex].id;
+    final from = lattice.indexWhere((layer) => layer.id == layerId);
+    final to = lattice.indexWhere((layer) => layer.id == landingId);
+    if (from == -1 || to == -1) {
+      return null;
+    }
+    return to - from;
+  }
+
+  /// The one lattice hop every content-bearing row in [ids] agrees on.
+  /// `blocked` when a row cannot land, or when two rows would need
+  /// different hops (the rigid move is all-or-nothing); a null `delta`
+  /// with `blocked: false` means nothing in this lattice is moving.
+  ({bool blocked, int? delta}) _agreedLatticeHop({
+    required List<Layer> rows,
+    required List<Layer> lattice,
+    required List<LayerId> ids,
+    required int displayDelta,
+  }) {
+    int? shared;
+    for (final id in ids) {
+      final hop = _latticeHopFor(
+        rows: rows,
+        lattice: lattice,
+        layerId: id,
+        displayDelta: displayDelta,
+      );
+      if (hop == null || (shared != null && shared != hop)) {
+        return (blocked: true, delta: null);
+      }
+      shared = hop;
+    }
+    return (blocked: false, delta: shared);
+  }
+
   /// A MULTI-ROW range move step (UI-R23 #9): a multi-layer DRAWING
   /// selection dragged onto a different row shifts every selected row
   /// rigidly by the same row + frame delta. Returns true when it OWNS the
@@ -6974,12 +7175,26 @@ class EditorSessionManager extends ChangeNotifier {
           block.startIndex < selection.endIndexExclusive &&
           block.endIndexExclusive > selection.startIndex,
     );
-    // R26 #2: track-SE rows in the span are PASSENGERS of the rigid move —
-    // they shift the same row delta inside the SE lattice instead of
-    // vetoing the whole step.
+    // R27 #8: sort the span by what each row can DO with the hop. Drawing
+    // rows and track-SE rows travel across their own lattice; the camera
+    // and instruction rows have no row axis to travel, so their keys ride
+    // the FRAME delta and stay put. Empty rows contribute nothing at all.
+    //
+    // The old code made a key-carrying camera/instruction row veto the
+    // whole move ("keys ride the frame axis only" → `return false`). That
+    // is the "임시처방" the user called out: selecting a CAM row next to a
+    // sound block made the sound unmovable, even though its landing row
+    // was empty. A row that cannot change rows now simply doesn't.
+    final drawingSourceIds = <LayerId>[];
     final sePassengerIds = <LayerId>[];
+    var cameraRides = false;
+    final instructionRiders = <Layer>[];
     for (final id in selection.spanLayerIds) {
       if (_blockMoveEligible(id)) {
+        final layer = _layerById(id);
+        if (layer != null && carriesBlockInRange(layer)) {
+          drawingSourceIds.add(id);
+        }
         continue;
       }
       if (isTrackSeLayerId(id)) {
@@ -6989,8 +7204,6 @@ class EditorSessionManager extends ChangeNotifier {
         }
         continue;
       }
-      // An INELIGIBLE row may ride along only while it contributes
-      // nothing — content on it routes the whole step to the frame slide.
       final layer = _layerById(id);
       if (layer == null) {
         continue;
@@ -6998,52 +7211,70 @@ class EditorSessionManager extends ChangeNotifier {
       if (layer.kind == LayerKind.camera) {
         final keyframes = activeCutOrNull?.camera.keyframes;
         if (keyframes != null && anyKeyIn(keyframes.keys)) {
-          return false;
+          cameraRides = true;
         }
         continue;
       }
-      if (layer.kind == LayerKind.instruction &&
-          anyKeyIn(layer.instructions.keys)) {
-        return false;
+      if (layer.kind == LayerKind.instruction) {
+        if (anyKeyIn(layer.instructions.keys)) {
+          instructionRiders.add(layer);
+        }
+        continue;
       }
+      // A row that is neither move-eligible nor a known frame-axis rider
+      // (a SYNCED attach row) still routes the step to the plain slide
+      // when it carries content: its timing belongs to its base.
       if (carriesBlockInRange(layer)) {
         return false;
       }
     }
     final lattice = _blockMoveLattice();
     final seLattice = activeTrack.seLayers;
-    int? rowDeltaWithin(List<Layer> rows) {
-      final anchorIndex = rows.indexWhere((l) => l.id == selection.layerId);
-      final targetIndex = rows.indexWhere((l) => l.id == targetLayerId);
-      if (anchorIndex == -1 || targetIndex == -1) {
-        return null;
-      }
-      return targetIndex - anchorIndex;
+    final rows = _rangeRowOrder();
+    final displayDelta = _displayRowDelta(
+      rows,
+      _rangeMoveGrabLayerId ?? selection.layerId,
+      targetLayerId,
+    );
+    if (displayDelta == null) {
+      // The pointer left the rows entirely. When something in the span
+      // CAN travel, HOLD the last valid preview (UI-R23 #10); otherwise
+      // the plain slide owns the step.
+      return drawingSourceIds.isNotEmpty || sePassengerIds.isNotEmpty;
     }
-
-    final rowDelta = rowDeltaWithin(lattice) ?? rowDeltaWithin(seLattice);
-    if (rowDelta == null) {
-      // Anchor and pointer share no lattice. When the anchor row IS
-      // movable the pointer merely wandered off — HOLD the last valid
-      // preview (UI-R23 #10); otherwise the plain slide owns the step.
-      final anchorMovable =
-          lattice.any((l) => l.id == selection.layerId) ||
-          seLattice.any((l) => l.id == selection.layerId);
-      return anchorMovable;
-    }
-    if (rowDelta == 0) {
+    if (displayDelta == 0) {
       // No row change this step — the plain frame slide owns it.
       return false;
     }
-    final drawingCarriesContent = selection.spanLayerIds.any((id) {
-      if (!_blockMoveEligible(id)) {
-        return false;
-      }
-      final layer = _layerById(id);
-      return layer != null && carriesBlockInRange(layer);
-    });
+    final drawingHop = _agreedLatticeHop(
+      rows: rows,
+      lattice: lattice,
+      ids: drawingSourceIds,
+      displayDelta: displayDelta,
+    );
+    final seHop = _agreedLatticeHop(
+      rows: rows,
+      lattice: seLattice,
+      ids: sePassengerIds,
+      displayDelta: displayDelta,
+    );
+    if (drawingHop.blocked || seHop.blocked) {
+      // A content-bearing row has nowhere to land (or two rows would need
+      // different hops): all-or-nothing, HOLD the last valid preview.
+      return true;
+    }
+    // A hop of 0 alongside a non-zero one would tear the rigid move apart
+    // — the slide owns those steps instead.
+    final rowDelta = drawingHop.delta ?? seHop.delta;
+    if (rowDelta == null || rowDelta == 0) {
+      return false;
+    }
+    if ((drawingHop.delta ?? rowDelta) != rowDelta ||
+        (seHop.delta ?? rowDelta) != rowDelta) {
+      return false;
+    }
     MultiRowRangeMovePlan? plan;
-    if (drawingCarriesContent) {
+    if (drawingSourceIds.isNotEmpty) {
       plan = planMultiRowRangeMove(
         orderedLayers: lattice,
         sourceLayerIds: selection.spanLayerIds,
@@ -7072,15 +7303,44 @@ class EditorSessionManager extends ChangeNotifier {
     if (plan == null && sePlans.isEmpty) {
       return false; // Nothing to carry — the plain slide owns the step.
     }
+    // R27 #8: the frame-axis riders shift with the same frame delta. A
+    // rider that cannot shift voids the move like any other passenger.
+    Map<int, CameraPose>? cameraShifted;
+    if (cameraRides) {
+      cameraShifted = shiftCameraKeysInRange(
+        keyframes: activeCutOrNull?.camera.keyframes ?? const {},
+        rangeStartIndex: selection.startIndex,
+        rangeEndIndexExclusive: selection.endIndexExclusive,
+        frameDelta: frameDelta,
+      );
+      if (cameraShifted == null) {
+        return true;
+      }
+    }
+    final instructionShifted = <LayerId, Map<int, InstructionEvent>>{};
+    for (final layer in instructionRiders) {
+      final shifted = shiftInstructionEventsInRange(
+        events: layer.instructions,
+        rangeStartIndex: selection.startIndex,
+        rangeEndIndexExclusive: selection.endIndexExclusive,
+        frameDelta: frameDelta,
+      );
+      if (shifted == null) {
+        return true;
+      }
+      instructionShifted[layer.id] = shifted;
+    }
     // A valid rigid landing supersedes the slide / row-change plans.
     _rangeMoveMultiRowPlan = plan;
     _rangeMoveMultiSeRowChanges = sePlans.isEmpty ? null : sePlans;
     _rangeMoveMultiPlans = null;
     _rangeMoveSeRowChange = null;
     _rangeMoveInstructionRowChange = null;
-    _rangeMoveCameraShifted = null;
-    _rangeMoveInstructionShifted = null;
-    _cameraKeysDragPreview = null;
+    _rangeMoveCameraShifted = cameraShifted;
+    _rangeMoveInstructionShifted = instructionShifted.isEmpty
+        ? null
+        : instructionShifted;
+    _cameraKeysDragPreview = cameraShifted;
     dragPreview.value = BlockMoveDragPreview(
       previewLayers: {
         if (plan != null)
@@ -7093,7 +7353,19 @@ class EditorSessionManager extends ChangeNotifier {
           se.sourceId: trackSeWindow.displayLayer(se.sourceAfter),
           se.targetId: trackSeWindow.displayLayer(se.targetAfter),
         },
+        // R27 #8: the frame-axis riders preview their shifted spans in
+        // place (the cells row renders straight off layer.instructions).
+        for (final entry in instructionShifted.entries)
+          if (_layerById(entry.key) != null)
+            entry.key: _layerById(
+              entry.key,
+            )!.copyWith(instructions: entry.value),
       },
+      cameraCutId: cameraShifted == null ? null : activeCutOrNull?.id,
+      cameraKeyframes: cameraShifted,
+      cameraMarkerLayer: cameraShifted == null || _rangeMoveCameraLayerId == null
+          ? null
+          : _layerById(_rangeMoveCameraLayerId!),
     );
     // The outline rides the rigid shift to the target rows (rows that
     // carried nothing — off the lattice or shifted off it — drop out of
@@ -7181,6 +7453,33 @@ class EditorSessionManager extends ChangeNotifier {
     return plans;
   }
 
+  /// R28 #5: returns the drag preview to the block's REAL position.
+  ///
+  /// `planDrawingRangeMove` answers null for two different questions —
+  /// "impossible" and "no movement" (frameDelta 0, or a landing back on
+  /// the group's own start). The drag step read every null as blocked and
+  /// so HELD the last valid preview (UI-R23 #10, which is right for a
+  /// blocked landing). A drag that went right and came back therefore
+  /// froze one step out and refused to reach home: "더 이상 왼쪽으로 이동이
+  /// 안먹혀버리고 그 자리에서 멈춰버린다". Zero delta is not a blocked
+  /// landing — it is the origin, and the preview must show it.
+  void _resetRangeMovePreviewToOrigin() {
+    _rangeMovePlan = null;
+    _rangeMoveMultiPlans = null;
+    _rangeMoveSeRowChange = null;
+    _rangeMoveInstructionRowChange = null;
+    _rangeMoveMultiRowPlan = null;
+    _rangeMoveMultiSeRowChanges = null;
+    _rangeMoveCameraShifted = null;
+    _rangeMoveInstructionShifted = null;
+    _cameraKeysDragPreview = null;
+    dragPreview.value = null;
+    final selection = _rangeMoveSelectionBefore;
+    if (selection != null) {
+      frameRangeSelection.value = selection;
+    }
+  }
+
   /// A range-move drag step: live preview on [dragPreview] (repository
   /// untouched), the selection outline riding the previewed landing.
   void updateFrameRangeMoveDrag({
@@ -7189,6 +7488,17 @@ class EditorSessionManager extends ChangeNotifier {
   }) {
     final selection = _rangeMoveSelectionBefore;
     final multiSources = _rangeMoveMultiSources;
+    // R28 #5: back at the start = the origin, not a refusal. A row change
+    // still owns the step (a delta-0 drop onto a sibling row is a real
+    // move), so only same-row zero deltas reset.
+    if (selection != null &&
+        frameDelta == 0 &&
+        (targetLayerId == null ||
+            targetLayerId == selection.layerId ||
+            targetLayerId == _rangeMoveGrabLayerId)) {
+      _resetRangeMovePreviewToOrigin();
+      return;
+    }
     if (selection != null && multiSources != null) {
       // ROW-CHANGE drops within the SE / camera sections (P3b-4, 같은
       // 섹션 행이동): a single-row track-SE selection may land on a
@@ -7401,6 +7711,7 @@ class EditorSessionManager extends ChangeNotifier {
     final landedSelection = frameRangeSelection.value;
     _rangeMoveSourceBefore = null;
     _rangeMoveSelectionBefore = null;
+    _rangeMoveGrabLayerId = null;
     _rangeMoveGroupStart = null;
     _rangeMovePlan = null;
     _rangeMoveMultiSources = null;
@@ -7518,6 +7829,31 @@ class EditorSessionManager extends ChangeNotifier {
             repository: _repository,
             before: before,
             after: after,
+          ),
+        );
+      }
+      // R27 #8: the frame-axis riders (camera keys, instruction spans)
+      // land in the SAME undo step as the rigid row move.
+      if (cut != null && instructionShifted != null) {
+        for (final entry in instructionShifted.entries) {
+          commands.add(
+            UpdateLayerInstructionsCommand(
+              repository: _repository,
+              cutId: cut.id,
+              layerId: entry.key,
+              instructions: entry.value,
+              description: 'Move instruction keys',
+            ),
+          );
+        }
+      }
+      if (cut != null && cameraShifted != null) {
+        commands.add(
+          UpdateCutCameraCommand(
+            repository: _repository,
+            cutId: cut.id,
+            camera: CutCamera(keyframes: cameraShifted),
+            description: 'Move camera keys',
           ),
         );
       }
@@ -7668,6 +8004,7 @@ class EditorSessionManager extends ChangeNotifier {
     final selection = _rangeMoveSelectionBefore;
     _rangeMoveSourceBefore = null;
     _rangeMoveSelectionBefore = null;
+    _rangeMoveGrabLayerId = null;
     _rangeMoveGroupStart = null;
     _rangeMovePlan = null;
     _rangeMoveMultiSources = null;

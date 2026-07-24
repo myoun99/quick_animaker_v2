@@ -943,7 +943,7 @@ void main() {
               find.byKey(const ValueKey<String>('storyboard-cut-total-cut-b')),
             )
             .data,
-        '48f',
+        '48',
       );
 
       await _pumpStoryboardPanel(

@@ -657,9 +657,7 @@ class TimelineRowCellsPainter extends CustomPainter {
 /// (the dense drawing rows); the sparse kinds (SE / instruction / camera)
 /// keep the per-cell widget renderer with its overlays.
 bool timelineRowUsesCellsPainter(LayerKind kind) =>
-    layerKindHoldsDrawings(kind) &&
-    !layerKindUsesSeSheetCells(kind) &&
-    kind != LayerKind.camera;
+    layerKindHoldsDrawings(kind) && !layerKindUsesSeSheetCells(kind);
 
 /// The painted cell strip + its row-level interaction, shared by the
 /// horizontal row and the X-sheet column (Axis policy):

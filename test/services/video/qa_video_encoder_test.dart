@@ -4,6 +4,7 @@ import 'dart:ui' as ui;
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:quick_animaker_v2/src/models/project_frame_rate.dart';
+import 'package:quick_animaker_v2/src/native/qa_engine_abi.dart';
 import 'package:quick_animaker_v2/src/native/qa_video_encoder.dart';
 import 'package:quick_animaker_v2/src/services/audio/conform_wav_codec.dart';
 import 'package:quick_animaker_v2/src/ui/export/video_export_service.dart';
@@ -27,14 +28,14 @@ void main() {
 
   setUp(() async {
     QaVideoEncoder.debugResetForTests();
-    QaVideoEncoder.debugLibraryPathOverride = libraryPath;
+    debugQaEngineLibraryPathOverride = libraryPath;
     directory = await Directory.systemTemp.createTemp('qa-video-enc-test');
   });
 
   tearDown(() async {
     QaVideoEncoder.instance?.abort();
     QaVideoEncoder.debugResetForTests();
-    QaVideoEncoder.debugLibraryPathOverride = null;
+    debugQaEngineLibraryPathOverride = null;
     await directory.delete(recursive: true);
   });
 

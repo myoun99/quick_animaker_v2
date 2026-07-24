@@ -1,3 +1,4 @@
+import 'package:flutter/gestures.dart' show PointerDeviceKind;
 import 'package:flutter/material.dart';
 
 import '../input/app_input_settings.dart' show AppInput;
@@ -7,14 +8,92 @@ import '../../models/timeline_coverage.dart';
 import 'timeline_cell_style.dart';
 import 'timeline_exposure_comma_drag_policy.dart';
 
-/// One comma-drag grip: an inset vertical bar just inside a drawing
-/// block's start or end edge. Every block shows both grips (TVPaint-style
-/// comma adjustment), in both orientations via [axis].
+/// The drag hooks a grip needs once its identity is already bound by the
+/// caller (R28 #3). The timeline binds layer + block, the storyboard binds
+/// the cut — below this line the two are the same grip.
+class BlockEdgeGripHooks {
+  const BlockEdgeGripHooks({
+    required this.onBegin,
+    required this.onUpdate,
+    required this.onEnd,
+    required this.onCancel,
+  });
+
+  /// Returns whether the drag may start (e.g. the block still exists).
+  final bool Function() onBegin;
+
+  /// Reports the cumulative whole-frame delta since drag start.
+  final ValueChanged<int> onUpdate;
+  final VoidCallback onEnd;
+  final VoidCallback onCancel;
+}
+
+/// The ONE block-edge grip (R28 #3): an inset bar just inside a block's
+/// start or end edge, with the whole hover/drag state machine.
 ///
-/// Dragging reports the CUMULATIVE whole-frame delta since drag start
-/// through [callbacks]; the session recomputes the preview from its
-/// drag-start snapshot, so the grip needs no per-step accounting.
-class TimelineBlockEdgeGrip extends StatefulWidget {
+/// Both surfaces mount THIS — the timeline through [TimelineBlockEdgeGrip]
+/// and the storyboard through its cut-trim binder. The storyboard used to
+/// carry a private copy that had drifted (no hover state at all), which is
+/// exactly the split the user called out; a change to the grip's feel now
+/// lands in both places by construction.
+///
+/// Dragging reports the CUMULATIVE whole-frame delta since drag start; the
+/// session recomputes the preview from its drag-start snapshot, so the grip
+/// needs no per-step accounting.
+class BlockEdgeGrip extends StatefulWidget {
+  const BlockEdgeGrip({
+    super.key,
+    required this.positionedKey,
+    required this.edge,
+    required this.blockStartOffset,
+    required this.blockEndOffset,
+    required this.frameCellExtent,
+    required this.crossAxisExtent,
+    required this.hitExtent,
+    required this.hooks,
+    this.axis = Axis.horizontal,
+    this.supportedDevices,
+  });
+
+  /// Key for the emitted [Positioned] — the Stack child identity. It stays
+  /// on the Positioned (not on this widget) so existing finders and the
+  /// mid-drag remount rules are untouched.
+  final Key positionedKey;
+
+  final TimelineBlockEdge edge;
+
+  /// Main-axis pixel offsets of the block's edges within the row/column
+  /// content (leading spacer included).
+  final double blockStartOffset;
+  final double blockEndOffset;
+
+  /// Main-axis extent of one frame cell (cell width in the horizontal
+  /// timeline, frame row height in the X-sheet).
+  final double frameCellExtent;
+
+  /// Cross-axis extent of the row (row height / column width).
+  final double crossAxisExtent;
+
+  /// Main-axis extent of the pointer-target strip.
+  final double hitExtent;
+
+  final BlockEdgeGripHooks hooks;
+
+  /// The frame axis direction; geometry and gesture transpose with it.
+  final Axis axis;
+
+  /// Null = every device operates the grip (the storyboard track, which
+  /// has no competing touch scroll).
+  final Set<PointerDeviceKind>? supportedDevices;
+
+  @override
+  State<BlockEdgeGrip> createState() => _BlockEdgeGripState();
+}
+
+/// One comma-drag grip on a TIMELINE block: binds the layer/block identity
+/// onto the shared [BlockEdgeGrip]. Every block shows both grips
+/// (TVPaint-style comma adjustment), in both orientations via [axis].
+class TimelineBlockEdgeGrip extends StatelessWidget {
   const TimelineBlockEdgeGrip({
     super.key,
     required this.layerId,
@@ -71,21 +150,47 @@ class TimelineBlockEdgeGrip extends StatefulWidget {
   static const double _barThickness = 3.5;
   static const double _barInset = 2.5;
 
+  /// R28 #3: the bar's cross-axis length as a fraction of the row — a
+  /// CONSTANT. Hover and drag change the bar's color, never its size.
+  static const double _barLengthFactor = 0.55;
+
   @override
-  State<TimelineBlockEdgeGrip> createState() => _TimelineBlockEdgeGripState();
+  Widget build(BuildContext context) {
+    return BlockEdgeGrip(
+      positionedKey: ValueKey<String>(
+        'timeline-block-edge-grip-${edge.name}-$layerId-$blockOrdinal',
+      ),
+      edge: edge,
+      blockStartOffset: blockStartOffset,
+      blockEndOffset: blockEndOffset,
+      frameCellExtent: frameCellExtent,
+      crossAxisExtent: crossAxisExtent,
+      hitExtent: effectiveHitExtent,
+      axis: axis,
+      // Drag-only grip: touch follows the timeline input policy (UI-R22F —
+      // when touch scrolls the timeline, a finger pan starting on a grip
+      // must scroll too, not comma-drag).
+      supportedDevices: AppInput.timelineEditPanDevices,
+      hooks: BlockEdgeGripHooks(
+        onBegin: () => callbacks.onBegin(layerId, blockStartIndex, edge),
+        onUpdate: callbacks.onUpdate,
+        onEnd: callbacks.onEnd,
+        onCancel: callbacks.onCancel,
+      ),
+    );
+  }
 }
 
-class _TimelineBlockEdgeGripState extends State<TimelineBlockEdgeGrip> {
+class _BlockEdgeGripState extends State<BlockEdgeGrip> {
   double _accumulatedDelta = 0;
   int _lastReportedFrames = 0;
   bool _dragging = false;
 
+  /// R27 #11: pointer resting on the grip — lights the bar.
+  bool _hovered = false;
+
   void _startDrag() {
-    final accepted = widget.callbacks.onBegin(
-      widget.layerId,
-      widget.blockStartIndex,
-      widget.edge,
-    );
+    final accepted = widget.hooks.onBegin();
     if (!accepted) {
       return;
     }
@@ -109,7 +214,7 @@ class _TimelineBlockEdgeGripState extends State<TimelineBlockEdgeGrip> {
       return;
     }
     _lastReportedFrames = frames;
-    widget.callbacks.onUpdate(frames);
+    widget.hooks.onUpdate(frames);
   }
 
   void _endDrag() {
@@ -117,7 +222,7 @@ class _TimelineBlockEdgeGripState extends State<TimelineBlockEdgeGrip> {
       return;
     }
     setState(() => _dragging = false);
-    widget.callbacks.onEnd();
+    widget.hooks.onEnd();
   }
 
   void _cancelDrag() {
@@ -125,7 +230,7 @@ class _TimelineBlockEdgeGripState extends State<TimelineBlockEdgeGrip> {
       return;
     }
     setState(() => _dragging = false);
-    widget.callbacks.onCancel();
+    widget.hooks.onCancel();
   }
 
   @override
@@ -134,7 +239,7 @@ class _TimelineBlockEdgeGripState extends State<TimelineBlockEdgeGrip> {
     // keeps the preview and the pointer-up never arrives here, so end the
     // drag as committed rather than leaking an open session.
     if (_dragging) {
-      widget.callbacks.onEnd();
+      widget.hooks.onEnd();
     }
     super.dispose();
   }
@@ -145,15 +250,26 @@ class _TimelineBlockEdgeGripState extends State<TimelineBlockEdgeGrip> {
     final isStartEdge = widget.edge == TimelineBlockEdge.start;
     final hitStart = isStartEdge
         ? widget.blockStartOffset
-        : widget.blockEndOffset - widget.effectiveHitExtent;
-    final barLength = widget.crossAxisExtent * 0.55;
+        : widget.blockEndOffset - widget.hitExtent;
+    // R28 #3: the grip's GEOMETRY is constant — only its color reacts.
+    // R27 #11 had a hover fatten the bar (longer and thicker), and the
+    // size change read as the block itself resizing under the pointer.
+    // State is carried by ink alone now: quiet at rest, full on hover,
+    // accent while dragging. (Both surfaces mount this one widget, so
+    // the timeline and the storyboard get the same feedback.)
+    final barLength =
+        widget.crossAxisExtent * TimelineBlockEdgeGrip._barLengthFactor;
     final barColor = _dragging
         ? timelineSelectedFrameBorderColor
+        : _hovered
+        ? timelineDrawingInkColor.withValues(alpha: 0.95)
         : timelineDrawingInkColor.withValues(alpha: 0.38);
+    const barThickness = TimelineBlockEdgeGrip._barThickness;
+    const barInset = TimelineBlockEdgeGrip._barInset;
 
     final bar = Container(
-      width: horizontal ? TimelineBlockEdgeGrip._barThickness : barLength,
-      height: horizontal ? barLength : TimelineBlockEdgeGrip._barThickness,
+      width: horizontal ? barThickness : barLength,
+      height: horizontal ? barLength : barThickness,
       decoration: BoxDecoration(
         color: barColor,
         borderRadius: BorderRadius.circular(2),
@@ -164,12 +280,11 @@ class _TimelineBlockEdgeGripState extends State<TimelineBlockEdgeGrip> {
       cursor: horizontal
           ? SystemMouseCursors.resizeColumn
           : SystemMouseCursors.resizeRow,
+      onEnter: (_) => setState(() => _hovered = true),
+      onExit: (_) => setState(() => _hovered = false),
       child: GestureDetector(
         behavior: HitTestBehavior.opaque,
-        // Drag-only grip: touch follows the timeline input policy
-        // (UI-R22F — when touch scrolls the timeline, a finger pan
-        // starting on a grip must scroll too, not comma-drag).
-        supportedDevices: AppInput.timelineEditPanDevices,
+        supportedDevices: widget.supportedDevices,
         onHorizontalDragStart: horizontal ? (_) => _startDrag() : null,
         onHorizontalDragUpdate: horizontal
             ? (details) => _updateDrag(details.delta.dx)
@@ -189,18 +304,10 @@ class _TimelineBlockEdgeGripState extends State<TimelineBlockEdgeGrip> {
               : (isStartEdge ? Alignment.topCenter : Alignment.bottomCenter),
           child: Padding(
             padding: EdgeInsets.only(
-              left: horizontal && isStartEdge
-                  ? TimelineBlockEdgeGrip._barInset
-                  : 0,
-              right: horizontal && !isStartEdge
-                  ? TimelineBlockEdgeGrip._barInset
-                  : 0,
-              top: !horizontal && isStartEdge
-                  ? TimelineBlockEdgeGrip._barInset
-                  : 0,
-              bottom: !horizontal && !isStartEdge
-                  ? TimelineBlockEdgeGrip._barInset
-                  : 0,
+              left: horizontal && isStartEdge ? barInset : 0,
+              right: horizontal && !isStartEdge ? barInset : 0,
+              top: !horizontal && isStartEdge ? barInset : 0,
+              bottom: !horizontal && !isStartEdge ? barInset : 0,
             ),
             child: bar,
           ),
@@ -208,25 +315,21 @@ class _TimelineBlockEdgeGripState extends State<TimelineBlockEdgeGrip> {
       ),
     );
 
-    final key = ValueKey<String>(
-      'timeline-block-edge-grip-${widget.edge.name}-'
-      '${widget.layerId}-${widget.blockOrdinal}',
-    );
     if (horizontal) {
       return Positioned(
-        key: key,
+        key: widget.positionedKey,
         left: hitStart,
         top: 0,
-        width: widget.effectiveHitExtent,
+        width: widget.hitExtent,
         height: widget.crossAxisExtent,
         child: grip,
       );
     }
     return Positioned(
-      key: key,
+      key: widget.positionedKey,
       top: hitStart,
       left: 0,
-      height: widget.effectiveHitExtent,
+      height: widget.hitExtent,
       width: widget.crossAxisExtent,
       child: grip,
     );

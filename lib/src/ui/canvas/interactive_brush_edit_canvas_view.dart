@@ -29,9 +29,12 @@ import '../../services/brush_live_stroke_rasterizer.dart';
 import '../../services/brush_stroke_dynamics.dart';
 import '../../services/brush_tip_stamp_cache.dart';
 import '../../services/brush_pressure_dynamics.dart';
+import '../../services/brush_stroke_blend.dart'
+    show applySelectionMaskToStrokeAlpha;
 import '../../services/brush_stroke_commit_data.dart';
 import '../../native/qa_native_engine.dart';
 import '../../services/canvas_segment_clipper.dart';
+import '../../services/canvas_selection_region.dart';
 import '../../services/stroke_stabilizer.dart';
 import 'active_stroke_overlay.dart';
 import 'bitmap_tile_image_cache.dart';
@@ -111,6 +114,9 @@ class InteractiveBrushEditCanvasView extends StatefulWidget {
     this.onTemporaryToolRelease,
     this.onInvokeAction,
     this.fillDabAt,
+    this.selectionRegion,
+    this.overlayModel,
+    this.paintsContent = true,
     CanvasViewport? viewport,
   }) : viewport = viewport ?? CanvasViewport();
 
@@ -148,6 +154,28 @@ class InteractiveBrushEditCanvasView extends StatefulWidget {
   /// until the committed tiles decode (the settling contract) — no more
   /// tile-by-tile reveal on big fills.
   final BrushDab? Function(CanvasPoint point, int color)? fillDabAt;
+
+  /// R26 #18: the live selection region (canvas coordinates). Non-null
+  /// confines the stroke to it — the region goes to the RASTERIZER, which
+  /// masks the accumulated stroke's alpha inside the pre-blend kernel, so
+  /// the tiles the user sees and the tiles pen-up promotes are already
+  /// clipped. (It used to be a painter clipPath over the overlay; that
+  /// showed the right thing but cost the whole-coordinate replacement
+  /// path — a clipped overlay cannot own a coordinate — so every selected
+  /// stroke fell back to a per-frame isolation layer.)
+  final CanvasSelectionRegion? selectionRegion;
+
+  /// The live-stroke overlay. HOST-OWNED when non-null, which is what lets
+  /// the editing canvas draw the active layer inside its composite tree: a
+  /// folder's group buffer is one `saveLayer`, so the layer being drawn on
+  /// has to be paintable by the same painter that opened it. Null keeps
+  /// the view's own model (standalone hosts, tests).
+  final ActiveStrokeOverlayModel? overlayModel;
+
+  /// Whether this view PAINTS. False leaves it input-only — the merged
+  /// stack painter draws the surface + overlay in tree order instead.
+  /// Input is untouched either way: the Listener is this widget's.
+  final bool paintsContent;
 
   /// Zoom/pan applied to the canvas display and input mapping. Viewport
   /// GESTURES (middle-drag pan, wheel zoom) live on the panel's
@@ -230,7 +258,17 @@ class _InteractiveBrushEditCanvasViewState
   /// tiles; decode completions repaint the canvas painter directly through
   /// this model — no widget rebuild per move, and the pixels on screen are
   /// the pixels the commit will keep.
-  final ActiveStrokeOverlayModel _overlayModel = ActiveStrokeOverlayModel();
+  ///
+  /// OWNED here only when the host does not supply one. A host that draws
+  /// the active layer inside its own composite tree owns it instead (see
+  /// [InteractiveBrushEditCanvasView.overlayModel]) — the stroke path
+  /// below is identical either way, it just writes into a model somebody
+  /// else can also paint from.
+  late final ActiveStrokeOverlayModel _ownedOverlayModel =
+      ActiveStrokeOverlayModel();
+
+  ActiveStrokeOverlayModel get _overlayModel =>
+      widget.overlayModel ?? _ownedOverlayModel;
 
   BrushLiveStrokeRasterizer? _liveRasterizer;
 
@@ -315,12 +353,14 @@ class _InteractiveBrushEditCanvasViewState
   void dispose() {
     BitmapTileImageCache.instance.removeListener(_onTileImagesChanged);
     _settlingFallbackTimer?.cancel();
-    _overlayModel.dispose();
+    // Only OUR model — a host-owned one outlives this view (it survives
+    // the layer switches that rebuild us).
+    if (widget.overlayModel == null) {
+      _ownedOverlayModel.dispose();
+    } else {
+      _overlayModel.reset();
+    }
     _liveRasterizer?.clear(); // Native tiles back to the engine (R21).
-    // A pending pen-up commit at dispose (app teardown mid-frame): the
-    // native tiles still return to the engine's free list.
-    _pendingPenUp?.rasterizer?.clear();
-    _pendingPenUp = null;
     // R26 #5: a view disposed mid-touch never sees its pointer-up — its
     // contacts must leave the app-wide census or ink stays blocked.
     CanvasTouchContacts.removeAll(_activeTouchPointers);
@@ -354,19 +394,29 @@ class _InteractiveBrushEditCanvasViewState
             onPointerUp: _handlePointerUp,
             onPointerCancel: _handlePointerCancel,
             onPointerHover: _handlePointerHover,
-            child: ClipRect(
-              key: const ValueKey<String>('interactive-brush-edit-canvas-clip'),
-              // The viewport transform is applied inside the painter (not by
-              // a Transform widget) so the canvas rasterizes at final device
-              // resolution in one picture — pixel-stable at fractional zoom.
-              child: BrushEditCanvasView(
-                sessionState: widget.sessionState,
-                viewport: widget.viewport,
-                showTransparentBackground: widget.showTransparentBackground,
-                overlayModel: _overlayModel,
-                staleScope: (widget.layerId, widget.frameId),
-              ),
-            ),
+            // paintsContent false: the merged stack painter draws this
+            // surface in TREE order (inside whatever folder buffer holds
+            // it) — this view stays for input alone. The listener above is
+            // untouched, so the stroke path is identical.
+            child: widget.paintsContent
+                ? ClipRect(
+                    key: const ValueKey<String>(
+                      'interactive-brush-edit-canvas-clip',
+                    ),
+                    // The viewport transform is applied inside the painter
+                    // (not by a Transform widget) so the canvas rasterizes
+                    // at final device resolution in one picture —
+                    // pixel-stable at fractional zoom.
+                    child: BrushEditCanvasView(
+                      sessionState: widget.sessionState,
+                      viewport: widget.viewport,
+                      showTransparentBackground:
+                          widget.showTransparentBackground,
+                      overlayModel: _overlayModel,
+                      staleScope: (widget.layerId, widget.frameId),
+                    ),
+                  )
+                : const SizedBox.expand(),
           ),
         );
       },
@@ -374,11 +424,9 @@ class _InteractiveBrushEditCanvasViewState
   }
 
   void _handlePointerDown(PointerDownEvent event) {
-    // R25-④: a previous stroke's DEFERRED commit still one frame away —
-    // land it before any new input state, so strokes can never
-    // interleave or get lost (the rare fast-restroke pays the old
-    // synchronous cost).
-    _flushPendingStrokeCommit();
+    // (No deferred stroke commit to land first: pen-up commits inside its
+    // own event now — R25-④'s one-frame deferral existed to hide a
+    // synchronous re-materialize that the promotion round deleted.)
     if (event.kind == PointerDeviceKind.touch) {
       // PEN-12 #4: a finger draws exactly when the ONE-FINGER touch slot
       // says draw (the old control/draw mode collapsed into the slot);
@@ -535,15 +583,18 @@ class _InteractiveBrushEditCanvasViewState
         : null;
     _touchStrokeCommitted = false;
     // The stroke's settings snapshot — every downstream dab reads it, so
-    // the mapped-eraser substitution here flips the WHOLE stroke.
+    // the mapped-eraser substitution here flips the WHOLE stroke. The
+    // substitution forces the BLEND to erase too (R27 #4 in passing): the
+    // eraser tool locks its mode, but this path kept the brush's — a
+    // mapped-erase press with a separable brush blend would have taken
+    // the commit's blend branch and PAINTED instead of erasing.
     final strokeSettings = mappedErase
-        ? widget.inputSettings.copyWith(erase: true)
+        ? widget.inputSettings.copyWith(
+            erase: true,
+            blendMode: BrushBlendMode.erase,
+          )
         : widget.inputSettings;
     _activeStrokeInputSettings = strokeSettings;
-    // The overlay must display in the stroke's blend mode (paint vs erase)
-    // from the first dab through settling.
-    _overlayModel.erase = strokeSettings.erase;
-    _overlayModel.blendMode = strokeSettings.blendMode;
     _currentPressure = _normalizedPressure(event);
     widget.onActiveStrokeChanged?.call(true);
     _nextSequence = 0;
@@ -561,6 +612,24 @@ class _InteractiveBrushEditCanvasViewState
     _lastDirectionDegrees = null;
     _previousBaseDab = null;
     _resetOverlay();
+    // Overlay stroke configuration AFTER the reset — reset() clears
+    // preBlendBase, so setting it earlier silently disabled the whole
+    // pre-blend pipeline for real pointer strokes (the R27 #4 ordering
+    // bug: every parity test staged the model manually and never caught
+    // it). The overlay must display in the stroke's blend mode from the
+    // first dab.
+    final strokeSurface = widget.sessionState.canvasState.currentSurface;
+    _overlayModel.configureTileSize(strokeSurface.tileSize);
+    _overlayModel.erase = strokeSettings.erase;
+    _overlayModel.blendMode = strokeSettings.blendMode;
+    // R27 #4: EVERY stroke pre-blends its live tiles with the commit's
+    // own kernels against the cel as it stands (user rule 07-23: ONE
+    // display pipeline for all modes — color included). The GPU never
+    // computes a pixel of the stroke composite, so pen-up cannot move a
+    // byte in any mode. Revert switch if stroke feel regresses on
+    // device: gate this on `blendMode != color` to give plain strokes
+    // their classic stroke-only GPU-srcOver overlay back.
+    _overlayModel.preBlendBase = strokeSurface;
     _collectedDabs.clear();
     _prepareLiveRasterizer();
     if (!startsInsidePasteboard) {
@@ -593,6 +662,12 @@ class _InteractiveBrushEditCanvasViewState
   }
 
   void _handlePointerMove(PointerMoveEvent event) {
+    // R27 #17: a mapped button can also rise DURING contact — some pen
+    // drivers report the barrel bit a moment after the tip lands rather
+    // than on the down event, and the hover edge above never sees it
+    // then. Only picked up while nothing is drawing yet, so a live
+    // stroke is never hijacked mid-line.
+    _handleMappedButtonRiseDuringContact(event);
     // A held eyedropper mapping picks LIVE along the whole drag (PEN-7a:
     // '누르는 동안 해당 색을 뽑는다').
     if (event.pointer == _mappedHoldPointer && _mappedHoldIsEyedropper) {
@@ -737,6 +812,7 @@ class _InteractiveBrushEditCanvasViewState
   }
 
   void _handlePointerUp(PointerUpEvent event) {
+    _lastContactButtons.remove(event.pointer);
     _forgetTouchPointer(event.pointer);
     _releaseMappedHold(event.pointer);
     if (event.pointer != _activeDrawingPointer) {
@@ -753,90 +829,103 @@ class _InteractiveBrushEditCanvasViewState
 
     final hadDabs = _collectedDabs.isNotEmpty;
     if (hadDabs) {
-      // The commit reads the rasterizer's pixels/bounds — blend any dabs
-      // still waiting on the per-frame flush first.
+      // The commit reads the rasterizer's tiles — blend any dabs still
+      // waiting on the per-frame flush first.
       _flushPendingOverlayDabs();
-      final rasterizer = _liveRasterizer;
-      // The settling check below watches exactly the tiles this stroke
-      // touched; unrelated tiles must not gate the overlay handoff.
-      _settlingBounds = rasterizer?.strokeBounds;
-      // Pin the PRE-stroke tiles (the surface is still pre-commit here) so
-      // the painter never mixes freshly decoded post-commit tiles with the
-      // still-visible overlay — that mix flashed the stroke at double
-      // density in tile-shaped patches during settling.
-      _overlayModel.holdPreStrokeTiles(
-        preStrokeHoldTiles(
-          surface: widget.sessionState.canvasState.currentSurface,
-          bounds: _settlingBounds,
-        ),
-      );
-      // R25-④: the commit DEFERS one frame past pen-up (the synchronous
-      // materialize was the reported stroke-END hitch). The rasterizer
-      // DETACHES here — the next stroke builds a fresh one, so the
-      // deferred commit's pixel source can never be reset under it; a
-      // new pointer-down (or a frame/layer switch, or dispose) flushes
-      // synchronously first, so a stroke can never be lost.
-      // BB-1: the stroke's blend rides the pen-up payload — captured
-      // from the stroke's settings SNAPSHOT, so a mid-flush tool change
-      // can never flip a committed stroke's mode.
-      _pendingPenUp = (
-        dabs: List.of(_collectedDabs),
-        rasterizer: rasterizer,
-        blendMode: (_activeStrokeInputSettings ?? widget.inputSettings)
-            .blendMode,
-      );
-      _liveRasterizer = null;
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        _flushPendingStrokeCommit();
-      });
-      SchedulerBinding.instance.ensureVisualUpdate();
+      _commitStroke();
     }
 
-    // Keep the overlay visible until the committed tiles decode so the
-    // stroke never flashes away during the switch to the materialized
-    // bitmap; the input bookkeeping is cleared immediately (settling
-    // starts inside the deferred flush, AFTER the commit — checking the
-    // pre-commit surface would release the overlay instantly).
     _endStrokeInput();
     if (!hadDabs) {
       _resetOverlay();
     }
   }
 
-  ({
-    List<BrushDab> dabs,
-    BrushLiveStrokeRasterizer? rasterizer,
-    BrushBlendMode blendMode,
-  })?
-  _pendingPenUp;
-
-  void _flushPendingStrokeCommit({
-    void Function(BrushStrokeCommitData data)? commit,
-  }) {
-    final pending = _pendingPenUp;
-    if (pending == null) {
+  /// PROMOTION pen-up: the stroke is ALREADY blended into finished tiles
+  /// (that is what has been on screen the whole time), so committing is
+  /// installing them — no re-blend of the whole stroke, no re-decode, no
+  /// "settling" window while a second decode lands.
+  ///
+  /// The order is what makes it invisible: promote the tiles, hand each
+  /// one the overlay image that shows exactly its pixels, commit, then
+  /// drop the overlay — all inside this one pointer event, so the very
+  /// next frame paints committed tiles that already have their pictures.
+  /// (The old route deferred a synchronous materialize by one frame and
+  /// pinned the pre-stroke tiles until every post-commit decode landed;
+  /// both existed only because commit re-derived what the screen already
+  /// had.)
+  void _commitStroke() {
+    final rasterizer = _liveRasterizer;
+    final base = _overlayModel.preBlendBase;
+    final blendMode = (_activeStrokeInputSettings ?? widget.inputSettings)
+        .blendMode;
+    final erase = _overlayModel.erase;
+    _liveRasterizer = null;
+    if (rasterizer == null) {
       return;
     }
-    _pendingPenUp = null;
-    if (!mounted && commit == null) {
-      pending.rasterizer?.clear();
-      return;
+    final promotable = base != null && base.tileSize == rasterizer.tileSize;
+    final promoted = promotable
+        ? rasterizer.promoteStrokeTiles(
+            base: base,
+            mode: blendMode,
+            erase: erase,
+          )
+        : const <PromotedStrokeTile>[];
+    if (promotable) {
+      // Hand the decoded images over BEFORE the commit: the painter must
+      // never see an adopted tile without a picture (that is a frame of
+      // stale content — the flicker the settle machinery existed for).
+      // Only images at the promoted tile's own revision qualify; a
+      // stale one would be pinned to that tile forever.
+      for (final entry in promoted) {
+        final image = _overlayModel.takeTileImageAt(
+          entry.tile.coord,
+          revision: entry.revision,
+        );
+        if (image != null) {
+          BitmapTileImageCache.instance.adoptDecoded(
+            entry.tile,
+            image,
+            staleScope: (widget.layerId, widget.frameId),
+          );
+        } else {
+          // Its decode never landed (or landed a revision behind): start
+          // one now. The coordinate was showing base pixels anyway, so
+          // this is a continuation, not a regression.
+          BitmapTileImageCache.instance.ensureDecoded(
+            entry.tile,
+            staleScope: (widget.layerId, widget.frameId),
+          );
+        }
+      }
     }
-    (commit ?? widget.onSourceStrokeCommitted)(
+    widget.onSourceStrokeCommitted(
       BrushStrokeCommitData(
-        sourceDabs: pending.dabs,
-        // Bounds-local row-major buffer (stride = bounds width): its
-        // allocation scales with the stroke, never the canvas.
-        strokePixels: pending.rasterizer?.strokePixelsWithinBounds(),
-        strokeBounds: pending.rasterizer?.strokeBounds,
-        blendMode: pending.blendMode,
+        sourceDabs: List.of(_collectedDabs),
+        // BB-1: the stroke's blend rides the payload — captured from the
+        // stroke's settings SNAPSHOT, so a tool change can never flip a
+        // committed stroke's mode.
+        blendMode: blendMode,
+        promotedBase: promotable ? base : null,
+        promotedTiles: promotable
+            ? [for (final entry in promoted) entry.tile]
+            : null,
+        // Without promotion (a host whose overlay grid differs from its
+        // surface's) the classic payload still commits correctly: a
+        // bounds-local row-major stroke buffer the commit composites.
+        strokePixels: promotable ? null : rasterizer.strokePixelsWithinBounds(),
+        strokeBounds: promotable ? null : rasterizer.strokeBounds,
       ),
     );
-    pending.rasterizer?.clear();
-    _beginSettling();
+    rasterizer.clear();
+    // Atomic: the overlay's remaining images retire in the same
+    // notification that reveals the committed tiles.
+    _resetOverlay();
   }
 
   void _handlePointerCancel(PointerCancelEvent event) {
+    _lastContactButtons.remove(event.pointer);
     _forgetTouchPointer(event.pointer);
     _releaseMappedHold(event.pointer);
     if (event.pointer != _activeDrawingPointer) {
@@ -855,20 +944,43 @@ class _InteractiveBrushEditCanvasViewState
     }
   }
 
+  /// Every button bit that is NOT the primary contact (R27 #17 / R28).
+  ///
+  /// The mapping used to recognise EXACTLY `kSecondaryButton` and
+  /// `kTertiaryButton`. A stylus barrel that a driver reports on any other
+  /// bit — Windows Ink and the Wacom driver have several configurations —
+  /// then fell through every branch in silence, which is the shape of the
+  /// "와콤 펜은 우클릭버튼인거 확인했는데 툴이 아예 안 바뀜" report. Treating
+  /// any non-primary bit as the secondary mapping costs nothing (the
+  /// primary contact is the only one that draws) and stops the behaviour
+  /// depending on which bit a driver happens to pick.
+  static const int _nonPrimaryButtons = ~kPrimaryButton;
+
+  /// The secondary-ish bits of [buttons]: null when only the primary (or
+  /// nothing) is down.
+  static int _mappedButtonBits(int buttons) => buttons & _nonPrimaryButtons;
+
   /// The canvas mapping row for a secondary-button press (PEN-7a); null =
   /// not a mapped press (primary drawing input, or touch).
   CanvasPointerMapping? _mappedPointerActionFor(PointerDownEvent event) {
     if (event.kind == PointerDeviceKind.touch) {
       return null;
     }
-    final settings = AppInput.settings.value;
-    if ((event.buttons & kSecondaryButton) != 0) {
-      return settings.canvasRightClick;
+    return _mappingForButtons(_mappedButtonBits(event.buttons));
+  }
+
+  /// The mapping a set of non-primary [bits] drives: the wheel click owns
+  /// the tertiary bit, and everything else reads as the secondary — the
+  /// barrel button, whichever bit the driver puts it on.
+  CanvasPointerMapping? _mappingForButtons(int bits) {
+    if (bits == 0) {
+      return null;
     }
-    if ((event.buttons & kTertiaryButton) != 0) {
+    final settings = AppInput.settings.value;
+    if ((bits & kTertiaryButton) != 0) {
       return settings.canvasWheelClick;
     }
-    return null;
+    return settings.canvasRightClick;
   }
 
   /// Buttons seen on the latest HOVER event — the PEN-11 hover-press
@@ -879,10 +991,7 @@ class _InteractiveBrushEditCanvasViewState
   int _lastHoverButtons = 0;
 
   bool _mappedButtonHeldSinceHover(PointerDownEvent event) =>
-      (_lastHoverButtons &
-          event.buttons &
-          (kSecondaryButton | kTertiaryButton)) !=
-      0;
+      (_lastHoverButtons & _mappedButtonBits(event.buttons)) != 0;
 
   /// R26 #19/#20: a mapped HOLD tool (eyedropper) engaged from a hover
   /// button press — a Wacom barrel button pressed while the pen hovers
@@ -908,16 +1017,9 @@ class _InteractiveBrushEditCanvasViewState
       _hoverToolHoldButton = 0;
       widget.onTemporaryToolRelease?.call(keep: keep);
     }
-    if (pressed == 0) {
-      return;
-    }
-    final settings = AppInput.settings.value;
-    final CanvasPointerMapping? mapping;
-    if ((pressed & kSecondaryButton) != 0) {
-      mapping = settings.canvasRightClick;
-    } else if ((pressed & kTertiaryButton) != 0) {
-      mapping = settings.canvasWheelClick;
-    } else {
+    final pressedBits = _mappedButtonBits(pressed);
+    final mapping = _mappingForButtons(pressedBits);
+    if (mapping == null) {
       return;
     }
     switch (mapping.action) {
@@ -932,7 +1034,7 @@ class _InteractiveBrushEditCanvasViewState
         if (!_hoverToolHoldActive && _mappedHoldPointer == null) {
           _hoverToolHoldActive = true;
           _hoverToolHoldRelease = mapping.release;
-          _hoverToolHoldButton = pressed & (kSecondaryButton | kTertiaryButton);
+          _hoverToolHoldButton = pressedBits;
           widget.onTemporaryToolHold?.call(CanvasTool.eyedropper);
         }
       case CanvasPointerAction.redo:
@@ -941,6 +1043,37 @@ class _InteractiveBrushEditCanvasViewState
           CanvasPointerAction.pan ||
           CanvasPointerAction.none:
         break;
+    }
+  }
+
+  /// Buttons last seen on a CONTACT event, per pointer — the in-contact
+  /// counterpart of [_lastHoverButtons] (R27 #17).
+  final Map<int, int> _lastContactButtons = {};
+
+  void _handleMappedButtonRiseDuringContact(PointerMoveEvent event) {
+    if (event.kind == PointerDeviceKind.touch) {
+      return;
+    }
+    final previous = _lastContactButtons[event.pointer] ?? 0;
+    final pressed = event.buttons & ~previous;
+    _lastContactButtons[event.pointer] = event.buttons;
+    if (pressed == 0 ||
+        _mappedHoldPointer != null ||
+        _hoverToolHoldActive ||
+        _activeDrawingPointer != null) {
+      return;
+    }
+    final mapping = _mappingForButtons(_mappedButtonBits(pressed));
+    if (mapping == null || mapping.action != CanvasPointerAction.eyedropper) {
+      return;
+    }
+    _mappedHoldPointer = event.pointer;
+    _mappedHoldRelease = mapping.release;
+    _mappedHoldIsEyedropper = true;
+    widget.onTemporaryToolHold?.call(CanvasTool.eyedropper);
+    final pickPosition = _canvasPositionFromLocal(event.localPosition);
+    if (_isInsidePasteboard(pickPosition)) {
+      widget.onAltPick?.call(pickPosition);
     }
   }
 
@@ -1064,9 +1197,15 @@ class _InteractiveBrushEditCanvasViewState
   double get _activeStrokeSpacing =>
       (_activeStrokeInputSettings ?? widget.inputSettings).spacing;
 
-  bool _isPrimaryButton(int buttons) {
-    return buttons == kPrimaryMouseButton;
-  }
+  /// Whether [buttons] is a drawing contact.
+  ///
+  /// R28: a MASK test, not equality. A barrel button held while the tip
+  /// touches down reports `primary | barrel`, and the old `== primary`
+  /// test read that as "not drawing" — so on a driver that does ride the
+  /// barrel bit into contact, the pen went dead instead of picking. The
+  /// mapped-press path runs first and claims those pointers, so anything
+  /// still reaching here with the primary bit down is a real stroke.
+  bool _isPrimaryButton(int buttons) => (buttons & kPrimaryButton) != 0;
 
   void _endStrokeInput() {
     widget.onActiveStrokeChanged?.call(false);
@@ -1196,15 +1335,26 @@ class _InteractiveBrushEditCanvasViewState
 
   /// Creates or recycles the live stroke rasterizer for the current canvas.
   void _prepareLiveRasterizer() {
-    final canvasSize =
-        widget.sessionState.canvasState.currentSurface.canvasSize;
+    final surface = widget.sessionState.canvasState.currentSurface;
+    final canvasSize = surface.canvasSize;
     final existing = _liveRasterizer;
-    if (existing == null || existing.canvasSize != canvasSize) {
+    // The stroke grid IS the cel grid (the promotion round's premise: a
+    // result tile stands in for the committed tile at its coordinate).
+    if (existing == null ||
+        existing.canvasSize != canvasSize ||
+        existing.tileSize != surface.tileSize) {
       existing?.clear(); // Native tiles return to the engine (R21).
-      _liveRasterizer = BrushLiveStrokeRasterizer(canvasSize: canvasSize);
+      _liveRasterizer = BrushLiveStrokeRasterizer(
+        canvasSize: canvasSize,
+        tileSize: surface.tileSize,
+      );
     } else {
       existing.clear();
     }
+    // R26 #18: the selection reaches the KERNEL through the rasterizer.
+    // Captured once per stroke — it cannot change mid-stroke (the
+    // selection layer is not mounted while a painting tool is active).
+    _liveRasterizer!.selectionRegion = widget.selectionRegion;
   }
 
   /// Rasterizes [newDabs] into the live buffer (exact commit math) and
@@ -1238,6 +1388,19 @@ class _InteractiveBrushEditCanvasViewState
           stampTop + stamp.height,
         ),
       );
+      // R26 #18: a fill previews as ONE stamp image, so it does not pass
+      // through the stroke pre-blend where the selection mask lives — the
+      // mask goes onto the stamp's own bytes instead, once, before the
+      // upload. The commit clips the same fill on its own buffer
+      // (clipStrokePixelsToSelection), and both read the SAME scanline
+      // mask, so the preview and the landed pixels agree at the boundary.
+      final stampRgba = _maskedStampRgba(
+        rgba: stamp.rgba,
+        left: stampLeft,
+        top: stampTop,
+        width: stamp.width,
+        height: stamp.height,
+      );
       // The stamp is straight-alpha; the overlay pipeline (like the
       // tile images) uploads premultiplied. The fused C kernel does
       // 64MP in one pass — the same loop in Dart was seconds. The
@@ -1246,10 +1409,10 @@ class _InteractiveBrushEditCanvasViewState
       final Uint8List premultiplied;
       QaStampScratch? scratch;
       if (engine != null) {
-        scratch = engine.premultipliedStampCopy(stamp.rgba);
+        scratch = engine.premultipliedStampCopy(stampRgba);
         premultiplied = scratch.view;
       } else {
-        premultiplied = _premultipliedCopyDart(stamp.rgba);
+        premultiplied = _premultipliedCopyDart(stampRgba);
       }
       final token = _fillOverlayToken;
       ui.decodeImageFromPixels(
@@ -1303,6 +1466,35 @@ class _InteractiveBrushEditCanvasViewState
     }
     widget.onSourceStrokeCommitted(BrushStrokeCommitData(sourceDabs: [dab]));
     _beginSettling();
+  }
+
+  /// [rgba] with the live selection applied, or [rgba] itself when there
+  /// is no selection (no copy, no scan).
+  Uint8List _maskedStampRgba({
+    required Uint8List rgba,
+    required int left,
+    required int top,
+    required int width,
+    required int height,
+  }) {
+    final region = widget.selectionRegion;
+    if (region == null) {
+      return rgba;
+    }
+    final masked = Uint8List.fromList(rgba);
+    // The same rule the pre-blend kernel and the commit's clip run — a
+    // fill only reaches a different function, never a different rule.
+    applySelectionMaskToStrokeAlpha(
+      pixels: masked,
+      mask: region.maskFor(
+        left: left,
+        top: top,
+        width: width,
+        height: height,
+      ),
+      pixelCount: width * height,
+    );
+    return masked;
   }
 
   /// Fallback premultiply (engine absent) — same bytes as the overlay

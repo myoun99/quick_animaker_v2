@@ -163,6 +163,32 @@ void main() {
     expect(received!.points.first.y, greaterThan(0.3));
   });
 
+  testWidgets('R27 #5: a DRAG started outside dismisses the popup', (
+    tester,
+  ) async {
+    await pumpButton(
+      tester,
+      curve: BrushPressureCurve.identity(),
+      onChanged: (_) {},
+    );
+    await openPopup(tester);
+
+    // Not a tap — press, move, release well away from the popup. The
+    // stock modal barrier only closes on a completed tap, so this used to
+    // leave the editor hanging over the UI.
+    final gesture = await tester.startGesture(const Offset(12, 12));
+    await tester.pump();
+    await gesture.moveBy(const Offset(60, 40));
+    await tester.pump();
+    await gesture.up();
+    await tester.pumpAndSettle();
+
+    expect(
+      find.byKey(const ValueKey<String>('pressure-curve-popup')),
+      findsNothing,
+    );
+  });
+
   testWidgets('reset restores the identity line', (tester) async {
     BrushPressureCurve? received;
     await pumpButton(

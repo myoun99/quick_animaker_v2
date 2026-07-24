@@ -11,6 +11,9 @@ import 'package:quick_animaker_v2/src/services/cut_frame_composite_plan.dart';
 import 'package:quick_animaker_v2/src/services/playback/cut_frame_composite_signature.dart';
 import 'package:quick_animaker_v2/src/ui/editor_session_manager.dart';
 import 'package:quick_animaker_v2/src/ui/timeline/timeline_action_toolbar.dart';
+import 'package:quick_animaker_v2/src/ui/timeline/timeline_grid_metrics.dart';
+import 'package:quick_animaker_v2/src/ui/timeline/timeline_layer_controls_row.dart';
+import 'package:quick_animaker_v2/src/ui/widgets/panel_flyout.dart';
 
 /// R26 #30/#30-1: the layer's composite blend mode — model round-trip,
 /// the shared composite visit, cache identity, the session commit and
@@ -76,17 +79,85 @@ void main() {
     );
   });
 
-  testWidgets('R26 #30-1: the toolbar\'s PS-style blend dropdown shows '
-      'the ACTIVE layer\'s mode, commits a pick, reads CSP Japanese in '
-      'ja, and hides for non-ACTION rows', (tester) async {
+  testWidgets('R27 #6: the blend dropdown lives in the LAYER LABEL — it '
+      'reads the row\'s own mode, commits a pick, speaks CSP Japanese in '
+      'ja, and the toolbar no longer carries one', (tester) async {
+    var committed = <(LayerId, LayerBlendMode)>[];
+    Widget rowHost(Layer layer, AppLanguage language) => MaterialApp(
+      home: Material(
+        child: TimelineLayerControlsRow(
+          layer: layer,
+          active: false,
+          metrics: TimelineGridMetrics.defaults,
+          onSelectLayer: (_) {},
+          onToggleLayerVisibility: (_) {},
+          onLayerOpacityChanged: (_, _) {},
+          onToggleLayerTimesheet: (_) {},
+          onLayerMarkSelected: (_, _) {},
+          blendLanguage: language,
+          onLayerBlendModeSelected: (id, mode) =>
+              committed.add((id, mode)),
+        ),
+      ),
+    );
+
+    final drawing = Layer(
+      id: const LayerId('a'),
+      name: 'A',
+      kind: LayerKind.animation,
+      frames: const [],
+    );
+    const chipKey = ValueKey<String>('timeline-layer-blend-a');
+
+    await tester.pumpWidget(rowHost(drawing, AppLanguage.en));
+    expect(find.byKey(chipKey), findsOneWidget);
+    expect(find.text('Normal'), findsOneWidget);
+
+    await tester.tap(find.byKey(chipKey));
+    await tester.pumpAndSettle();
+    await tester.tap(
+      find.byKey(
+        const ValueKey<String>('timeline-layer-blend-option-multiply'),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(committed, [(const LayerId('a'), LayerBlendMode.multiply)]);
+
+    // The chip prints the row's OWN mode.
+    await tester.pumpWidget(
+      rowHost(drawing.copyWith(blendMode: LayerBlendMode.multiply),
+          AppLanguage.en),
+    );
+    expect(find.text('Multiply'), findsOneWidget);
+
+    // ja: Clip Studio's terms (user rule 07-22 — ja localized first).
+    await tester.pumpWidget(
+      rowHost(drawing.copyWith(blendMode: LayerBlendMode.multiply),
+          AppLanguage.ja),
+    );
+    expect(find.text('乗算'), findsOneWidget);
+
+    // A non-compositing row (CAM) reserves the slot but shows no chip.
+    await tester.pumpWidget(
+      rowHost(
+        Layer(
+          id: const LayerId('a'),
+          name: 'CAM',
+          kind: LayerKind.camera,
+          frames: const [],
+        ),
+        AppLanguage.en,
+      ),
+    );
+    expect(find.byKey(chipKey), findsNothing);
+
+    // ...and the toolbar's dropdown is gone for good.
     final s = EditorSessionManager(initialProject: createDefaultProject());
     addTearDown(s.dispose);
-    const buttonKey = ValueKey<String>('timeline-layer-blend-menu-button');
-    Widget host() => MaterialApp(
-      home: Material(
-        child: ListenableBuilder(
-          listenable: s,
-          builder: (context, _) => TimelineActionToolbar(
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Material(
+          child: TimelineActionToolbar(
             session: s,
             onAddLayer: () {},
             onRenameLayer: () {},
@@ -97,32 +168,97 @@ void main() {
         ),
       ),
     );
+    expect(
+      find.byKey(const ValueKey<String>('timeline-layer-blend-menu-button')),
+      findsNothing,
+    );
+  });
 
-    await tester.pumpWidget(host());
-    expect(find.byKey(buttonKey), findsOneWidget);
-    expect(find.text('Normal'), findsOneWidget);
-
-    await tester.tap(find.byKey(buttonKey));
-    await tester.pumpAndSettle();
-    await tester.tap(
-      find.byKey(const ValueKey<String>('timeline-layer-blend-multiply')),
+  testWidgets('R28 #2: the row blend control IS the tool-settings button — '
+      'shared widget, no caret, centered in the blend slot', (tester) async {
+    final drawing = Layer(
+      id: const LayerId('a'),
+      name: 'A',
+      kind: LayerKind.animation,
+      frames: const [],
+    );
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Material(
+          child: Align(
+            alignment: Alignment.topLeft,
+            child: TimelineLayerControlsRow(
+              layer: drawing,
+              active: false,
+              metrics: TimelineGridMetrics.defaults,
+              onSelectLayer: (_) {},
+              onToggleLayerVisibility: (_) {},
+              onLayerOpacityChanged: (_, _) {},
+              onToggleLayerTimesheet: (_) {},
+              onLayerMarkSelected: (_, _) {},
+              onLayerBlendModeSelected: (_, _) {},
+            ),
+          ),
+        ),
+      ),
     );
     await tester.pumpAndSettle();
-    expect(s.activeLayer!.blendMode, LayerBlendMode.multiply);
-    expect(find.text('Multiply'), findsOneWidget);
 
-    // ja: Clip Studio's terms (user rule 07-22 — ja localized first).
-    s.languageSettings.value = const AppLanguageSettings(
-      programLanguage: AppLanguage.ja,
+    const chipKey = ValueKey<String>('timeline-layer-blend-a');
+    // The SHARED control, not a bespoke label: the same widget the brush
+    // panel's blend row mounts.
+    expect(
+      find.byKey(chipKey),
+      findsOneWidget,
+      reason: 'the blend control keeps its key across the widget swap',
     );
-    await tester.pumpWidget(host());
-    await tester.pump();
-    expect(find.text('乗算'), findsOneWidget);
+    expect(tester.widget(find.byKey(chipKey)), isA<PanelFlyoutButton>());
 
-    // A non-ACTION active row (CAM) hides the dropdown entirely.
+    // The user asked for the caret to go — text-only button.
+    expect(
+      find.descendant(
+        of: find.byKey(chipKey),
+        matching: find.byIcon(Icons.arrow_drop_down),
+      ),
+      findsNothing,
+      reason: 'R28 #2: the layer rail drops the dropdown caret',
+    );
+
+    // ...and the label sits CENTERED in the reserved slot, so the button
+    // lines up under the legend's BLND header instead of hugging the
+    // opacity bar on its left.
+    final slot = find.ancestor(
+      of: find.byKey(chipKey),
+      matching: find.byType(SizedBox),
+    );
+    final slotCenter = tester.getCenter(slot.first).dx;
+    final buttonCenter = tester.getCenter(find.byKey(chipKey)).dx;
+    expect(
+      (buttonCenter - slotCenter).abs(),
+      lessThan(1.0),
+      reason: 'R28 #2: the blend button is centered in its column',
+    );
+  });
+
+  test('R27 #6: the legend bulk sets every DISPLAYED compositing row and '
+      'leaves the rest alone', () {
+    final s = EditorSessionManager(initialProject: createDefaultProject());
+    addTearDown(s.dispose);
     final camera = s.layers.firstWhere((l) => l.kind == LayerKind.camera);
-    s.selectLayer(camera.id);
-    await tester.pumpAndSettle();
-    expect(find.byKey(buttonKey), findsNothing);
+    final drawing = s.layers.firstWhere(
+      (l) => l.kind == LayerKind.animation,
+    );
+
+    s.setBlendModeForLayers({drawing.id, camera.id}, LayerBlendMode.screen);
+
+    expect(
+      s.layers.firstWhere((l) => l.id == drawing.id).blendMode,
+      LayerBlendMode.screen,
+    );
+    expect(
+      s.layers.firstWhere((l) => l.id == camera.id).blendMode,
+      LayerBlendMode.normal,
+      reason: 'the camera row does not composite artwork',
+    );
   });
 }

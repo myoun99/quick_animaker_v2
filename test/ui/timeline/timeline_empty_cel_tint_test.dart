@@ -140,6 +140,40 @@ void main() {
       expect(s.celHasContentForLayer(camera, 0), isTrue);
       expect(s.celContentTokenForLayer(camera), isNull);
     });
+
+    test('R27 #13: the store ANNOUNCES the empty↔drawn crossing, and only '
+        'the crossing — the tint had no signal to clear on before', () {
+      final s = EditorSessionManager(initialProject: createDefaultProject());
+      addTearDown(s.dispose);
+      s.createDrawingAtCurrentFrame();
+      final layer = s.activeLayer!;
+      final key = s.brushFrameKeyForCut(
+        s.activeCutOrNull!,
+        layer.id,
+        layer.frames.single.id,
+      );
+
+      var bumps = 0;
+      s.brushFrameStore.celContentRevision.addListener(() => bumps += 1);
+
+      s.brushFrameStore.storeBakedSurface(key, surfaceWithInk());
+      expect(bumps, 1, reason: 'empty → drawn');
+
+      // A second stroke on an already-drawn cel changes no emptiness.
+      s.brushFrameStore.storeBakedSurface(key, surfaceWithInk());
+      expect(bumps, 1);
+
+      // Back to blank (an undo to an empty surface).
+      s.brushFrameStore.storeBakedSurface(
+        key,
+        BitmapSurface(
+          canvasSize: const CanvasSize(width: 4, height: 4),
+          tileSize: 4,
+        ),
+      );
+      expect(bumps, 2, reason: 'drawn → empty');
+      expect(s.celHasContentForLayer(layer, 0), isFalse);
+    });
   });
 
   group('row memo invalidation', () {

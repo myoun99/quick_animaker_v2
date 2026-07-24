@@ -10,6 +10,7 @@ import 'package:quick_animaker_v2/src/models/brush_tip_shape.dart';
 import 'package:quick_animaker_v2/src/models/canvas_point.dart';
 import 'package:quick_animaker_v2/src/models/canvas_size.dart';
 import 'package:quick_animaker_v2/src/models/tile_coord.dart';
+import 'package:quick_animaker_v2/src/services/canvas_selection_region.dart';
 import 'package:quick_animaker_v2/src/services/bitmap_surface_brush_commit.dart';
 import 'package:quick_animaker_v2/src/services/canvas_selection.dart';
 
@@ -81,7 +82,9 @@ void main() {
     final before = snapshot(surface);
 
     final lift = buildSelectionLiftDabs(
-      shape: CanvasSelectionShape.rect(left: 1, top: 1, right: 7, bottom: 7),
+      region: CanvasSelectionRegion.shape(
+        CanvasSelectionShape.rect(left: 1, top: 1, right: 7, bottom: 7),
+      ),
       surface: surface,
       liftId: 'roundtrip',
     )!;
@@ -99,7 +102,9 @@ void main() {
 
     // Select the LEFT half of the block: x in [2, 3].
     final lift = buildSelectionLiftDabs(
-      shape: CanvasSelectionShape.rect(left: 2, top: 2, right: 4, bottom: 6),
+      region: CanvasSelectionRegion.shape(
+        CanvasSelectionShape.rect(left: 2, top: 2, right: 4, bottom: 6),
+      ),
       surface: surface,
       liftId: 'partial',
     )!;
@@ -134,7 +139,9 @@ void main() {
     // Lift the whole block and drop it 10px past the LEFT canvas edge:
     // block columns [2, 5] land at [-8, -5] — pure pasteboard space.
     final lift = buildSelectionLiftDabs(
-      shape: CanvasSelectionShape.rect(left: 1, top: 1, right: 7, bottom: 7),
+      region: CanvasSelectionRegion.shape(
+        CanvasSelectionShape.rect(left: 1, top: 1, right: 7, bottom: 7),
+      ),
       surface: surface,
       liftId: 'off-canvas',
     )!;
@@ -158,7 +165,9 @@ void main() {
 
     // Select the off-canvas block and move it back: byte-identical.
     final liftBack = buildSelectionLiftDabs(
-      shape: CanvasSelectionShape.rect(left: -9, top: 1, right: -3, bottom: 7),
+      region: CanvasSelectionRegion.shape(
+        CanvasSelectionShape.rect(left: -9, top: 1, right: -3, bottom: 7),
+      ),
       surface: movedOff,
       liftId: 'back',
     )!;
@@ -183,11 +192,13 @@ void main() {
   test('a selection over empty canvas builds no lift', () {
     expect(
       buildSelectionLiftDabs(
-        shape: CanvasSelectionShape.rect(
-          left: 10,
-          top: 10,
-          right: 14,
-          bottom: 14,
+        region: CanvasSelectionRegion.shape(
+          CanvasSelectionShape.rect(
+            left: 10,
+            top: 10,
+            right: 14,
+            bottom: 14,
+          ),
         ),
         surface: paintedSurface(),
         liftId: 'empty',
@@ -211,18 +222,19 @@ void main() {
     return stamp.rgba[(row * stamp.width + col) * 4 + 3];
   }
 
-  CanvasSelectionShape rect2to5() =>
-      CanvasSelectionShape.rect(left: 2, top: 2, right: 6, bottom: 6);
+  CanvasSelectionRegion rect2to5() => CanvasSelectionRegion.shape(
+    CanvasSelectionShape.rect(left: 2, top: 2, right: 6, bottom: 6),
+  );
 
   test('default options are BYTE-IDENTICAL to the classic hard lift', () {
     final surface = paintedSurface();
     final classic = buildSelectionLiftDabs(
-      shape: rect2to5(),
+      region: rect2to5(),
       surface: surface,
       liftId: 'a',
     )!;
     final withDefaults = buildSelectionLiftDabs(
-      shape: rect2to5(),
+      region: rect2to5(),
       surface: surface,
       liftId: 'a',
       options: SelectionMaskOptions.none,
@@ -235,7 +247,7 @@ void main() {
       () {
     final surface = paintedSurface();
     final grown = buildSelectionLiftDabs(
-      shape: rect2to5(),
+      region: rect2to5(),
       surface: surface,
       liftId: 'g',
       options: const SelectionMaskOptions(growPx: 2),
@@ -248,7 +260,7 @@ void main() {
     expect(eraseAlphaAt(grown, 0, 0), 0);
 
     final shrunk = buildSelectionLiftDabs(
-      shape: rect2to5(),
+      region: rect2to5(),
       surface: surface,
       liftId: 's',
       options: const SelectionMaskOptions(growPx: -1),
@@ -262,7 +274,7 @@ void main() {
       () {
     final surface = paintedSurface();
     final feathered = buildSelectionLiftDabs(
-      shape: rect2to5(),
+      region: rect2to5(),
       surface: surface,
       liftId: 'f',
       options: const SelectionMaskOptions(featherPx: 3),
@@ -277,7 +289,7 @@ void main() {
   test('anti-alias softens only the boundary', () {
     final surface = paintedSurface();
     final softened = buildSelectionLiftDabs(
-      shape: rect2to5(),
+      region: rect2to5(),
       surface: surface,
       liftId: 'aa',
       options: const SelectionMaskOptions(antiAlias: true),

@@ -24,6 +24,13 @@ const _rightDropRailKey = ValueKey<String>('editor-dock-drop-rail-right');
 const _toolRightRailKey = ValueKey<String>('editor-dock-drop-rail-tool-right');
 
 Future<void> _pumpHome(WidgetTester tester) async {
+  // R26 #31: the left dock ships with TWO stacked sections and the right
+  // dock with the timesheet, so the 800×600 default test surface leaves
+  // each section too short to lay out its panel (the media browser's
+  // header + list overflowed by a few pixels). Use a window size a person
+  // would actually work in.
+  await tester.binding.setSurfaceSize(const Size(1600, 1000));
+  addTearDown(() => tester.binding.setSurfaceSize(null));
   await tester.pumpWidget(const MaterialApp(home: HomePage()));
   await tester.pumpAndSettle();
   // Tabs always show [X][lock][name] now, and the test (Ahem) font draws
@@ -37,6 +44,17 @@ Future<void> _pumpHome(WidgetTester tester) async {
     find.byKey(const ValueKey<String>('dock-resize-left')),
     const Offset(370, 0),
   );
+  await tester.pumpAndSettle();
+}
+
+/// R26 #31: the right dock ships OCCUPIED by the timesheet, so the
+/// collapsed-dock behaviours (its drop rail) need it emptied first —
+/// closing the sheet's tab is the shortest honest way there.
+Future<void> _closeTimesheet(WidgetTester tester) async {
+  final close = find.byKey(const ValueKey<String>('panel-close-timesheet'));
+  await tester.ensureVisible(close);
+  await tester.pumpAndSettle();
+  await tester.tap(close);
   await tester.pumpAndSettle();
 }
 
@@ -123,6 +141,7 @@ void main() {
       tester,
     ) async {
       await _pumpHome(tester);
+      await _closeTimesheet(tester);
 
       // Lift a palette tab by its grip: the tool edge rails stay hidden
       // (ineligible), while the normal right dock's rail IS revealed.
@@ -144,18 +163,19 @@ void main() {
   });
 
   group('EditorWorkspace left dock tabs', () {
-    testWidgets('shows the three palette tabs with Brushes active', (
-      tester,
-    ) async {
+    testWidgets('shows the palette tabs with Brushes active, Tool Settings '
+        'stacked underneath (R26 #31)', (tester) async {
       await _pumpHome(tester);
 
       expect(find.byKey(_brushesTabKey), findsOneWidget);
       expect(find.byKey(_brushSettingsTabKey), findsOneWidget);
       expect(find.byKey(_mediaTabKey), findsOneWidget);
 
-      // Only the active tab's panel is built.
+      // Only the active tab of each SECTION is built — and Tool Settings
+      // now owns its own section below the library, so both are open at
+      // once (the pair a stroke alternates between).
       expect(find.byType(BrushPresetPanel), findsOneWidget);
-      expect(find.byType(BrushSettingsPanel), findsNothing);
+      expect(find.byType(BrushSettingsPanel), findsOneWidget);
       expect(find.byType(MediaBrowserPanel), findsNothing);
     });
 
@@ -168,10 +188,14 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.byType(MediaBrowserPanel), findsOneWidget);
       expect(find.byType(BrushPresetPanel), findsNothing);
-
-      await tester.tap(find.byKey(_brushSettingsTabKey));
-      await tester.pumpAndSettle();
+      // The section BELOW is untouched by its neighbour's tab switch.
       expect(find.byType(BrushSettingsPanel), findsOneWidget);
+
+      await tester.ensureVisible(find.byKey(_brushesTabKey));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(_brushesTabKey));
+      await tester.pumpAndSettle();
+      expect(find.byType(BrushPresetPanel), findsOneWidget);
       expect(find.byType(MediaBrowserPanel), findsNothing);
     });
   });
@@ -348,6 +372,7 @@ void main() {
       tester,
     ) async {
       await _pumpHome(tester);
+      await _closeTimesheet(tester);
       expect(find.byKey(_rightDropRailKey), findsNothing);
 
       // Lift the media tab by its grip: the collapsed right dock shows
@@ -494,22 +519,28 @@ void main() {
   });
 
   group('EditorWorkspace timesheet tab', () {
+    // R26 #31: the sheet ships open in the right dock — 'opening' it is
+    // just pumping the workspace now.
     Future<void> openTimesheet(WidgetTester tester) async {
       await _pumpHome(tester);
-      await tester.tap(find.byKey(_timesheetTabKey));
-      await tester.pumpAndSettle();
     }
 
-    testWidgets('renders the sheet document instead of the timeline grid', (
-      tester,
-    ) async {
+    testWidgets('ships docked on the right, alongside the timeline rather '
+        'than instead of it (R26 #31)', (tester) async {
       await openTimesheet(tester);
 
       expect(
         find.byKey(const ValueKey<String>('timesheet-document-paint')),
         findsOneWidget,
       );
-      expect(find.byType(TimelinePanel), findsNothing);
+      expect(find.byKey(_timesheetTabKey), findsOneWidget);
+      expect(
+        find.byKey(const ValueKey<String>('editor-panel-dock-right')),
+        findsOneWidget,
+      );
+      // Both frame views are up at once now — the sheet no longer takes
+      // the bottom strip's turn.
+      expect(find.byType(TimelinePanel), findsOneWidget);
       // Canvas-style navigation shell: the sheet host carries its own
       // viewport toolbar and panbars next to the canvas tab's.
       expect(
@@ -578,7 +609,10 @@ void main() {
       );
     });
 
-    testWidgets('sheet viewport zoom survives tab switches', (tester) async {
+    testWidgets('sheet viewport zoom survives workspace rebuilds (the sheet '
+        'owns the right dock now, so the neighbours switch instead)', (
+      tester,
+    ) async {
       await openTimesheet(tester);
 
       Finder inHost(Key key) => find.descendant(
@@ -597,16 +631,19 @@ void main() {
           )
           .data;
 
-      await tester.tap(
-        inHost(const ValueKey<String>('canvas-viewport-zoom-in')),
-      );
+      // R26 #41 put the sheet-mode + page cluster in this bar, so in a
+      // narrow dock it scrolls — bring the button into view before tapping.
+      final zoomIn = inHost(const ValueKey<String>('canvas-viewport-zoom-in'));
+      await tester.ensureVisible(zoomIn);
+      await tester.pumpAndSettle();
+      await tester.tap(zoomIn);
       await tester.pumpAndSettle();
       final zoomLabel = zoomLabelText();
       expect(zoomLabel, isNot('100%'));
 
       await tester.tap(find.byKey(_timelineTabKey));
       await tester.pumpAndSettle();
-      await tester.tap(find.byKey(_timesheetTabKey));
+      await tester.tap(find.byKey(_storyboardTabKey));
       await tester.pumpAndSettle();
 
       expect(zoomLabelText(), zoomLabel);

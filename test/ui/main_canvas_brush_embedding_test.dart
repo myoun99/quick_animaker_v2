@@ -23,6 +23,8 @@ import 'package:quick_animaker_v2/src/ui/brush/main_canvas_brush_host.dart';
 import 'package:quick_animaker_v2/src/ui/canvas/interactive_brush_edit_canvas_view.dart';
 import 'package:quick_animaker_v2/src/ui/home_page.dart';
 
+import '../helpers/panel_finders.dart';
+
 void main() {
   testWidgets('HomePage mounts production brush host in the main canvas area', (
     tester,
@@ -61,15 +63,16 @@ void main() {
       );
       expect(find.byType(MainCanvasBrushHost), findsOneWidget);
       // The panel and its paper stay visible; only brush INPUT requires a
-      // selected frame.
-      expect(find.byType(BrushCanvasPanel), findsOneWidget);
+      // selected frame. PANEL-SCOPED (R26 #31): the docked timesheet is a
+      // BrushCanvasPanel too, and its ink planes are interactive views.
+      expect(inMainCanvas(find.byType(BrushCanvasPanel)), findsOneWidget);
       expect(
         find.byKey(
           const ValueKey<String>('main-canvas-brush-host-blank-canvas'),
         ),
         findsOneWidget,
       );
-      expect(find.byType(InteractiveBrushEditCanvasView), findsNothing);
+      expect(mainCanvasView(), findsNothing);
       expect(
         find.byKey(const ValueKey<String>('brush-canvas-default-frame')),
         findsNothing,
@@ -94,11 +97,11 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.byType(MainCanvasBrushHost), findsOneWidget);
-      expect(find.byType(BrushCanvasPanel), findsOneWidget);
+      expect(inMainCanvas(find.byType(BrushCanvasPanel)), findsOneWidget);
       // R13-2: the interactive view's key is stable; the edited cel is the
       // widget's layer/frame params.
       final brushView = tester.widget<InteractiveBrushEditCanvasView>(
-        find.byType(InteractiveBrushEditCanvasView),
+        mainCanvasView(),
       );
       expect(brushView.layerId, const LayerId('editor-layer'));
       expect(brushView.frameId, const FrameId('editor-frame-1'));

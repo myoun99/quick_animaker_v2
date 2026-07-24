@@ -4,7 +4,6 @@ import 'cut_camera.dart';
 import 'cut_id.dart';
 import 'cut_metadata.dart';
 import 'layer.dart';
-import 'layer_folder.dart';
 import 'layer_section_defaults.dart';
 import 'transform_track.dart';
 
@@ -19,12 +18,10 @@ class Cut {
     this.leadingGapFrames = 0,
     CutCamera? camera,
     TransformTrack? transformTrack,
-    List<LayerFolder> folders = const [],
   }) : assert(leadingGapFrames >= 0),
        layers = List.unmodifiable(layers),
        camera = camera ?? CutCamera.empty(),
-       transformTrack = transformTrack ?? TransformTrack.empty(),
-       folders = List.unmodifiable(folders);
+       transformTrack = transformTrack ?? TransformTrack.empty();
 
   final CutId id;
   final String name;
@@ -40,12 +37,6 @@ class Cut {
   final CanvasSize canvasSize;
   final CutMetadata metadata;
   final CutCamera camera;
-
-  /// The cut's folder table (L1): pure organization over the flat
-  /// [layers] stack (which stays the render/timeline order truth).
-  /// Layers point in via [Layer.folderId]; see [folderStructureProblem]
-  /// for the invariants the commands keep.
-  final List<LayerFolder> folders;
 
   /// CUT-level transform on the cut's playback frame axis — the V-track's
   /// track-level effects. Only the opacity lane is consumed today (cut
@@ -77,7 +68,6 @@ class Cut {
     int? leadingGapFrames,
     CutCamera? camera,
     TransformTrack? transformTrack,
-    List<LayerFolder>? folders,
   }) {
     return Cut(
       id: id ?? this.id,
@@ -89,7 +79,6 @@ class Cut {
       leadingGapFrames: leadingGapFrames ?? this.leadingGapFrames,
       camera: camera ?? this.camera,
       transformTrack: transformTrack ?? this.transformTrack,
-      folders: folders ?? this.folders,
     );
   }
 
@@ -104,8 +93,6 @@ class Cut {
     if (leadingGapFrames > 0) 'leadingGap': leadingGapFrames,
     'camera': camera.toJson(),
     if (transformTrack.isNotEmpty) 'transform': transformTrack.toJson(),
-    if (folders.isNotEmpty)
-      'folders': folders.map((folder) => folder.toJson()).toList(),
   };
 
   factory Cut.fromJson(Map<String, dynamic> json) {
@@ -132,15 +119,12 @@ class Cut {
       camera: json['camera'] == null
           ? null
           : CutCamera.fromJson(json['camera'] as Map<String, dynamic>),
+      // Pre-absorption files carried a separate `folders` table; folders
+      // are layers now and the key is ignored (no production data —
+      // [[no-production-data-yet]]).
       transformTrack: json['transform'] == null
           ? null
           : TransformTrack.fromJson(json['transform'] as Map<String, dynamic>),
-      folders: json['folders'] == null
-          ? const []
-          : [
-              for (final folder in json['folders'] as List<dynamic>)
-                LayerFolder.fromJson(folder as Map<String, dynamic>),
-            ],
     );
   }
 
@@ -156,8 +140,7 @@ class Cut {
           other.metadata == metadata &&
           other.leadingGapFrames == leadingGapFrames &&
           other.camera == camera &&
-          other.transformTrack == transformTrack &&
-          listEquals(other.folders, folders);
+          other.transformTrack == transformTrack;
 
   @override
   int get hashCode => Object.hash(
@@ -170,7 +153,6 @@ class Cut {
     leadingGapFrames,
     camera,
     transformTrack,
-    Object.hashAll(folders),
   );
 
   @override

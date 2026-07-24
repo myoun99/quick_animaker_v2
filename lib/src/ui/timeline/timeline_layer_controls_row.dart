@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import '../../models/app_language.dart' show AppLanguage;
 import '../../models/attached_placement.dart';
 import '../../models/layer.dart';
+import '../../models/layer_blend_mode.dart';
 import '../../models/layer_kind.dart';
 import '../../models/layer_id.dart';
 import '../../models/layer_mark.dart';
@@ -67,15 +68,21 @@ class TimelineLayerControlsRow extends StatelessWidget {
     this.hasLanes = false,
     this.lanesExpanded = false,
     this.onToggleLanes,
-    this.hasAttachGroup = false,
-    this.attachGroupExpanded = true,
-    this.onToggleAttachGroup,
+    this.depth = 0,
+    this.hasGroupFold = false,
+    this.groupFoldExpanded = true,
+    this.onToggleGroupFold,
+    this.onDissolveFolder,
+    this.onRenameFolder,
     this.fxEnabled = true,
     this.onToggleLayerFx,
     this.onionSkinEnabled = false,
     this.onToggleLayerOnionSkin,
     this.opacityDragPreview,
     this.isLinked = false,
+    this.onLayerBlendModeSelected,
+    this.blendLanguage = AppLanguage.en,
+    this.opacityOverride,
   });
 
   final Layer layer;
@@ -123,12 +130,21 @@ class TimelineLayerControlsRow extends StatelessWidget {
   final bool lanesExpanded;
   final ValueChanged<LayerId>? onToggleLanes;
 
-  /// Attach-group twirl (UI-R20 #9): bases carrying attach rows show a
-  /// fold chevron after their name — visible only when the group exists.
-  /// Null [onToggleAttachGroup] hides the twirl UI entirely.
-  final bool hasAttachGroup;
-  final bool attachGroupExpanded;
-  final ValueChanged<LayerId>? onToggleAttachGroup;
+  /// Folder nesting indent (0 = top level).
+  final int depth;
+
+  /// GROUP-FOLD twirl after the name: an attach base folding its attach
+  /// rows (UI-R20 #9) or a FOLDER folding its members (R28 #13 put the
+  /// folder's fold in exactly this slot — "일단은 통일해서 이름 오른쪽에").
+  /// They are one control: a row that holds other rows, folding them.
+  /// Null [onToggleGroupFold] hides the twirl entirely.
+  final bool hasGroupFold;
+  final bool groupFoldExpanded;
+  final ValueChanged<LayerId>? onToggleGroupFold;
+
+  /// Folder rows' context menu; null hides the entry.
+  final ValueChanged<LayerId>? onDissolveFolder;
+  final ValueChanged<LayerId>? onRenameFolder;
 
   /// The AE-style fx switch (session view state): bypasses the layer's
   /// transform/FX on every composite route while off. Null hides it.
@@ -151,6 +167,21 @@ class TimelineLayerControlsRow extends StatelessWidget {
   /// ("이름이 같으면 같은 그림") — a small chain icon after the name.
   final bool isLinked;
 
+  /// R27 #6: the blend-mode dropdown lives in the LABEL now (rightmost
+  /// slot, past the opacity bar) instead of the timeline toolbar. Null
+  /// keeps the slot reserved but inert (passive hosts).
+  final void Function(LayerId layerId, LayerBlendMode mode)?
+  onLayerBlendModeSelected;
+
+  /// PROGRAM language for the blend-mode name.
+  final AppLanguage blendLanguage;
+
+  /// R27 #9: a live opacity source that OUTRANKS `layer.opacity` for this
+  /// row's slider. The camera row's opacity is a view notifier, not model
+  /// state — reading it here lets the drag repaint just this slider
+  /// instead of rebuilding the whole timeline host per move.
+  final ValueListenable<double>? opacityOverride;
+
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
@@ -161,7 +192,11 @@ class TimelineLayerControlsRow extends StatelessWidget {
     final borderColor = colorScheme.outlineVariant;
 
     final row = InkWell(
-      key: ValueKey<String>('timeline-layer-row-${layer.id}'),
+      key: ValueKey<String>(
+        layerKindGroupsLayers(layer.kind)
+            ? 'timeline-folder-row-${layer.id}'
+            : 'timeline-layer-row-${layer.id}',
+      ),
       onTap: () => onSelectLayer(layer.id),
       // No hover glow on the ROW surface (UI-R24 #6): selection speaks
       // through the background alone; only the buttons may brighten.
@@ -194,7 +229,7 @@ class TimelineLayerControlsRow extends StatelessWidget {
               // tint, upright label, flyout tap — overlays the whole run
               // from the grid (SectionBandZone), old-gutter style.
               const LayerSectionBandCell(),
-              const SizedBox(width: 8),
+              SizedBox(width: 8.0 + depth * 12.0),
               if (hasLanes && onToggleLanes != null)
                 InkWell(
                   key: ValueKey<String>('timeline-lane-toggle-${layer.id}'),
@@ -281,13 +316,25 @@ class TimelineLayerControlsRow extends StatelessWidget {
                             label: _semanticLabelForLayerKind(layer.kind),
                             container: true,
                             child: ExcludeSemantics(
-                              child: Icon(
-                                layerKindIcon(layer.kind),
-                                key: ValueKey<String>(
-                                  'timeline-layer-kind-icon-${layer.id}',
-                                ),
-                                size: 18,
-                              ),
+                              child: layerKindGroupsLayers(layer.kind)
+                                  // A folder's glyph reads its own fold.
+                                  ? Icon(
+                                      layer.collapsed
+                                          ? Icons.folder
+                                          : Icons.folder_open,
+                                      key: ValueKey<String>(
+                                        'timeline-folder-icon-${layer.id}',
+                                      ),
+                                      size: 16,
+                                      color: colorScheme.onSurfaceVariant,
+                                    )
+                                  : Icon(
+                                      layerKindIcon(layer.kind),
+                                      key: ValueKey<String>(
+                                        'timeline-layer-kind-icon-${layer.id}',
+                                      ),
+                                      size: 18,
+                                    ),
                             ),
                           ),
                   ),
@@ -330,18 +377,20 @@ class TimelineLayerControlsRow extends StatelessWidget {
                         // The attach-group twirl (UI-R20 #9), shown only
                         // when the group exists — same chevron pair as the
                         // lane twirl.
-                        if (hasAttachGroup && onToggleAttachGroup != null)
+                        if (hasGroupFold && onToggleGroupFold != null)
                           InkWell(
                             key: ValueKey<String>(
-                              'timeline-attach-twirl-${layer.id}',
+                              layerKindGroupsLayers(layer.kind)
+                                  ? 'timeline-folder-twirl-${layer.id}'
+                                  : 'timeline-attach-twirl-${layer.id}',
                             ),
-                            onTap: () => onToggleAttachGroup!(layer.id),
+                            onTap: () => onToggleGroupFold!(layer.id),
                             customBorder: const CircleBorder(), // R26 #28
                             child: SizedBox(
                               width: layerLaneToggleSlotWidth,
                               height: 24,
                               child: Icon(
-                                attachGroupExpanded
+                                groupFoldExpanded
                                     ? Icons.arrow_drop_down
                                     : Icons.arrow_right,
                                 size: 16,
@@ -390,11 +439,10 @@ class TimelineLayerControlsRow extends StatelessWidget {
               if (onToggleLayerFx != null &&
                   layerKindShowsFxToggle(layer.kind) &&
                   layer.attachedToLayerId == null)
-                LayerFxToggleButton(
-                  keyPrefix: 'timeline',
-                  layerId: layer.id,
+                FxToggleButton(
+                  keyValue: 'timeline-layer-fx-${layer.id}',
                   fxEnabled: fxEnabled,
-                  onToggle: onToggleLayerFx!,
+                  onToggle: () => onToggleLayerFx!(layer.id),
                 )
               else
                 const SizedBox(width: layerFxSlotWidth),
@@ -429,25 +477,10 @@ class TimelineLayerControlsRow extends StatelessWidget {
                 )
               else if (onToggleLayerOnionSkin != null)
                 const SizedBox(width: layerOnionSlotWidth),
-              SizedBox(
-                width: layerVisibilitySlotWidth,
-                height: 26,
-                child: IconButton(
-                  key: ValueKey<String>(
-                    'timeline-layer-visibility-${layer.id}',
-                  ),
-                  tooltip: layer.isVisible ? 'Hide layer' : 'Show layer',
-                  padding: EdgeInsets.zero,
-                  constraints: const BoxConstraints.tightFor(
-                    width: layerVisibilitySlotWidth,
-                    height: 26,
-                  ),
-                  icon: Icon(
-                    layer.isVisible ? Icons.visibility : Icons.visibility_off,
-                    size: 18,
-                  ),
-                  onPressed: () => onToggleLayerVisibility(layer.id),
-                ),
+              LayerVisibilityToggleButton(
+                keyValue: 'timeline-layer-visibility-${layer.id}',
+                isVisible: layer.isVisible,
+                onToggle: () => onToggleLayerVisibility(layer.id),
               ),
               // SE rows carry the mute speaker beside the eye (sounds
               // silence, waveforms keep displaying). Tight SizedBox: the M3
@@ -471,24 +504,11 @@ class TimelineLayerControlsRow extends StatelessWidget {
                         ? null
                         : (details) =>
                               _showMixMenu(context, details.globalPosition),
-                    child: IconButton(
-                      key: ValueKey<String>('timeline-layer-mute-${layer.id}'),
-                      tooltip: layer.muted ? 'Unmute layer' : 'Mute layer',
-                      padding: EdgeInsets.zero,
-                      constraints: const BoxConstraints.tightFor(
-                        width: layerMuteSlotWidth,
-                        height: 26,
-                      ),
-                      icon: Icon(
-                        layer.muted ? Icons.volume_off : Icons.volume_up,
-                        size: 16,
-                        // Soloed rows tint accent (selection style: color
-                        // only, no checkmarks).
-                        color: isLayerSoloed
-                            ? Theme.of(context).colorScheme.primary
-                            : null,
-                      ),
-                      onPressed: () => onToggleLayerMuted!(layer.id),
+                    child: LayerMuteToggleButton(
+                      keyValue: 'timeline-layer-mute-${layer.id}',
+                      muted: layer.muted,
+                      soloed: isLayerSoloed,
+                      onToggle: () => onToggleLayerMuted!(layer.id),
                     ),
                   ),
                 )
@@ -501,6 +521,26 @@ class TimelineLayerControlsRow extends StatelessWidget {
                 SizedBox(width: layerOpacitySlotWidth, child: _opacityField())
               else
                 const SizedBox(width: layerOpacitySlotWidth),
+              // R27 #6: the blend mode, RIGHTMOST — the user's placement.
+              // Within a host that HAS the column, non-compositing kinds
+              // keep the slot so rows and the legend header stay aligned;
+              // hosts without it (the storyboard's track rail) skip the
+              // column outright, exactly like the onion cell.
+              if (onLayerBlendModeSelected != null)
+                layerKindShowsBlendControl(layer.kind)
+                    ? LayerBlendModeChip(
+                        keyValue: 'timeline-layer-blend-${layer.id}',
+                        optionKeyPrefix: 'timeline-layer-blend-option-',
+                        blendMode: layer.blendMode,
+                        language: blendLanguage,
+                        isGroup: layerKindGroupsLayers(layer.kind),
+                        subject: layerKindGroupsLayers(layer.kind)
+                            ? 'Folder'
+                            : 'Layer',
+                        onBlendModeSelected: (mode) =>
+                            onLayerBlendModeSelected!(layer.id, mode),
+                      )
+                    : const SizedBox(width: layerBlendSlotWidth),
             ],
           ),
         ),
@@ -510,7 +550,55 @@ class TimelineLayerControlsRow extends StatelessWidget {
     // Section boundaries draw ONE shared hairline like every row boundary
     // (R3 feedback #6) — the old extra 2px overlay double-lined them; the
     // gutter bracket carries the section identity.
-    return row;
+    if (!layerKindGroupsLayers(layer.kind) ||
+        (onRenameFolder == null && onDissolveFolder == null)) {
+      return row;
+    }
+    return GestureDetector(
+      onSecondaryTapUp: (details) =>
+          _showFolderMenu(context, details.globalPosition),
+      onLongPressStart: (details) =>
+          _showFolderMenu(context, details.globalPosition),
+      child: row,
+    );
+  }
+
+  /// The folder row's structural verbs. Everything else a folder does is
+  /// on the row's own columns, because a folder is a layer.
+  Future<void> _showFolderMenu(
+    BuildContext context,
+    Offset globalPosition,
+  ) async {
+    final overlay = Overlay.of(context).context.findRenderObject();
+    final selected = await showMenu<String>(
+      context: context,
+      position: RelativeRect.fromRect(
+        globalPosition & const Size(1, 1),
+        Offset.zero & (overlay as RenderBox).size,
+      ),
+      items: [
+        if (onRenameFolder != null)
+          PopupMenuItem<String>(
+            key: ValueKey<String>('timeline-folder-rename-${layer.id}'),
+            value: 'rename',
+            child: const Text('Rename Folder…'),
+          ),
+        if (onDissolveFolder != null)
+          PopupMenuItem<String>(
+            key: ValueKey<String>('timeline-folder-dissolve-${layer.id}'),
+            value: 'dissolve',
+            child: const Text('Dissolve Folder'),
+          ),
+      ],
+    );
+    switch (selected) {
+      case 'rename':
+        onRenameFolder?.call(layer.id);
+      case 'dissolve':
+        onDissolveFolder?.call(layer.id);
+      case _:
+        break;
+    }
   }
 
   /// The row's opacity slider, live-following the session's drag preview
@@ -530,6 +618,17 @@ class TimelineLayerControlsRow extends StatelessWidget {
           ? null
           : (opacity) => onLayerOpacityChangeEnd!(layer.id, opacity),
     );
+
+    // R27 #9: a row whose opacity IS a view notifier (the camera row)
+    // reads it here — the slider follows the drag by itself, no host
+    // rebuild in the loop.
+    final override = opacityOverride;
+    if (override != null) {
+      return ValueListenableBuilder<double>(
+        valueListenable: override,
+        builder: (context, value, _) => slider(value.clamp(0.0, 1.0)),
+      );
+    }
 
     final preview = opacityDragPreview;
     final resting = layer.opacity.clamp(0.0, 1.0).toDouble();
@@ -555,5 +654,6 @@ String _semanticLabelForLayerKind(LayerKind kind) {
     LayerKind.se => 'SE layer',
     LayerKind.instruction => 'Instruction layer',
     LayerKind.camera => 'Camera layer',
+    LayerKind.folder => 'Folder',
   };
 }

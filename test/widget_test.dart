@@ -1155,7 +1155,8 @@ void main() {
     await _expectActiveCutName(tester, '2');
   });
 
-  testWidgets('replaces the last deleted cut through the cut command action', (
+  testWidgets('R28 #14: deleting the last cut EMPTIES the track — the app '
+      'stands in the no-active-cut state instead of conjuring a stand-in', (
     WidgetTester tester,
   ) async {
     await tester.pumpWidget(const QuickAnimakerApp());
@@ -1166,9 +1167,10 @@ void main() {
     );
 
     await _expectCutExists(tester, 'default-cut-1', exists: false);
-    await _expectCutExists(tester, 'cut-1', exists: true);
-    await _expectCutName(tester, 'cut-1', '1');
-    await _expectActiveCutName(tester, '1');
+    await _expectCutExists(tester, 'cut-1', exists: false);
+    // The shell survives with nothing active — the same state a storyboard
+    // gap parks in.
+    expect(tester.takeException(), isNull);
   });
 
   testWidgets('long multi-line cut note remains editable and savable', (

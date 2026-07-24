@@ -5,6 +5,7 @@ import 'package:ffi/ffi.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:quick_animaker_v2/src/models/project_frame_rate.dart';
 import 'package:quick_animaker_v2/src/native/qa_audio_device.dart';
+import 'package:quick_animaker_v2/src/native/qa_engine_abi.dart';
 import 'package:quick_animaker_v2/src/services/audio/audio_mixer_reference.dart';
 import 'package:quick_animaker_v2/src/ui/playback/audio_recorder.dart';
 
@@ -27,7 +28,7 @@ void main() {
 
   setUp(() {
     QaAudioDevice.debugResetForTests();
-    QaAudioDevice.debugLibraryPathOverride = libraryPath;
+    debugQaEngineLibraryPathOverride = libraryPath;
   });
 
   tearDown(() {
@@ -38,7 +39,7 @@ void main() {
       // A device that never opened is fine to "close".
     }
     QaAudioDevice.debugResetForTests();
-    QaAudioDevice.debugLibraryPathOverride = null;
+    debugQaEngineLibraryPathOverride = null;
   });
 
   QaAudioDevice openNull({int sampleRate = 48000, int channels = 2}) {

@@ -38,6 +38,8 @@ class BrushEditCanvasView extends StatelessWidget {
   /// [BitmapSurfacePainter.staleScope].
   final Object? staleScope;
 
+
+
   @override
   Widget build(BuildContext context) {
     // No canvas-bounds outline here: the paper edge over the dark backdrop

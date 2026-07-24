@@ -11,6 +11,7 @@ import '../models/canvas_size.dart';
 import '../models/cut.dart';
 import '../models/layer_id.dart';
 import '../services/brush_preset_file_service.dart';
+import '../services/canvas_color_sampler.dart' show CanvasColorSampleSource;
 import '../services/canvas_flood_fill.dart' show FloodFillOptions;
 import '../services/canvas_selection.dart' show SelectionMaskOptions;
 import 'brush/brush_preset_library.dart';
@@ -160,6 +161,19 @@ class EditorWorkspace extends StatefulWidget {
 class _EditorWorkspaceState extends State<EditorWorkspace> {
   /// The factory-default arrangement (also the validation baseline when a
   /// saved layout is restored: it names every known tab and its home dock).
+  ///
+  /// R26 #31 — the user's working arrangement: the TIMESHEET takes the
+  /// right vertical dock (a B4 sheet wants height, not a bottom strip),
+  /// the Tool Library keeps the top of the wide left dock and the Tool
+  /// SETTINGS get their own section under it (the two panels a stroke
+  /// alternates between, both open at once), and the frame-axis panels
+  /// keep the bottom.
+  ///
+  /// The sheet being VISIBLE by default is what makes this change cost a
+  /// test round: it mounts its own ink views and cells, so any finder that
+  /// looks for a canvas widget app-wide now matches twice. The fix is
+  /// always to scope the finder to its panel — never to hide the sheet
+  /// again.
   static Map<String, List<DockSection>> _defaultDocks() => {
     EditorWorkspace.toolLeftGroupId: [
       DockSection(tabs: [EditorWorkspace.toolsTabId]),
@@ -169,7 +183,6 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
       DockSection(
         tabs: [
           EditorWorkspace.brushesTabId,
-          EditorWorkspace.brushSettingsTabId,
           EditorWorkspace.colorWheelTabId,
           // The camera PANEL retired (R11-⑤): the canvas overlay handles
           // pose editing, the timeline camera row its eye/opacity, and the
@@ -181,8 +194,11 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
         ],
         activeTabId: EditorWorkspace.brushesTabId,
       ),
+      DockSection(tabs: [EditorWorkspace.brushSettingsTabId]),
     ],
-    EditorWorkspace.rightGroupId: <DockSection>[],
+    EditorWorkspace.rightGroupId: [
+      DockSection(tabs: [EditorWorkspace.timesheetTabId]),
+    ],
     EditorWorkspace.centerGroupId: [
       DockSection(tabs: [EditorWorkspace.canvasTabId]),
     ],
@@ -191,7 +207,6 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
         tabs: [
           EditorWorkspace.timelineTabId,
           EditorWorkspace.storyboardTabId,
-          EditorWorkspace.timesheetTabId,
         ],
         activeTabId: EditorWorkspace.timelineTabId,
       ),
@@ -255,6 +270,11 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
   /// feather, edge AA. Defaults keep the lift byte-preserving.
   final ValueNotifier<SelectionMaskOptions> _selectionMaskOptions =
       ValueNotifier(SelectionMaskOptions.none);
+
+  /// R28 #6: the eyedropper's reference source (Tool Settings knob). The
+  /// user's default is "pick what you SEE".
+  final ValueNotifier<CanvasColorSampleSource> _eyedropperSource =
+      ValueNotifier(CanvasColorSampleSource.display);
 
   /// The color wheel's spare (background) slot; the foreground IS the
   /// brush color. Held here so it survives tab switches.
@@ -384,9 +404,10 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
   }
 
   /// Timesheet tab view state: paper page-split ⟷ continuous, the sheet
-  /// viewport (zoom/pan) and the sheet-ink allow toggle — owned here so
-  /// they survive tab switches.
+  /// on screen in page view (R26 #41), the sheet viewport (zoom/pan) and
+  /// the sheet-ink allow toggle — owned here so they survive tab switches.
   final ValueNotifier<bool> _timesheetContinuous = ValueNotifier(false);
+  final ValueNotifier<int> _timesheetPage = ValueNotifier(0);
   final ValueNotifier<CanvasViewport?> _timesheetViewport = ValueNotifier(null);
   final ValueNotifier<bool> _timesheetInkEnabled = ValueNotifier(true);
 
@@ -587,6 +608,7 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
       _brushTool.dispose();
     }
     _fillOptions.dispose();
+    _eyedropperSource.dispose();
     _colorWheelBackground.dispose();
     _cameraViewEnabled.dispose();
     _cameraDimOpacity.dispose();
@@ -601,6 +623,7 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
     _timelineRowFilter.dispose();
     _panelFlash.dispose();
     _timesheetContinuous.dispose();
+    _timesheetPage.dispose();
     _timesheetViewport.dispose();
     _timesheetInkEnabled.dispose();
     _timesheetInk.dispose();
@@ -737,6 +760,7 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
             expandedLaneLayerIds: _expandedLaneLayerIds,
             fillOptions: _fillOptions,
             selectionMaskOptions: _selectionMaskOptions,
+            eyedropperSource: _eyedropperSource,
           ),
         );
       case EditorWorkspace.brushesTabId:
@@ -824,6 +848,11 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
                             ValueListenableBuilder<SelectionMaskOptions>(
                               valueListenable: _selectionMaskOptions,
                               builder: (context, maskOptions, _) =>
+                                  ValueListenableBuilder<
+                                    CanvasColorSampleSource
+                                  >(
+                                    valueListenable: _eyedropperSource,
+                                    builder: (context, eyedropperSource, _) =>
                                   ToolSettingsPanel(
                                     state: toolState,
                                     onChanged: (state) =>
@@ -831,6 +860,9 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
                                     fillOptions: fillOptions,
                                     onFillOptionsChanged: (options) =>
                                         _fillOptions.value = options,
+                                    eyedropperSource: eyedropperSource,
+                                    onEyedropperSourceChanged: (source) =>
+                                        _eyedropperSource.value = source,
                                     selectionMaskOptions: maskOptions,
                                     onSelectionMaskOptionsChanged: (options) =>
                                         _selectionMaskOptions.value = options,
@@ -841,6 +873,7 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
                                         .languageSettings
                                         .value
                                         .programLanguage,
+                                  ),
                                   ),
                             ),
                       ),
@@ -1051,6 +1084,10 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
                 _showSecondsDisplay.value = show;
               },
               thumbnailFor: _storyboardThumbnails.thumbnailFor,
+              // R28 #1: the same camera-view state the timeline command
+              // bar and the canvas overlay drive — one notifier, three
+              // entrances.
+              cameraViewEnabled: _cameraViewEnabled,
             ),
           ),
         );
@@ -1070,6 +1107,7 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
             // its own boundary builder inside the host.
             listenable: Listenable.merge([
               _timesheetContinuous,
+              _timesheetPage,
               _timesheetViewport,
               _timesheetInkEnabled,
               // The notation language reprints the sheet (UI-R10 #7).
@@ -1080,6 +1118,10 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
               continuous: _timesheetContinuous.value,
               onContinuousChanged: (continuous) {
                 _timesheetContinuous.value = continuous;
+              },
+              page: _timesheetPage.value,
+              onPageChanged: (page) {
+                _timesheetPage.value = page;
               },
               viewport: _timesheetViewport.value,
               onViewportChanged: (viewport) {

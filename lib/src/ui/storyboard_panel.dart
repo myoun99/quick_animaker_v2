@@ -44,11 +44,14 @@ import 'timeline/timeline_cell_style.dart'
         timelineDrawingInkColor,
         timelineSelectedFrameBorderColor;
 import 'timeline/timeline_exposure_comma_drag_handle.dart'
-    show TimelineBlockEdgeGrip;
+    show BlockEdgeGrip, BlockEdgeGripHooks, TimelineBlockEdgeGrip;
 import 'timeline/timeline_exposure_comma_drag_policy.dart'
-    show TimelineCommaDragCallbacks, commaDragFrameDelta;
+    show TimelineCommaDragCallbacks;
 import 'timeline/timeline_frame_range_policy.dart'
-    show endlessTrailingFrames, endlessViewportFillFrames, timelineSecondsLabel;
+    show
+        endlessTrailingFrames,
+        endlessViewportFillFrames,
+        timelineDurationLabel;
 import '../models/layer_kind.dart';
 import 'timeline/timeline_frame_ruler.dart';
 import 'timeline/timeline_frame_window.dart';
@@ -837,7 +840,7 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
 
   Set<LayerId> _legendDisplayedLayerIds() => {
     for (final layer in _legendLayers())
-      if (layer.kind != LayerKind.camera) layer.id,
+      if (layerKindHasPictureOpacity(layer.kind)) layer.id,
   };
 
   Widget _seLabelRow(Track track, int slot) {
@@ -1356,7 +1359,12 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
               SizedBox(
                 width: StoryboardPanel._trackLabelWidth,
                 child: TimelineLayerControlsHeader(
-                  metrics: const TimelineGridMetrics(),
+                  // The storyboard rail keeps its own width (R27 #6: the
+                  // timeline's grew for the blend column; this rail has
+                  // no blend cell, so it must not).
+                  metrics: const TimelineGridMetrics(
+                    layerControlsWidth: StoryboardPanel._trackLabelWidth,
+                  ),
                   legend: widget.legend,
                   rowFilter: TimelineRowFilter.none,
                   showRowSolos: false,
@@ -2242,34 +2250,18 @@ class _StoryboardSeLabel extends StatelessWidget {
               if (layer != null &&
                   onToggleLayerFx != null &&
                   layerKindShowsFxToggle(layer.kind))
-                LayerFxToggleButton(
-                  keyPrefix: 'storyboard',
-                  layerId: layer.id,
+                FxToggleButton(
+                  keyValue: 'storyboard-layer-fx-${layer.id}',
                   fxEnabled: layerFxEnabledOf?.call(layer.id) ?? true,
-                  onToggle: onToggleLayerFx!,
+                  onToggle: () => onToggleLayerFx!(layer.id),
                 )
               else
                 const SizedBox(width: layerFxSlotWidth),
               if (layer != null && onToggleLayerVisibility != null)
-                SizedBox(
-                  width: layerVisibilitySlotWidth,
-                  height: 26,
-                  child: IconButton(
-                    key: ValueKey<String>(
-                      'storyboard-layer-visibility-${layer.id}',
-                    ),
-                    tooltip: layer.isVisible ? 'Hide layer' : 'Show layer',
-                    padding: EdgeInsets.zero,
-                    constraints: const BoxConstraints.tightFor(
-                      width: layerVisibilitySlotWidth,
-                      height: 26,
-                    ),
-                    icon: Icon(
-                      layer.isVisible ? Icons.visibility : Icons.visibility_off,
-                      size: 16,
-                    ),
-                    onPressed: () => onToggleLayerVisibility!(layer.id),
-                  ),
+                LayerVisibilityToggleButton(
+                  keyValue: 'storyboard-layer-visibility-${layer.id}',
+                  isVisible: layer.isVisible,
+                  onToggle: () => onToggleLayerVisibility!(layer.id),
                 )
               else
                 const SizedBox(width: layerVisibilitySlotWidth),
@@ -2277,19 +2269,10 @@ class _StoryboardSeLabel extends StatelessWidget {
                 SizedBox(
                   width: layerMuteSlotWidth,
                   height: 26,
-                  child: IconButton(
-                    key: ValueKey<String>('storyboard-layer-mute-${layer.id}'),
-                    tooltip: layer.muted ? 'Unmute layer' : 'Mute layer',
-                    padding: EdgeInsets.zero,
-                    constraints: const BoxConstraints.tightFor(
-                      width: layerMuteSlotWidth,
-                      height: 26,
-                    ),
-                    icon: Icon(
-                      layer.muted ? Icons.volume_off : Icons.volume_up,
-                      size: 14,
-                    ),
-                    onPressed: () => onToggleLayerMuted!(layer.id),
+                  child: LayerMuteToggleButton(
+                    keyValue: 'storyboard-layer-mute-${layer.id}',
+                    muted: layer.muted,
+                    onToggle: () => onToggleLayerMuted!(layer.id),
                   ),
                 )
               else
@@ -3284,8 +3267,12 @@ class _StoryboardTrackLabel extends StatelessWidget {
             // the button is track furniture, only its subject is absent.
             const SizedBox(width: layerFillReferenceSlotWidth),
             if (onToggleCutFx != null)
-              _CutFxToggleButton(
-                keySuffix: subjectCut?.id.value ?? 'none-${track.id.value}',
+              FxToggleButton(
+                keyValue:
+                    'storyboard-cut-fx-'
+                    '${subjectCut?.id.value ?? 'none-${track.id.value}'}',
+                subject: 'cut',
+                size: 26,
                 fxEnabled: subjectCut == null
                     ? true
                     : (cutFxEnabledOf?.call(subjectCut!.id) ?? true),
@@ -3302,29 +3289,17 @@ class _StoryboardTrackLabel extends StatelessWidget {
               SizedBox(
                 width: layerVisibilitySlotWidth,
                 height: 26,
-                child: IconButton(
-                  key: ValueKey<String>(
-                    'storyboard-cut-visibility-'
-                    '${subjectCut?.id.value ?? 'none-${track.id.value}'}',
-                  ),
-                  tooltip:
-                      (subjectCut == null ||
-                          (cutPictureVisibleOf?.call(subjectCut!.id) ?? true))
-                      ? 'Hide cut picture'
-                      : 'Show cut picture',
-                  padding: EdgeInsets.zero,
-                  constraints: const BoxConstraints.tightFor(
-                    width: layerVisibilitySlotWidth,
-                    height: 26,
-                  ),
-                  icon: Icon(
-                    (subjectCut == null ||
-                            (cutPictureVisibleOf?.call(subjectCut!.id) ?? true))
-                        ? Icons.visibility
-                        : Icons.visibility_off,
-                    size: 16,
-                  ),
-                  onPressed: () {
+                // The SAME eye the layer and folder rows mount — this was
+                // a sixth inline copy (R28 follow-up).
+                child: LayerVisibilityToggleButton(
+                  keyValue:
+                      'storyboard-cut-visibility-'
+                      '${subjectCut?.id.value ?? 'none-${track.id.value}'}',
+                  subject: 'cut picture',
+                  isVisible:
+                      subjectCut == null ||
+                      (cutPictureVisibleOf?.call(subjectCut!.id) ?? true),
+                  onToggle: () {
                     final subject = subjectCut;
                     if (subject != null) {
                       onToggleCutPictureVisibility!(subject.id);
@@ -3343,49 +3318,6 @@ class _StoryboardTrackLabel extends StatelessWidget {
   }
 }
 
-/// The V-row fx switch 窶・[LayerFxToggleButton]'s exact look, cut-typed
-/// (the shared widget speaks LayerId; the key and callback are the only
-/// differences).
-class _CutFxToggleButton extends StatelessWidget {
-  const _CutFxToggleButton({
-    required this.keySuffix,
-    required this.fxEnabled,
-    required this.onToggle,
-  });
-
-  final String keySuffix;
-  final bool fxEnabled;
-  final VoidCallback onToggle;
-
-  @override
-  Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
-    // Tight SizedBox: the M3 IconButton otherwise inflates to the 48px
-    // minimum tap target and overflows the row (shared gotcha).
-    return SizedBox(
-      width: 26,
-      height: 26,
-      child: IconButton(
-        key: ValueKey<String>('storyboard-cut-fx-$keySuffix'),
-        tooltip: fxEnabled ? 'Bypass cut FX' : 'Apply cut FX',
-        padding: EdgeInsets.zero,
-        constraints: const BoxConstraints.tightFor(width: 26, height: 26),
-        icon: Text(
-          'fx',
-          style: TextStyle(
-            fontSize: 13,
-            fontStyle: FontStyle.italic,
-            fontWeight: FontWeight.w700,
-            color: fxEnabled
-                ? AppColors.accent
-                : colorScheme.onSurface.withValues(alpha: 0.35),
-          ),
-        ),
-        onPressed: onToggle,
-      ),
-    );
-  }
-}
 
 /// The end line's drag grip (UI-R18 #15 → UI-R20 #3): a 12px strip over
 /// the strips' movie-end line; dragging it edits the movie's FINAL
@@ -3499,9 +3431,12 @@ class _StoryboardTrackRow extends StatelessWidget {
   final ProjectFrameRate projectFrameRate;
 
   String _totalLabelFor(StoryboardTimelineLayoutEntry entry) {
-    return showSeconds
-        ? timelineSecondsLabel(entry.endFrame, projectFrameRate.countingBase)
-        : '${entry.endFrame}f';
+    // R27 #3: no `f` suffix — the shared readout, same as the timeline.
+    return timelineDurationLabel(
+      entry.endFrame,
+      showSeconds: showSeconds,
+      countingBase: projectFrameRate.countingBase,
+    );
   }
 
   /// The cut ordinal a selection-drag head at track-local [trackX] lands
@@ -3682,17 +3617,20 @@ class _StoryboardFrameLinesPainter extends CustomPainter {
   }
 }
 
-/// One cut trim grip: an inset vertical bar just inside a cut block's start
-/// or end edge, mirroring the timeline's [TimelineBlockEdgeGrip] visuals and
-/// gesture state machine (cumulative whole-frame deltas via the shared
-/// comma-drag policy; the session recomputes the preview from its drag-start
-/// snapshot).
+/// One cut trim grip: binds the cut identity onto the SHARED
+/// [BlockEdgeGrip] (R28 #3).
 ///
-/// The Positioned key derives from the cut ORDINAL, never its start frame 窶・
+/// This used to be a private copy of the timeline grip's visuals and state
+/// machine, and it had already drifted — the copy never grew a hover state,
+/// so a pointer resting on a cut edge said nothing while the same gesture in
+/// the timeline lit up. One widget now serves both surfaces, so the feel
+/// cannot diverge again.
+///
+/// The Positioned key derives from the cut ORDINAL, never its start frame —
 /// a roll drag moves the start every step, and a key change there would
 /// rebuild the gesture subtree mid-drag and kill it (same constraint as the
 /// timeline grips).
-class _StoryboardCutEdgeGrip extends StatefulWidget {
+class _StoryboardCutEdgeGrip extends StatelessWidget {
   const _StoryboardCutEdgeGrip({
     required this.cutId,
     required this.cutOrdinal,
@@ -3714,117 +3652,24 @@ class _StoryboardCutEdgeGrip extends StatefulWidget {
   final StoryboardCutTrimCallbacks callbacks;
 
   static const double hitExtent = 12;
-  static const double _barThickness = 3.5;
-  static const double _barInset = 2.5;
-
-  @override
-  State<_StoryboardCutEdgeGrip> createState() => _StoryboardCutEdgeGripState();
-}
-
-class _StoryboardCutEdgeGripState extends State<_StoryboardCutEdgeGrip> {
-  double _accumulatedDelta = 0;
-  int _lastReportedFrames = 0;
-  bool _dragging = false;
-
-  void _startDrag() {
-    if (!widget.callbacks.onBegin(widget.cutId, widget.edge)) {
-      return;
-    }
-    setState(() {
-      _dragging = true;
-      _accumulatedDelta = 0;
-      _lastReportedFrames = 0;
-    });
-  }
-
-  void _updateDrag(double delta) {
-    if (!_dragging) {
-      return;
-    }
-    _accumulatedDelta += delta;
-    final frames = commaDragFrameDelta(
-      accumulatedDelta: _accumulatedDelta,
-      frameCellExtent: widget.frameCellExtent,
-    );
-    if (frames == _lastReportedFrames) {
-      return;
-    }
-    _lastReportedFrames = frames;
-    widget.callbacks.onUpdate(frames);
-  }
-
-  void _endDrag() {
-    if (!_dragging) {
-      return;
-    }
-    setState(() => _dragging = false);
-    widget.callbacks.onEnd();
-  }
-
-  void _cancelDrag() {
-    if (!_dragging) {
-      return;
-    }
-    setState(() => _dragging = false);
-    widget.callbacks.onCancel();
-  }
-
-  @override
-  void dispose() {
-    // A grip can unmount mid-drag; commit rather than leak an open session
-    // (same policy as the timeline grips).
-    if (_dragging) {
-      widget.callbacks.onEnd();
-    }
-    super.dispose();
-  }
 
   @override
   Widget build(BuildContext context) {
-    final isStartEdge = widget.edge == TimelineBlockEdge.start;
-    final hitStart = isStartEdge
-        ? widget.blockStartOffset
-        : widget.blockEndOffset - _StoryboardCutEdgeGrip.hitExtent;
-    final barColor = _dragging
-        ? timelineSelectedFrameBorderColor
-        : timelineDrawingInkColor.withValues(alpha: 0.38);
-
-    return Positioned(
-      key: ValueKey<String>(
-        'storyboard-cut-edge-grip-${widget.edge.name}-${widget.cutOrdinal}',
+    return BlockEdgeGrip(
+      positionedKey: ValueKey<String>(
+        'storyboard-cut-edge-grip-${edge.name}-$cutOrdinal',
       ),
-      left: hitStart,
-      top: 0,
-      width: _StoryboardCutEdgeGrip.hitExtent,
-      height: widget.crossAxisExtent,
-      child: MouseRegion(
-        cursor: SystemMouseCursors.resizeColumn,
-        child: GestureDetector(
-          behavior: HitTestBehavior.opaque,
-          onHorizontalDragStart: (_) => _startDrag(),
-          onHorizontalDragUpdate: (details) => _updateDrag(details.delta.dx),
-          onHorizontalDragEnd: (_) => _endDrag(),
-          onHorizontalDragCancel: _cancelDrag,
-          child: Align(
-            alignment: isStartEdge
-                ? Alignment.centerLeft
-                : Alignment.centerRight,
-            child: Padding(
-              padding: EdgeInsets.only(
-                left: isStartEdge ? _StoryboardCutEdgeGrip._barInset : 0,
-                right: isStartEdge ? 0 : _StoryboardCutEdgeGrip._barInset,
-              ),
-              child: Container(
-                width: _StoryboardCutEdgeGrip._barThickness,
-                height: widget.crossAxisExtent * 0.55,
-                decoration: BoxDecoration(
-                  color: barColor,
-                  borderRadius: BorderRadius.circular(2),
-                ),
-              ),
-            ),
-          ),
-        ),
+      edge: edge,
+      blockStartOffset: blockStartOffset,
+      blockEndOffset: blockEndOffset,
+      frameCellExtent: frameCellExtent,
+      crossAxisExtent: crossAxisExtent,
+      hitExtent: hitExtent,
+      hooks: BlockEdgeGripHooks(
+        onBegin: () => callbacks.onBegin(cutId, edge),
+        onUpdate: callbacks.onUpdate,
+        onEnd: callbacks.onEnd,
+        onCancel: callbacks.onCancel,
       ),
     );
   }
@@ -4236,8 +4081,10 @@ class _StoryboardCutBlock extends StatelessWidget {
                   key: ValueKey<String>('storyboard-cut-total-${cut.id.value}'),
                   maxLines: 1,
                   softWrap: false,
+                  // R27 #3: bold — the readout was too easy to miss.
                   style: Theme.of(context).textTheme.labelSmall?.copyWith(
                     color: colorScheme.onSurfaceVariant,
+                    fontWeight: FontWeight.w700,
                   ),
                 ),
               ),

@@ -7,6 +7,16 @@ enum LayerKind {
   /// section; the kind only marks the material for icons and sheet roles.
   art('art'),
 
+  /// A GROUP: a layer that holds structure instead of a picture — "그림만
+  /// 못 그릴 뿐인 레이어" (user, 2026-07-23). It has no cels, no timesheet
+  /// column and takes no brush, but it carries an eye, a static opacity, a
+  /// blend mode and FX lanes exactly like any other layer, and its members
+  /// composite into ITS buffer before those apply. Membership is the
+  /// members' [Layer.folderId] pointer; the stack list stays the single
+  /// truth of order, with the folder row sitting directly ABOVE its
+  /// contiguous member run.
+  folder('folder'),
+
   /// Sound-effect track: rows for the timesheet's SE column. Drawable like
   /// an animation layer (exposure blocks mark SE timing; frame names carry
   /// the labels); sorts into its own timeline section between the drawing
@@ -39,33 +49,160 @@ enum LayerKind {
     throw ArgumentError.value(
       json,
       'kind',
-      'Layer kind must be "animation", "storyboard", "art", "se", '
-          '"instruction" or "camera".',
+      'Layer kind must be one of '
+          '${LayerKind.values.map((kind) => '"${kind.jsonValue}"').join(', ')}.',
     );
   }
 }
 
 /// Whether rows of [kind] hold drawing frames on the cel timeline (exposure
-/// blocks, X cells, marks, comma drags). Camera rows mirror keyframes and
-/// instruction rows carry instruction events instead.
+/// blocks, X cells, marks, comma drags). Camera rows mirror keyframes,
+/// instruction rows carry instruction events and folder rows hold other
+/// rows instead.
 bool layerKindHoldsDrawings(LayerKind kind) {
   return switch (kind) {
     LayerKind.animation ||
     LayerKind.storyboard ||
     LayerKind.art ||
     LayerKind.se => true,
-    LayerKind.instruction || LayerKind.camera => false,
+    LayerKind.instruction || LayerKind.camera || LayerKind.folder => false,
   };
 }
+
+/// The ACTION-section DRAWING kinds: the rows whose cels hold pen artwork.
+/// Everything that means "a real drawing row" — brush targets, attach
+/// bases, cel export — asks this rather than listing the three kinds again.
+bool layerKindIsDrawingCel(LayerKind kind) {
+  return switch (kind) {
+    LayerKind.animation || LayerKind.storyboard || LayerKind.art => true,
+    LayerKind.se ||
+    LayerKind.instruction ||
+    LayerKind.camera ||
+    LayerKind.folder => false,
+  };
+}
+
+/// Whether [kind] holds OTHER rows rather than a picture of its own — the
+/// group kinds. Membership is [Layer.folderId]; the group row sits directly
+/// above its contiguous member run.
+bool layerKindGroupsLayers(LayerKind kind) => kind == LayerKind.folder;
 
 /// Whether the brush may land on [kind]'s cels (R6-④): only the
 /// drawing-section kinds. SE cels exist for timing/dialogue data (the
 /// upcoming on-canvas dialogue display is driven by their transform, not
 /// strokes) and instruction/camera rows carry notation — the pen must
 /// never draw on any of them.
-bool layerKindAcceptsBrushInput(LayerKind kind) {
+bool layerKindAcceptsBrushInput(LayerKind kind) => layerKindIsDrawingCel(kind);
+
+// ---------------------------------------------------------------------------
+// Semantic row predicates.
+//
+// Every one of these used to be written inline as `kind == LayerKind.camera`
+// at ~35 call sites, which meant each new "layer that is not quite a drawing
+// layer" had to re-walk all of them. They are named for what the caller
+// actually MEANS, so a new kind answers each question once, here.
+// ---------------------------------------------------------------------------
+
+/// Whether [kind] takes part in the composited picture at all — the walk
+/// [resolveCutFrameCompositeEntries] makes over the stack. The camera is
+/// the frame, not a thing inside it; every other row either paints
+/// ([layerKindPaintsArtwork]) or groups rows that do.
+bool layerKindComposites(LayerKind kind) {
   return switch (kind) {
-    LayerKind.animation || LayerKind.storyboard || LayerKind.art => true,
-    LayerKind.se || LayerKind.instruction || LayerKind.camera => false,
+    LayerKind.animation ||
+    LayerKind.storyboard ||
+    LayerKind.art ||
+    LayerKind.se ||
+    LayerKind.instruction ||
+    LayerKind.folder => true,
+    LayerKind.camera => false,
+  };
+}
+
+/// Whether [kind] contributes PIXELS of its own to the composite (a cel
+/// surface). SE and instruction rows composite (they carry FX and can host
+/// the canvas dialogue) but resolve no artwork today; they still answer
+/// true because their frames, if any, paint like a cel. Folder rows
+/// composite their MEMBERS' buffer, never a surface of their own.
+bool layerKindPaintsArtwork(LayerKind kind) =>
+    layerKindComposites(kind) && !layerKindGroupsLayers(kind);
+
+/// Whether [kind]'s [Layer.opacity] is the row's own picture opacity — the
+/// thing the master-opacity bar and "set all layers" write. The camera
+/// row's slider drives the camera-view DIM instead (a display notifier, not
+/// layer state), so bulk opacity edits must not touch it.
+bool layerKindHasPictureOpacity(LayerKind kind) {
+  return switch (kind) {
+    LayerKind.animation ||
+    LayerKind.storyboard ||
+    LayerKind.art ||
+    LayerKind.se ||
+    LayerKind.instruction ||
+    LayerKind.folder => true,
+    LayerKind.camera => false,
+  };
+}
+
+/// Whether [kind] authors its transform through [Layer.transformTrack].
+/// The camera moves through the cut's camera track instead, so writing a
+/// layer transform onto it is a programming error.
+bool layerKindHasLayerTransform(LayerKind kind) {
+  return switch (kind) {
+    LayerKind.animation ||
+    LayerKind.storyboard ||
+    LayerKind.art ||
+    LayerKind.se ||
+    LayerKind.instruction ||
+    LayerKind.folder => true,
+    LayerKind.camera => false,
+  };
+}
+
+/// Whether a row of [kind] can be copied to the layer clipboard,
+/// duplicated or pasted. The camera is a fixture (exactly one per cut) and
+/// SE rows are track-owned — duplicating either would recreate a shape the
+/// model retired. Folders stand down in v1: a folder copy has to carry its
+/// members, which the single-layer payload cannot express.
+bool layerKindIsClipboardCopyable(LayerKind kind) {
+  return switch (kind) {
+    LayerKind.animation ||
+    LayerKind.storyboard ||
+    LayerKind.art ||
+    LayerKind.instruction => true,
+    LayerKind.se || LayerKind.camera || LayerKind.folder => false,
+  };
+}
+
+/// Whether [kind] is a FIXED kind — one the user can neither convert a
+/// layer into nor convert away from (the camera fixture and folders, whose
+/// kind is their structure; instruction rows carry their own guard
+/// alongside).
+bool layerKindIsFixed(LayerKind kind) =>
+    kind == LayerKind.camera || layerKindGroupsLayers(kind);
+
+/// Whether [kind] can be exported as a cel image (the cel-export scope).
+/// The camera has no artwork, SE rows are timing data and folders hold
+/// their members' cels rather than one of their own.
+bool layerKindExportsCels(LayerKind kind) {
+  return switch (kind) {
+    LayerKind.animation ||
+    LayerKind.storyboard ||
+    LayerKind.art ||
+    LayerKind.instruction => true,
+    LayerKind.se || LayerKind.camera || LayerKind.folder => false,
+  };
+}
+
+/// Whether [kind] takes a CEL column on the printed timesheet. The camera
+/// prints in the CAM group (its own column, driven by the cut's camera
+/// track) and rows that only group other rows print nothing.
+bool layerKindTakesTimesheetColumn(LayerKind kind) {
+  return switch (kind) {
+    LayerKind.animation ||
+    LayerKind.storyboard ||
+    LayerKind.art ||
+    LayerKind.se ||
+    LayerKind.instruction => true,
+    LayerKind.camera || LayerKind.folder => false,
   };
 }
