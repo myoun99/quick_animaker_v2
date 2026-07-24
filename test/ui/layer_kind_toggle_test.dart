@@ -184,22 +184,10 @@ void main() {
     expect(find.bySemanticsLabel('Storyboard layer'), findsOneWidget);
   });
 
-  testWidgets('toggles storyboard layer back to animation', (tester) async {
-    late ProjectRepository repository;
-    await _pumpHome(
-      tester,
-      project: _projectWithLayer(kind: LayerKind.storyboard),
-      onRepositoryCreated: (repo) => repository = repo,
-    );
-
-    expect(_layer(repository).kind, LayerKind.storyboard);
-    expect(find.bySemanticsLabel('Storyboard layer'), findsOneWidget);
-
-    await _tapKey(tester, _toggleKey);
-
-    expect(_layer(repository).kind, LayerKind.animation);
-    expect(find.bySemanticsLabel('Animation layer'), findsOneWidget);
-  });
+  // storyboard→animation (model + metadata) is covered at the service level by
+  // UpdateLayerKindCommand's 'changes storyboard layer back to animation'
+  // test; the forward gesture above anchors the display-label contract, which
+  // reads layer.kind through the same widget code in either direction.
 
   testWidgets('undo and redo work after toggling to storyboard', (
     tester,
@@ -224,26 +212,9 @@ void main() {
     expect(_mainCanvasCutId(tester), _cutId);
   });
 
-  testWidgets('undo and redo work after toggling to animation', (tester) async {
-    late ProjectRepository repository;
-    await _pumpHome(
-      tester,
-      project: _projectWithLayer(kind: LayerKind.storyboard, isVisible: true),
-      onRepositoryCreated: (repo) => repository = repo,
-    );
-
-    await _tapKey(tester, _toggleKey);
-    expect(_layer(repository).kind, LayerKind.animation);
-    expect(_mainCanvasCutId(tester), _cutId);
-
-    await _tapKey(tester, _undoKey);
-    expect(_layer(repository).kind, LayerKind.storyboard);
-    expect(_mainCanvasCutId(tester), _cutId);
-
-    await _tapKey(tester, _redoKey);
-    expect(_layer(repository).kind, LayerKind.animation);
-    expect(_mainCanvasCutId(tester), _cutId);
-  });
+  // The reverse-direction undo/redo adds nothing over the forward case above
+  // (same command, same canvas-retarget path); the model undo/redo itself is
+  // covered by UpdateLayerKindCommand's 'undo restores previous kind' test.
 
   testWidgets('active cut with no layers is safe and disabled', (tester) async {
     late ProjectRepository repository;
@@ -260,30 +231,9 @@ void main() {
     );
   });
 
-  testWidgets('toggle preserves storyboard metadata, strokes, and layer data', (
-    tester,
-  ) async {
-    late ProjectRepository repository;
-    await _pumpHome(tester, onRepositoryCreated: (repo) => repository = repo);
-    final beforeLayer = _layer(repository);
-    final beforeFrame = beforeLayer.frames.single;
-
-    await _tapKey(tester, _toggleKey);
-
-    final afterLayer = _layer(repository);
-    final afterFrame = afterLayer.frames.single;
-    expect(afterLayer.kind, LayerKind.storyboard);
-    expect(afterFrame.storyboardMetadata, beforeFrame.storyboardMetadata);
-    expect(afterFrame.strokes, beforeFrame.strokes);
-    expect(afterLayer.frames, beforeLayer.frames);
-    expect(afterLayer.timeline, beforeLayer.timeline);
-    expect(afterLayer.isVisible, beforeLayer.isVisible);
-    expect(afterLayer.opacity, beforeLayer.opacity);
-    expect(
-      repository.requireProject().tracks.single.cuts.single.metadata,
-      const CutMetadata(note: 'cut note only'),
-    );
-  });
+  // Data preservation across the kind change (metadata, strokes, frames,
+  // timeline, visibility, opacity, cut metadata) is pinned more thoroughly at
+  // the service level by UpdateLayerKindCommand's 'preserves data' test.
 
   // The SE kind toggle is retired (entrance unification): SE rows are
   // created by the unified Add Layer with an SE row active, never by

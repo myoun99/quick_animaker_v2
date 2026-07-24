@@ -12,41 +12,14 @@ import 'package:quick_animaker_v2/src/ui/widgets/field_slider.dart';
 import 'ui/timeline/timeline_cell_probe.dart';
 import 'ui/timeline/timeline_ruler_probe.dart';
 
-import 'ui/flyout_test_helpers.dart' show readCommandEnabled;
-
-/// R-toolbar round: these command keys moved from standalone toolbar
-/// buttons into the Layer ▾ / Frame ▾ / Cut ▾ flyouts (same key strings, now
-/// menu items). The tap helper stays menu-aware so call sites are unchanged.
-const Map<String, String> _flyoutOwnerByItemKey = {
-  'rename-layer-button': 'timeline-layer-menu-button',
-  'duplicate-layer-button': 'timeline-layer-menu-button',
-  'copy-layer-button': 'timeline-layer-menu-button',
-  'paste-layer-button': 'timeline-layer-menu-button',
-  'delete-layer-button': 'timeline-layer-menu-button',
-  'import-audio-button': 'timeline-layer-menu-button',
-  'toggle-storyboard-layer-button': 'timeline-layer-menu-button',
-  'toggle-art-layer-button': 'timeline-layer-menu-button',
-  'toggle-se-section-button': 'timeline-layer-menu-button',
-  'toggle-camera-section-button': 'timeline-layer-menu-button',
-  'rename-frame-button': 'timeline-frame-menu-button',
-  'copy-frame-button': 'timeline-frame-menu-button',
-  'paste-linked-frame-button': 'timeline-frame-menu-button',
-  'delete-cell-button': 'timeline-frame-menu-button',
-  'rename-cut-button': 'cut-menu-button',
-  'edit-cut-note-button': 'cut-menu-button',
-  'resize-cut-canvas-button': 'cut-menu-button',
-  'duplicate-cut-button': 'cut-menu-button',
-  'set-cut-thumbnail-button': 'cut-menu-button',
-  'move-cut-left-button': 'cut-menu-button',
-  'move-cut-right-button': 'cut-menu-button',
-  'delete-cut-button': 'cut-menu-button',
-};
+import 'ui/flyout_test_helpers.dart'
+    show readCommandEnabled, flyoutOwnerByItemKey;
 
 Future<void> _tapToolbarButton(
   WidgetTester tester,
   ValueKey<String> key,
 ) async {
-  final owner = _flyoutOwnerByItemKey[key.value];
+  final owner = flyoutOwnerByItemKey[key.value];
   if (owner != null) {
     final menuButton = find.byKey(ValueKey<String>(owner));
     await tester.ensureVisible(menuButton);
@@ -445,7 +418,7 @@ Future<bool> _isActionButtonEnabled(
 ) async {
   // Flyout-hosted commands (R-toolbar round) read their enablement off the
   // menu item; direct buttons keep the widget check.
-  if (_flyoutOwnerByItemKey.containsKey(key.value)) {
+  if (flyoutOwnerByItemKey.containsKey(key.value)) {
     return readCommandEnabled(tester, key);
   }
   final button = find.byKey(key);
