@@ -47,6 +47,17 @@ class WintabPenService {
   DateTime _lastPacketAt = DateTime.fromMillisecondsSinceEpoch(0);
   VoidCallback? _settingsListener;
 
+  /// The clock the freshness window reads. Production uses wall time;
+  /// tests inject a fixed clock so a packet stays "fresh" regardless of
+  /// how long the test binding takes between injecting it and polling the
+  /// pressure — otherwise a busy suite lets the real 150ms window lapse
+  /// mid-stroke and the driver pressure silently reverts to the pointer's
+  /// (the "dab size 4.0 vs 4.25" flake).
+  @visibleForTesting
+  static DateTime Function()? debugClockOverride;
+
+  static DateTime _now() => debugClockOverride?.call() ?? DateTime.now();
+
   bool get running => _timer != null;
 
   /// Follows the live input settings; safe to call once from main().
@@ -111,7 +122,7 @@ class WintabPenService {
     if (packets.isEmpty) {
       return;
     }
-    _lastPacketAt = DateTime.now();
+    _lastPacketAt = _now();
     latest.value = packets.last;
   }
 
@@ -127,7 +138,7 @@ class WintabPenService {
     if (packet == null) {
       return null;
     }
-    final age = (now ?? DateTime.now()).difference(_lastPacketAt);
+    final age = (now ?? _now()).difference(_lastPacketAt);
     if (age > freshWindow) {
       return null;
     }
@@ -138,7 +149,7 @@ class WintabPenService {
   /// widget-test fake clock never fires the real timer).
   @visibleForTesting
   void debugInjectPacket(QaTabletPacket packet) {
-    _lastPacketAt = DateTime.now();
+    _lastPacketAt = _now();
     latest.value = packet;
   }
 
@@ -151,6 +162,7 @@ class WintabPenService {
       _settingsListener = null;
     }
     debugPollOverride = null;
+    debugClockOverride = null;
     _bridge = null;
     _lastPacketAt = DateTime.fromMillisecondsSinceEpoch(0);
   }

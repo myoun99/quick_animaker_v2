@@ -829,6 +829,13 @@ void main() {
       (tester) async {
         final service = WintabPenService.instance;
         addTearDown(service.debugReset);
+        // Freeze the freshness clock: the injected packet must read as
+        // "fresh" however long the busy test binding takes between the
+        // inject and the stroke's pressure polls (the real 150ms window
+        // lapsing mid-stroke was the flake — some dabs kept the driver's
+        // 0.5, others reverted to the pointer's 1.0, interpolating a
+        // stray 0.53 → dab size 4.25).
+        WintabPenService.debugClockOverride = () => DateTime(2024);
         service.debugPollOverride = () => const [];
         service.start();
 

@@ -91,6 +91,12 @@ void main() {
 
   test('fresh driver pressure overrides; stale or idle yields null', () async {
     final service = WintabPenService.instance;
+    // Freeze the freshness clock (tearDown's debugReset clears it): the
+    // delivered packet must read fresh however long the poll delay and
+    // suite load take between delivery and the pressure read. The "beyond
+    // the fresh window" case below builds its stale time off the same
+    // frozen base so the age math stays deterministic.
+    WintabPenService.debugClockOverride = () => DateTime(2024);
     var queue = <QaTabletPacket>[];
     service.debugPollOverride = () {
       final drained = queue;
@@ -122,8 +128,9 @@ void main() {
     expect(service.latest.value?.pressure, 0.62);
     expect(service.freshContactPressure(), 0.62);
 
-    // Beyond the fresh window the override stands down.
-    final stale = DateTime.now().add(
+    // Beyond the fresh window the override stands down — built off the
+    // frozen base the packet was delivered at.
+    final stale = DateTime(2024).add(
       WintabPenService.freshWindow + const Duration(milliseconds: 1),
     );
     expect(service.freshContactPressure(now: stale), isNull);
