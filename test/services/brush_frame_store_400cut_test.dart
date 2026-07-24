@@ -1,6 +1,3 @@
-@Tags(['benchmark'])
-library;
-
 import 'dart:io';
 import 'dart:typed_data';
 
@@ -25,6 +22,16 @@ import 'package:quick_animaker_v2/src/services/persistence/qap_file_service.dart
 /// every cel FILE-BACKED with near-zero RAM), and above all INCREMENTAL-
 /// save in time proportional to the EDIT, not the project. Prints
 /// measured wall times; assertions pin the architecture, not the clock.
+///
+/// NOT tagged `benchmark`, deliberately. The tag means "this file's POINT
+/// is the number, so racing the suite for CPU makes it lie" — and it
+/// skips the whole file, assertions included. Every assertion below is a
+/// count, a byte total or an emptiness check, none of which the clock can
+/// move, and together they are the only place the incremental-save
+/// architecture is pinned end to end. Tagging this file by its NAME once
+/// took all eleven of them out of CI while the numbers it prints stayed
+/// harmless. The printed times are indicative here; read them from a
+/// deliberate lone run, not from a suite log.
 void main() {
   test(
     '400 HD cels: full save, file-backed open, one-cel incremental save',

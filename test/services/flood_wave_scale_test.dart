@@ -1,6 +1,3 @@
-@Tags(['benchmark'])
-library;
-
 import 'dart:io';
 
 
@@ -9,6 +6,13 @@ import 'package:quick_animaker_v2/src/native/qa_engine_abi.dart';
 import 'package:quick_animaker_v2/src/native/qa_native_engine.dart';
 import 'package:quick_animaker_v2/src/services/canvas_flood_fill.dart';
 
+/// NOT tagged `benchmark`: the tag skips the WHOLE file, and the
+/// assertions here (the flooded region's exact bounds, the mask length,
+/// the gap-close region's corner) are geometry the clock cannot move —
+/// they are the only 8K-scale correctness pins the wave flood has. The
+/// times it prints are indicative under a suite run; read them from a
+/// deliberate lone run instead.
+///
 /// R22-E3 wave-flood scaling bench: floods a fully-composed 8000x8000
 /// raster (the worst single-call case — every compose tile is in the
 /// wave) and prints wall times. Run twice to see thread scaling:
