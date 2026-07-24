@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:quick_animaker_v2/src/ui/timeline/timeline_frame_ruler_painter.dart';
+import 'package:quick_animaker_v2/src/ui/timeline/timeline_ruler_cursor_overlay.dart';
 import 'package:quick_animaker_v2/src/ui/timeline/xsheet_timeline_grid.dart'
     show XSheetFrameRailPainter;
 
@@ -92,3 +93,38 @@ Rect xsheetFrameRowGlobalRect(WidgetTester tester, int frameIndex) {
     tester,
   ).rowRectFor(frameIndex).shift(box.localToGlobal(Offset.zero));
 }
+
+// --- The rulers' CURSOR OVERLAY (the split, scoped-notify audit) ----------
+//
+// The current-frame tint and the green cached bar left the gated strip
+// painters: cached-ness is derived state (composites self-validate, nothing
+// raises an invalidation event), so it repaints freely on its own thin
+// layer. These read that layer.
+
+TimelineRulerCursorOverlayPainter _overlayPainter(
+  WidgetTester tester,
+  String keyValue,
+) =>
+    tester
+            .widget<CustomPaint>(find.byKey(ValueKey<String>(keyValue)))
+            .painter!
+        as TimelineRulerCursorOverlayPainter;
+
+/// The frame the TIMELINE ruler marks as current (null when off-window) —
+/// the successor of reading `.selected` off the header model.
+int? timelineRulerTintedFrame(WidgetTester tester) =>
+    _overlayPainter(tester, 'timeline-ruler-cursor-overlay').tintedFrame();
+
+/// The frame the X-SHEET rail marks as current.
+int? xsheetRailTintedFrame(WidgetTester tester) =>
+    _overlayPainter(tester, 'xsheet-rail-cursor-overlay').tintedFrame();
+
+/// The cached RUNS the timeline ruler's overlay would draw.
+List<({int startIndex, int endIndexExclusive})> timelineRulerCachedRuns(
+  WidgetTester tester,
+) => _overlayPainter(tester, 'timeline-ruler-cursor-overlay').cachedRuns();
+
+/// The cached RUNS the X-sheet rail's overlay would draw.
+List<({int startIndex, int endIndexExclusive})> xsheetRailCachedRuns(
+  WidgetTester tester,
+) => _overlayPainter(tester, 'xsheet-rail-cursor-overlay').cachedRuns();

@@ -16,6 +16,7 @@ import '../../services/audio/audio_peaks_extractor.dart';
 import 'timeline_row_span_resolver.dart' show resolveSelectionSpanHead;
 import 'timeline_edge_auto_pan.dart';
 import 'timeline_frame_range_gesture.dart';
+import 'timeline_ruler_cursor_overlay.dart';
 import 'timeline_run_end_handles.dart';
 import 'timeline_cell_exposure_state.dart';
 import 'timeline_cut_end_handle.dart';
@@ -64,7 +65,7 @@ class LayerTimelineGrid extends StatefulWidget {
     required this.layers,
     required this.activeLayerId,
     required this.frameCursor,
-    this.cacheProgress,
+    this.frameCachedSignal,
     required this.playbackFrameCount,
     required this.exposureStateForLayer,
     this.frameNameForLayer,
@@ -183,7 +184,7 @@ class LayerTimelineGrid extends StatefulWidget {
 
   /// Repaints the ruler's cached-range green strip as frames warm; never
   /// rebuilds anything else.
-  final Listenable? cacheProgress;
+  final Listenable? frameCachedSignal;
 
   final int playbackFrameCount;
   final TimelineCellExposureState Function(Layer layer, int frameIndex)
@@ -1362,32 +1363,31 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                                         // alone, and the bucket re-windowing
                                         // is gone. Ticks/warming still
                                         // rebuild just this one host.
+                                        // The ruler is SPLIT (the storyboard's
+                                        // shape, now shared): a static strip
+                                        // that lays out a glyph per labeled
+                                        // frame, and a thin overlay carrying
+                                        // everything that moves. Keeping the
+                                        // cursor tint in the strip meant every
+                                        // SEEK re-recorded the whole O(frames)
+                                        // glyph pass; and the cached bar reads
+                                        // DERIVED state (composites
+                                        // self-validate, nothing raises an
+                                        // "invalidated" event), so it must be
+                                        // cheap to repaint rather than gated.
                                         final rulerContent = SizedBox(
                                           width: totalFrameContentWidth,
                                           height: headerHeight,
-                                          child: ListenableBuilder(
-                                            listenable: Listenable.merge([
-                                              widget.frameCursor,
-                                              ?widget.cacheProgress,
-                                            ]),
-                                            // RepaintBoundary: the ruler paints
-                                            // O(frames) ticks + the cache bars.
-                                            // Without its own layer, every
-                                            // session notify (which repaints
-                                            // the grid) re-records this whole
-                                            // pass even though the ruler's
-                                            // inputs are unchanged. Isolated,
-                                            // it re-records only when the
-                                            // cursor / cache / geometry it
-                                            // actually reads moves.
-                                            builder: (context, _) =>
-                                                RepaintBoundary(
-                                                  child: TimelineFrameRuler(
-                                                    frameStartIndex: 0,
+                                          child: Stack(
+                                            children: [
+                                              RepaintBoundary(
+                                                child: TimelineFrameRuler(
+                                                  frameStartIndex: 0,
                                                   frameEndIndexExclusive:
                                                       _renderedFrameCount,
-                                                  currentFrameIndex:
-                                                      widget.frameCursor.value,
+                                                  // The tint lives in the
+                                                  // overlay now.
+                                                  currentFrameIndex: -1,
                                                   playbackFrameCount:
                                                       widget.playbackFrameCount,
                                                   leadingFrameSpacerWidth: 0,
@@ -1395,14 +1395,9 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                                                   metrics: _metrics,
                                                   onSelectFrame:
                                                       _selectClampedFrameFromRuler,
-                                                  framesPerSecond:
-                                                      _countingFps,
+                                                  framesPerSecond: _countingFps,
                                                   showSeconds:
                                                       widget.showSeconds,
-                                                  isFrameCached:
-                                                      widget.isFrameCached,
-                                                  cacheRepaint:
-                                                      widget.cacheProgress,
                                                   windowBucket:
                                                       _frameWindowBucket,
                                                   viewportMainExtent:
@@ -1411,8 +1406,32 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                                                       widget.dragPreview,
                                                   previewCutId:
                                                       widget.cutEndDrag?.cutId,
-                                                  ),
                                                 ),
+                                              ),
+                                              Positioned.fill(
+                                                child:
+                                                    TimelineRulerCursorOverlay(
+                                                      keyValue:
+                                                          'timeline-ruler-cursor-overlay',
+                                                      playhead:
+                                                          widget.frameCursor,
+                                                      repaintSignal:
+                                                          widget.frameCachedSignal,
+                                                      windowBucket:
+                                                          _frameWindowBucket,
+                                                      viewportMainExtent:
+                                                          viewportWidth,
+                                                      renderedFrames:
+                                                          _renderedFrameCount,
+                                                      contentFrames: widget
+                                                          .playbackFrameCount,
+                                                      cellWidth: _metrics
+                                                          .frameCellWidth,
+                                                      isFrameCached:
+                                                          widget.isFrameCached,
+                                                    ),
+                                              ),
+                                            ],
                                           ),
                                         );
 

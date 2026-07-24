@@ -8,6 +8,7 @@ import 'package:quick_animaker_v2/src/models/layer_mark.dart';
 import 'package:quick_animaker_v2/src/ui/timeline/xsheet_timeline_grid.dart';
 import 'package:quick_animaker_v2/src/ui/timeline/timeline_cell_exposure_state.dart';
 import 'package:quick_animaker_v2/src/ui/timeline/timeline_cell_style.dart';
+import 'package:quick_animaker_v2/src/ui/timeline/timeline_ruler_cursor_overlay.dart';
 
 import 'timeline/timeline_cell_probe.dart';
 import 'timeline/timeline_ruler_probe.dart';
@@ -128,14 +129,23 @@ void main() {
       _grid(frameCount: 3, isFrameCached: (frameIndex) => frameIndex < 2),
     );
 
-    // The rail is painterized (UI-R14 #1): the cached flags probe as
-    // painter models.
-    expect(xsheetFrameRowModel(tester, 0).cached, isTrue);
-    expect(xsheetFrameRowModel(tester, 1).cached, isTrue);
-    expect(xsheetFrameRowModel(tester, 2).cached, isFalse);
-    // Frames past the playback range never show the strip even when the
-    // resolver claims them cached.
-    expect(xsheetFrameRowModel(tester, 3).cached, isFalse);
+    // The strip lives on the rail's cursor OVERLAY now (cached-ness is
+    // derived state — nothing raises an invalidation event — so it repaints
+    // freely instead of riding the gated rail painter). The runs it would
+    // draw are the probe surface.
+    final overlay =
+        tester
+                .widget<CustomPaint>(
+                  find.byKey(
+                    const ValueKey<String>('xsheet-rail-cursor-overlay'),
+                  ),
+                )
+                .painter!
+            as TimelineRulerCursorOverlayPainter;
+
+    // Frames 0-1 cached, 2 not — and frames past the playback range never
+    // show the strip even when the resolver claims them cached.
+    expect(overlay.cachedRuns(), [(startIndex: 0, endIndexExclusive: 2)]);
   });
 
   testWidgets('renders frame rows and cells', (tester) async {
@@ -271,7 +281,9 @@ void main() {
       '4',
       reason: 'the plain one-based number, no playhead glyph',
     );
-    expect(xsheetFrameRowModel(tester, 3).selected, isTrue);
+    // The current row reads by TINT, painted by the rail's cursor overlay
+    // (the numbers themselves are cursor-independent now).
+    expect(xsheetRailTintedFrame(tester), 3);
   });
 
   testWidgets('named drawing start displays name and mark has priority', (

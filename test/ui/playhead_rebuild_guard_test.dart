@@ -3,7 +3,9 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:quick_animaker_v2/src/controllers/default_project_helpers.dart';
 import 'package:quick_animaker_v2/src/ui/editor_session_manager.dart';
 import 'package:quick_animaker_v2/src/models/layer_kind.dart';
+import 'package:quick_animaker_v2/src/models/app_language.dart';
 import 'package:quick_animaker_v2/src/models/playback_quality.dart';
+import 'package:quick_animaker_v2/src/ui/timeline/timeline_section_policy.dart';
 import 'package:quick_animaker_v2/src/ui/timeline/timeline_action_toolbar.dart';
 import 'package:quick_animaker_v2/src/ui/timeline/timeline_layer_controls_header.dart';
 import 'package:quick_animaker_v2/src/ui/timeline/timeline_layer_controls_row.dart';
@@ -172,7 +174,8 @@ void main() {
     expect(identical(toolbar(), before), isFalse,
         reason: 'a playback-quality change must refresh the toolbar');
 
-    // 4. Landing a drawing flips the cell-sensitive enablements.
+    // 4. Landing a drawing flips the cell-sensitive enablements (which the
+    // comma buttons and the Add button read through their can* getters).
     before = toolbar();
     session.selectFrameIndex(0);
     session.createDrawingAtCurrentFrame();
@@ -180,7 +183,94 @@ void main() {
     expect(identical(toolbar(), before), isFalse,
         reason: 'an enablement change must refresh the toolbar');
 
+    // 5. Moving the active layer refreshes it. HONEST SCOPE: this does not
+    // isolate `activeLayer.kind` — a layer switch moves the can* getters
+    // with it, so the token would change even without the kind entry (a
+    // mutation run proved exactly that). There is no API that changes a
+    // layer's kind in place, so the kind entry stays unpinned by design.
+    session.addLayerOfKind(LayerKind.se);
+    final seLayer = session.layers.firstWhere((l) => l.kind == LayerKind.se);
+    session.selectLayer(seLayer.id);
+    await tester.pump();
+    expect(session.activeLayer?.kind, LayerKind.se,
+        reason: 'sanity: the SE layer must be active');
+    before = toolbar();
+    final drawingLayer = session.layers.firstWhere(
+      (l) => l.kind == LayerKind.animation,
+    );
+    session.selectLayer(drawingLayer.id);
+    await tester.pump();
+    expect(identical(toolbar(), before), isFalse,
+        reason: 'an active-layer change must refresh the toolbar');
+
+    // 6. The transport prints its mic tooltips in the PROGRAM language, and
+    // a language switch fires no session notify at all — the gate has to be
+    // listening to it directly.
+    before = toolbar();
+    session.setLanguageSettings(
+      AppLanguageSettings(
+        programLanguage:
+            session.languageSettings.value.programLanguage == AppLanguage.ko
+            ? AppLanguage.en
+            : AppLanguage.ko,
+      ),
+    );
+    await tester.pump();
+    expect(identical(toolbar(), before), isFalse,
+        reason: 'a language change must refresh the toolbar');
+
     await drainWarming(tester);
+  });
+
+  testWidgets('a section fold refreshes the toolbar (its flyout checkmarks '
+      'read hiddenSections)', (tester) async {
+    final session = EditorSessionManager(initialProject: createDefaultProject());
+    addTearDown(session.dispose);
+    var hidden = <TimelineSection>{};
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: StatefulBuilder(
+            builder: (context, setState) => ListenableBuilder(
+              listenable: session,
+              builder: (context, _) => TimelineTabHost(
+                session: session,
+                orientation: TimelineOrientation.horizontal,
+                onOrientationChanged: (_) {},
+                pixelsPerFrame: 24,
+                onPixelsPerFrameChanged: (_) {},
+                showSeconds: false,
+                onShowSecondsChanged: (_) {},
+                hiddenSections: hidden,
+                onToggleSection: (section) => setState(() {
+                  hidden = hidden.contains(section)
+                      ? (hidden.toSet()..remove(section))
+                      : (hidden.toSet()..add(section));
+                }),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final before = tester.widget(find.byType(TimelineActionToolbar));
+    tester
+        .widget<TimelineActionToolbar>(find.byType(TimelineActionToolbar))
+        .onToggleSection!(TimelineSection.se);
+    await tester.pump();
+
+    expect(hidden, contains(TimelineSection.se), reason: 'sanity: it folded');
+    expect(
+      identical(tester.widget(find.byType(TimelineActionToolbar)), before),
+      isFalse,
+      reason: 'a hiddenSections change must refresh the toolbar',
+    );
+
+    await tester.pump(const Duration(seconds: 1));
+    await tester.pumpAndSettle();
   });
 
   testWidgets('a zoom step through the listenable reaches the panel but the '

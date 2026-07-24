@@ -26,6 +26,7 @@ import '../../models/project_frame_rate.dart';
 import 'timeline_edge_auto_pan.dart';
 import 'timeline_row_span_resolver.dart' show resolveBlockMoveTargetLayer;
 import 'timeline_frame_range_gesture.dart';
+import 'timeline_ruler_cursor_overlay.dart';
 import 'timeline_run_end_handles.dart';
 import 'timeline_frame_cells_row.dart' show TimelineFrameCellsRow;
 import 'timeline_frame_coordinate_policy.dart';
@@ -69,7 +70,7 @@ class XSheetTimelineGrid extends StatefulWidget {
     required this.layers,
     required this.activeLayerId,
     required this.frameCursor,
-    this.cacheProgress,
+    this.frameCachedSignal,
     required this.frameCount,
     required this.exposureStateForLayer,
     this.frameNameForLayer,
@@ -156,7 +157,7 @@ class XSheetTimelineGrid extends StatefulWidget {
   final ValueListenable<int> frameCursor;
 
   /// Repaints the frame rail's cached-range green strip as frames warm.
-  final Listenable? cacheProgress;
+  final Listenable? frameCachedSignal;
 
   /// Playback frame count of the active cut (the visible range extends to
   /// the shared minimum, exactly like the horizontal timeline).
@@ -937,47 +938,65 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
                                               height: totalFrameContentHeight,
                                               child: Stack(
                                                 children: [
-                                                  // The rail subscribes to the
-                                                  // cursor + cache progress
-                                                  // itself: ticks repaint this
-                                                  // subtree only.
-                                                  ListenableBuilder(
-                                                    listenable:
-                                                        Listenable.merge([
-                                                          widget.frameCursor,
-                                                          ?widget.cacheProgress,
-                                                        ]),
-                                                    // UI-R15: full bounds —
-                                                    // the rail painter windows
-                                                    // itself off the offset.
-                                                    builder: (context, _) =>
-                                                        _XSheetFrameNumberRail(
-                                                          frameStartIndex: 0,
-                                                          frameEndIndexExclusive:
-                                                              _renderedFrameCount,
-                                                          currentFrameIndex:
-                                                              widget
-                                                                  .frameCursor
-                                                                  .value,
-                                                          playbackFrameCount:
-                                                              widget.frameCount,
-                                                          leadingFrameSpacerHeight:
-                                                              0,
-                                                          trailingFrameSpacerHeight:
-                                                              0,
-                                                          metrics: _metrics,
-                                                          onSelectFrame:
-                                                              _selectClampedFrameFromRail,
-                                                          framesPerSecond:
-                                                              _countingFps,
-                                                          showSeconds: widget
-                                                              .showSeconds,
-                                                          isFrameCached: widget
-                                                              .isFrameCached,
+                                                  // SPLIT (shared with the
+                                                  // horizontal rulers): the
+                                                  // numbers are static, so a
+                                                  // seek no longer re-records
+                                                  // a glyph per frame; the
+                                                  // tint and the cached bar
+                                                  // ride the overlay below.
+                                                  // UI-R15: full bounds — the
+                                                  // rail painter windows
+                                                  // itself off the offset.
+                                                  RepaintBoundary(
+                                                    child: _XSheetFrameNumberRail(
+                                                      frameStartIndex: 0,
+                                                      frameEndIndexExclusive:
+                                                          _renderedFrameCount,
+                                                      // The tint lives in the
+                                                      // overlay now.
+                                                      currentFrameIndex: -1,
+                                                      playbackFrameCount:
+                                                          widget.frameCount,
+                                                      leadingFrameSpacerHeight:
+                                                          0,
+                                                      trailingFrameSpacerHeight:
+                                                          0,
+                                                      metrics: _metrics,
+                                                      onSelectFrame:
+                                                          _selectClampedFrameFromRail,
+                                                      framesPerSecond:
+                                                          _countingFps,
+                                                      showSeconds:
+                                                          widget.showSeconds,
+                                                      windowBucket:
+                                                          _frameWindowBucket,
+                                                      viewportMainExtent:
+                                                          bodyViewportHeight,
+                                                    ),
+                                                  ),
+                                                  Positioned.fill(
+                                                    child:
+                                                        TimelineRulerCursorOverlay(
+                                                          keyValue:
+                                                              'xsheet-rail-cursor-overlay',
+                                                          axis: Axis.vertical,
+                                                          playhead:
+                                                              widget.frameCursor,
+                                                          repaintSignal: widget
+                                                              .frameCachedSignal,
                                                           windowBucket:
                                                               _frameWindowBucket,
                                                           viewportMainExtent:
                                                               bodyViewportHeight,
+                                                          renderedFrames:
+                                                              _renderedFrameCount,
+                                                          contentFrames:
+                                                              widget.frameCount,
+                                                          cellWidth: _metrics
+                                                              .frameCellWidth,
+                                                          isFrameCached: widget
+                                                              .isFrameCached,
                                                         ),
                                                   ),
                                                   // UI-R18 #14: the rail's
@@ -1496,7 +1515,6 @@ class _XSheetFrameNumberRail extends StatelessWidget {
     required this.onSelectFrame,
     this.framesPerSecond = 24,
     this.showSeconds = false,
-    this.isFrameCached,
     this.windowBucket,
     this.viewportMainExtent = 0,
   });
@@ -1511,10 +1529,6 @@ class _XSheetFrameNumberRail extends StatelessWidget {
   final ValueChanged<int> onSelectFrame;
   final int framesPerSecond;
   final bool showSeconds;
-
-  /// Whether a frame's playback composite is warmed; drawn as the green
-  /// strip along the cell edge that faces the frame cells.
-  final bool Function(int frameIndex)? isFrameCached;
 
   /// PRO-TIMELINE scrolling (UI-R15→R16): the painter windows itself off
   /// the quantized bucket — pass full bounds, repaint per span crossing.
@@ -1550,7 +1564,6 @@ class _XSheetFrameNumberRail extends StatelessWidget {
           colorScheme: colorScheme,
           framesPerSecond: framesPerSecond,
           showSeconds: showSeconds,
-          isFrameCached: isFrameCached,
           windowBucket: windowBucket,
           viewportMainExtent: viewportMainExtent,
         ),
@@ -1574,7 +1587,6 @@ class XSheetFrameRailPainter extends CustomPainter {
     required this.colorScheme,
     this.framesPerSecond = 24,
     this.showSeconds = false,
-    this.isFrameCached,
     this.windowBucket,
     this.viewportMainExtent = 0,
   }) : super(repaint: windowBucket);
@@ -1588,7 +1600,6 @@ class XSheetFrameRailPainter extends CustomPainter {
   final ColorScheme colorScheme;
   final int framesPerSecond;
   final bool showSeconds;
-  final bool Function(int frameIndex)? isFrameCached;
 
   /// PRO-TIMELINE scrolling (UI-R15→R16): with these set the rail
   /// windows ITSELF off the quantized bucket — full bounds in, repaint
@@ -1644,9 +1655,6 @@ class XSheetFrameRailPainter extends CustomPainter {
           : '',
       selected: selected,
       outsidePlaybackRange: outside,
-      cached:
-          frameIndex < playbackFrameCount &&
-          (isFrameCached?.call(frameIndex) ?? false),
       background: selected
           ? Color.alphaBlend(
               timelineSelectedFrameBorderColor.withValues(alpha: 0.12),
@@ -1718,14 +1726,10 @@ class XSheetFrameRailPainter extends CustomPainter {
         ),
       );
 
-      // Transposed cached-range strip: the cells sit to the RIGHT of the
-      // rail, so the strip hugs the right edge.
-      if (model.cached) {
-        canvas.drawRect(
-          Rect.fromLTWH(rect.right - 3, rect.top, 3, rect.height),
-          fillPaint..color = const Color(0xFF54B435),
-        );
-      }
+      // The cached-range strip moved to [TimelineRulerCursorOverlay] (in
+      // its vertical form, hugging the right edge): cached-ness is derived
+      // state with no invalidation event, so it must repaint freely rather
+      // than ride this gated painter.
     }
 
     // The structural right edge, full strength, whatever the zoom.
@@ -1753,8 +1757,10 @@ class XSheetFrameRailPainter extends CustomPainter {
       oldDelegate.showSeconds != showSeconds ||
       !identical(oldDelegate.windowBucket, windowBucket) ||
       oldDelegate.viewportMainExtent != viewportMainExtent ||
-      !identical(oldDelegate.colorScheme, colorScheme) ||
-      !identical(oldDelegate.isFrameCached, isFrameCached);
+      // Value-compared, never `identical`: Theme.of(context).colorScheme is a
+      // fresh instance every build, so an identity check re-recorded the
+      // whole rail on every rebuild.
+      oldDelegate.colorScheme != colorScheme;
 
   @override
   SemanticsBuilderCallback get semanticsBuilder => (size) {

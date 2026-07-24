@@ -149,6 +149,17 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
     _session.currentFrameIndex,
   );
 
+  /// Everything that can change whether a frame reads as CACHED: frames
+  /// warming in, and pixel edits invalidating composites. The rulers' green
+  /// bar re-reads on this instead of comparing a token — cached-ness is
+  /// derived state (composites self-validate by signature), so there is no
+  /// token to compare. Built once: a fresh merge per build would make the
+  /// painters re-subscribe on every rebuild.
+  late final Listenable _frameCachedSignal = Listenable.merge([
+    _session.prerenderScheduler.progress,
+    _session.brushFrameStore.celPixelRevision,
+  ]);
+
   void _syncFrameCursor() {
     final playbackGlobalFrame =
         _session.playback.globalFrameIndexListenable.value;
@@ -910,7 +921,7 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
           // never this host (the release commit is the one session notify).
           dragPreview: _session.dragPreview,
           frameCursor: _frameCursor,
-          cacheProgress: _session.prerenderScheduler.progress,
+          frameCachedSignal: _frameCachedSignal,
           isFrameCached: _session.isPlaybackFrameCached,
           playbackFrameCount: _session.activeCutPlaybackFrameCount,
           exposureStateForLayer: _session.exposureStateForLayer,
@@ -1324,16 +1335,26 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
 /// far-away cell edit changes nothing the toolbar renders.
 ///
 /// The gate compares a [_deriveToken] of every value the toolbar's
-/// DIRECTLY-rendered widgets read. Flyout menu contents (Layer / Frame / Cut
-/// / fps / sample-rate entries) rebuild lazily on open, so they read fresh
-/// state and stay OUT of the token; the transport's playback display rides
-/// its own AnimatedBuilder(controller) and the camera toggle its own
-/// notifier, so both stay live even while the outer widget is cached.
+/// DIRECTLY-rendered widgets read. Three kinds of state are deliberately
+/// absent, because caching cannot make them stale:
+///
+/// - flyout menu contents (Layer / Frame / Cut / fps / sample-rate entries)
+///   are built by `entriesBuilder` at OPEN time, so they always read fresh;
+/// - the playback display rides the transport's own
+///   AnimatedBuilder(controller), and the mic / clip lights are
+///   ValueNotifiers the transport subscribes to itself — a ValueNotifier in
+///   the token would compare a `final` field's identity, which never
+///   changes: coverage in appearance only;
+/// - the camera-view toggle follows its own notifier.
 ///
 /// COMPLETENESS CONTRACT: any NEW directly-rendered toolbar value (an
-/// enablement, a shown label, a lit indicator) MUST join [_deriveToken], or
-/// a notify that changes only that value will leave a stale button. The
-/// guard test in playhead_rebuild_guard_test.dart pins each known dimension.
+/// enablement, a shown label, a lit indicator read as a plain value) MUST
+/// join [_deriveToken] — otherwise a notify that changes only that value
+/// leaves a stale button. And if its source does not travel through a host
+/// rebuild or a committed seek, it needs a listener here too (as the
+/// language settings do). playhead_rebuild_guard_test.dart drives one
+/// mutation per dimension; a dimension added without a case there is
+/// unguarded.
 class _SeekGatedTimelineToolbar extends StatefulWidget {
   const _SeekGatedTimelineToolbar({
     required this.session,
@@ -1389,16 +1410,26 @@ class _SeekGatedTimelineToolbarState extends State<_SeekGatedTimelineToolbar> {
       session.canIncreaseSelectedExposure,
       session.canSetCommaForSelectionOrCurrent,
       // The Add button gates on the active layer's kind + cell state.
+      // NOTE: these two move together with the can* getters above in every
+      // reachable scenario, so the guard test cannot isolate them — they are
+      // listed because the Add button genuinely reads them, not because a
+      // test proves each one.
       session.activeLayer?.kind,
       session.hasActiveNonNegativeCell,
       // Shown labels: the two project-axis dropdowns print their values.
       session.projectFrameRate,
       session.projectAudioSampleRate,
-      // Transport value-props (its playback clock is live via AnimatedBuilder;
-      // these three are read as plain values, so they need the token).
-      session.isVoiceRecording,
-      session.voiceRecordClipLit,
+      // The transport's one plain-value prop. Its playback clock rides its
+      // own AnimatedBuilder, and the mic/clip lights are ValueNotifiers it
+      // subscribes to itself — those stay live inside a cached toolbar and
+      // must NOT be listed here (comparing a final notifier's identity is a
+      // no-op that only reads like coverage).
       session.playbackQuality,
+      // The transport resolves its mic tooltips through `session.uiStrings`
+      // DURING build, and a language switch fires no session notify at all
+      // (it moves its own notifier), so without this the cached toolbar
+      // would keep the old language until some unrelated token change.
+      session.languageSettings.value,
     );
   }
 
@@ -1414,8 +1445,10 @@ class _SeekGatedTimelineToolbarState extends State<_SeekGatedTimelineToolbar> {
     return false;
   }
 
-  void _handleSeekCommitted() {
-    // A seek never touches hiddenSections; compare against the current value.
+  /// Re-derives after a signal that does NOT come through a host rebuild.
+  /// Both entry points compare against the current sections (neither a seek
+  /// nor a language switch can change them).
+  void _handleExternalSignal() {
     if (_tokenOrSectionsChanged(widget.hiddenSections)) {
       setState(() {});
     }
@@ -1425,15 +1458,22 @@ class _SeekGatedTimelineToolbarState extends State<_SeekGatedTimelineToolbar> {
   void initState() {
     super.initState();
     _token = _deriveToken();
-    widget.session.frameSeekCommitted.addListener(_handleSeekCommitted);
+    widget.session.frameSeekCommitted.addListener(_handleExternalSignal);
+    // A language switch moves its own notifier and fires NO session notify,
+    // so nothing else would ever re-derive the token for it.
+    widget.session.languageSettings.addListener(_handleExternalSignal);
   }
 
   @override
   void didUpdateWidget(covariant _SeekGatedTimelineToolbar oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (!identical(oldWidget.session, widget.session)) {
-      oldWidget.session.frameSeekCommitted.removeListener(_handleSeekCommitted);
-      widget.session.frameSeekCommitted.addListener(_handleSeekCommitted);
+      oldWidget.session.frameSeekCommitted.removeListener(
+        _handleExternalSignal,
+      );
+      oldWidget.session.languageSettings.removeListener(_handleExternalSignal);
+      widget.session.frameSeekCommitted.addListener(_handleExternalSignal);
+      widget.session.languageSettings.addListener(_handleExternalSignal);
       _cachedChild = null;
     }
     _tokenOrSectionsChanged(oldWidget.hiddenSections);
@@ -1441,7 +1481,8 @@ class _SeekGatedTimelineToolbarState extends State<_SeekGatedTimelineToolbar> {
 
   @override
   void dispose() {
-    widget.session.frameSeekCommitted.removeListener(_handleSeekCommitted);
+    widget.session.frameSeekCommitted.removeListener(_handleExternalSignal);
+    widget.session.languageSettings.removeListener(_handleExternalSignal);
     super.dispose();
   }
 

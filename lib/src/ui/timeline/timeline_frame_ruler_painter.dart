@@ -20,7 +20,6 @@ class TimelineRulerHeaderModel {
     required this.secondsLabel,
     required this.selected,
     required this.outsidePlaybackRange,
-    required this.cached,
     required this.background,
   });
 
@@ -34,7 +33,6 @@ class TimelineRulerHeaderModel {
 
   final bool selected;
   final bool outsidePlaybackRange;
-  final bool cached;
   final Color background;
 }
 
@@ -56,11 +54,9 @@ class TimelineFrameRulerPainter extends CustomPainter {
     required this.colorScheme,
     this.framesPerSecond = 24,
     this.showSeconds = false,
-    this.isFrameCached,
     this.windowBucket,
-    this.cacheRepaint,
     this.viewportMainExtent = 0,
-  }) : super(repaint: Listenable.merge([?windowBucket, ?cacheRepaint]));
+  }) : super(repaint: windowBucket);
 
   final int frameStartIndex;
   final int frameEndIndexExclusive;
@@ -71,16 +67,6 @@ class TimelineFrameRulerPainter extends CustomPainter {
   final ColorScheme colorScheme;
   final int framesPerSecond;
   final bool showSeconds;
-  final bool Function(int frameIndex)? isFrameCached;
-
-  /// The cache-progress signal (the green cached-strip source). It drives
-  /// a REPAINT directly (as [repaint]) rather than a [shouldRepaint] field:
-  /// [isFrameCached] is a tear-off whose identity churns every host rebuild,
-  /// so comparing it made the strip re-record on EVERY unrelated session
-  /// notify. Routing the real signal here lets shouldRepaint drop it, so a
-  /// layer-select / cell-edit leaves the O(frames) strip untouched while a
-  /// warming frame still repaints it.
-  final Listenable? cacheRepaint;
 
   /// PRO-TIMELINE scrolling (UI-R15→R16): with these set the strip
   /// windows ITSELF off the quantized bucket (repaint once per span
@@ -146,9 +132,6 @@ class TimelineFrameRulerPainter extends CustomPainter {
           : '',
       selected: selected,
       outsidePlaybackRange: outside,
-      cached:
-          frameIndex < playbackFrameCount &&
-          (isFrameCached?.call(frameIndex) ?? false),
       // No past-playback graying on the RULER (UI-R18 #9): small zooms
       // made the strip read broken from the right; the cut-end boundary
       // line marks the end, the BODY cells keep their own dim wash.
@@ -171,25 +154,22 @@ class TimelineFrameRulerPainter extends CustomPainter {
     // record — a scroll is a repaint of this thin pass, never a rebuild.
     final window = visibleHeaderWindow();
 
-    // PASS 1 — paper (backgrounds + the cached strip). Painting every
-    // background BEFORE any label is what keeps a narrow cell's label
-    // alive: the old single pass let the next cell's fill erase the half
-    // that overflowed (R26 #39, "텍스트 절반이 사라짐").
+    // PASS 1 — paper. Painting every background BEFORE any label is what
+    // keeps a narrow cell's label alive: the old single pass let the next
+    // cell's fill erase the half that overflowed (R26 #39, "텍스트 절반이
+    // 사라짐"). The cached-range strip is NOT here — it moved to
+    // [TimelineRulerCursorOverlay] with the cursor tint, because its
+    // truth is derived state that no gate can compare.
     for (
       var frameIndex = window.startIndex;
       frameIndex < window.endIndexExclusive;
       frameIndex += 1
     ) {
       final model = headerModelAt(frameIndex);
-      final rect = headerRectFor(frameIndex);
-      canvas.drawRect(rect, fillPaint..color = model.background);
-      if (model.cached) {
-        // The AE-style cached-range strip along the bottom edge.
-        canvas.drawRect(
-          Rect.fromLTWH(rect.left, rect.bottom - 3, rect.width, 3),
-          fillPaint..color = const Color(0xFF54B435),
-        );
-      }
+      canvas.drawRect(
+        headerRectFor(frameIndex),
+        fillPaint..color = model.background,
+      );
     }
 
     // PASS 2 — the SAME grid the cells use (R26 #40): base cadence lines,
@@ -300,11 +280,10 @@ class TimelineFrameRulerPainter extends CustomPainter {
       oldDelegate.showSeconds != showSeconds ||
       !identical(oldDelegate.windowBucket, windowBucket) ||
       oldDelegate.viewportMainExtent != viewportMainExtent ||
-      // Value-compared: Theme.of(context).colorScheme hands back a fresh
-      // instance every build (AnimatedTheme), so identity churned the strip.
+      // Value-compared, never `identical`: Theme.of(context).colorScheme
+      // hands back a fresh instance every build (AnimatedTheme), so an
+      // identity check re-recorded this whole strip on every rebuild.
       oldDelegate.colorScheme != colorScheme;
-  // isFrameCached is deliberately ABSENT: its tear-off identity is unstable
-  // per build, and the real cache-change signal rides [cacheRepaint].
 
   @override
   SemanticsBuilderCallback get semanticsBuilder => (size) {

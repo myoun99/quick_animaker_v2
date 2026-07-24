@@ -22,8 +22,6 @@ class TimelineFrameRuler extends StatelessWidget {
     required this.onSelectFrame,
     this.framesPerSecond = 24,
     this.showSeconds = false,
-    this.isFrameCached,
-    this.cacheRepaint,
     this.windowBucket,
     this.viewportMainExtent = 0,
     this.dragPreview,
@@ -40,13 +38,6 @@ class TimelineFrameRuler extends StatelessWidget {
   final ValueChanged<int> onSelectFrame;
   final int framesPerSecond;
   final bool showSeconds;
-  final bool Function(int frameIndex)? isFrameCached;
-
-  /// The cache-progress listenable, forwarded to the painter's [repaint] so
-  /// the green cached strip refreshes as frames warm without the painter
-  /// re-recording on unrelated session notifies (see the painter's note).
-  final Listenable? cacheRepaint;
-
   /// PRO-TIMELINE scrolling (UI-R15→R16): the strip windows itself off
   /// the quantized bucket — pass the full bounds, repaint per crossing.
   final ValueListenable<int>? windowBucket;
@@ -74,8 +65,6 @@ class TimelineFrameRuler extends StatelessWidget {
           onSelectFrame: onSelectFrame,
           framesPerSecond: framesPerSecond,
           showSeconds: showSeconds,
-          isFrameCached: isFrameCached,
-          cacheRepaint: cacheRepaint,
           windowBucket: windowBucket,
           viewportMainExtent: viewportMainExtent,
         ),
