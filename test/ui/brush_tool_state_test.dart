@@ -1,7 +1,11 @@
+import 'dart:typed_data';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:quick_animaker_v2/src/models/brush_blend_mode.dart';
 import 'package:quick_animaker_v2/src/models/brush_pressure_curve.dart';
 import 'package:quick_animaker_v2/src/models/brush_settings.dart';
+import 'package:quick_animaker_v2/src/models/brush_tip_mask.dart';
+import 'package:quick_animaker_v2/src/models/brush_tip_rotation_mode.dart';
 import 'package:quick_animaker_v2/src/models/brush_tip_shape.dart';
 import 'package:quick_animaker_v2/src/ui/brush/brush_tool_state.dart';
 import 'package:quick_animaker_v2/src/ui/canvas/brush_edit_canvas_input_settings.dart';
@@ -229,35 +233,82 @@ void main() {
       expect(state.copyWith(size: 5).angleDegrees, 45.0);
     });
 
-    test('toBrushSettings/fromBrushSettings round-trips every field', () {
-      final state = BrushToolState(
-        size: 14,
-        opacity: 0.7,
-        color: 0xFF1E88E5,
-        spacing: 0.3,
-        hardness: 0.6,
-        flow: 0.5,
-        tipShape: BrushTipShape.square,
-        sizePressureCurve: BrushPressureCurve.linearFrom(0.2),
-        opacityPressureCurve: BrushPressureCurve.identity(),
-        roundness: 0.4,
-        angleDegrees: 60,
-      );
+    // EVERY field carried between the three brush param bags, each at a
+    // NON-default value. A converter that silently drops one turns its value
+    // back into the default, so the round-trip equality below fails loudly
+    // instead of passing on default==default (the trap the old, partial
+    // version of this test walked into). The three hand-only fields — tool,
+    // stabilizerStrength, brushBlendMode — are NOT carried into BrushSettings
+    // by design (R26 #10), so they stay at their defaults here.
+    BrushTipMask maskFor(String id) => BrushTipMask(
+      id: id,
+      size: 2,
+      alpha: Uint8List.fromList(const [10, 20, 30, 40]),
+    );
 
-      final settings = state.toBrushSettings();
-      expect(settings.size, 14.0);
-      expect(settings.opacity, 0.7);
-      expect(settings.color, 0xFF1E88E5);
-      expect(settings.spacing, 0.3);
-      expect(settings.hardness, 0.6);
-      expect(settings.flow, 0.5);
-      expect(settings.tipShape, BrushTipShape.square);
-      expect(settings.sizePressureCurve, BrushPressureCurve.linearFrom(0.2));
-      expect(settings.opacityPressureCurve, BrushPressureCurve.identity());
-      expect(settings.roundness, 0.4);
-      expect(settings.angleDegrees, 60.0);
+    BrushToolState everyCarriedFieldNonDefault() => BrushToolState(
+      size: 14,
+      opacity: 0.7,
+      color: 0xFF1E88E5,
+      spacing: 0.3,
+      hardness: 0.6,
+      flow: 0.5,
+      tipShape: BrushTipShape.square,
+      sizePressureCurve: BrushPressureCurve.linearFrom(0.2),
+      opacityPressureCurve: BrushPressureCurve.linearFrom(0.3),
+      flowPressureCurve: BrushPressureCurve.linearFrom(0.4),
+      hardnessPressureCurve: BrushPressureCurve.identity(),
+      roundness: 0.4,
+      angleDegrees: 60,
+      tipMask: maskFor('tip'),
+      rotationMode: BrushTipRotationMode.direction,
+      sizeJitter: 0.2,
+      opacityJitter: 0.3,
+      angleJitter: 0.4,
+      scatterRadiusRatio: 0.5,
+      scatterCount: 3,
+      scatterBothAxes: false,
+      dualMask: maskFor('dual'),
+      dualMaskScale: 0.7,
+      textureMask: maskFor('texture'),
+      textureScale: 1.2,
+      textureDensity: 0.9,
+    );
 
-      expect(BrushToolState.fromBrushSettings(settings), state);
+    test('every carried field survives toBrushSettings/fromBrushSettings', () {
+      final state = everyCarriedFieldNonDefault();
+      expect(BrushToolState.fromBrushSettings(state.toBrushSettings()), state);
+    });
+
+    test('every carried field survives toInputSettings', () {
+      final state = everyCarriedFieldNonDefault();
+      final input = state.toInputSettings();
+      expect(input.size, state.size);
+      expect(input.opacity, state.opacity);
+      expect(input.color, state.color);
+      expect(input.spacing, state.spacing);
+      expect(input.hardness, state.hardness);
+      expect(input.flow, state.flow);
+      expect(input.tipShape, state.tipShape);
+      expect(input.sizePressureCurve, state.sizePressureCurve);
+      expect(input.opacityPressureCurve, state.opacityPressureCurve);
+      expect(input.flowPressureCurve, state.flowPressureCurve);
+      expect(input.hardnessPressureCurve, state.hardnessPressureCurve);
+      expect(input.roundness, state.roundness);
+      expect(input.angleDegrees, state.angleDegrees);
+      expect(input.tipMask, state.tipMask);
+      expect(input.rotationMode, state.rotationMode);
+      expect(input.sizeJitter, state.sizeJitter);
+      expect(input.opacityJitter, state.opacityJitter);
+      expect(input.angleJitter, state.angleJitter);
+      expect(input.scatterRadiusRatio, state.scatterRadiusRatio);
+      expect(input.scatterCount, state.scatterCount);
+      expect(input.scatterBothAxes, state.scatterBothAxes);
+      expect(input.dualMask, state.dualMask);
+      expect(input.dualMaskScale, state.dualMaskScale);
+      expect(input.textureMask, state.textureMask);
+      expect(input.textureScale, state.textureScale);
+      expect(input.textureDensity, state.textureDensity);
     });
 
     test('fromBrushSettings clamps out-of-range preset values', () {
