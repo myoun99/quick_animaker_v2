@@ -58,8 +58,9 @@ class TimelineFrameRulerPainter extends CustomPainter {
     this.showSeconds = false,
     this.isFrameCached,
     this.windowBucket,
+    this.cacheRepaint,
     this.viewportMainExtent = 0,
-  }) : super(repaint: windowBucket);
+  }) : super(repaint: Listenable.merge([?windowBucket, ?cacheRepaint]));
 
   final int frameStartIndex;
   final int frameEndIndexExclusive;
@@ -71,6 +72,15 @@ class TimelineFrameRulerPainter extends CustomPainter {
   final int framesPerSecond;
   final bool showSeconds;
   final bool Function(int frameIndex)? isFrameCached;
+
+  /// The cache-progress signal (the green cached-strip source). It drives
+  /// a REPAINT directly (as [repaint]) rather than a [shouldRepaint] field:
+  /// [isFrameCached] is a tear-off whose identity churns every host rebuild,
+  /// so comparing it made the strip re-record on EVERY unrelated session
+  /// notify. Routing the real signal here lets shouldRepaint drop it, so a
+  /// layer-select / cell-edit leaves the O(frames) strip untouched while a
+  /// warming frame still repaints it.
+  final Listenable? cacheRepaint;
 
   /// PRO-TIMELINE scrolling (UI-R15→R16): with these set the strip
   /// windows ITSELF off the quantized bucket (repaint once per span
@@ -290,8 +300,11 @@ class TimelineFrameRulerPainter extends CustomPainter {
       oldDelegate.showSeconds != showSeconds ||
       !identical(oldDelegate.windowBucket, windowBucket) ||
       oldDelegate.viewportMainExtent != viewportMainExtent ||
-      !identical(oldDelegate.colorScheme, colorScheme) ||
-      !identical(oldDelegate.isFrameCached, isFrameCached);
+      // Value-compared: Theme.of(context).colorScheme hands back a fresh
+      // instance every build (AnimatedTheme), so identity churned the strip.
+      oldDelegate.colorScheme != colorScheme;
+  // isFrameCached is deliberately ABSENT: its tear-off identity is unstable
+  // per build, and the real cache-change signal rides [cacheRepaint].
 
   @override
   SemanticsBuilderCallback get semanticsBuilder => (size) {

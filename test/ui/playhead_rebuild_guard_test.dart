@@ -3,6 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:quick_animaker_v2/src/controllers/default_project_helpers.dart';
 import 'package:quick_animaker_v2/src/ui/editor_session_manager.dart';
 import 'package:quick_animaker_v2/src/models/layer_kind.dart';
+import 'package:quick_animaker_v2/src/models/playback_quality.dart';
 import 'package:quick_animaker_v2/src/ui/timeline/timeline_action_toolbar.dart';
 import 'package:quick_animaker_v2/src/ui/timeline/timeline_layer_controls_header.dart';
 import 'package:quick_animaker_v2/src/ui/timeline/timeline_layer_controls_row.dart';
@@ -74,6 +75,112 @@ void main() {
     // Drain the prerender scheduler's debounced warming.
     await tester.pump(const Duration(seconds: 1));
     await tester.pumpAndSettle();
+  });
+
+  // --- Notify gate (scoped-notify round) ------------------------------------
+  //
+  // The seek gate above rides frameSeekCommitted; a SESSION notify instead
+  // rebuilds the whole host (the app wraps it in PanelAwareListenableBuilder).
+  // These pump the host under that wrapper so the notify path is real, then
+  // assert the toolbar is reconstructed EXACTLY when a value it shows changes.
+
+  Future<EditorSessionManager> pumpNotifyWrappedHost(WidgetTester tester) async {
+    final session = EditorSessionManager(initialProject: createDefaultProject());
+    addTearDown(session.dispose);
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: ListenableBuilder(
+            listenable: session,
+            builder: (context, _) => TimelineTabHost(
+              session: session,
+              orientation: TimelineOrientation.horizontal,
+              onOrientationChanged: (_) {},
+              pixelsPerFrame: 24,
+              onPixelsPerFrameChanged: (_) {},
+              showSeconds: false,
+              onShowSecondsChanged: (_) {},
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    return session;
+  }
+
+  Future<void> drainWarming(WidgetTester tester) async {
+    await tester.pump(const Duration(seconds: 1));
+    await tester.pumpAndSettle();
+  }
+
+  testWidgets('a session notify that changes nothing the toolbar shows does '
+      'NOT reconstruct it (notify gate)', (tester) async {
+    final session = await pumpNotifyWrappedHost(tester);
+    final before = tester.widget(find.byType(TimelineActionToolbar));
+
+    // Toggling another layer's visibility fires a full session notify (the
+    // host rebuilds) but changes no value the toolbar renders.
+    final other = session.layers
+        .firstWhere((layer) => layer.id != session.activeLayerId)
+        .id;
+    session.toggleLayerVisibility(other);
+    await tester.pump();
+
+    expect(
+      identical(tester.widget(find.byType(TimelineActionToolbar)), before),
+      isTrue,
+      reason: 'a notify that changes no toolbar value must reuse the toolbar',
+    );
+    await drainWarming(tester);
+  });
+
+  testWidgets('each shown value change reconstructs the toolbar across a '
+      'notify (completeness)', (tester) async {
+    final session = await pumpNotifyWrappedHost(tester);
+
+    Object toolbar() => tester.widget(find.byType(TimelineActionToolbar));
+
+    // 1. The project frame-rate dropdown prints its label.
+    var before = toolbar();
+    final oldRate = session.projectFrameRate;
+    session.setProjectFps(session.projectFps + 5);
+    await tester.pump();
+    expect(session.projectFrameRate == oldRate, isFalse,
+        reason: 'sanity: the fps mutation must actually change the rate');
+    expect(identical(toolbar(), before), isFalse,
+        reason: 'the fps label change must refresh the toolbar');
+
+    // 2. The audio sample-rate dropdown prints its label.
+    before = toolbar();
+    session.setProjectAudioSampleRate(
+      session.projectAudioSampleRate == 48000 ? 44100 : 48000,
+    );
+    await tester.pump();
+    expect(identical(toolbar(), before), isFalse,
+        reason: 'the sample-rate label change must refresh the toolbar');
+
+    // 3. Playback quality is a transport value-prop (its clock is live via
+    // AnimatedBuilder, but this is read as a plain value).
+    before = toolbar();
+    session.setPlaybackQuality(
+      session.playbackQuality == PlaybackQuality.full
+          ? PlaybackQuality.half
+          : PlaybackQuality.full,
+    );
+    await tester.pump();
+    expect(identical(toolbar(), before), isFalse,
+        reason: 'a playback-quality change must refresh the toolbar');
+
+    // 4. Landing a drawing flips the cell-sensitive enablements.
+    before = toolbar();
+    session.selectFrameIndex(0);
+    session.createDrawingAtCurrentFrame();
+    await tester.pump();
+    expect(identical(toolbar(), before), isFalse,
+        reason: 'an enablement change must refresh the toolbar');
+
+    await drainWarming(tester);
   });
 
   testWidgets('a zoom step through the listenable reaches the panel but the '

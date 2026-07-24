@@ -26,6 +26,16 @@ import 'package:quick_animaker_v2/src/ui/timeline_tab_host.dart';
 /// the per-operation UI-thread time. Prints; asserts only that the work
 /// happened. Benchmarks run alone and only the A/B ratio is trusted
 /// (verify-discipline).
+///
+/// CORRECTION (scoped-notify round): the host is now wrapped in a
+/// ListenableBuilder(session) — the app's PanelAwareListenableBuilder. An
+/// earlier revision pumped the bare host, which does NOT subscribe to the
+/// session notify, so `create drawing` / `select layer` timed only the
+/// seek-adjacent cursor + warm + toolbar-token cost and never the notify
+/// rebuild. What the corrected harness then showed: the per-row memo already
+/// scopes row rebuilds (only touched rows rebuild); the residual per-notify
+/// cost is the CHROME (transport + action toolbar + ruler) rebuilding on
+/// every notify, plus the framework's O(visible-rows) layout/paint walk.
 void main() {
   /// One host, one project size. Returns the session so the caller can
   /// drive it; the widget tree is already pumped and settled.
@@ -55,14 +65,23 @@ void main() {
     await tester.pumpWidget(
       MaterialApp(
         home: Scaffold(
-          body: TimelineTabHost(
-            session: session,
-            orientation: TimelineOrientation.horizontal,
-            onOrientationChanged: (_) {},
-            pixelsPerFrame: 24,
-            onPixelsPerFrameChanged: (_) {},
-            showSeconds: false,
-            onShowSecondsChanged: (_) {},
+          // THE session subscription: the app wraps the host in
+          // PanelAwareListenableBuilder(listenable: session) (editor_workspace).
+          // Without it a bare host NEVER rebuilds on a session notify, so
+          // `create drawing` / `select layer` measured only the seek-adjacent
+          // cursor + warm + token cost — NOT the notify rebuild this file
+          // exists to size. This wrapper makes the notify path real.
+          body: ListenableBuilder(
+            listenable: session,
+            builder: (context, _) => TimelineTabHost(
+              session: session,
+              orientation: TimelineOrientation.horizontal,
+              onOrientationChanged: (_) {},
+              pixelsPerFrame: 24,
+              onPixelsPerFrameChanged: (_) {},
+              showSeconds: false,
+              onShowSecondsChanged: (_) {},
+            ),
           ),
         ),
       ),

@@ -1,7 +1,7 @@
 import 'dart:async' show unawaited;
 
 import 'package:file_selector/file_selector.dart';
-import 'package:flutter/foundation.dart' show ValueListenable;
+import 'package:flutter/foundation.dart' show ValueListenable, setEquals;
 import 'package:flutter/material.dart';
 
 import '../models/camera_instruction.dart';
@@ -1268,6 +1268,7 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
   Widget _buildTimelineToolbar() {
     return _SeekGatedTimelineToolbar(
       session: _session,
+      hiddenSections: widget.hiddenSections,
       builder: (context) => Row(
         children: [
           PlaybackTransportControls(
@@ -1315,21 +1316,37 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
   }
 }
 
-/// Rebuilds the timeline's transport + action toolbar on a committed seek
-/// ONLY when the seek changed what the buttons can do (R13-2). The toolbar
-/// reads ~a dozen playhead-sensitive `can*` getters; deriving them into a
-/// comparison token per seek costs microseconds, while the rebuild it
-/// replaces reconstructed every Material button — the frame-flip hitch's
-/// toolbar share. Session notifies still refresh the toolbar through the
-/// host's ordinary rebuild (this widget re-derives on didUpdateWidget).
+/// Caches the timeline's transport + action toolbar and rebuilds it ONLY
+/// when what its buttons SHOW changes — for BOTH a committed seek AND a
+/// session notify (the host rebuild). The toolbar reconstructs a transport +
+/// ~25 Material buttons; the scoped-notify measurement put that at a large,
+/// row-independent share of every notify, even though a layer-select or a
+/// far-away cell edit changes nothing the toolbar renders.
+///
+/// The gate compares a [_deriveToken] of every value the toolbar's
+/// DIRECTLY-rendered widgets read. Flyout menu contents (Layer / Frame / Cut
+/// / fps / sample-rate entries) rebuild lazily on open, so they read fresh
+/// state and stay OUT of the token; the transport's playback display rides
+/// its own AnimatedBuilder(controller) and the camera toggle its own
+/// notifier, so both stay live even while the outer widget is cached.
+///
+/// COMPLETENESS CONTRACT: any NEW directly-rendered toolbar value (an
+/// enablement, a shown label, a lit indicator) MUST join [_deriveToken], or
+/// a notify that changes only that value will leave a stale button. The
+/// guard test in playhead_rebuild_guard_test.dart pins each known dimension.
 class _SeekGatedTimelineToolbar extends StatefulWidget {
   const _SeekGatedTimelineToolbar({
     required this.session,
     required this.builder,
+    required this.hiddenSections,
   });
 
   final EditorSessionManager session;
   final WidgetBuilder builder;
+
+  /// Folds into the cache key: the Layer flyout's show/hide checkmarks read
+  /// it (lazily), so a section toggle must drop the cached toolbar.
+  final Set<TimelineSection> hiddenSections;
 
   @override
   State<_SeekGatedTimelineToolbar> createState() =>
@@ -1337,14 +1354,29 @@ class _SeekGatedTimelineToolbar extends StatefulWidget {
 }
 
 class _SeekGatedTimelineToolbarState extends State<_SeekGatedTimelineToolbar> {
-  late Object _token = _deriveToken();
+  // Initialized eagerly in initState — a `late … = _deriveToken()` field runs
+  // its initializer on FIRST ACCESS, and the first access is the first
+  // didUpdateWidget, which can coincide with the very notify that changed the
+  // state (warming fires no session notify, so nothing accesses it earlier).
+  // The token would then latch the NEW value and miss the change it exists to
+  // catch.
+  late Object _token;
 
-  /// Every playhead-sensitive enablement the toolbar's buttons consume.
-  /// A new playhead-reading button must join this record — the guard test
-  /// pins the gate against the real toolbar.
+  /// The last-built toolbar. Held across BOTH seeks and host rebuilds so a
+  /// notify with an unchanged token reuses the transport + ~25 buttons.
+  Widget? _cachedChild;
+
+  /// Every value the toolbar's DIRECTLY-rendered widgets read. Split by the
+  /// widget that consumes each so a future button's owner is obvious.
+  ///
+  /// See the completeness contract on [_SeekGatedTimelineToolbar]. Flyout
+  /// entries are deliberately absent (they rebuild lazily on open), as is
+  /// the playback clock (its own AnimatedBuilder) and the camera-view state
+  /// (its own notifier).
   Object _deriveToken() {
     final session = widget.session;
     return (
+      // Frame-group icons + comma buttons (playhead-sensitive enablement).
       session.selectedFrame != null,
       session.canCreateDrawingAtCurrentFrame,
       session.canRenameFrameAtCurrentFrame,
@@ -1355,20 +1387,44 @@ class _SeekGatedTimelineToolbarState extends State<_SeekGatedTimelineToolbar> {
       session.canDeleteCellAtCurrentFrame,
       session.canDecreaseSelectedExposure,
       session.canIncreaseSelectedExposure,
+      session.canSetCommaForSelectionOrCurrent,
+      // The Add button gates on the active layer's kind + cell state.
+      session.activeLayer?.kind,
+      session.hasActiveNonNegativeCell,
+      // Shown labels: the two project-axis dropdowns print their values.
+      session.projectFrameRate,
+      session.projectAudioSampleRate,
+      // Transport value-props (its playback clock is live via AnimatedBuilder;
+      // these three are read as plain values, so they need the token).
+      session.isVoiceRecording,
+      session.voiceRecordClipLit,
+      session.playbackQuality,
     );
   }
 
-  void _handleSeekCommitted() {
+  /// Drops the cache iff the toolbar's shown state changed. Both entry points
+  /// (a committed seek and a host rebuild) funnel their decision here.
+  bool _tokenOrSectionsChanged(Set<TimelineSection> oldSections) {
     final next = _deriveToken();
-    if (next == _token) {
-      return;
+    if (next != _token || !setEquals(oldSections, widget.hiddenSections)) {
+      _token = next;
+      _cachedChild = null;
+      return true;
     }
-    setState(() => _token = next);
+    return false;
+  }
+
+  void _handleSeekCommitted() {
+    // A seek never touches hiddenSections; compare against the current value.
+    if (_tokenOrSectionsChanged(widget.hiddenSections)) {
+      setState(() {});
+    }
   }
 
   @override
   void initState() {
     super.initState();
+    _token = _deriveToken();
     widget.session.frameSeekCommitted.addListener(_handleSeekCommitted);
   }
 
@@ -1378,8 +1434,9 @@ class _SeekGatedTimelineToolbarState extends State<_SeekGatedTimelineToolbar> {
     if (!identical(oldWidget.session, widget.session)) {
       oldWidget.session.frameSeekCommitted.removeListener(_handleSeekCommitted);
       widget.session.frameSeekCommitted.addListener(_handleSeekCommitted);
+      _cachedChild = null;
     }
-    _token = _deriveToken();
+    _tokenOrSectionsChanged(oldWidget.hiddenSections);
   }
 
   @override
@@ -1389,5 +1446,5 @@ class _SeekGatedTimelineToolbarState extends State<_SeekGatedTimelineToolbar> {
   }
 
   @override
-  Widget build(BuildContext context) => widget.builder(context);
+  Widget build(BuildContext context) => _cachedChild ??= widget.builder(context);
 }

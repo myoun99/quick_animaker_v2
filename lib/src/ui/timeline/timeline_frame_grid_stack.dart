@@ -64,7 +64,12 @@ class TimelineFrameGridStack extends StatelessWidget {
         else
           TimelineBodyCutEndBoundary(left: cutEndBoundaryLeft),
         if (showPlayhead)
-          Positioned(left: 0, top: 0, width: playheadWidth, child: playhead),
+          Positioned(
+            left: 0,
+            top: 0,
+            width: playheadWidth,
+            child: RepaintBoundary(child: playhead),
+          ),
         if (cutEndDrag != null && frameCellExtent > 0)
           TimelineCutEndDragHandle(
             cellExtent: frameCellExtent,
