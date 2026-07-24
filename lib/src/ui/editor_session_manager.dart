@@ -143,7 +143,8 @@ import 'timeline/transform_lane_editing.dart'
         transformLaneKeyFrames,
         transformTrackWithLaneKeyToggled,
         transformTrackWithLaneSpanKeysShifted;
-import 'timeline/transform_lane_policy.dart' show transformLaneSpan;
+import 'timeline/transform_lane_policy.dart'
+    show transformLaneDisplayOrder, transformLaneSpan;
 
 /// A planned SE row-change pair in COMMIT (global track) form: the source
 /// row after its blocks leave, the target row after they arrive.
@@ -6510,11 +6511,20 @@ class EditorSessionManager extends ChangeNotifier {
   /// the selection spans every ELIGIBLE layer between anchor and head in
   /// display order, and the frame range grows until it covers whole
   /// blocks on every spanned layer.
+  ///
+  /// [headLaneId] (R27 #14): the pointer is on one of the ANCHOR layer's
+  /// property-lane rows. The drag then reaches down that layer's own lane
+  /// group and stops at the hovered lane — "A셀부터 오파시티까지만" —
+  /// instead of stepping over the whole group to the next layer's cells.
+  /// Cells and lanes are still two selection objects (their edits differ:
+  /// blocks vs keys), but ONE drag now produces both, and the frame range
+  /// is shared so the highlight reads as one rectangle.
   void updateFrameRangeSelectionDrag({
     required LayerId layerId,
     required int anchorIndex,
     required int headIndex,
     LayerId? headLayerId,
+    String? headLaneId,
   }) {
     if (!_rangeSelectionEligible(layerId)) {
       return;
@@ -6523,8 +6533,15 @@ class EditorSessionManager extends ChangeNotifier {
     if (layer == null) {
       return;
     }
+    // A lane TAIL only exists on the anchor layer's own group: the lane
+    // domain is one layer's keys (R26 #3), and a span reaching a further
+    // layer's lanes is that layer's cells being selected, not its keys.
+    final laneTail = headLaneId != null && (headLayerId ?? layerId) == layerId
+        ? headLaneId
+        : null;
     // Starting a CELL selection clears the lane selection (mutual
-    // exclusion, UI-R23 #3 part 2).
+    // exclusion, UI-R23 #3 part 2) — unless THIS drag is the one
+    // producing it (the mixed span below re-sets it).
     clearLaneRangeSelection();
     final base = snapFrameRangeToBlocks(
       layer: layer,
@@ -6538,6 +6555,12 @@ class EditorSessionManager extends ChangeNotifier {
     final spanIds = _selectionSpanLayerIds(layerId, headLayerId ?? layerId);
     if (spanIds.length <= 1) {
       frameRangeSelection.value = base;
+      _applySelectionLaneTail(
+        layerId: layerId,
+        headLaneId: laneTail,
+        startIndex: base.startIndex,
+        endIndexExclusive: base.endIndexExclusive,
+      );
       return;
     }
     // Union-snap: expand until no spanned layer's block is cut. Each pass
@@ -6572,6 +6595,39 @@ class EditorSessionManager extends ChangeNotifier {
       startIndex: start,
       endIndexExclusive: end,
       layerIds: spanIds,
+    );
+    _applySelectionLaneTail(
+      layerId: layerId,
+      headLaneId: laneTail,
+      startIndex: start,
+      endIndexExclusive: end,
+    );
+  }
+
+  /// R27 #14: publishes the LANE half of a mixed cell→lane drag — the
+  /// layer's lane group from its FIRST lane down to the hovered one, over
+  /// the same frame range the cells settled on, so the two halves read as
+  /// one rectangle. No-op (and no clear — the caller already cleared) when
+  /// the drag never reached a lane row.
+  ///
+  /// The active layer does NOT move here: a cell drag has never changed
+  /// it, and reaching into that layer's own lanes is the same gesture.
+  void _applySelectionLaneTail({
+    required LayerId layerId,
+    required String? headLaneId,
+    required int startIndex,
+    required int endIndexExclusive,
+  }) {
+    if (headLaneId == null) {
+      return;
+    }
+    final span = transformLaneSpan(transformLaneDisplayOrder.first, headLaneId);
+    laneRangeSelection.value = TimelineLaneSelection(
+      layerId: layerId,
+      laneId: transformLaneDisplayOrder.first,
+      startIndex: startIndex,
+      endIndexExclusive: endIndexExclusive,
+      laneIds: span.length <= 1 ? const [] : span,
     );
   }
 

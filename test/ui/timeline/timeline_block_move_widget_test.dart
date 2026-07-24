@@ -89,8 +89,8 @@ void main() {
     return TimelineFrameRangeHooks(
       selection: selection,
       onSelectUpdate: onSelectUpdate == null
-          ? (_, _, _, {headLayerId}) {}
-          : (layerId, anchorIndex, headIndex, {headLayerId}) =>
+          ? (_, _, _, {headLayerId, headLaneId}) {}
+          : (layerId, anchorIndex, headIndex, {headLayerId, headLaneId}) =>
                 onSelectUpdate(layerId, anchorIndex, headIndex),
       onClear: onClear ?? () {},
       move: TimelineRangeMoveCallbacks(
@@ -411,7 +411,7 @@ void main() {
             onLayerMarkSelected: (_, _) {},
             rangeHooks: TimelineFrameRangeHooks(
               selection: selection,
-              onSelectUpdate: (_, _, _, {headLayerId}) {},
+              onSelectUpdate: (_, _, _, {headLayerId, headLaneId}) {},
               onClear: () {},
               move: TimelineRangeMoveCallbacks(
                 onBegin: (_) => true,

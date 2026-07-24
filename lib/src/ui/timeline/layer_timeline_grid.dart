@@ -13,7 +13,8 @@ import '../../models/layer_id.dart';
 import '../../models/layer_kind.dart';
 import '../../models/layer_mark.dart';
 import '../../services/audio/audio_peaks_extractor.dart';
-import 'timeline_block_move_handle.dart' show resolveBlockMoveTargetLayer;
+import 'timeline_block_move_handle.dart'
+    show resolveSelectionSpanHead;
 import 'timeline_frame_range_gesture.dart';
 import 'timeline_run_end_handles.dart';
 import 'timeline_cell_exposure_state.dart';
@@ -1203,19 +1204,26 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
             selection: rangeHooks.selection,
             // Cross-row select (UI-R17 #8): the gesture's row delta maps
             // onto the display rows exactly like the move drags do.
-            onSelectUpdate: (layerId, anchorIndex, headIndex, headRowDelta) =>
-                rangeHooks.onSelectUpdate(
-                  layerId,
-                  anchorIndex,
-                  headIndex,
-                  headLayerId: headRowDelta == 0
-                      ? null
-                      : resolveBlockMoveTargetLayer(
-                          rows: rows,
-                          sourceLayerId: layerId,
-                          rowDelta: headRowDelta,
-                        ),
-                ),
+            onSelectUpdate: (layerId, anchorIndex, headIndex, headRowDelta) {
+              // R27 #14: the head row may be a LANE row of the dragged
+              // layer — the span then runs cell → lane → lane and stops
+              // where the pointer is, instead of stepping over the whole
+              // lane group to the next layer's cells.
+              final head = headRowDelta == 0
+                  ? null
+                  : resolveSelectionSpanHead(
+                      rows: rows,
+                      sourceLayerId: layerId,
+                      rowDelta: headRowDelta,
+                    );
+              rangeHooks.onSelectUpdate(
+                layerId,
+                anchorIndex,
+                headIndex,
+                headLayerId: head?.layerId,
+                headLaneId: head?.laneId,
+              );
+            },
             onTapClear: (_) => rangeHooks.onClear(),
             onMoveBegin: _rangeMoveResolver.begin,
             onMoveUpdate: _rangeMoveResolver.update,
