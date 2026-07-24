@@ -77,7 +77,11 @@ void main() {
       expect(stack.children[0].key, rowsBodyKey);
       expect(stack.children[1], isA<TimelineBodyCutEndBoundary>());
       final playheadPositioned = stack.children[2] as Positioned;
-      expect(playheadPositioned.child.key, playheadKey);
+      // The playhead rides its OWN RepaintBoundary: a cursor move repaints
+      // just that layer instead of re-rasterizing the whole grid (the beat
+      // lines already had one; the playhead was the odd overlay without).
+      final playheadBoundary = playheadPositioned.child as RepaintBoundary;
+      expect(playheadBoundary.child!.key, playheadKey);
     });
 
     testWidgets('does not duplicate stable keys', (tester) async {

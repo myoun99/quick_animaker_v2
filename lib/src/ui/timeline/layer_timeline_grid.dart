@@ -1370,9 +1370,20 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                                               widget.frameCursor,
                                               ?widget.cacheProgress,
                                             ]),
+                                            // RepaintBoundary: the ruler paints
+                                            // O(frames) ticks + the cache bars.
+                                            // Without its own layer, every
+                                            // session notify (which repaints
+                                            // the grid) re-records this whole
+                                            // pass even though the ruler's
+                                            // inputs are unchanged. Isolated,
+                                            // it re-records only when the
+                                            // cursor / cache / geometry it
+                                            // actually reads moves.
                                             builder: (context, _) =>
-                                                TimelineFrameRuler(
-                                                  frameStartIndex: 0,
+                                                RepaintBoundary(
+                                                  child: TimelineFrameRuler(
+                                                    frameStartIndex: 0,
                                                   frameEndIndexExclusive:
                                                       _renderedFrameCount,
                                                   currentFrameIndex:
@@ -1390,6 +1401,8 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                                                       widget.showSeconds,
                                                   isFrameCached:
                                                       widget.isFrameCached,
+                                                  cacheRepaint:
+                                                      widget.cacheProgress,
                                                   windowBucket:
                                                       _frameWindowBucket,
                                                   viewportMainExtent:
@@ -1398,6 +1411,7 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                                                       widget.dragPreview,
                                                   previewCutId:
                                                       widget.cutEndDrag?.cutId,
+                                                  ),
                                                 ),
                                           ),
                                         );
