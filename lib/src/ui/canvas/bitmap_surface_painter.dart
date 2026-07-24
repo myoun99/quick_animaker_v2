@@ -79,7 +79,7 @@ class BitmapSurfacePainter extends CustomPainter {
     // visible while editing (dimmed below); composite/export raster at
     // canvas size, so output still crops to the stage.
     canvas.clipRect(pasteboardRect);
-    paintContentInto(canvas, size);
+    paintContentInto(canvas);
     canvas.restore();
   }
 
@@ -91,7 +91,12 @@ class BitmapSurfacePainter extends CustomPainter {
   /// one `saveLayer`, and a saveLayer cannot span three sibling painters.
   /// [paint] above is this same body with the transform/clip around it, so
   /// the standalone route is byte-identical.
-  void paintContentInto(Canvas canvas, Size size) {
+  ///
+  /// Takes no `Size`: what this body needs is the visible CANVAS rect, and
+  /// the widget size is a screen quantity that only coincides with it at
+  /// identity. Reading the canvas's clip instead is what makes the merged
+  /// route right (see [_visibleCanvasRect]).
+  void paintContentInto(Canvas canvas) {
     final canvasWidth = surface.canvasSize.width.toDouble();
     final canvasHeight = surface.canvasSize.height.toDouble();
     final pasteboardRect = this.pasteboardRect;
@@ -165,12 +170,7 @@ class BitmapSurfacePainter extends CustomPainter {
     // R27 #2: the budget goes to tiles the user can actually SEE. Since
     // the walk below is now visible-only, every coordinate it reaches
     // already shows — no separate visibility test is needed.
-    final visibleRect = viewport == null
-        ? (Offset.zero & size)
-        : MatrixUtils.transformRect(
-            viewportInverseTransformMatrix(viewport!),
-            Offset.zero & size,
-          );
+    final visibleRect = _visibleCanvasRect(canvas, pasteboardRect);
     // Decode-start chunking (R18 B-1): STARTING a decode costs a
     // synchronous tile copy + 65k-pixel premultiply on the UI thread, and
     // a full-canvas commit used to start every changed tile in one paint
@@ -267,7 +267,7 @@ class BitmapSurfacePainter extends CustomPainter {
       }
     }
     if (pendingDecodes != null) {
-      _startPrioritizedDecodes(pendingDecodes, size);
+      _startPrioritizedDecodes(pendingDecodes, visibleRect);
     }
 
     if (overlay != null) {
@@ -345,19 +345,37 @@ class BitmapSurfacePainter extends CustomPainter {
   /// many frames a full-canvas convergence takes.
   static const int decodeStartBudget = BitmapTileImageCache.decodeStartBudget;
 
+  /// The part of CANVAS space this paint can actually reach, read off the
+  /// canvas's own clip.
+  ///
+  /// NOT re-derived from [viewport] and the widget size. That worked only
+  /// for the standalone [paint] route: the merged stack painter applies
+  /// the viewport ITSELF and hands [paintContentInto] an already
+  /// transformed canvas with `viewport` left null (see
+  /// BrushCanvasPanel._activeSurfacePainterFor), and the selection float
+  /// stacks a drag/warp Transform on top of the viewport. In those routes
+  /// a viewport-derived rect is a SCREEN rect read as canvas space — it
+  /// culled tiles that were on screen, which blanked the active layer
+  /// wherever pan/zoom moved the view off the origin.
+  ///
+  /// The clip is in local space by definition, so it is correct for every
+  /// route including any ancestor transform. Intersecting with the
+  /// pasteboard both keeps the range finite (an unclipped recorder
+  /// reports a giant rect) and matches what the routes clip to anyway.
+  Rect _visibleCanvasRect(Canvas canvas, Rect pasteboardRect) {
+    final clip = canvas.getLocalClipBounds();
+    if (!clip.overlaps(pasteboardRect)) {
+      return Rect.zero;
+    }
+    return clip.intersect(pasteboardRect);
+  }
+
   /// Starts up to [decodeStartBudget] of [pending]'s decodes — when over
-  /// budget, tiles overlapping the visible canvas rect go first (nearest
-  /// the view center), off-screen tiles strictly after.
-  void _startPrioritizedDecodes(List<BitmapTile> pending, Size size) {
+  /// budget, tiles overlapping [visibleRect] go first (nearest the view
+  /// center), off-screen tiles strictly after.
+  void _startPrioritizedDecodes(List<BitmapTile> pending, Rect visibleRect) {
     var ordered = pending;
     if (pending.length > decodeStartBudget) {
-      final resolvedViewport = viewport;
-      final visibleRect = resolvedViewport == null
-          ? (Offset.zero & size)
-          : MatrixUtils.transformRect(
-              viewportInverseTransformMatrix(resolvedViewport),
-              Offset.zero & size,
-            );
       final center = visibleRect.center;
       // Dominates any real distance² (canvas diagonals stay far below),
       // so off-screen tiles sort after every visible one.

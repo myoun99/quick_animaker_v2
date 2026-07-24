@@ -512,7 +512,7 @@ class _LayerStackPainter extends CustomPainter {
             // viewport-transformed, so only the content body runs.
             canvas.save();
             canvas.clipRect(activeSurfacePainter!.pasteboardRect);
-            activeSurfacePainter!.paintContentInto(canvas, size);
+            activeSurfacePainter!.paintContentInto(canvas);
             canvas.restore();
           case _PaintImage(
             :final image,

@@ -6,6 +6,7 @@ import 'src/services/input/pen_sidecars.dart';
 import 'src/services/persistence/app_documents.dart' show AppStorage;
 import 'src/ui/home_page.dart';
 import 'src/ui/input/app_input_settings.dart' show AppInput;
+import 'src/ui/perf_overlay_flag.dart';
 import 'src/ui/theme/app_theme.dart';
 
 void main() {
@@ -35,6 +36,11 @@ class QuickAnimakerApp extends StatelessWidget {
       builder: (context, _) => MaterialApp(
         title: 'QuickAnimaker',
         theme: buildAppTheme(),
+        // Off unless a measurement run asked for it (see
+        // kShowPerformanceOverlay) — UI and raster frame times over the
+        // app, which is how a stroke's latency, playback's cel rate and a
+        // scrub's re-raster get told apart on a device.
+        showPerformanceOverlay: kShowPerformanceOverlay,
         home: const HomePage(),
       ),
     );
