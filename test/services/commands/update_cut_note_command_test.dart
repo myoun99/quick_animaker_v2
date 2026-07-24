@@ -18,6 +18,7 @@ import 'package:quick_animaker_v2/src/models/track.dart';
 import 'package:quick_animaker_v2/src/models/track_id.dart';
 import 'package:quick_animaker_v2/src/services/commands/update_cut_note_command.dart';
 import 'package:quick_animaker_v2/src/services/history_manager.dart';
+import 'package:quick_animaker_v2/src/services/project_lookup.dart';
 import 'package:quick_animaker_v2/src/services/project_repository.dart';
 
 void main() {
@@ -40,7 +41,7 @@ void main() {
         note: 'General note',
       ).execute();
 
-      final updatedCut = _cutById(repository.requireProject(), targetCut.id);
+      final updatedCut = requireCut(repository.requireProject(), targetCut.id);
       expect(
         updatedCut,
         targetCut.copyWith(metadata: const CutMetadata(note: 'General note')),
@@ -55,7 +56,7 @@ void main() {
         updatedCut.layers.single.frames.single.strokes,
         targetCut.layers.single.frames.single.strokes,
       );
-      expect(_cutById(repository.requireProject(), otherCut.id), otherCut);
+      expect(requireCut(repository.requireProject(), otherCut.id), otherCut);
       expect(editingSession.activeCutId, otherCut.id);
     });
 
@@ -80,7 +81,7 @@ void main() {
       );
       historyManager.undo();
 
-      expect(_cutById(repository.requireProject(), targetCut.id), targetCut);
+      expect(requireCut(repository.requireProject(), targetCut.id), targetCut);
       expect(editingSession.activeCutId, targetCut.id);
     });
 
@@ -107,7 +108,7 @@ void main() {
       historyManager.redo();
 
       expect(
-        _cutById(repository.requireProject(), targetCut.id).metadata.note,
+        requireCut(repository.requireProject(), targetCut.id).metadata.note,
         'General note',
       );
       expect(editingSession.activeCutId, targetCut.id);
@@ -137,14 +138,14 @@ void main() {
       );
 
       expect(
-        _cutById(repository.requireProject(), targetCut.id).metadata.note,
+        requireCut(repository.requireProject(), targetCut.id).metadata.note,
         'New note',
       );
 
       historyManager.undo();
 
       expect(
-        _cutById(repository.requireProject(), targetCut.id).metadata.note,
+        requireCut(repository.requireProject(), targetCut.id).metadata.note,
         'Old note',
       );
     });
@@ -221,14 +222,3 @@ Cut _cut({
   );
 }
 
-Cut _cutById(Project project, CutId cutId) {
-  for (final track in project.tracks) {
-    for (final cut in track.cuts) {
-      if (cut.id == cutId) {
-        return cut;
-      }
-    }
-  }
-
-  throw StateError('Cut not found: $cutId');
-}

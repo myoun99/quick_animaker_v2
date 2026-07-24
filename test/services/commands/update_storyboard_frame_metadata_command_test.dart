@@ -19,6 +19,7 @@ import 'package:quick_animaker_v2/src/models/track.dart';
 import 'package:quick_animaker_v2/src/models/track_id.dart';
 import 'package:quick_animaker_v2/src/services/commands/update_storyboard_frame_metadata_command.dart';
 import 'package:quick_animaker_v2/src/services/history_manager.dart';
+import 'package:quick_animaker_v2/src/services/project_lookup.dart';
 import 'package:quick_animaker_v2/src/services/project_repository.dart';
 
 void main() {
@@ -55,7 +56,7 @@ void main() {
         metadata: metadata,
       ).execute();
 
-      final updatedCut = _cutById(repository.requireProject(), targetCut.id);
+      final updatedCut = requireCut(repository.requireProject(), targetCut.id);
       final updatedLayer = updatedCut.layers.single;
       final updatedFrame = updatedLayer.frames.single;
       expect(updatedFrame.storyboardMetadata, metadata);
@@ -290,13 +291,13 @@ void main() {
         metadata: const StoryboardFrameMetadata(note: 'New'),
       ).execute();
 
-      final updatedTargetCut = _cutById(
+      final updatedTargetCut = requireCut(
         repository.requireProject(),
         targetCut.id,
       );
       expect(updatedTargetCut.layers[1], otherLayer);
       expect(updatedTargetCut.layers.first.frames[1], otherFrame);
-      expect(_cutById(repository.requireProject(), otherCut.id), otherCut);
+      expect(requireCut(repository.requireProject(), otherCut.id), otherCut);
       expect(
         updatedTargetCut.layers.first.frames.first.strokes,
         targetFrame.strokes,
@@ -358,14 +359,6 @@ Stroke _stroke(String id) => Stroke(
   brushSettings: BrushSettings(),
 );
 
-Cut _cutById(Project project, CutId cutId) {
-  for (final track in project.tracks) {
-    for (final cut in track.cuts) {
-      if (cut.id == cutId) return cut;
-    }
-  }
-  throw StateError('Cut not found: $cutId');
-}
 
 Frame _frameById(Project project, FrameId frameId) {
   for (final track in project.tracks) {

@@ -34,6 +34,7 @@ import 'package:quick_animaker_v2/src/services/clipboard/layer_copy_payload.dart
 import 'package:quick_animaker_v2/src/services/commands/cut_command_coordinator.dart';
 import 'package:quick_animaker_v2/src/services/commands/cut_reorder_planner.dart';
 import 'package:quick_animaker_v2/src/services/history_manager.dart';
+import 'package:quick_animaker_v2/src/services/project_lookup.dart';
 import 'package:quick_animaker_v2/src/services/project_repository.dart';
 
 void main() {
@@ -122,7 +123,7 @@ void main() {
           layerId: const LayerId('color'),
         );
 
-        final cut = _cutById(fixture.project, const CutId('cut-1'));
+        final cut = requireCut(fixture.project, const CutId('cut-1'));
         expect(cut.layers.map((layer) => layer.id.value), [
           'base',
           'color',
@@ -164,14 +165,14 @@ void main() {
 
         fixture.historyManager.undo();
         expect(
-          _cutById(fixture.project, const CutId('cut-1')).layers.length,
+          requireCut(fixture.project, const CutId('cut-1')).layers.length,
           3,
         );
         expect(fixture.project.linkRegistry.isEmpty, isTrue);
 
         fixture.historyManager.redo();
         expect(
-          _cutById(fixture.project, const CutId('cut-1')).layers.length,
+          requireCut(fixture.project, const CutId('cut-1')).layers.length,
           5,
         );
         expect(fixture.project.linkRegistry.groups, hasLength(2));
@@ -379,7 +380,7 @@ void main() {
           name: 'flower',
         );
 
-        final cut = _cutById(fixture.project, const CutId('cut-1'));
+        final cut = requireCut(fixture.project, const CutId('cut-1'));
         final baseNames = [
           for (final layer in cut.layers)
             if (layer.id == const LayerId('base') ||
@@ -397,7 +398,7 @@ void main() {
         );
 
         fixture.historyManager.undo();
-        final reverted = _cutById(fixture.project, const CutId('cut-1'));
+        final reverted = requireCut(fixture.project, const CutId('cut-1'));
         expect(
           [
             for (final layer in reverted.layers)
@@ -444,7 +445,7 @@ void main() {
 
         // 1. RENAME the cel in the SOURCE bank → the member's bank
         //    follows; its lane stays untouched.
-        final source = _cutById(
+        final source = requireCut(
           fixture.project,
           const CutId('cut-1'),
         ).layers.firstWhere((layer) => layer.id == const LayerId('base'));
@@ -458,14 +459,14 @@ void main() {
           ),
         );
 
-        Layer memberNow() => _cutById(fixture.project, linkedCut.id).layers
+        Layer memberNow() => requireCut(fixture.project, linkedCut.id).layers
             .firstWhere((layer) => layer.id == memberId);
         expect(memberNow().frames.single.name, 'mouth-A');
         expect(memberNow().timeline[0]!.frameId, const FrameId('frame-a'));
 
         // 2. REMOVE the cel from the source bank → it ceases to exist
         //    everywhere; the member's dead exposure sweeps.
-        final renamedSource = _cutById(
+        final renamedSource = requireCut(
           fixture.project,
           const CutId('cut-1'),
         ).layers.firstWhere((layer) => layer.id == const LayerId('base'));
@@ -517,13 +518,13 @@ void main() {
         );
 
         expect(
-          _cutById(fixture.project, const CutId('cut-1')).layers.any(
+          requireCut(fixture.project, const CutId('cut-1')).layers.any(
             (layer) => layer.id == const LayerId('unrelated'),
           ),
           isFalse,
         );
         expect(
-          _cutById(fixture.project, linkedCutId).layers.any(
+          requireCut(fixture.project, linkedCutId).layers.any(
             (layer) => layer.id == memberId,
           ),
           isFalse,
@@ -540,13 +541,13 @@ void main() {
 
         fixture.historyManager.undo();
         expect(
-          _cutById(fixture.project, const CutId('cut-1')).layers.any(
+          requireCut(fixture.project, const CutId('cut-1')).layers.any(
             (layer) => layer.id == const LayerId('unrelated'),
           ),
           isTrue,
         );
         expect(
-          _cutById(fixture.project, linkedCutId).layers.any(
+          requireCut(fixture.project, linkedCutId).layers.any(
             (layer) => layer.id == memberId,
           ),
           isTrue,
@@ -643,7 +644,7 @@ void main() {
 
         // The target's "cel" now shares the origin's bank; its conflicting
         // exposure retargets to the origin's frame, timing untouched.
-        final target = _cutById(fixture.project, const CutId('target'));
+        final target = requireCut(fixture.project, const CutId('target'));
         final targetCel = target.layers.firstWhere(
           (layer) => layer.id == const LayerId('t-cel'),
         );
@@ -661,7 +662,7 @@ void main() {
           isTrue,
         );
         expect(
-          _cutById(fixture.project, const CutId('origin')).layers.any(
+          requireCut(fixture.project, const CutId('origin')).layers.any(
             (layer) => layer.name == 'only-t',
           ),
           isTrue,
@@ -680,11 +681,11 @@ void main() {
         fixture.historyManager.undo();
         expect(fixture.project.linkRegistry.isEmpty, isTrue);
         expect(
-          _cutById(fixture.project, const CutId('origin')).layers,
+          requireCut(fixture.project, const CutId('origin')).layers,
           originCut().layers,
         );
         expect(
-          _cutById(fixture.project, const CutId('target')).layers,
+          requireCut(fixture.project, const CutId('target')).layers,
           targetCut().layers,
         );
       });
@@ -739,7 +740,7 @@ void main() {
           originCutId: const CutId('origin'),
           targetCutId: const CutId('target'),
         );
-        final layerCountAfterFirst = _cutById(
+        final layerCountAfterFirst = requireCut(
           fixture.project,
           const CutId('target'),
         ).layers.length;
@@ -757,7 +758,7 @@ void main() {
           targetCutId: const CutId('target'),
         );
         expect(
-          _cutById(fixture.project, const CutId('target')).layers.length,
+          requireCut(fixture.project, const CutId('target')).layers.length,
           layerCountAfterFirst,
           reason: 're-running must not insert duplicate linked copies',
         );
@@ -777,7 +778,7 @@ void main() {
           cutId: const CutId('cut-1'),
           layerId: const LayerId('base'),
         );
-        final cut = _cutById(fixture.project, const CutId('cut-1'));
+        final cut = requireCut(fixture.project, const CutId('cut-1'));
         final baseCopyId = cut.layers[2].id;
 
         fixture.coordinator.updateLayerKind(
@@ -786,7 +787,7 @@ void main() {
           kind: LayerKind.art,
         );
 
-        Layer layerOf(LayerId id) => _cutById(
+        Layer layerOf(LayerId id) => requireCut(
           fixture.project,
           const CutId('cut-1'),
         ).layers.firstWhere((layer) => layer.id == id);
@@ -817,7 +818,7 @@ void main() {
           layerId: const LayerId('color'),
         )!;
 
-        Cut cut() => _cutById(fixture.project, const CutId('cut-1'));
+        Cut cut() => requireCut(fixture.project, const CutId('cut-1'));
         Layer layerOf(String id) =>
             cut().layers.firstWhere((layer) => layer.id.value == id);
         expect(cut().layers.folderLayers.single.id, folderId);
@@ -871,8 +872,8 @@ void main() {
           layerId: const LayerId('base'),
         )!;
 
-        Cut origin() => _cutById(fixture.project, const CutId('cut-1'));
-        Cut linked() => _cutById(fixture.project, linkedCutId);
+        Cut origin() => requireCut(fixture.project, const CutId('cut-1'));
+        Cut linked() => requireCut(fixture.project, linkedCutId);
         Layer linkedBase() =>
             linked().layers.firstWhere((layer) => layer.name == 'base');
         expect(origin().layers.folderLayers.single.id, folderId);
@@ -948,7 +949,7 @@ void main() {
         );
 
         Layer folderOf(CutId cutId) =>
-            _cutById(fixture.project, cutId).layers.folderLayers.single;
+            requireCut(fixture.project, cutId).layers.folderLayers.single;
         expect(folderOf(const CutId('cut-1')).transformTrack, track);
         expect(
           folderOf(linkedCutId).transformTrack.isNotEmpty,
@@ -1088,19 +1089,19 @@ void main() {
 
         fixture.coordinator.renameCut(cutId: cutB.id, newName: 'Cut A');
 
-        expect(_cutById(fixture.project, cutA.id).name, 'Cut A');
-        expect(_cutById(fixture.project, cutB.id).name, 'Cut A');
-        expect(_cutById(fixture.project, cutB.id).id, cutB.id);
+        expect(requireCut(fixture.project, cutA.id).name, 'Cut A');
+        expect(requireCut(fixture.project, cutB.id).name, 'Cut A');
+        expect(requireCut(fixture.project, cutB.id).id, cutB.id);
         expect(fixture.historyManager.undoCount, 1);
 
         fixture.historyManager.undo();
 
-        expect(_cutById(fixture.project, cutB.id).name, 'Cut B');
+        expect(requireCut(fixture.project, cutB.id).name, 'Cut B');
         expect(fixture.historyManager.redoCount, 1);
 
         fixture.historyManager.redo();
 
-        expect(_cutById(fixture.project, cutB.id).name, 'Cut A');
+        expect(requireCut(fixture.project, cutB.id).name, 'Cut A');
         expect(fixture.historyManager.undoCount, 1);
       },
     );
@@ -1118,21 +1119,21 @@ void main() {
 
       fixture.coordinator.updateCutNote(cutId: cutA.id, note: 'General note');
 
-      expect(_cutById(fixture.project, cutA.id).metadata.note, 'General note');
+      expect(requireCut(fixture.project, cutA.id).metadata.note, 'General note');
       expect(fixture.editingSession.activeCutId, cutA.id);
       expect(fixture.historyManager.undoCount, 1);
       expect(fixture.historyManager.redoCount, 0);
 
       fixture.historyManager.undo();
 
-      expect(_cutById(fixture.project, cutA.id).metadata.note, '');
+      expect(requireCut(fixture.project, cutA.id).metadata.note, '');
       expect(fixture.editingSession.activeCutId, cutA.id);
       expect(fixture.historyManager.undoCount, 0);
       expect(fixture.historyManager.redoCount, 1);
 
       fixture.historyManager.redo();
 
-      expect(_cutById(fixture.project, cutA.id).metadata.note, 'General note');
+      expect(requireCut(fixture.project, cutA.id).metadata.note, 'General note');
       expect(fixture.editingSession.activeCutId, cutA.id);
       expect(fixture.historyManager.undoCount, 1);
       expect(fixture.historyManager.redoCount, 0);
@@ -1157,7 +1158,7 @@ void main() {
       fixture.coordinator.updateCutNote(cutId: cutA.id, note: 'Same note');
 
       expect(fixture.project.toJson(), beforeJson);
-      expect(_cutById(fixture.project, cutA.id).metadata.note, 'Same note');
+      expect(requireCut(fixture.project, cutA.id).metadata.note, 'Same note');
       expect(fixture.editingSession.activeCutId, cutA.id);
       expect(fixture.historyManager.undoCount, 0);
       expect(fixture.historyManager.redoCount, 0);
@@ -1706,21 +1707,21 @@ void main() {
         kind: LayerKind.storyboard,
       );
 
-      expect(_layerById(fixture.project, layer.id).kind, LayerKind.storyboard);
+      expect(requireLayerAnywhere(fixture.project, layer.id).kind, LayerKind.storyboard);
       expect(fixture.editingSession.activeCutId, cutA.id);
       expect(fixture.historyManager.undoCount, 1);
       expect(fixture.historyManager.redoCount, 0);
 
       fixture.historyManager.undo();
 
-      expect(_layerById(fixture.project, layer.id).kind, LayerKind.animation);
+      expect(requireLayerAnywhere(fixture.project, layer.id).kind, LayerKind.animation);
       expect(fixture.editingSession.activeCutId, cutA.id);
       expect(fixture.historyManager.undoCount, 0);
       expect(fixture.historyManager.redoCount, 1);
 
       fixture.historyManager.redo();
 
-      expect(_layerById(fixture.project, layer.id).kind, LayerKind.storyboard);
+      expect(requireLayerAnywhere(fixture.project, layer.id).kind, LayerKind.storyboard);
       expect(fixture.editingSession.activeCutId, cutA.id);
       expect(fixture.historyManager.undoCount, 1);
       expect(fixture.historyManager.redoCount, 0);
@@ -1803,7 +1804,7 @@ void main() {
         layerId: se3.id,
         kind: LayerKind.animation,
       );
-      expect(_layerById(fixture.project, se3.id).kind, LayerKind.animation);
+      expect(requireLayerAnywhere(fixture.project, se3.id).kind, LayerKind.animation);
       expect(fixture.historyManager.undoCount, 1);
 
       // Down at the floor: silently refused, no history entry.
@@ -1812,7 +1813,7 @@ void main() {
         layerId: se2.id,
         kind: LayerKind.animation,
       );
-      expect(_layerById(fixture.project, se2.id).kind, LayerKind.se);
+      expect(requireLayerAnywhere(fixture.project, se2.id).kind, LayerKind.se);
       expect(fixture.historyManager.undoCount, 1);
     });
 
@@ -1844,7 +1845,7 @@ void main() {
         instructions: spans,
       );
       expect(
-        _layerById(fixture.project, instruction.id).instructions[0],
+        requireLayerAnywhere(fixture.project, instruction.id).instructions[0],
         spans[0],
       );
       expect(fixture.historyManager.undoCount, 1);
@@ -1858,10 +1859,10 @@ void main() {
       expect(fixture.historyManager.undoCount, 1);
 
       fixture.historyManager.undo();
-      expect(_layerById(fixture.project, instruction.id).instructions, isEmpty);
+      expect(requireLayerAnywhere(fixture.project, instruction.id).instructions, isEmpty);
       fixture.historyManager.redo();
       expect(
-        _layerById(fixture.project, instruction.id).instructions[0],
+        requireLayerAnywhere(fixture.project, instruction.id).instructions[0],
         spans[0],
       );
 
@@ -2042,7 +2043,7 @@ void main() {
         sourceLayerId: instruction.id,
       );
 
-      final copy = _layerById(fixture.project, copyId);
+      final copy = requireLayerAnywhere(fixture.project, copyId);
       expect(copy.kind, LayerKind.instruction);
       expect(
         copy.instructions[3],
@@ -2072,7 +2073,7 @@ void main() {
         layerId: se.id,
         audioClips: clips,
       );
-      expect(_layerById(fixture.project, se.id).audioClips, clips);
+      expect(requireLayerAnywhere(fixture.project, se.id).audioClips, clips);
       expect(fixture.historyManager.undoCount, 1);
 
       // Unchanged list: no new history entry.
@@ -2084,9 +2085,9 @@ void main() {
       expect(fixture.historyManager.undoCount, 1);
 
       fixture.historyManager.undo();
-      expect(_layerById(fixture.project, se.id).audioClips, isEmpty);
+      expect(requireLayerAnywhere(fixture.project, se.id).audioClips, isEmpty);
       fixture.historyManager.redo();
-      expect(_layerById(fixture.project, se.id).audioClips, clips);
+      expect(requireLayerAnywhere(fixture.project, se.id).audioClips, clips);
 
       expect(
         () => fixture.coordinator.updateLayerAudioClips(
@@ -2124,12 +2125,12 @@ void main() {
         layerId: trackSe.id,
         audioClips: clips,
       );
-      expect(_layerById(fixture.project, trackSe.id).audioClips, clips);
+      expect(requireLayerAnywhere(fixture.project, trackSe.id).audioClips, clips);
 
       fixture.historyManager.undo();
-      expect(_layerById(fixture.project, trackSe.id).audioClips, isEmpty);
+      expect(requireLayerAnywhere(fixture.project, trackSe.id).audioClips, isEmpty);
       fixture.historyManager.redo();
-      expect(_layerById(fixture.project, trackSe.id).audioClips, clips);
+      expect(requireLayerAnywhere(fixture.project, trackSe.id).audioClips, clips);
     });
 
     test('duplicateLayer carries audio clips to the SE copy', () {
@@ -2158,7 +2159,7 @@ void main() {
         sourceLayerId: se.id,
       );
 
-      final copy = _layerById(fixture.project, copyId);
+      final copy = requireLayerAnywhere(fixture.project, copyId);
       expect(copy.kind, LayerKind.se);
       expect(copy.audioClips.single.filePath, 'voice.wav');
     });
@@ -2232,17 +2233,17 @@ void main() {
         onTimesheet: false,
       );
 
-      expect(_layerById(fixture.project, layer.id).onTimesheet, isFalse);
+      expect(requireLayerAnywhere(fixture.project, layer.id).onTimesheet, isFalse);
       expect(fixture.historyManager.undoCount, 1);
 
       fixture.historyManager.undo();
 
-      expect(_layerById(fixture.project, layer.id).onTimesheet, isTrue);
+      expect(requireLayerAnywhere(fixture.project, layer.id).onTimesheet, isTrue);
       expect(fixture.historyManager.redoCount, 1);
 
       fixture.historyManager.redo();
 
-      expect(_layerById(fixture.project, layer.id).onTimesheet, isFalse);
+      expect(requireLayerAnywhere(fixture.project, layer.id).onTimesheet, isFalse);
       expect(fixture.historyManager.undoCount, 1);
     });
 
@@ -2288,10 +2289,10 @@ void main() {
         onTimesheet: false,
       );
 
-      expect(_layerById(fixture.project, cameraLayer.id).onTimesheet, isFalse);
+      expect(requireLayerAnywhere(fixture.project, cameraLayer.id).onTimesheet, isFalse);
       expect(fixture.historyManager.undoCount, 1);
       fixture.historyManager.undo();
-      expect(_layerById(fixture.project, cameraLayer.id).onTimesheet, isTrue);
+      expect(requireLayerAnywhere(fixture.project, cameraLayer.id).onTimesheet, isTrue);
     });
 
     test('setTimesheetInfo updates through history and dedupes', () {
@@ -2343,7 +2344,7 @@ void main() {
         mark: LayerMark.orange,
       );
 
-      expect(_layerById(fixture.project, layer.id).mark, LayerMark.orange);
+      expect(requireLayerAnywhere(fixture.project, layer.id).mark, LayerMark.orange);
       expect(fixture.historyManager.undoCount, 1);
 
       fixture.coordinator.setLayerMark(
@@ -2356,12 +2357,12 @@ void main() {
 
       fixture.historyManager.undo();
 
-      expect(_layerById(fixture.project, layer.id).mark, LayerMark.none);
+      expect(requireLayerAnywhere(fixture.project, layer.id).mark, LayerMark.none);
       expect(fixture.historyManager.redoCount, 1);
 
       fixture.historyManager.redo();
 
-      expect(_layerById(fixture.project, layer.id).mark, LayerMark.orange);
+      expect(requireLayerAnywhere(fixture.project, layer.id).mark, LayerMark.orange);
     });
 
     test(
@@ -2455,21 +2456,21 @@ void main() {
         );
 
         expect(
-          _cutById(fixture.project, cut.id).layers.map((layer) => layer.name),
+          requireCut(fixture.project, cut.id).layers.map((layer) => layer.name),
           ['A', 'B', 'A', 'C'],
         );
-        expect(_layerById(fixture.project, pastedLayerId).id, pastedLayerId);
+        expect(requireLayerAnywhere(fixture.project, pastedLayerId).id, pastedLayerId);
         expect(fixture.historyManager.undoCount, 1);
 
         fixture.historyManager.undo();
         expect(
-          _cutById(fixture.project, cut.id).layers.map((layer) => layer.name),
+          requireCut(fixture.project, cut.id).layers.map((layer) => layer.name),
           ['A', 'B', 'C'],
         );
 
         fixture.historyManager.redo();
         expect(
-          _cutById(fixture.project, cut.id).layers.map((layer) => layer.name),
+          requireCut(fixture.project, cut.id).layers.map((layer) => layer.name),
           ['A', 'B', 'A', 'C'],
         );
       },
@@ -2625,36 +2626,7 @@ Frame _frame({
   );
 }
 
-Cut _cutById(Project project, CutId cutId) {
-  for (final track in project.tracks) {
-    for (final cut in track.cuts) {
-      if (cut.id == cutId) {
-        return cut;
-      }
-    }
-  }
 
-  throw StateError('Cut not found: $cutId');
-}
-
-Layer _layerById(Project project, LayerId layerId) {
-  for (final track in project.tracks) {
-    for (final layer in track.seLayers) {
-      if (layer.id == layerId) {
-        return layer;
-      }
-    }
-    for (final cut in track.cuts) {
-      for (final layer in cut.layers) {
-        if (layer.id == layerId) {
-          return layer;
-        }
-      }
-    }
-  }
-
-  throw StateError('Layer not found: $layerId');
-}
 
 Frame _frameById(Project project, FrameId frameId) {
   for (final track in project.tracks) {
