@@ -8,7 +8,6 @@ import 'package:quick_animaker_v2/src/models/bitmap_tile.dart';
 import 'package:quick_animaker_v2/src/models/canvas_size.dart';
 import 'package:quick_animaker_v2/src/models/layer_blend_mode.dart';
 import 'package:quick_animaker_v2/src/models/tile_coord.dart';
-import 'package:quick_animaker_v2/src/services/cut_frame_composite_plan.dart';
 
 /// R27 #29 — the PIXELS, not just the plan.
 ///
