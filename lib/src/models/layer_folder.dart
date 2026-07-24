@@ -91,6 +91,99 @@ extension LayerFolderQueries on List<Layer> {
   }
 }
 
+/// The same folder questions, asked MANY times over one unchanging stack.
+///
+/// [LayerFolderQueries] is written for a one-off ask and pays for it every
+/// time: `folderById` is a linear scan, so `ancestryOf` allocates a list and
+/// a set and scans per hop, and `subtreeMembersOf` runs `isInsideFolder`
+/// once per layer — a full walk each. Building the timeline's row model
+/// asked all three inside a per-layer loop, which made it O(n²·depth) with
+/// two allocations per probe, and it ran in `build()` with no memo while
+/// every session notify rebuilt the chrome.
+///
+/// Same answers, one pass: the folder lookup is a map, each ancestry chain
+/// is computed once and shared, and every subtree list is filled by a
+/// single walk over the stack. Build one per row-model pass and throw it
+/// away — it is a cache of a value, so it must not outlive the stack it
+/// indexed.
+class LayerFolderIndex {
+  LayerFolderIndex(this._layers) {
+    for (final layer in _layers) {
+      if (layerKindGroupsLayers(layer.kind)) {
+        // First wins, matching folderById's scan order (a stack with
+        // duplicate folder ids is already rejected by
+        // folderStructureProblem).
+        _folderById.putIfAbsent(layer.id, () => layer);
+      }
+    }
+  }
+
+  final List<Layer> _layers;
+  final Map<LayerId, Layer> _folderById = <LayerId, Layer>{};
+  final Map<LayerId?, List<Layer>> _ancestry = <LayerId?, List<Layer>>{};
+  Map<LayerId, List<Layer>>? _subtrees;
+
+  /// See [LayerFolderQueries.folderById].
+  Layer? folderById(LayerId? id) => id == null ? null : _folderById[id];
+
+  /// See [LayerFolderQueries.ancestryOf]. The returned list is SHARED and
+  /// must not be mutated.
+  List<Layer> ancestryOf(LayerId? folderId) {
+    final cached = _ancestry[folderId];
+    if (cached != null) {
+      return cached;
+    }
+    final chain = <Layer>[];
+    final seen = <LayerId>{};
+    var current = folderById(folderId);
+    while (current != null && seen.add(current.id)) {
+      chain.add(current);
+      current = folderById(current.folderId);
+    }
+    _ancestry[folderId] = chain;
+    return chain;
+  }
+
+  /// How deep [folderId] sits — the chain length, without building one.
+  int depthOf(LayerId? folderId) => ancestryOf(folderId).length;
+
+  /// See [LayerFolderQueries.subtreeCollapsed].
+  bool subtreeCollapsed(LayerId? folderId) {
+    for (final folder in ancestryOf(folderId)) {
+      if (folder.collapsed) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  /// See [LayerFolderQueries.subtreeVisible].
+  bool subtreeVisible(LayerId? folderId) {
+    for (final folder in ancestryOf(folderId)) {
+      if (!folder.isVisible) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  /// See [LayerFolderQueries.subtreeMembersOf]. Every folder's list is
+  /// filled by ONE walk of the stack, the first time any of them is asked
+  /// for; the lists are SHARED and must not be mutated.
+  List<Layer> subtreeMembersOf(LayerId folderId) {
+    final subtrees = _subtrees ??= () {
+      final built = <LayerId, List<Layer>>{};
+      for (final layer in _layers) {
+        for (final folder in ancestryOf(layer.folderId)) {
+          (built[folder.id] ??= <Layer>[]).add(layer);
+        }
+      }
+      return built;
+    }();
+    return subtrees[folderId] ?? const <Layer>[];
+  }
+}
+
 /// A fresh folder row. Folders hold no cels, so the timeline fields stay
 /// empty; everything else is ordinary layer state.
 Layer createFolderLayer({
