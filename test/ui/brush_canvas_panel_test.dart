@@ -48,7 +48,7 @@ void main() {
             find.byType(InteractiveBrushEditCanvasView),
           )
           .inputSettings,
-      const BrushEditCanvasInputSettings(size: 10),
+      BrushEditCanvasInputSettings(size: 10),
     );
     expect(
       find.byKey(
@@ -224,14 +224,35 @@ void main() {
     await tester.pump();
 
     // Essentials stay in the tree even in the narrowest panel.
-    expect(find.byKey(const ValueKey<String>('canvas-viewport-fit')), findsOneWidget);
-    expect(find.byKey(const ValueKey<String>('canvas-viewport-reset')), findsOneWidget);
-    expect(find.byKey(const ValueKey<String>('canvas-viewport-zoom-out')), findsOneWidget);
-    expect(find.byKey(const ValueKey<String>('canvas-viewport-zoom-in')), findsOneWidget);
-    expect(find.byKey(const ValueKey<String>('canvas-viewport-zoom-label')), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey<String>('canvas-viewport-fit')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey<String>('canvas-viewport-reset')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey<String>('canvas-viewport-zoom-out')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey<String>('canvas-viewport-zoom-in')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey<String>('canvas-viewport-zoom-label')),
+      findsOneWidget,
+    );
     // Secondary rotate/flip give up their space instead of overflowing.
-    expect(find.byKey(const ValueKey<String>('canvas-viewport-rotate-ccw')), findsNothing);
-    expect(find.byKey(const ValueKey<String>('canvas-viewport-flip')), findsNothing);
+    expect(
+      find.byKey(const ValueKey<String>('canvas-viewport-rotate-ccw')),
+      findsNothing,
+    );
+    expect(
+      find.byKey(const ValueKey<String>('canvas-viewport-flip')),
+      findsNothing,
+    );
 
     expect(tester.takeException(), isNull);
   });
@@ -459,7 +480,7 @@ void main() {
     final coordinator = BrushCanvasFixture.createCoordinator(
       frameKeys: frameKeys,
     );
-    const settings = BrushEditCanvasInputSettings(
+    final settings = BrushEditCanvasInputSettings(
       color: 0xFFFF0000,
       size: 12,
       opacity: 0.75,

@@ -6,7 +6,7 @@ import 'package:quick_animaker_v2/src/ui/canvas/brush_edit_canvas_input_settings
 void main() {
   group('BrushEditCanvasInputSettings', () {
     test('default values', () {
-      const settings = BrushEditCanvasInputSettings();
+      final settings = BrushEditCanvasInputSettings();
 
       expect(settings.color, 0xFF000000);
       expect(settings.size, 1.0);
@@ -22,7 +22,7 @@ void main() {
     });
 
     test('stores custom values', () {
-      const settings = BrushEditCanvasInputSettings(
+      final settings = BrushEditCanvasInputSettings(
         color: 0xFFFF00FF,
         size: 3.0,
         opacity: 0.5,
@@ -90,7 +90,7 @@ void main() {
     });
 
     test('stores and copies roundness and angle', () {
-      const settings = BrushEditCanvasInputSettings(
+      final settings = BrushEditCanvasInputSettings(
         roundness: 0.4,
         angleDegrees: 30,
       );
@@ -101,7 +101,7 @@ void main() {
       expect(updated.roundness, 0.4);
       expect(updated.angleDegrees, 90.0);
 
-      const defaults = BrushEditCanvasInputSettings();
+      final defaults = BrushEditCanvasInputSettings();
       expect(defaults.roundness, 1.0);
       expect(defaults.angleDegrees, 0.0);
       expect(settings == defaults, isFalse);
@@ -124,10 +124,7 @@ void main() {
         opacityPressureCurve: BrushPressureCurve.linearFrom(0.2),
       );
       expect(settings.sizePressureCurve, BrushPressureCurve.identity());
-      expect(
-        settings.opacityPressureCurve,
-        BrushPressureCurve.linearFrom(0.2),
-      );
+      expect(settings.opacityPressureCurve, BrushPressureCurve.linearFrom(0.2));
       expect(settings.hasPressureDynamics, isTrue);
 
       final updated = settings.copyWith(
@@ -142,7 +139,7 @@ void main() {
       final b = BrushEditCanvasInputSettings(
         sizePressureCurve: BrushPressureCurve.identity(),
       );
-      const c = BrushEditCanvasInputSettings();
+      final c = BrushEditCanvasInputSettings();
       expect(a, b);
       expect(a.hashCode, b.hashCode);
       expect(a == c, isFalse);
@@ -150,13 +147,13 @@ void main() {
     });
 
     test('copyWith preserves omitted values', () {
-      const settings = BrushEditCanvasInputSettings(color: 0xFF112233, size: 2);
+      final settings = BrushEditCanvasInputSettings(color: 0xFF112233, size: 2);
 
       expect(settings.copyWith(), settings);
     });
 
     test('copyWith updates each field', () {
-      final updated = const BrushEditCanvasInputSettings().copyWith(
+      final updated = BrushEditCanvasInputSettings().copyWith(
         color: 0xFF445566,
         size: 4,
         opacity: 0.4,
@@ -167,7 +164,7 @@ void main() {
 
       expect(
         updated,
-        const BrushEditCanvasInputSettings(
+        BrushEditCanvasInputSettings(
           color: 0xFF445566,
           size: 4,
           opacity: 0.4,
@@ -179,9 +176,9 @@ void main() {
     });
 
     test('equality / hashCode / toString', () {
-      const a = BrushEditCanvasInputSettings(size: 2, opacity: 0.5);
-      const b = BrushEditCanvasInputSettings(size: 2, opacity: 0.5);
-      const c = BrushEditCanvasInputSettings(size: 3, opacity: 0.5);
+      final a = BrushEditCanvasInputSettings(size: 2, opacity: 0.5);
+      final b = BrushEditCanvasInputSettings(size: 2, opacity: 0.5);
+      final c = BrushEditCanvasInputSettings(size: 3, opacity: 0.5);
 
       expect(a, b);
       expect(a.hashCode, b.hashCode);

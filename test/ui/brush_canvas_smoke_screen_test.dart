@@ -44,7 +44,7 @@ void main() {
       );
       expect(host.layerId, const LayerId('smoke-layer'));
       expect(host.frameId, const FrameId('smoke-frame'));
-      expect(host.inputSettings, const BrushEditCanvasInputSettings());
+      expect(host.inputSettings, BrushEditCanvasInputSettings());
       expect(host.showTransparentBackground, isTrue);
       expect(
         host.initialSessionState.canvasState.currentSurface.canvasSize,
@@ -58,7 +58,7 @@ void main() {
     ) async {
       const layerId = LayerId('custom-layer');
       const frameId = FrameId('custom-frame');
-      const inputSettings = BrushEditCanvasInputSettings(color: 0xFFFF00FF);
+      final inputSettings = BrushEditCanvasInputSettings(color: 0xFFFF00FF);
       final canvasSize = CanvasSize(width: 8, height: 8);
 
       await tester.pumpWidget(

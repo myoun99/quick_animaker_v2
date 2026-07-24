@@ -46,7 +46,7 @@ void main() {
               sessionState: sessionState,
               layerId: layerId,
               frameId: frameId,
-              inputSettings: const BrushEditCanvasInputSettings(),
+              inputSettings: BrushEditCanvasInputSettings(),
               onSourceStrokeCommitted: (_) {},
               showTransparentBackground: false,
             ),
@@ -188,7 +188,8 @@ void main() {
         expect(
           overlay.tileSize,
           sessionState.canvasState.currentSurface.tileSize,
-          reason: 'the overlay grid aligns with the committed grid '
+          reason:
+              'the overlay grid aligns with the committed grid '
               '(coordinate replacement in the painter requires it)',
         );
 
@@ -206,7 +207,7 @@ void main() {
           _view(
             _sessionState(),
             results.add,
-            inputSettings: const BrushEditCanvasInputSettings(size: 8),
+            inputSettings: BrushEditCanvasInputSettings(size: 8),
           ),
         ),
       );
@@ -235,7 +236,7 @@ void main() {
           _view(
             _sessionState(),
             results.add,
-            inputSettings: const BrushEditCanvasInputSettings(size: 8),
+            inputSettings: BrushEditCanvasInputSettings(size: 8),
           ),
         ),
       );
@@ -283,7 +284,7 @@ void main() {
             _view(
               _sessionState(),
               results.add,
-              inputSettings: const BrushEditCanvasInputSettings(size: 4),
+              inputSettings: BrushEditCanvasInputSettings(size: 4),
             ),
           ),
         );
@@ -330,7 +331,7 @@ void main() {
             _view(
               _sessionState(),
               results.add,
-              inputSettings: const BrushEditCanvasInputSettings(size: 1),
+              inputSettings: BrushEditCanvasInputSettings(size: 1),
             ),
           ),
         );
@@ -564,9 +565,7 @@ void main() {
     });
 
     testWidgets('an off-canvas tap on the PASTEBOARD commits — the stage '
-        'rectangle is not an input boundary (user feedback)', (
-      tester,
-    ) async {
+        'rectangle is not an input boundary (user feedback)', (tester) async {
       final results = <List<BrushDab>>[];
       await tester.pumpWidget(_app(_view(_sessionState(), results.add)));
 
@@ -603,9 +602,7 @@ void main() {
     });
 
     testWidgets('pointer down outside then entering draws the WHOLE path '
-        '(the pasteboard is drawable from the first dab)', (
-      tester,
-    ) async {
+        '(the pasteboard is drawable from the first dab)', (tester) async {
       final results = <List<BrushDab>>[];
       await tester.pumpWidget(
         _app(
@@ -632,26 +629,16 @@ void main() {
       expect(results, hasLength(1));
 
       final dabs = results.single;
-      expect(dabs.map((dab) => dab.center.x).toList(), [
-        12,
-        11,
-        10,
-        9,
-        8,
-        7,
-        6,
-        5,
-        4,
-        3,
-        2,
-      ], reason: 'the off-canvas leg (12..9) draws too now');
+      expect(
+        dabs.map((dab) => dab.center.x).toList(),
+        [12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2],
+        reason: 'the off-canvas leg (12..9) draws too now',
+      );
       expect(dabs.map((dab) => dab.center.y).toSet(), {1});
     });
 
     testWidgets('a stroke entirely OFF-canvas commits on the pasteboard; '
-        'beyond the pasteboard wall commits nothing', (
-      tester,
-    ) async {
+        'beyond the pasteboard wall commits nothing', (tester) async {
       final results = <List<BrushDab>>[];
       await tester.pumpWidget(
         _app(
@@ -675,11 +662,7 @@ void main() {
       await tester.pump();
 
       expect(results, hasLength(1));
-      expect(results.single.map((dab) => dab.center.x).toList(), [
-        12,
-        13,
-        14,
-      ]);
+      expect(results.single.map((dab) => dab.center.x).toList(), [12, 13, 14]);
 
       // Beyond the wall (x ≥ 24 for the 8×8 stage, 5x5 pasteboard):
       // nothing.
@@ -696,9 +679,7 @@ void main() {
     });
 
     testWidgets('leaving the stage and returning draws THROUGH the gap — '
-        'the stage edge no longer breaks strokes', (
-      tester,
-    ) async {
+        'the stage edge no longer breaks strokes', (tester) async {
       final results = <List<BrushDab>>[];
       await tester.pumpWidget(
         _app(
@@ -742,12 +723,12 @@ void main() {
     ) async {
       final sessionState = _sessionState(width: 200, height: 32);
       final results = <List<BrushDab>>[];
-      const initialSettings = BrushEditCanvasInputSettings(
+      final initialSettings = BrushEditCanvasInputSettings(
         color: 0xFFE53935,
         size: 20,
         spacing: 0.25,
       );
-      const rebuiltSettings = BrushEditCanvasInputSettings(
+      final rebuiltSettings = BrushEditCanvasInputSettings(
         color: 0xFF1E88E5,
         size: 20,
         spacing: 4.0,
@@ -989,7 +970,7 @@ void main() {
             _view(
               _sessionState(width: 200, height: 16),
               results.add,
-              inputSettings: const BrushEditCanvasInputSettings(size: 8),
+              inputSettings: BrushEditCanvasInputSettings(size: 8),
               onAltPick: picks.add,
               onTemporaryToolHold: holds.add,
               onTemporaryToolRelease: ({required keep}) => releases.add(keep),
@@ -1053,7 +1034,7 @@ void main() {
             _view(
               _sessionState(width: 200, height: 16),
               results.add,
-              inputSettings: const BrushEditCanvasInputSettings(size: 8),
+              inputSettings: BrushEditCanvasInputSettings(size: 8),
               onTemporaryToolHold: holds.add,
               onTemporaryToolRelease: ({required keep}) => releases.add(keep),
             ),
@@ -1200,7 +1181,7 @@ void main() {
             _sessionState(width: 200, height: 16),
             results.add,
             // No size curve: pressure must not change the size.
-            inputSettings: const BrushEditCanvasInputSettings(size: 8),
+            inputSettings: BrushEditCanvasInputSettings(size: 8),
           ),
         ),
       );
@@ -1288,7 +1269,7 @@ void main() {
           _view(
             _sessionState(),
             results.add,
-            inputSettings: const BrushEditCanvasInputSettings(erase: true),
+            inputSettings: BrushEditCanvasInputSettings(erase: true),
           ),
         ),
       );
@@ -1486,7 +1467,7 @@ InteractiveBrushEditCanvasView _view(
   BrushEditSessionState sessionState,
   ValueChanged<List<BrushDab>> onResult, {
   BrushEditCanvasInputSettings inputSettings =
-      const BrushEditCanvasInputSettings(),
+      BrushEditCanvasInputSettings.defaults,
   CanvasViewport? viewport,
   ValueChanged<CanvasPoint>? onAltPick,
   void Function(CanvasTool tool)? onTemporaryToolHold,

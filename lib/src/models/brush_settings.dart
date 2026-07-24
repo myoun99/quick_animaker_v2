@@ -1,142 +1,117 @@
 import 'brush_pressure_curve.dart';
+import 'brush_shape.dart';
 import 'brush_tip_mask.dart';
 import 'brush_tip_rotation_mode.dart';
 import 'brush_tip_shape.dart';
 
 class BrushSettings {
   BrushSettings({
-    this.color = 0xFF000000,
-    this.size = 4.0,
-    this.opacity = 1.0,
-    this.flow = 1.0,
-    this.hardness = 1.0,
-    this.spacing = 0.1,
-    this.tipShape = BrushTipShape.round,
-    this.sizePressureCurve,
-    this.opacityPressureCurve,
-    this.flowPressureCurve,
-    this.hardnessPressureCurve,
-    this.roundness = 1.0,
-    this.angleDegrees = 0.0,
-    this.tipMask,
-    this.rotationMode = BrushTipRotationMode.fixed,
-    this.sizeJitter = 0.0,
-    this.opacityJitter = 0.0,
-    this.angleJitter = 0.0,
-    this.scatterRadiusRatio = 0.0,
-    this.scatterCount = 1,
-    this.scatterBothAxes = true,
-    this.dualMask,
-    this.dualMaskScale = 1.0,
-    this.textureMask,
-    this.textureScale = 1.0,
-    this.textureDensity = 1.0,
-  }) {
-    if (!dualMaskScale.isFinite || dualMaskScale <= 0.0) {
-      throw ArgumentError.value(
-        dualMaskScale,
-        'dualMaskScale',
-        'BrushSettings.dualMaskScale must be finite and greater than 0.',
-      );
-    }
-    if (!textureScale.isFinite || textureScale <= 0.0) {
-      throw ArgumentError.value(
-        textureScale,
-        'textureScale',
-        'BrushSettings.textureScale must be finite and greater than 0.',
-      );
-    }
-    _validateUnitInterval(textureDensity, 'textureDensity');
-    _validatePositive(size, 'size');
-    _validateUnitInterval(opacity, 'opacity');
-    _validateUnitInterval(flow, 'flow');
-    _validateUnitInterval(hardness, 'hardness');
-    _validatePositive(spacing, 'spacing');
-    _validateRoundness(roundness);
-    _validateFinite(angleDegrees, 'angleDegrees');
-    _validateUnitInterval(sizeJitter, 'sizeJitter');
-    _validateUnitInterval(opacityJitter, 'opacityJitter');
-    _validateUnitInterval(angleJitter, 'angleJitter');
-    _validateNonNegativeFinite(scatterRadiusRatio, 'scatterRadiusRatio');
-    if (scatterCount < 1) {
-      throw ArgumentError.value(
-        scatterCount,
-        'scatterCount',
-        'BrushSettings.scatterCount must be at least 1.',
-      );
-    }
+    int color = 0xFF000000,
+    double size = 4.0,
+    double opacity = 1.0,
+    double flow = 1.0,
+    double hardness = 1.0,
+    double spacing = 0.1,
+    BrushTipShape tipShape = BrushTipShape.round,
+    BrushPressureCurve? sizePressureCurve,
+    BrushPressureCurve? opacityPressureCurve,
+    BrushPressureCurve? flowPressureCurve,
+    BrushPressureCurve? hardnessPressureCurve,
+    double roundness = 1.0,
+    double angleDegrees = 0.0,
+    BrushTipMask? tipMask,
+    BrushTipRotationMode rotationMode = BrushTipRotationMode.fixed,
+    double sizeJitter = 0.0,
+    double opacityJitter = 0.0,
+    double angleJitter = 0.0,
+    double scatterRadiusRatio = 0.0,
+    int scatterCount = 1,
+    bool scatterBothAxes = true,
+    BrushTipMask? dualMask,
+    double dualMaskScale = 1.0,
+    BrushTipMask? textureMask,
+    double textureScale = 1.0,
+    double textureDensity = 1.0,
+  }) : shape = BrushShape(
+         color: color,
+         size: size,
+         opacity: opacity,
+         flow: flow,
+         hardness: hardness,
+         spacing: spacing,
+         tipShape: tipShape,
+         sizePressureCurve: sizePressureCurve,
+         opacityPressureCurve: opacityPressureCurve,
+         flowPressureCurve: flowPressureCurve,
+         hardnessPressureCurve: hardnessPressureCurve,
+         roundness: roundness,
+         angleDegrees: angleDegrees,
+         tipMask: tipMask,
+         rotationMode: rotationMode,
+         sizeJitter: sizeJitter,
+         opacityJitter: opacityJitter,
+         angleJitter: angleJitter,
+         scatterRadiusRatio: scatterRadiusRatio,
+         scatterCount: scatterCount,
+         scatterBothAxes: scatterBothAxes,
+         dualMask: dualMask,
+         dualMaskScale: dualMaskScale,
+         textureMask: textureMask,
+         textureScale: textureScale,
+         textureDensity: textureDensity,
+       ) {
+    _validateShape(shape);
   }
 
-  final int color;
-  final double size;
-  final double opacity;
-  final double flow;
-  final double hardness;
-  final double spacing;
-  final BrushTipShape tipShape;
+  /// Wraps an already-legal [BrushShape] as a preset payload without going
+  /// back through the flat parameter list — the wholesale hop the stroke
+  /// chain's converters take (D4). Values are re-validated so an illegal
+  /// shape still throws here rather than downstream.
+  BrushSettings.fromShape(this.shape) {
+    _validateShape(shape);
+  }
+
+  /// The shared 26-parameter spine; every field below forwards to it, and the
+  /// stroke chain moves presets across as a whole [shape] (see [BrushShape]).
+  final BrushShape shape;
+
+  int get color => shape.color;
+  double get size => shape.size;
+  double get opacity => shape.opacity;
+  double get flow => shape.flow;
+  double get hardness => shape.hardness;
+  double get spacing => shape.spacing;
+  BrushTipShape get tipShape => shape.tipShape;
 
   /// BB-3 (R26 #11): per-setting pen-pressure response — `null` means the
   /// setting ignores pressure. These replaced the pressureSize /
   /// pressureOpacity booleans and the minimumSizeRatio floor (the floor is
   /// now the size curve's left endpoint); [fromJson] migrates the legacy
   /// keys to the equivalent straight-line curves.
-  final BrushPressureCurve? sizePressureCurve;
-  final BrushPressureCurve? opacityPressureCurve;
-  final BrushPressureCurve? flowPressureCurve;
-  final BrushPressureCurve? hardnessPressureCurve;
+  BrushPressureCurve? get sizePressureCurve => shape.sizePressureCurve;
+  BrushPressureCurve? get opacityPressureCurve => shape.opacityPressureCurve;
+  BrushPressureCurve? get flowPressureCurve => shape.flowPressureCurve;
+  BrushPressureCurve? get hardnessPressureCurve => shape.hardnessPressureCurve;
 
-  /// Minor-to-major axis ratio of the tip in (0, 1]; 1.0 is the classic
-  /// circle/square.
-  final double roundness;
-
-  /// Visual counterclockwise rotation of the tip's major axis from the
-  /// horizontal, in degrees.
-  final double angleDegrees;
-
-  /// Sampled (bitmap) tip; when set it overrides [tipShape] and [hardness].
-  final BrushTipMask? tipMask;
-
-  /// How dab angles are chosen at placement time.
-  final BrushTipRotationMode rotationMode;
-
-  /// Random per-dab size reduction, 0..1 of the base size.
-  final double sizeJitter;
-
-  /// Random per-dab opacity reduction, 0..1 of the base opacity.
-  final double opacityJitter;
-
-  /// Random per-dab tip rotation, 0..1 of a half turn in each direction.
-  final double angleJitter;
-
-  /// Scatter radius as a ratio of the dab size; 0 disables scattering.
-  final double scatterRadiusRatio;
-
-  /// Dabs stamped per placement step when scattering.
-  final int scatterCount;
-
-  /// Whether scatter offsets spread along both axes or only perpendicular
-  /// to the stroke direction.
-  final bool scatterBothAxes;
-
-  /// Dual-brush mask multiplying every dab's coverage; tiled at
-  /// [dualMaskScale] times the dab size with a random per-dab phase.
-  final BrushTipMask? dualMask;
-  final double dualMaskScale;
-
-  /// Paper texture tiled in canvas space; see the same fields on `BrushDab`.
-  final BrushTipMask? textureMask;
-  final double textureScale;
-  final double textureDensity;
+  double get roundness => shape.roundness;
+  double get angleDegrees => shape.angleDegrees;
+  BrushTipMask? get tipMask => shape.tipMask;
+  BrushTipRotationMode get rotationMode => shape.rotationMode;
+  double get sizeJitter => shape.sizeJitter;
+  double get opacityJitter => shape.opacityJitter;
+  double get angleJitter => shape.angleJitter;
+  double get scatterRadiusRatio => shape.scatterRadiusRatio;
+  int get scatterCount => shape.scatterCount;
+  bool get scatterBothAxes => shape.scatterBothAxes;
+  BrushTipMask? get dualMask => shape.dualMask;
+  double get dualMaskScale => shape.dualMaskScale;
+  BrushTipMask? get textureMask => shape.textureMask;
+  double get textureScale => shape.textureScale;
+  double get textureDensity => shape.textureDensity;
 
   /// The pressure curve driving [target], if any.
-  BrushPressureCurve? pressureCurveFor(BrushPressureTarget target) {
-    return switch (target) {
-      BrushPressureTarget.size => sizePressureCurve,
-      BrushPressureTarget.opacity => opacityPressureCurve,
-      BrushPressureTarget.flow => flowPressureCurve,
-      BrushPressureTarget.hardness => hardnessPressureCurve,
-    };
-  }
+  BrushPressureCurve? pressureCurveFor(BrushPressureTarget target) =>
+      shape.pressureCurveFor(target);
 
   BrushSettings copyWith({
     int? color,
@@ -288,79 +263,52 @@ class BrushSettings {
 
   @override
   bool operator ==(Object other) =>
-      identical(this, other) ||
-      other is BrushSettings &&
-          other.color == color &&
-          other.size == size &&
-          other.opacity == opacity &&
-          other.flow == flow &&
-          other.hardness == hardness &&
-          other.spacing == spacing &&
-          other.tipShape == tipShape &&
-          other.sizePressureCurve == sizePressureCurve &&
-          other.opacityPressureCurve == opacityPressureCurve &&
-          other.flowPressureCurve == flowPressureCurve &&
-          other.hardnessPressureCurve == hardnessPressureCurve &&
-          other.roundness == roundness &&
-          other.angleDegrees == angleDegrees &&
-          other.tipMask == tipMask &&
-          other.rotationMode == rotationMode &&
-          other.sizeJitter == sizeJitter &&
-          other.opacityJitter == opacityJitter &&
-          other.angleJitter == angleJitter &&
-          other.scatterRadiusRatio == scatterRadiusRatio &&
-          other.scatterCount == scatterCount &&
-          other.scatterBothAxes == scatterBothAxes &&
-          other.dualMask == dualMask &&
-          other.dualMaskScale == dualMaskScale &&
-          other.textureMask == textureMask &&
-          other.textureScale == textureScale &&
-          other.textureDensity == textureDensity;
+      identical(this, other) || other is BrushSettings && other.shape == shape;
 
   @override
-  int get hashCode => Object.hashAll([
-    color,
-    size,
-    opacity,
-    flow,
-    hardness,
-    spacing,
-    tipShape,
-    sizePressureCurve,
-    opacityPressureCurve,
-    flowPressureCurve,
-    hardnessPressureCurve,
-    roundness,
-    angleDegrees,
-    tipMask,
-    rotationMode,
-    sizeJitter,
-    opacityJitter,
-    angleJitter,
-    scatterRadiusRatio,
-    scatterCount,
-    scatterBothAxes,
-    dualMask,
-    dualMaskScale,
-    textureMask,
-    textureScale,
-    textureDensity,
-  ]);
+  int get hashCode => shape.hashCode;
 
   @override
-  String toString() =>
-      'BrushSettings(color: $color, size: $size, opacity: $opacity, '
-      'flow: $flow, hardness: $hardness, spacing: $spacing, '
-      'tipShape: $tipShape, sizePressureCurve: $sizePressureCurve, '
-      'opacityPressureCurve: $opacityPressureCurve, '
-      'flowPressureCurve: $flowPressureCurve, '
-      'hardnessPressureCurve: $hardnessPressureCurve, '
-      'roundness: $roundness, '
-      'angleDegrees: $angleDegrees, tipMask: $tipMask, '
-      'rotationMode: $rotationMode, '
-      'sizeJitter: $sizeJitter, opacityJitter: $opacityJitter, '
-      'angleJitter: $angleJitter, scatterRadiusRatio: $scatterRadiusRatio, '
-      'scatterCount: $scatterCount, scatterBothAxes: $scatterBothAxes)';
+  String toString() => 'BrushSettings(shape: $shape)';
+}
+
+/// Throws [ArgumentError] if any parameter in [shape] is outside the model's
+/// legal range. Shared by both constructors so the preset payload validates
+/// identically whether it is built from flat args or wrapped from a shape.
+void _validateShape(BrushShape shape) {
+  if (!shape.dualMaskScale.isFinite || shape.dualMaskScale <= 0.0) {
+    throw ArgumentError.value(
+      shape.dualMaskScale,
+      'dualMaskScale',
+      'BrushSettings.dualMaskScale must be finite and greater than 0.',
+    );
+  }
+  if (!shape.textureScale.isFinite || shape.textureScale <= 0.0) {
+    throw ArgumentError.value(
+      shape.textureScale,
+      'textureScale',
+      'BrushSettings.textureScale must be finite and greater than 0.',
+    );
+  }
+  _validateUnitInterval(shape.textureDensity, 'textureDensity');
+  _validatePositive(shape.size, 'size');
+  _validateUnitInterval(shape.opacity, 'opacity');
+  _validateUnitInterval(shape.flow, 'flow');
+  _validateUnitInterval(shape.hardness, 'hardness');
+  _validatePositive(shape.spacing, 'spacing');
+  _validateRoundness(shape.roundness);
+  _validateFinite(shape.angleDegrees, 'angleDegrees');
+  _validateUnitInterval(shape.sizeJitter, 'sizeJitter');
+  _validateUnitInterval(shape.opacityJitter, 'opacityJitter');
+  _validateUnitInterval(shape.angleJitter, 'angleJitter');
+  _validateNonNegativeFinite(shape.scatterRadiusRatio, 'scatterRadiusRatio');
+  if (shape.scatterCount < 1) {
+    throw ArgumentError.value(
+      shape.scatterCount,
+      'scatterCount',
+      'BrushSettings.scatterCount must be at least 1.',
+    );
+  }
 }
 
 void _validatePositive(double value, String fieldName) {

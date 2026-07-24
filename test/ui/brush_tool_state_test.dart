@@ -19,7 +19,7 @@ void main() {
 
         expect(
           state.toInputSettings(),
-          const BrushEditCanvasInputSettings(size: 10, spacing: 0.25),
+          BrushEditCanvasInputSettings(size: 10, spacing: 0.25),
         );
       },
     );
@@ -120,10 +120,7 @@ void main() {
         opacityPressureCurve: BrushPressureCurve.linearFrom(0.25),
       );
       expect(state.sizePressureCurve, BrushPressureCurve.identity());
-      expect(
-        state.opacityPressureCurve,
-        BrushPressureCurve.linearFrom(0.25),
-      );
+      expect(state.opacityPressureCurve, BrushPressureCurve.linearFrom(0.25));
 
       final settings = state.toInputSettings();
       expect(settings.sizePressureCurve, BrushPressureCurve.identity());

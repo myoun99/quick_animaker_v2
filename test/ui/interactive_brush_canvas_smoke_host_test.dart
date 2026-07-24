@@ -21,7 +21,7 @@ void main() {
   group('InteractiveBrushCanvasSmokeHost', () {
     const layerId = LayerId('layer-a');
     const frameId = FrameId('frame-a');
-    const inputSettings = BrushEditCanvasInputSettings(color: 0xFFFF0000);
+    final inputSettings = BrushEditCanvasInputSettings(color: 0xFFFF0000);
 
     testWidgets('builds and passes configuration to interactive canvas', (
       tester,

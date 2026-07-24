@@ -26,7 +26,7 @@ class BrushCanvasSmokeScreen extends StatefulWidget {
     super.key,
     this.layerId = const LayerId('smoke-layer'),
     this.frameId = const FrameId('smoke-frame'),
-    this.inputSettings = const BrushEditCanvasInputSettings(),
+    this.inputSettings = BrushEditCanvasInputSettings.defaults,
     this.canvasSize,
     this.tileSize = 16,
     this.showTransparentBackground = true,
