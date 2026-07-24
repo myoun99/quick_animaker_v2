@@ -21,6 +21,7 @@ import 'timeline_frame_cell.dart';
 import 'timeline_frame_coordinate_policy.dart';
 import 'timeline_frame_range_gesture.dart';
 import 'timeline_frame_window.dart';
+import 'se_audio_lane.dart' show TimelineAudioLaneCallbacks;
 import 'timeline_row_cells_painter.dart';
 import 'timeline_run_duration_labels.dart';
 import 'timeline_run_end_handles.dart';
@@ -57,8 +58,7 @@ class TimelineFrameCellsRow extends StatelessWidget {
     this.projectFrameRate = ProjectFrameRate.fps24,
     this.seClipMarkerTooltip,
     this.showSeconds = false,
-    this.onRemoveAudioClip,
-    this.onDropMediaAsset,
+    this.audioLane,
     this.commaDrag,
     this.rangeGesture,
     this.runEdit,
@@ -127,13 +127,9 @@ class TimelineFrameCellsRow extends StatelessWidget {
   /// (R26 #7) follow it.
   final bool showSeconds;
 
-  /// Removes an audio clip by index (the waveform's context menu).
-  final void Function(LayerId layerId, int clipIndex)? onRemoveAudioClip;
-
-  /// Links a media-browser asset to an SE block (drag-drop); null hides
-  /// the drop targets.
-  final void Function(LayerId layerId, int blockStartFrame, String path)?
-  onDropMediaAsset;
+  /// What the audio lane may ask the session to do; this row uses the
+  /// clip-remove menu and the media drop target. Null = display-only.
+  final TimelineAudioLaneCallbacks? audioLane;
 
   /// Comma-drag hooks; null hides the block edge grips.
   final TimelineCommaDragCallbacks? commaDrag;
@@ -277,9 +273,9 @@ class TimelineFrameCellsRow extends StatelessWidget {
             axis: axis,
             frameRate: projectFrameRate,
             audioPeaksFor: audioPeaksFor!,
-            onRemoveClip: onRemoveAudioClip == null
+            onRemoveClip: audioLane?.onRemoveClip == null
                 ? null
-                : (clipIndex) => onRemoveAudioClip!(layer.id, clipIndex),
+                : (clipIndex) => audioLane!.onRemoveClip!(layer.id, clipIndex),
             color: timelineDrawingInkColor.withValues(alpha: 0.22),
             keyPrefix: keyPrefix,
           ),
@@ -328,7 +324,8 @@ class TimelineFrameCellsRow extends StatelessWidget {
             keyPrefix: keyPrefix,
           ),
         // Media-browser drops land on SE blocks (sound → block frame).
-        if (layerKindUsesSeSheetCells(layer.kind) && onDropMediaAsset != null)
+        if (layerKindUsesSeSheetCells(layer.kind) &&
+            audioLane?.onDropMediaAsset != null)
           ...timelineRowSeAssetDropTargets(
             layer: layer,
             frameStartIndex: frameStartIndex,
@@ -338,7 +335,7 @@ class TimelineFrameCellsRow extends StatelessWidget {
             crossAxisExtent: metrics.layerRowHeight,
             axis: axis,
             onAssetDropped: (blockStartFrame, path) =>
-                onDropMediaAsset!(layer.id, blockStartFrame, path),
+                audioLane!.onDropMediaAsset!(layer.id, blockStartFrame, path),
             keyPrefix: keyPrefix,
           ),
         // Instruction rows: the sheet's CAM column — bar arrows or the O.L
@@ -482,12 +479,8 @@ class TimelineFrameCellsRow extends StatelessWidget {
             frameIndex: frameIndex,
             axis: axis,
             cellKeyPrefix: '$keyPrefix-cell',
-            width: vertical
-                ? metrics.layerRowHeight
-                : metrics.frameCellWidth,
-            height: vertical
-                ? metrics.frameCellWidth
-                : metrics.layerRowHeight,
+            width: vertical ? metrics.layerRowHeight : metrics.frameCellWidth,
+            height: vertical ? metrics.frameCellWidth : metrics.layerRowHeight,
             active: active,
             outsidePlaybackRange: frameIndex >= playbackFrameCount,
             ghost: timelineIndexIsGhost(layer, frameIndex),

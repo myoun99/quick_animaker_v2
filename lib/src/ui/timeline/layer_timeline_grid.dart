@@ -42,7 +42,7 @@ import 'timeline_grid_metrics.dart';
 import 'timeline_horizontal_offset_policy.dart';
 import 'timeline_horizontal_scrollbar_rail.dart';
 import 'property_lane_model.dart';
-import 'se_audio_lane.dart' show AudioOffsetDragCallbacks;
+import 'se_audio_lane.dart' show TimelineAudioLaneCallbacks;
 import 'timeline_lane_rows.dart';
 import 'timeline_layer_controls_header.dart';
 import 'timeline_layer_frame_body_layout.dart';
@@ -81,12 +81,7 @@ class LayerTimelineGrid extends StatefulWidget {
     this.seClipMarkerTooltip,
     this.projectFrameRate = ProjectFrameRate.fps24,
     this.showSeconds = false,
-    this.onRemoveAudioClip,
-    this.onDropMediaAsset,
-    this.onSetAudioClipOffset,
-    this.audioOffsetDrag,
-    this.onSetAudioClipFades,
-    this.onSetAudioClipGain,
+    this.audioLane,
     this.onSetAudioClipFadeCurve,
     this.onSetAudioClipEnvelope,
     this.resolveStrings,
@@ -222,31 +217,9 @@ class LayerTimelineGrid extends StatefulWidget {
   /// The ruler's bottom-line mode (UI-R10 #27): seconds display repeats
   /// 1..fps per second instead of absolute frame numbers.
   final bool showSeconds;
-  final void Function(LayerId layerId, int clipIndex)? onRemoveAudioClip;
 
-  /// Links a media-browser asset to an SE block (drag-drop).
-  final void Function(LayerId layerId, int blockStartFrame, String path)?
-  onDropMediaAsset;
-
-  /// Commits an audio-lane slide (the clip's offset trim).
-  final void Function(LayerId layerId, int clipIndex, int offsetFrames)?
-  onSetAudioClipOffset;
-
-  /// Live drag session for the slide (repo-direct preview + one undo).
-  final AudioOffsetDragCallbacks? audioOffsetDrag;
-
-  /// Commits an audio-lane fade-handle drag.
-  final void Function(
-    LayerId layerId,
-    int clipIndex,
-    int fadeInFrames,
-    int fadeOutFrames,
-  )?
-  onSetAudioClipFades;
-
-  /// Commits the audio-lane gain dialog.
-  final void Function(LayerId layerId, int clipIndex, double gain)?
-  onSetAudioClipGain;
+  /// What the audio lane may ask the session to do; null = display-only.
+  final TimelineAudioLaneCallbacks? audioLane;
 
   /// Commits the audio-lane fade-curve toggle (AUDIO-PRO R1).
   final void Function(LayerId layerId, int clipIndex, AudioFadeCurve curve)?
@@ -1409,27 +1382,25 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                                                 ),
                                               ),
                                               Positioned.fill(
-                                                child:
-                                                    TimelineRulerCursorOverlay(
-                                                      keyValue:
-                                                          'timeline-ruler-cursor-overlay',
-                                                      playhead:
-                                                          widget.frameCursor,
-                                                      repaintSignal:
-                                                          widget.frameCachedSignal,
-                                                      windowBucket:
-                                                          _frameWindowBucket,
-                                                      viewportMainExtent:
-                                                          viewportWidth,
-                                                      renderedFrames:
-                                                          _renderedFrameCount,
-                                                      contentFrames: widget
-                                                          .playbackFrameCount,
-                                                      cellWidth: _metrics
-                                                          .frameCellWidth,
-                                                      isFrameCached:
-                                                          widget.isFrameCached,
-                                                    ),
+                                                child: TimelineRulerCursorOverlay(
+                                                  keyValue:
+                                                      'timeline-ruler-cursor-overlay',
+                                                  playhead: widget.frameCursor,
+                                                  repaintSignal:
+                                                      widget.frameCachedSignal,
+                                                  windowBucket:
+                                                      _frameWindowBucket,
+                                                  viewportMainExtent:
+                                                      viewportWidth,
+                                                  renderedFrames:
+                                                      _renderedFrameCount,
+                                                  contentFrames:
+                                                      widget.playbackFrameCount,
+                                                  cellWidth:
+                                                      _metrics.frameCellWidth,
+                                                  isFrameCached:
+                                                      widget.isFrameCached,
+                                                ),
                                               ),
                                             ],
                                           ),
@@ -1764,23 +1735,12 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                                                             .instructionDefById,
                                                         audioPeaksFor: widget
                                                             .audioPeaksFor,
-                                                        seClipMarkerTooltip:
-                                                            widget
-                                                                .seClipMarkerTooltip,
-                                                        projectFrameRate:
-                                                            widget.projectFrameRate,
-                                                        onRemoveAudioClip: widget
-                                                            .onRemoveAudioClip,
-                                                        onDropMediaAsset: widget
-                                                            .onDropMediaAsset,
-                                                        onSetAudioClipOffset: widget
-                                                            .onSetAudioClipOffset,
-                                                        audioOffsetDrag: widget
-                                                            .audioOffsetDrag,
-                                                        onSetAudioClipFades: widget
-                                                            .onSetAudioClipFades,
-                                                        onSetAudioClipGain: widget
-                                                            .onSetAudioClipGain,
+                                                        seClipMarkerTooltip: widget
+                                                            .seClipMarkerTooltip,
+                                                        projectFrameRate: widget
+                                                            .projectFrameRate,
+                                                        audioLane:
+                                                            widget.audioLane,
                                                         onSetAudioClipFadeCurve:
                                                             widget
                                                                 .onSetAudioClipFadeCurve,
@@ -1789,8 +1749,8 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                                                                 .onSetAudioClipEnvelope,
                                                         resolveStrings: widget
                                                             .resolveStrings,
-                                                        showSeconds: widget
-                                                            .showSeconds,
+                                                        showSeconds:
+                                                            widget.showSeconds,
                                                         commaDrag:
                                                             widget.commaDrag,
                                                         rangeGesture:

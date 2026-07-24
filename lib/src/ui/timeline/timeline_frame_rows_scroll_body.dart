@@ -59,12 +59,7 @@ class TimelineFrameRowsScrollBody extends StatefulWidget {
     this.audioPeaksFor,
     this.seClipMarkerTooltip,
     this.projectFrameRate = ProjectFrameRate.fps24,
-    this.onRemoveAudioClip,
-    this.onDropMediaAsset,
-    this.onSetAudioClipOffset,
-    this.audioOffsetDrag,
-    this.onSetAudioClipFades,
-    this.onSetAudioClipGain,
+    this.audioLane,
     this.onSetAudioClipFadeCurve,
     this.onSetAudioClipEnvelope,
     this.resolveStrings,
@@ -137,31 +132,9 @@ class TimelineFrameRowsScrollBody extends StatefulWidget {
   /// fact, so it joins the row memo token below.
   final String? seClipMarkerTooltip;
   final ProjectFrameRate projectFrameRate;
-  final void Function(LayerId layerId, int clipIndex)? onRemoveAudioClip;
-  final void Function(LayerId layerId, int blockStartFrame, String path)?
-  onDropMediaAsset;
 
-  /// Commits an audio-lane slide (the clip's offset trim); null makes the
-  /// audio lane display-only.
-  final void Function(LayerId layerId, int clipIndex, int offsetFrames)?
-  onSetAudioClipOffset;
-
-  /// Live drag session for the slide (repo-direct preview + one undo on
-  /// release); falls back to the local preview + [onSetAudioClipOffset].
-  final AudioOffsetDragCallbacks? audioOffsetDrag;
-
-  /// Commits an audio-lane fade-handle drag; null hides the handles.
-  final void Function(
-    LayerId layerId,
-    int clipIndex,
-    int fadeInFrames,
-    int fadeOutFrames,
-  )?
-  onSetAudioClipFades;
-
-  /// Commits the audio-lane gain dialog; null hides the menu entry.
-  final void Function(LayerId layerId, int clipIndex, double gain)?
-  onSetAudioClipGain;
+  /// What the audio lane may ask the session to do; null = display-only.
+  final TimelineAudioLaneCallbacks? audioLane;
 
   /// Commits the audio-lane fade-curve toggle (AUDIO-PRO R1).
   final void Function(LayerId layerId, int clipIndex, AudioFadeCurve curve)?
@@ -268,9 +241,8 @@ class _TimelineFrameRowsScrollBodyState
   /// Folder rows key off their own id like every other row — the header's
   /// representative member (which DID collide with that member's own row)
   /// is gone; the prefix just keeps the band's key readable.
-  String _rowKeySuffix(TimelineDisplayRow row) => row.isFolder
-      ? 'folder-${row.layer.id}'
-      : row.lane?.laneId ?? 'cells';
+  String _rowKeySuffix(TimelineDisplayRow row) =>
+      row.isFolder ? 'folder-${row.layer.id}' : row.lane?.laneId ?? 'cells';
 
   bool _rowIsMemoizable(TimelineDisplayRow row) {
     // Every non-lane row memoizes now (UI-R20 #4): the churny inputs the
@@ -337,8 +309,7 @@ class _TimelineFrameRowsScrollBodyState
       seClipMarkerTooltip: widget.seClipMarkerTooltip,
       projectFrameRate: widget.projectFrameRate,
       showSeconds: widget.showSeconds,
-      onRemoveAudioClip: widget.onRemoveAudioClip,
-      onDropMediaAsset: widget.onDropMediaAsset,
+      audioLane: widget.audioLane,
       commaDrag: widget.commaDrag,
       rangeGesture: widget.rangeGesture,
       runEdit: widget.runEdit,
@@ -359,26 +330,31 @@ class _TimelineFrameRowsScrollBodyState
             metrics: widget.metrics,
             frameRate: widget.projectFrameRate,
             audioPeaksFor: widget.audioPeaksFor,
-            onSetClipOffset: widget.onSetAudioClipOffset == null
+            onSetClipOffset: widget.audioLane?.onSetClipOffset == null
                 ? null
-                : (clipIndex, offsetFrames) => widget.onSetAudioClipOffset!(
+                : (clipIndex, offsetFrames) =>
+                      widget.audioLane!.onSetClipOffset!(
+                        layer.id,
+                        clipIndex,
+                        offsetFrames,
+                      ),
+            offsetDrag: widget.audioLane?.offsetDrag,
+            onSetClipFades: widget.audioLane?.onSetClipFades == null
+                ? null
+                : (clipIndex, fadeIn, fadeOut) =>
+                      widget.audioLane!.onSetClipFades!(
+                        layer.id,
+                        clipIndex,
+                        fadeIn,
+                        fadeOut,
+                      ),
+            onSetClipGain: widget.audioLane?.onSetClipGain == null
+                ? null
+                : (clipIndex, gain) => widget.audioLane!.onSetClipGain!(
                     layer.id,
                     clipIndex,
-                    offsetFrames,
+                    gain,
                   ),
-            offsetDrag: widget.audioOffsetDrag,
-            onSetClipFades: widget.onSetAudioClipFades == null
-                ? null
-                : (clipIndex, fadeIn, fadeOut) => widget.onSetAudioClipFades!(
-                    layer.id,
-                    clipIndex,
-                    fadeIn,
-                    fadeOut,
-                  ),
-            onSetClipGain: widget.onSetAudioClipGain == null
-                ? null
-                : (clipIndex, gain) =>
-                      widget.onSetAudioClipGain!(layer.id, clipIndex, gain),
             onSetClipFadeCurve: widget.onSetAudioClipFadeCurve == null
                 ? null
                 : (clipIndex, curve) => widget.onSetAudioClipFadeCurve!(
@@ -388,11 +364,8 @@ class _TimelineFrameRowsScrollBodyState
                   ),
             onSetClipEnvelope: widget.onSetAudioClipEnvelope == null
                 ? null
-                : (clipIndex, keys) => widget.onSetAudioClipEnvelope!(
-                    layer.id,
-                    clipIndex,
-                    keys,
-                  ),
+                : (clipIndex, keys) =>
+                      widget.onSetAudioClipEnvelope!(layer.id, clipIndex, keys),
             resolveStrings: widget.resolveStrings,
           )
         : TimelineLaneFrameRow(
@@ -407,9 +380,7 @@ class _TimelineFrameRowsScrollBodyState
             // The LANE selection domain (UI-R23 #3 part 2) — layer
             // transform lanes only; the camera's atomic keyframes stand
             // down in v1.
-            laneRange: layer.kind == LayerKind.camera
-                ? null
-                : widget.laneRange,
+            laneRange: layer.kind == LayerKind.camera ? null : widget.laneRange,
           );
   }
 

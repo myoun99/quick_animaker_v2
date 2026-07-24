@@ -120,6 +120,58 @@ class AudioOffsetDragCallbacks {
   final VoidCallback onCancel;
 }
 
+/// Everything the audio lane can ask the session to do, in one place.
+///
+/// These six travelled as six separate constructor parameters through four
+/// widgets — the tab host to the panel, the panel to each grid, each grid
+/// to the rows body — so every widget on the way declared all six fields
+/// and forwarded all six, and adding a seventh meant editing five files
+/// that do not otherwise care.
+///
+/// Bundling them is the idiom this file already uses for the drag session
+/// ([AudioOffsetDragCallbacks]); it is only the AXIS that stops the three
+/// timeline surfaces sharing their assembly, and a callback has no axis.
+///
+/// Null anywhere means "this surface cannot do that" — a read-only host
+/// passes no bundle at all and every lane control disables itself, exactly
+/// as it did when the six were null one by one.
+class TimelineAudioLaneCallbacks {
+  const TimelineAudioLaneCallbacks({
+    this.onRemoveClip,
+    this.onDropMediaAsset,
+    this.onSetClipOffset,
+    this.offsetDrag,
+    this.onSetClipFades,
+    this.onSetClipGain,
+  });
+
+  final void Function(LayerId layerId, int clipIndex)? onRemoveClip;
+
+  /// Links a media-browser asset to an SE block (drag-drop).
+  final void Function(LayerId layerId, int blockStartFrame, String path)?
+  onDropMediaAsset;
+
+  /// Commits an audio-lane slide (the clip's offset trim).
+  final void Function(LayerId layerId, int clipIndex, int offsetFrames)?
+  onSetClipOffset;
+
+  /// Live drag session for the slide (repo-direct preview + one undo).
+  final AudioOffsetDragCallbacks? offsetDrag;
+
+  /// Commits an audio-lane fade-handle drag.
+  final void Function(
+    LayerId layerId,
+    int clipIndex,
+    int fadeInFrames,
+    int fadeOutFrames,
+  )?
+  onSetClipFades;
+
+  /// Commits the audio-lane gain dialog.
+  final void Function(LayerId layerId, int clipIndex, double gain)?
+  onSetClipGain;
+}
+
 /// [AudioOffsetDragCallbacks] bound to one span (the row closes over the
 /// layer/clip ids).
 class _SpanLiveOffsetDrag {
@@ -769,14 +821,12 @@ class _AudioEnvelopeDialogState extends State<_AudioEnvelopeDialog> {
 
   void _addRow() {
     setState(() {
-      _rows.add(
-        (
-          frame: TextEditingController(
-            text: _rows.isEmpty ? '0' : '${widget.spanLengthFrames}',
-          ),
-          gain: TextEditingController(text: '100'),
+      _rows.add((
+        frame: TextEditingController(
+          text: _rows.isEmpty ? '0' : '${widget.spanLengthFrames}',
         ),
-      );
+        gain: TextEditingController(text: '100'),
+      ));
     });
   }
 
@@ -785,7 +835,10 @@ class _AudioEnvelopeDialogState extends State<_AudioEnvelopeDialog> {
     for (final row in _rows) {
       final frame = int.tryParse(row.frame.text.trim());
       final gainPercent = int.tryParse(row.gain.text.trim());
-      if (frame == null || gainPercent == null || frame < 0 || gainPercent < 0) {
+      if (frame == null ||
+          gainPercent == null ||
+          frame < 0 ||
+          gainPercent < 0) {
         continue; // unparseable rows drop rather than block the apply
       }
       keys.add(AudioVolumeKey(frame: frame, gain: gainPercent / 100));
@@ -823,7 +876,9 @@ class _AudioEnvelopeDialogState extends State<_AudioEnvelopeDialog> {
                         children: [
                           Expanded(
                             child: TextField(
-                              key: ValueKey<String>('audio-envelope-frame-$index'),
+                              key: ValueKey<String>(
+                                'audio-envelope-frame-$index',
+                              ),
                               controller: _rows[index].frame,
                               keyboardType: TextInputType.number,
                               decoration: InputDecoration(
@@ -835,7 +890,9 @@ class _AudioEnvelopeDialogState extends State<_AudioEnvelopeDialog> {
                           const SizedBox(width: 8),
                           Expanded(
                             child: TextField(
-                              key: ValueKey<String>('audio-envelope-gain-$index'),
+                              key: ValueKey<String>(
+                                'audio-envelope-gain-$index',
+                              ),
                               controller: _rows[index].gain,
                               keyboardType: TextInputType.number,
                               decoration: InputDecoration(
@@ -846,7 +903,9 @@ class _AudioEnvelopeDialogState extends State<_AudioEnvelopeDialog> {
                             ),
                           ),
                           IconButton(
-                            key: ValueKey<String>('audio-envelope-remove-$index'),
+                            key: ValueKey<String>(
+                              'audio-envelope-remove-$index',
+                            ),
                             icon: const Icon(Icons.close, size: 16),
                             onPressed: () => setState(() {
                               final row = _rows.removeAt(index);

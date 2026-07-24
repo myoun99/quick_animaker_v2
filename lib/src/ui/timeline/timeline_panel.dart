@@ -13,7 +13,7 @@ import '../../models/layer_mark.dart';
 import 'layer_timeline_display_adapter.dart';
 import 'layer_timeline_grid.dart';
 import 'property_lane_model.dart';
-import 'se_audio_lane.dart' show AudioOffsetDragCallbacks;
+import 'se_audio_lane.dart' show TimelineAudioLaneCallbacks;
 import 'timeline_cell_exposure_state.dart';
 import 'timeline_cut_end_handle.dart';
 import 'timeline_drag_preview.dart';
@@ -52,12 +52,7 @@ class TimelinePanel extends StatefulWidget {
     this.instructionDefById,
     this.audioPeaksFor,
     this.seClipMarkerTooltip,
-    this.onRemoveAudioClip,
-    this.onDropMediaAsset,
-    this.onSetAudioClipOffset,
-    this.audioOffsetDrag,
-    this.onSetAudioClipFades,
-    this.onSetAudioClipGain,
+    this.audioLane,
     this.onSetAudioClipFadeCurve,
     this.onSetAudioClipEnvelope,
     this.resolveStrings,
@@ -189,34 +184,10 @@ class TimelinePanel extends StatefulWidget {
   /// Clipped-take marker tooltip (REC1-D); null = markers off. Horizontal
   /// rows only for now — the xsheet's marker joins with its page work.
   final String? seClipMarkerTooltip;
-  final void Function(LayerId layerId, int clipIndex)? onRemoveAudioClip;
 
-  /// Links a media-browser asset to an SE block (drag-drop), both
-  /// orientations.
-  final void Function(LayerId layerId, int blockStartFrame, String path)?
-  onDropMediaAsset;
-
-  /// Commits an audio-lane slide (the clip's offset trim), both
-  /// orientations.
-  final void Function(LayerId layerId, int clipIndex, int offsetFrames)?
-  onSetAudioClipOffset;
-
-  /// Live drag session for the slide (repo-direct preview + one undo),
-  /// both orientations.
-  final AudioOffsetDragCallbacks? audioOffsetDrag;
-
-  /// Commits an audio-lane fade-handle drag, both orientations.
-  final void Function(
-    LayerId layerId,
-    int clipIndex,
-    int fadeInFrames,
-    int fadeOutFrames,
-  )?
-  onSetAudioClipFades;
-
-  /// Commits the audio-lane gain dialog, both orientations.
-  final void Function(LayerId layerId, int clipIndex, double gain)?
-  onSetAudioClipGain;
+  /// What the audio lane may ask the session to do, both orientations;
+  /// null = display-only.
+  final TimelineAudioLaneCallbacks? audioLane;
 
   /// Commits the audio-lane fade-curve toggle (AUDIO-PRO R1).
   final void Function(LayerId layerId, int clipIndex, AudioFadeCurve curve)?
@@ -460,12 +431,7 @@ class _TimelinePanelState extends State<TimelinePanel> {
                     seClipMarkerTooltip: widget.seClipMarkerTooltip,
                     projectFrameRate: widget.projectFrameRate,
                     showSeconds: widget.showSeconds,
-                    onRemoveAudioClip: widget.onRemoveAudioClip,
-                    onDropMediaAsset: widget.onDropMediaAsset,
-                    onSetAudioClipOffset: widget.onSetAudioClipOffset,
-                    audioOffsetDrag: widget.audioOffsetDrag,
-                    onSetAudioClipFades: widget.onSetAudioClipFades,
-                    onSetAudioClipGain: widget.onSetAudioClipGain,
+                    audioLane: widget.audioLane,
                     onSetAudioClipFadeCurve: widget.onSetAudioClipFadeCurve,
                     onSetAudioClipEnvelope: widget.onSetAudioClipEnvelope,
                     resolveStrings: widget.resolveStrings,
@@ -540,12 +506,7 @@ class _TimelinePanelState extends State<TimelinePanel> {
                     audioPeaksFor: widget.audioPeaksFor,
                     projectFrameRate: widget.projectFrameRate,
                     showSeconds: widget.showSeconds,
-                    onRemoveAudioClip: widget.onRemoveAudioClip,
-                    onDropMediaAsset: widget.onDropMediaAsset,
-                    onSetAudioClipOffset: widget.onSetAudioClipOffset,
-                    audioOffsetDrag: widget.audioOffsetDrag,
-                    onSetAudioClipFades: widget.onSetAudioClipFades,
-                    onSetAudioClipGain: widget.onSetAudioClipGain,
+                    audioLane: widget.audioLane,
                     onSetAudioClipFadeCurve: widget.onSetAudioClipFadeCurve,
                     onSetAudioClipEnvelope: widget.onSetAudioClipEnvelope,
                     resolveStrings: widget.resolveStrings,
