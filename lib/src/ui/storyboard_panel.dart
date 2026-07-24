@@ -62,7 +62,8 @@ import 'timeline/timeline_vertical_scrollbar_rail.dart';
 import 'timeline/timeline_playhead.dart' show timelinePlayheadColor;
 import 'timeline/timeline_row_filter.dart';
 import 'timeline/timeline_scale.dart';
-import 'timeline/timeline_se_row_visual.dart' show SePaperSpan, SeSpanVisual;
+import 'timeline/timeline_se_row_visual.dart'
+    show SePaperSpan, SeSpanVisual, timelineRowClipMarkerOverlays;
 import 'timeline/timeline_zoom_anchor_policy.dart';
 
 /// Same-track cut reorder request: drop [draggedCutId] at [targetCutIndex]
@@ -186,6 +187,7 @@ class StoryboardPanel extends StatefulWidget {
     this.isFrameCached,
     this.thumbnailFor,
     this.audioPeaksFor,
+    this.seClipMarkerTooltip,
     this.seLanePreview,
     this.expandedSeAudioRows = const {},
     this.onToggleSeRowLane,
@@ -342,6 +344,11 @@ class StoryboardPanel extends StatefulWidget {
 
   /// Waveform peaks per audio file for the SE rows (null hides waveforms).
   final AudioPeaks? Function(String filePath)? audioPeaksFor;
+
+  /// The recorded-take clipping warning tooltip (REC1-D): non-null mounts
+  /// the red block-corner marker on clipped SE spans, matching the
+  /// timeline and X-sheet. Null hides it (clipping notice setting off).
+  final String? seClipMarkerTooltip;
 
   /// The armed SE lane's in-flight take PREVIEW while recording rolls
   /// (REC1-C): stands in for the matching track lane in the DISPLAY rows
@@ -1109,6 +1116,7 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
               timelineScale: scale,
               projectFrameRate: widget.projectFrameRate,
               audioPeaksFor: widget.audioPeaksFor,
+              seClipMarkerTooltip: widget.seClipMarkerTooltip,
               activeCutId: widget.activeCutId,
               onSetAudioClipOffset: widget.onSetAudioClipOffset,
             ),
@@ -2626,6 +2634,7 @@ class _StoryboardAudioLaneRow extends StatelessWidget {
     required this.timelineScale,
     required this.projectFrameRate,
     this.audioPeaksFor,
+    this.seClipMarkerTooltip,
     this.activeCutId,
     this.onSetAudioClipOffset,
   });
@@ -2640,6 +2649,7 @@ class _StoryboardAudioLaneRow extends StatelessWidget {
   final TimelineScale timelineScale;
   final ProjectFrameRate projectFrameRate;
   final AudioPeaks? Function(String filePath)? audioPeaksFor;
+  final String? seClipMarkerTooltip;
   final CutId? activeCutId;
   final void Function(LayerId layerId, int clipIndex, int offsetFrames)?
   onSetAudioClipOffset;
@@ -2684,6 +2694,34 @@ class _StoryboardAudioLaneRow extends StatelessWidget {
           ),
         ),
       );
+      // Recorded-take clipping warning (REC1-D): the same red block-corner
+      // marker the timeline and X-sheet mount, over the lane's own frame
+      // extent. The tooltip string doubles as the switch.
+      final clipTooltip = seClipMarkerTooltip;
+      if (clipTooltip != null) {
+        spans.add(
+          Positioned(
+            left: timelineScale.leftForFrame(0),
+            top: 1,
+            width: totalFrames * timelineScale.pixelsPerFrame,
+            height: _audioLaneHeight - 2,
+            child: Stack(
+              children: timelineRowClipMarkerOverlays(
+                layer: layer,
+                frameStartIndex: 0,
+                frameEndIndexExclusive: totalFrames,
+                leadingFrameSpacerWidth: 0,
+                frameCellExtent: timelineScale.pixelsPerFrame,
+                crossAxisExtent: _audioLaneHeight - 2,
+                axis: Axis.horizontal,
+                tooltip: clipTooltip,
+                color: Theme.of(context).colorScheme.error,
+                keyPrefix: 'storyboard-${layer.id}',
+              ),
+            ),
+          ),
+        );
+      }
     }
     return SizedBox(
       key: ValueKey<String>(

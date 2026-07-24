@@ -454,6 +454,13 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
                 ),
                 thumbnailFor: widget.thumbnailFor,
                 audioPeaksFor: _session.audioPeaksForDisplay,
+                // The tooltip string doubles as the clip-marker switch
+                // (REC1-D), matching the timeline host: null while the
+                // clipping notice setting is off.
+                seClipMarkerTooltip:
+                    _session.audioSyncSettings.value.clippingNotice
+                    ? _session.uiStrings.recordClipMarkerTooltip
+                    : null,
                 // Rail parity with the timeline rows: twirl-down audio
                 // lanes and the V track's cut-fade (Opacity) lane.
                 expandedSeAudioRows: _expandedSeAudioRows,

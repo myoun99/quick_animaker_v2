@@ -522,6 +522,8 @@ class _TimelinePanelState extends State<TimelinePanel> {
                 : XSheetTimelineGrid(
                     layers: xsheetLayerDisplayOrder(widget.layers),
                     activeLayerId: widget.activeLayerId,
+                    seSpillInLayerIds: widget.seSpillInLayerIds,
+                    seClipMarkerTooltip: widget.seClipMarkerTooltip,
                     dragPreview: widget.dragPreview,
                     frameCursor: widget.frameCursor,
                     cacheProgress: widget.cacheProgress,

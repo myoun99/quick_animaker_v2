@@ -6,7 +6,6 @@ import 'package:flutter/material.dart';
 import '../../models/app_language.dart' show AppLanguage;
 import '../../models/audio_clip.dart' show AudioFadeCurve, AudioVolumeKey;
 import '../text/app_strings.dart';
-import 'timeline_run_duration_labels.dart';
 import '../../models/camera_instruction.dart';
 import '../../models/layer.dart';
 import '../../models/layer_id.dart';
@@ -22,16 +21,12 @@ import 'timeline_cell_style.dart';
 import 'timeline_frame_ruler_painter.dart' show TimelineRulerHeaderModel;
 import 'timeline_cut_end_handle.dart';
 import 'timeline_drag_preview.dart';
-import 'timeline_exposure_block_visual.dart';
 import 'timeline_exposure_comma_drag_policy.dart';
 import '../../models/project_frame_rate.dart';
-import '../../models/timeline_repeat.dart';
 import 'timeline_row_span_resolver.dart' show resolveBlockMoveTargetLayer;
 import 'timeline_frame_range_gesture.dart';
 import 'timeline_run_end_handles.dart';
-import 'timeline_frame_cell.dart';
-import 'timeline_frame_cells_row.dart' show timelineRowBlockEdgeGrips;
-import 'timeline_row_cells_painter.dart';
+import 'timeline_frame_cells_row.dart' show TimelineFrameCellsRow;
 import 'timeline_frame_coordinate_policy.dart';
 import 'timeline_frame_cursor_layer.dart';
 import 'timeline_beat_lines.dart';
@@ -45,8 +40,6 @@ import 'timeline_row_filter.dart';
 import 'timeline_grid_metrics.dart';
 import 'se_audio_lane.dart';
 import 'timeline_lane_rows.dart';
-import 'timeline_instruction_row_visual.dart';
-import 'timeline_se_row_visual.dart';
 import 'timeline_horizontal_offset_policy.dart';
 import 'pen_friendly_scroll_controller.dart';
 import 'stylus_glide_stop.dart';
@@ -126,12 +119,24 @@ class XSheetTimelineGrid extends StatefulWidget {
     this.hiddenSections = const {},
     this.rowFilter = TimelineRowFilter.none,
     this.collapsedAttachBaseIds = const {},
+    this.seSpillInLayerIds = const {},
+    this.seClipMarkerTooltip,
     this.dragPreview,
     this.cutEndDrag,
   });
 
   final List<Layer> layers;
   final LayerId? activeLayerId;
+
+  /// Track-SE layers whose sound spills in from the previous cut (UI-R7 #6):
+  /// their first block shows the `~` continuation mark instead of a start
+  /// grip. Mirrors the horizontal timeline's plumbing.
+  final Set<LayerId> seSpillInLayerIds;
+
+  /// The recorded-take clipping warning tooltip (REC1-D): non-null mounts
+  /// the red block-corner marker on SE cells, matching the horizontal
+  /// timeline. Null hides it (the "clipping notice" setting is off).
+  final String? seClipMarkerTooltip;
 
   /// The session's edit-drag preview channel: a comma-drag step rebuilds
   /// only the dragged layer's column (its gate) and the cursor overlay —
@@ -727,7 +732,9 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
     // bucket (repaint per span crossing), so the bucket pass diffs
     // identical params and records nothing; the sparse widget-cell kinds
     // re-window internally under the same bucket.
-    return _XSheetFrameCellsColumn(
+    return TimelineFrameCellsRow(
+      axis: Axis.vertical,
+      keyPrefix: 'xsheet',
       onActivateCell: widget.onActivateCell,
       instructionDefById: widget.instructionDefById,
       audioPeaksFor: widget.audioPeaksFor,
@@ -735,14 +742,16 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
       showSeconds: widget.showSeconds,
       onRemoveAudioClip: widget.onRemoveAudioClip,
       onDropMediaAsset: widget.onDropMediaAsset,
+      seClipMarkerTooltip: widget.seClipMarkerTooltip,
+      seSpillsIn: widget.seSpillInLayerIds.contains(layer.id),
       layer: layer,
       baseLayer: entry.layer,
       active: entry.layer.id == widget.activeLayerId,
       playbackFrameCount: widget.frameCount,
       frameStartIndex: 0,
       frameEndIndexExclusive: _renderedFrameCount,
-      leadingFrameSpacerHeight: 0,
-      trailingFrameSpacerHeight: 0,
+      leadingFrameSpacerWidth: 0,
+      trailingFrameSpacerWidth: 0,
       windowBucket: _frameWindowBucket,
       viewportMainExtent: viewportExtent,
       metrics: _metrics,
@@ -1774,409 +1783,6 @@ class XSheetFrameRailPainter extends CustomPainter {
     }
     return nodes;
   };
-}
-
-/// One layer's vertical run of frame cells: the transposed counterpart of
-/// the horizontal `TimelineFrameCellsRow`, reusing the same policies.
-class _XSheetFrameCellsColumn extends StatelessWidget {
-  const _XSheetFrameCellsColumn({
-    required this.layer,
-    required this.active,
-    required this.playbackFrameCount,
-    required this.frameStartIndex,
-    required this.frameEndIndexExclusive,
-    required this.leadingFrameSpacerHeight,
-    required this.trailingFrameSpacerHeight,
-    required this.metrics,
-    required this.exposureStateForLayer,
-    this.frameNameForLayer,
-    this.celHasContentForLayer,
-    required this.onSelectLayer,
-    required this.onSelectFrame,
-    this.onActivateCell,
-    this.instructionDefById,
-    this.audioPeaksFor,
-    this.projectFrameRate = ProjectFrameRate.fps24,
-    this.showSeconds = false,
-    this.onRemoveAudioClip,
-    this.onDropMediaAsset,
-    this.commaDrag,
-    this.rangeGesture,
-    this.runEdit,
-    this.baseLayer,
-    this.windowBucket,
-    this.viewportMainExtent = 0,
-  });
-
-  final Layer layer;
-
-  /// The column's COMMITTED repository layer while [layer] carries a drag
-  /// preview — the block-move handles mount from THIS one so a preview
-  /// step never unmounts the handle that owns the live gesture (R12-③).
-  final Layer? baseLayer;
-  final bool active;
-  final int playbackFrameCount;
-  final int frameStartIndex;
-  final int frameEndIndexExclusive;
-  final double leadingFrameSpacerHeight;
-  final double trailingFrameSpacerHeight;
-  final TimelineGridMetrics metrics;
-  final TimelineCellExposureState Function(Layer layer, int frameIndex)
-  exposureStateForLayer;
-  final String? Function(Layer layer, int frameIndex)? frameNameForLayer;
-  final bool Function(Layer layer, int frameIndex)? celHasContentForLayer;
-  final ValueChanged<LayerId> onSelectLayer;
-  final ValueChanged<int> onSelectFrame;
-  final void Function(LayerId layerId, int frameIndex)? onActivateCell;
-  final CameraInstructionDef? Function(String instructionId)?
-  instructionDefById;
-  final AudioPeaks? Function(String filePath)? audioPeaksFor;
-  final ProjectFrameRate projectFrameRate;
-
-  /// The shared frames/seconds display toggle (block duration labels,
-  /// R26 #7).
-  final bool showSeconds;
-
-  final void Function(LayerId layerId, int clipIndex)? onRemoveAudioClip;
-
-  /// Links a media-browser asset to an SE block (drag-drop); null hides
-  /// the drop targets.
-  final void Function(LayerId layerId, int blockStartFrame, String path)?
-  onDropMediaAsset;
-
-  final TimelineCommaDragCallbacks? commaDrag;
-
-  /// The range select/move gesture bundle (UI-R8 — the block-body move
-  /// handle's successor); null keeps the column display-only.
-  final TimelineRangeGestureCallbacks? rangeGesture;
-
-  /// The run-edge [+]/[↻] handle hooks (UI-R8); null hides the handles.
-  final TimelineRunEditCallbacks? runEdit;
-
-  /// PRO-TIMELINE scrolling (UI-R15→R16, transposed): with these set the
-  /// column builds ONCE for the full frame bounds — the painter windows
-  /// itself off the quantized [windowBucket] (repaint per span crossing),
-  /// the sparse widget-cell kinds re-window under the same bucket. Null
-  /// keeps the classic contract.
-  final ValueListenable<int>? windowBucket;
-  final double viewportMainExtent;
-
-  @override
-  Widget build(BuildContext context) {
-    // Instruction columns adapt their events onto the shared exposure
-    // states so the cells paint the same paper blocks (Axis policy —
-    // mirrors TimelineFrameCellsRow).
-    TimelineCellExposureState stateAt(int frameIndex) =>
-        layer.kind == LayerKind.instruction
-        ? instructionCellExposureState(layer, frameIndex)
-        : exposureStateForLayer(layer, frameIndex);
-    final commaDrag = this.commaDrag;
-    final rangeGesture = this.rangeGesture;
-    return SizedBox(
-      width: metrics.layerRowHeight,
-      child: Stack(
-        key: ValueKey<String>('xsheet-frame-column-area-${layer.id}'),
-        children: [
-          // Sparse columns' PAPER underlay (UI-R21 #2, transposed — the
-          // painter columns carry theirs inside the paint area): surface
-          // base + the active wash, column-wide.
-          if (!timelineRowUsesCellsPainter(layer.kind)) ...[
-            Positioned.fill(
-              child: ColoredBox(color: Theme.of(context).colorScheme.surface),
-            ),
-            if (active)
-              Positioned.fill(
-                child: ColoredBox(
-                  color: timelineActiveRowWashColor(
-                    Theme.of(context).colorScheme,
-                  ),
-                ),
-              ),
-          ],
-          // Dense drawing columns paint as ONE CustomPaint (UI-R9 #12b,
-          // transposed); sparse kinds keep the widget cells.
-          if (timelineRowUsesCellsPainter(layer.kind))
-            timelineRowCellsPaintArea(
-              context: context,
-              keyPrefix: 'xsheet',
-              layer: layer,
-              active: active,
-              playbackFrameCount: playbackFrameCount,
-              frameStartIndex: frameStartIndex,
-              frameEndIndexExclusive: frameEndIndexExclusive,
-              leadingFrameSpacerWidth: leadingFrameSpacerHeight,
-              trailingFrameSpacerWidth: trailingFrameSpacerHeight,
-              frameCellExtent: metrics.frameCellWidth,
-              crossAxisExtent: metrics.layerRowHeight,
-              axis: Axis.vertical,
-              windowBucket: windowBucket,
-              viewportMainExtent: viewportMainExtent,
-              exposureStateForLayer: exposureStateForLayer,
-              frameNameForLayer: frameNameForLayer,
-              celHasContentForLayer: celHasContentForLayer,
-              onSelectLayer: onSelectLayer,
-              onSelectFrame: onSelectFrame,
-              onActivateCell: onActivateCell,
-              suppressPointerDownSelect: rangeGesture == null
-                  ? null
-                  : (frameIndex) {
-                      final selection = rangeGesture.selection.value;
-                      return selection != null &&
-                          selection.layerId == layer.id &&
-                          selection.contains(frameIndex);
-                    },
-            )
-          else if (windowBucket != null)
-            // Sparse widget-cell kinds re-window under the bucket ALONE
-            // (UI-R15→R16): the column never rebuilds on scroll — only
-            // this strip, once per span crossing (shared policy).
-            ValueListenableBuilder<int>(
-              valueListenable: windowBucket!,
-              builder: (context, bucket, _) {
-                final cellExtent = metrics.frameCellWidth;
-                final window = timelineFrameWindowFor(
-                  bucket: bucket,
-                  cellExtent: cellExtent,
-                  viewportExtent: viewportMainExtent,
-                );
-                final first = math.max(frameStartIndex, window.startIndex);
-                final last = math.min(
-                  frameEndIndexExclusive,
-                  window.endIndexExclusive,
-                );
-                return _widgetCellsStrip(
-                  stateAt,
-                  startIndex: first,
-                  endIndexExclusive: math.max(first, last),
-                  leading: first * cellExtent,
-                  trailing:
-                      (frameEndIndexExclusive - math.max(first, last)) *
-                      cellExtent,
-                );
-              },
-            )
-          else
-            _widgetCellsStrip(
-              stateAt,
-              startIndex: frameStartIndex,
-              endIndexExclusive: frameEndIndexExclusive,
-              leading: leadingFrameSpacerHeight,
-              trailing: trailingFrameSpacerHeight,
-            ),
-          // NO extra section-divider overlay (R3 feedback #6): section
-          // boundaries share the same single hairline as every column
-          // boundary; the header band carries the section identity.
-          // NO empty-stretch furniture here (R5-②): uncovered X-sheet cells
-          // are already dark — the gray wash is print-sheet-only.
-          // SE audio clips paint over the paper cells, under the writing —
-          // clipped to the column's drawing blocks (no block, no waveform).
-          if (layerKindUsesSeSheetCells(layer.kind) && audioPeaksFor != null)
-            ...timelineRowAudioOverlays(
-              layer: layer,
-              frameStartIndex: frameStartIndex,
-              leadingFrameSpacerWidth: leadingFrameSpacerHeight,
-              frameCellExtent: metrics.frameCellWidth,
-              crossAxisExtent: metrics.layerRowHeight,
-              axis: Axis.vertical,
-              frameRate: projectFrameRate,
-              audioPeaksFor: audioPeaksFor!,
-              onRemoveClip: onRemoveAudioClip == null
-                  ? null
-                  : (clipIndex) => onRemoveAudioClip!(layer.id, clipIndex),
-              color: timelineDrawingInkColor.withValues(alpha: 0.22),
-              keyPrefix: 'xsheet',
-            ),
-          // SE columns: the sheet's writing on the paper blocks — name box
-          // at the block start plus the dialogue fitted across the span.
-          if (layerKindUsesSeSheetCells(layer.kind))
-            ...timelineRowSeLabelOverlays(
-              layer: layer,
-              frameStartIndex: frameStartIndex,
-              frameEndIndexExclusive: frameEndIndexExclusive,
-              leadingFrameSpacerWidth: leadingFrameSpacerHeight,
-              frameCellExtent: metrics.frameCellWidth,
-              crossAxisExtent: metrics.layerRowHeight,
-              axis: Axis.vertical,
-              keyPrefix: 'xsheet',
-            ),
-          // Media-browser drops land on SE blocks (sound → block frame).
-          if (layerKindUsesSeSheetCells(layer.kind) && onDropMediaAsset != null)
-            ...timelineRowSeAssetDropTargets(
-              layer: layer,
-              frameStartIndex: frameStartIndex,
-              frameEndIndexExclusive: frameEndIndexExclusive,
-              leadingFrameSpacerWidth: leadingFrameSpacerHeight,
-              frameCellExtent: metrics.frameCellWidth,
-              crossAxisExtent: metrics.layerRowHeight,
-              axis: Axis.vertical,
-              onAssetDropped: (blockStartFrame, path) =>
-                  onDropMediaAsset!(layer.id, blockStartFrame, path),
-              keyPrefix: 'xsheet',
-            ),
-          // Instruction columns: the sheet's CAM column — bar arrows or
-          // the O.L bowtie on the paper block, A → B endpoint values and
-          // the name snapped to the anchor cell.
-          if (layer.kind == LayerKind.instruction && instructionDefById != null)
-            ...timelineRowInstructionOverlays(
-              layer: layer,
-              frameStartIndex: frameStartIndex,
-              frameEndIndexExclusive: frameEndIndexExclusive,
-              leadingFrameSpacerWidth: leadingFrameSpacerHeight,
-              frameCellExtent: metrics.frameCellWidth,
-              crossAxisExtent: metrics.layerRowHeight,
-              axis: Axis.vertical,
-              defById: instructionDefById!,
-              keyPrefix: 'xsheet',
-            ),
-          // The range gesture layer replaces the block-body move handle
-          // (UI-R8, axis-transposed): a pan SELECTS a frame range, a pan
-          // starting inside the selection MOVES it. Mounted UNDER the
-          // grips so the edges keep comma-drag priority. EVERY layer row
-          // mounts it (UI-R20 #2 — see the horizontal grid).
-          if (rangeGesture != null)
-            TimelineFrameRangeGestureLayer(
-              // The SLOT key (R12-③ rule, UI-R22 #1) — see the
-              // horizontal grid: preview-driven overlay churn must never
-              // remount this layer mid-drag.
-              key: ValueKey<String>('xsheet-range-gesture-slot-${layer.id}'),
-              layer: layer,
-              frameStartIndex: frameStartIndex,
-              leadingFrameSpacerWidth: leadingFrameSpacerHeight,
-              frameCellExtent: metrics.frameCellWidth,
-              crossAxisExtent: metrics.layerRowHeight,
-              callbacks: rangeGesture,
-              axis: Axis.vertical,
-            ),
-          // R26 #7: block duration labels, transposed.
-          if (layerKindHoldsDrawings(layer.kind) &&
-              !layerKindUsesSeSheetCells(layer.kind))
-            ...timelineRowRunDurationLabels(
-              layer: layer,
-              frameStartIndex: frameStartIndex,
-              frameEndIndexExclusive: frameEndIndexExclusive,
-              leadingFrameSpacerWidth: leadingFrameSpacerHeight,
-              frameCellExtent: metrics.frameCellWidth,
-              crossAxisExtent: metrics.layerRowHeight,
-              showSeconds: showSeconds,
-              countingBase: projectFrameRate.countingBase,
-              axis: Axis.vertical,
-              keyPrefix: 'xsheet',
-            ),
-          // The TVP run-edge handles (UI-R8), transposed. Mounted from the
-          // COMMITTED layer so an add-start preview never remounts the
-          // handle mid-gesture (R12-③).
-          if (runEdit != null &&
-              layerKindHoldsDrawings(layer.kind) &&
-              !layerKindUsesSeSheetCells(layer.kind))
-            ...timelineRowRunEndHandles(
-              // Display layer positions the clusters (they ride previews,
-              // UI-R11 #1/#2); the committed base keeps their identity.
-              layer: layer,
-              baseLayer: baseLayer,
-              frameStartIndex: frameStartIndex,
-              frameEndIndexExclusive: frameEndIndexExclusive,
-              leadingFrameSpacerWidth: leadingFrameSpacerHeight,
-              frameCellExtent: metrics.frameCellWidth,
-              crossAxisExtent: metrics.layerRowHeight,
-              callbacks: runEdit!,
-              axis: Axis.vertical,
-              keyPrefix: 'xsheet',
-            ),
-          if (commaDrag != null && layerKindHoldsDrawings(layer.kind))
-            ...timelineRowBlockEdgeGrips(
-              layer: layer,
-              frameStartIndex: frameStartIndex,
-              frameEndIndexExclusive: frameEndIndexExclusive,
-              leadingFrameSpacerWidth: leadingFrameSpacerHeight,
-              frameCellExtent: metrics.frameCellWidth,
-              crossAxisExtent: metrics.layerRowHeight,
-              commaDrag: commaDrag,
-              axis: Axis.vertical,
-            ),
-          if (commaDrag != null && layer.kind == LayerKind.instruction)
-            ...timelineRowInstructionEdgeGrips(
-              layer: layer,
-              frameStartIndex: frameStartIndex,
-              frameEndIndexExclusive: frameEndIndexExclusive,
-              leadingFrameSpacerWidth: leadingFrameSpacerHeight,
-              frameCellExtent: metrics.frameCellWidth,
-              crossAxisExtent: metrics.layerRowHeight,
-              commaDrag: commaDrag,
-              axis: Axis.vertical,
-            ),
-        ],
-      ),
-    );
-  }
-
-  /// The sparse kinds' per-cell widget strip, transposed: spacers stand
-  /// in for the cells outside [startIndex, endIndexExclusive).
-  Widget _widgetCellsStrip(
-    TimelineCellExposureState Function(int frameIndex) stateAt, {
-    required int startIndex,
-    required int endIndexExclusive,
-    required double leading,
-    required double trailing,
-  }) {
-    return Column(
-      children: [
-        SizedBox(
-          key: ValueKey<String>(
-            'xsheet-frame-column-leading-spacer-${layer.id}',
-          ),
-          height: leading,
-          width: metrics.layerRowHeight,
-        ),
-        for (
-          var frameIndex = startIndex;
-          frameIndex < endIndexExclusive;
-          frameIndex += 1
-        )
-          TimelineFrameCell(
-            layer: layer,
-            frameIndex: frameIndex,
-            active: active,
-            outsidePlaybackRange: frameIndex >= playbackFrameCount,
-            ghost: timelineIndexIsGhost(layer, frameIndex),
-            exposureState: stateAt(frameIndex),
-            exposureBlockSegment: calculateTimelineExposureBlockVisualSegment(
-              previous: frameIndex == 0 ? null : stateAt(frameIndex - 1),
-              current: stateAt(frameIndex),
-              next: stateAt(frameIndex + 1),
-            ),
-            emptyRunStart: timelineEmptyRunStartsAt(
-              current: stateAt(frameIndex),
-              previous: frameIndex == 0 ? null : stateAt(frameIndex - 1),
-            ),
-            frameName: frameNameForLayer?.call(layer, frameIndex),
-            onSelectLayer: onSelectLayer,
-            onSelectFrame: onSelectFrame,
-            onActivateCell: layerKindOpensCellEditorOnDoubleTap(layer.kind)
-                ? onActivateCell
-                : null,
-            // A press inside the selection starts a MOVE, never a seek
-            // (UI-R22 #2 — the painter rows' rule, unified).
-            suppressPointerDownSelect: (frame) {
-              final selection = rangeGesture?.selection.value;
-              return selection != null &&
-                  selection.coversLayer(layer.id) &&
-                  selection.contains(frame);
-            },
-            axis: Axis.vertical,
-            width: metrics.layerRowHeight,
-            height: metrics.frameCellWidth,
-            cellKeyPrefix: 'xsheet-cell',
-          ),
-        SizedBox(
-          key: ValueKey<String>(
-            'xsheet-frame-column-trailing-spacer-${layer.id}',
-          ),
-          height: trailing,
-          width: metrics.layerRowHeight,
-        ),
-      ],
-    );
-  }
 }
 
 /// One cell of the section band above the layer headers: the paper sheet's
