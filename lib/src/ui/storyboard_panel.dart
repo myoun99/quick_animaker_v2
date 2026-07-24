@@ -54,6 +54,7 @@ import 'timeline/timeline_frame_range_policy.dart'
         timelineDurationLabel;
 import '../models/layer_kind.dart';
 import 'timeline/timeline_frame_ruler.dart';
+import 'timeline/timeline_edge_auto_pan.dart';
 import 'timeline/timeline_frame_window.dart';
 import 'timeline/timeline_grid_metrics.dart';
 import 'timeline/timeline_horizontal_scrollbar_rail.dart';
@@ -1844,14 +1845,8 @@ class _StoryboardRulerState extends State<_StoryboardRuler> {
     if (onEdgeAutoPan == null || widget.viewportWidth <= 0) {
       return;
     }
-    const edge = 24.0;
     final viewportX = dx - widget.viewportOffset.value;
-    double delta = 0;
-    if (viewportX > widget.viewportWidth - edge) {
-      delta = viewportX - (widget.viewportWidth - edge);
-    } else if (viewportX < edge) {
-      delta = viewportX - edge;
-    }
+    final delta = edgeAutoPanDelta(viewportX, widget.viewportWidth);
     if (delta != 0) {
       onEdgeAutoPan(delta);
     }

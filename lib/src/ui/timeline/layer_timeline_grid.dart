@@ -14,6 +14,7 @@ import '../../models/layer_kind.dart';
 import '../../models/layer_mark.dart';
 import '../../services/audio/audio_peaks_extractor.dart';
 import 'timeline_row_span_resolver.dart' show resolveSelectionSpanHead;
+import 'timeline_edge_auto_pan.dart';
 import 'timeline_frame_range_gesture.dart';
 import 'timeline_run_end_handles.dart';
 import 'timeline_cell_exposure_state.dart';
@@ -847,14 +848,7 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
     if (viewport is! RenderBox || !viewport.hasSize) {
       return;
     }
-    const edge = 24.0;
-    final width = viewport.size.width;
-    double delta = 0;
-    if (localX > width - edge) {
-      delta = localX - (width - edge);
-    } else if (localX < edge) {
-      delta = localX - edge;
-    }
+    final delta = edgeAutoPanDelta(localX, viewport.size.width);
     if (delta == 0) {
       return;
     }
