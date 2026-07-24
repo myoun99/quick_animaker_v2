@@ -22,6 +22,7 @@ import '../../models/project_frame_rate.dart';
 import '../../native/qa_audio_device.dart';
 import '../audio/audio_conform_store.dart';
 import 'audio_playback_schedule.dart';
+import 'audio_windowed_upload.dart';
 import 'canvas_playback_controller.dart';
 
 class AudioScrubber {
@@ -175,15 +176,12 @@ class AudioScrubber {
     _stoodDown = false;
   }
 
-  /// Uploads [mix] with streaming windows around [centerSample] — the
-  /// shared [windowedMixUpload], so scrubbed and played streaming can
-  /// never disagree. False uploads nothing.
+  /// Uploads [mix] with streaming windows around [centerSample] — the shared
+  /// [uploadWindowedSchedule], so scrubbed and played streaming can never
+  /// disagree. False uploads nothing.
   bool _uploadWindowedSchedule(AudioMixSchedule mix, int centerSample) {
-    final device = _device;
-    if (device == null) {
-      return false;
-    }
-    final upload = windowedMixUpload(
+    final hasStreaming = uploadWindowedSchedule(
+      device: _device,
       mix: mix,
       conformStore: conformStore,
       deviceRate: _deviceRate,
@@ -191,13 +189,10 @@ class AudioScrubber {
       backSeconds: _windowBackSeconds,
       aheadSeconds: _windowAheadSeconds,
     );
-    if (upload == null) {
+    if (hasStreaming == null) {
       return false;
     }
-    if (!device.setSchedule(clips: upload.clips, sources: upload.sources)) {
-      return false;
-    }
-    _hasStreaming = upload.hasStreaming;
+    _hasStreaming = hasStreaming;
     _windowCenterSample = centerSample;
     return true;
   }
