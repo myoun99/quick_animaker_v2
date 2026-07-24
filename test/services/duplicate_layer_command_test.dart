@@ -16,6 +16,7 @@ import 'package:quick_animaker_v2/src/models/track.dart';
 import 'package:quick_animaker_v2/src/models/track_id.dart';
 import 'package:quick_animaker_v2/src/services/commands/cut_command_coordinator.dart';
 import 'package:quick_animaker_v2/src/services/history_manager.dart';
+import 'package:quick_animaker_v2/src/services/project_lookup.dart';
 import 'package:quick_animaker_v2/src/services/project_repository.dart';
 
 const _cutId = CutId('cut-1');
@@ -36,7 +37,10 @@ void main() {
         sourceLayerId: _layerBId,
       );
 
-      final layers = _cut(fixture.repository, _cutId).layers;
+      final layers = requireCut(
+        fixture.repository.requireProject(),
+        _cutId,
+      ).layers;
       expect(layers.map((layer) => layer.id), [
         _layerAId,
         _layerBId,
@@ -62,14 +66,22 @@ void main() {
 
     test('preserves copied content without reusing frame ids', () {
       final fixture = _fixture();
-      final source = _layerById(fixture.repository, _cutId, _layerBId);
+      final source = requireLayer(
+        fixture.repository.requireProject(),
+        cutId: _cutId,
+        layerId: _layerBId,
+      );
 
       final duplicateId = fixture.coordinator.duplicateLayer(
         cutId: _cutId,
         sourceLayerId: _layerBId,
       );
 
-      final duplicate = _layerById(fixture.repository, _cutId, duplicateId);
+      final duplicate = requireLayer(
+        fixture.repository.requireProject(),
+        cutId: _cutId,
+        layerId: duplicateId,
+      );
       expect(duplicate.isVisible, source.isVisible);
       expect(duplicate.opacity, source.opacity);
       expect(duplicate.frames.length, source.frames.length);
@@ -95,7 +107,11 @@ void main() {
           cutId: _cutId,
           sourceLayerId: _layerBId,
         );
-        final duplicate = _layerById(fixture.repository, _cutId, duplicateId);
+        final duplicate = requireLayer(
+          fixture.repository.requireProject(),
+          cutId: _cutId,
+          layerId: duplicateId,
+        );
 
         fixture.history.undo();
         expect(_layerIds(fixture.repository, _cutId), [
@@ -105,7 +121,10 @@ void main() {
         ]);
 
         fixture.history.redo();
-        final layers = _cut(fixture.repository, _cutId).layers;
+        final layers = requireCut(
+          fixture.repository.requireProject(),
+          _cutId,
+        ).layers;
         expect(layers.map((layer) => layer.id), [
           _layerAId,
           _layerBId,
@@ -142,16 +161,24 @@ void main() {
         );
 
         expect(
-          _layerById(fixture.repository, _cutId, animationDuplicateId).kind,
+          requireLayer(
+            fixture.repository.requireProject(),
+            cutId: _cutId,
+            layerId: animationDuplicateId,
+          ).kind,
           LayerKind.animation,
         );
         expect(
-          _layerById(fixture.repository, _cutId, storyboardDuplicateId).kind,
+          requireLayer(
+            fixture.repository.requireProject(),
+            cutId: _cutId,
+            layerId: storyboardDuplicateId,
+          ).kind,
           LayerKind.animation,
         );
         expect(
-          _cut(
-            fixture.repository,
+          requireCut(
+            fixture.repository.requireProject(),
             _cutId,
           ).layers.where((layer) => layer.kind == LayerKind.storyboard).length,
           1,
@@ -247,30 +274,18 @@ Layer _layer(
   );
 }
 
-Cut _cut(ProjectRepository repository, CutId cutId) {
-  for (final track in repository.requireProject().tracks) {
-    for (final cut in track.cuts) {
-      if (cut.id == cutId) {
-        return cut;
-      }
-    }
-  }
-  throw StateError('Cut not found: $cutId');
-}
-
-Layer _layerById(ProjectRepository repository, CutId cutId, LayerId layerId) {
-  return _cut(
-    repository,
-    cutId,
-  ).layers.singleWhere((layer) => layer.id == layerId);
-}
-
 List<LayerId> _layerIds(ProjectRepository repository, CutId cutId) {
-  return _cut(repository, cutId).layers.map((layer) => layer.id).toList();
+  return requireCut(
+    repository.requireProject(),
+    cutId,
+  ).layers.map((layer) => layer.id).toList();
 }
 
 List<String> _layerNames(ProjectRepository repository, CutId cutId) {
-  return _cut(repository, cutId).layers.map((layer) => layer.name).toList();
+  return requireCut(
+    repository.requireProject(),
+    cutId,
+  ).layers.map((layer) => layer.name).toList();
 }
 
 class _Fixture {
