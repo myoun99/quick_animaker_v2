@@ -19,6 +19,8 @@ import 'package:quick_animaker_v2/src/models/track.dart';
 import 'package:quick_animaker_v2/src/models/track_id.dart';
 import 'package:quick_animaker_v2/src/services/audio/audio_peaks_extractor.dart';
 import 'package:quick_animaker_v2/src/ui/storyboard_panel.dart';
+import 'package:quick_animaker_v2/src/ui/timeline/se_audio_lane.dart'
+    show TimelineAudioLaneCallbacks;
 import 'package:quick_animaker_v2/src/ui/timeline/timeline_cell_exposure_state.dart';
 import 'package:quick_animaker_v2/src/ui/timeline/timeline_orientation.dart';
 import 'package:quick_animaker_v2/src/ui/timeline/timeline_panel.dart';
@@ -70,8 +72,10 @@ void main() {
             // Classic zoom: this file's pixel oracles assume 48 px/frame.
             pixelsPerFrame: 48,
             audioPeaksFor: (path) => path == 'voice.wav' ? _peaks : null,
-            onRemoveAudioClip: (layerId, clipIndex) =>
-                removed.add((layerId, clipIndex)),
+            audioLane: TimelineAudioLaneCallbacks(
+              onRemoveClip: (layerId, clipIndex) =>
+                  removed.add((layerId, clipIndex)),
+            ),
           ),
         ),
       ),
@@ -144,5 +148,4 @@ void main() {
     expect(strip, findsOneWidget);
     expect(tester.getSize(strip).width, moreOrLessEquals(12 * 8));
   });
-
 }

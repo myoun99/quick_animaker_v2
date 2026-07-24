@@ -219,7 +219,11 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
   /// lane row under the pointer — member lanes only; headers and
   /// non-transform lanes (SE audio) cross silently, and rows past the
   /// group clamp to the farthest member reached. Null keeps the anchor.
-  String? _laneSpanHeadLane(LayerId layerId, String anchorLaneId, int rowDelta) {
+  String? _laneSpanHeadLane(
+    LayerId layerId,
+    String anchorLaneId,
+    int rowDelta,
+  ) {
     if (rowDelta == 0) {
       return null;
     }
@@ -978,30 +982,34 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
           seClipMarkerTooltip: _session.audioSyncSettings.value.clippingNotice
               ? _session.uiStrings.recordClipMarkerTooltip
               : null,
-          onRemoveAudioClip: _session.removeAudioClipAt,
-          // Media-browser drops: link the dragged sound to the block.
-          onDropMediaAsset: (layerId, blockStartFrame, path) =>
-              _session.linkMediaAssetToSeBlock(
-                layerId: layerId,
-                blockStartFrame: blockStartFrame,
-                path: path,
-              ),
-          // The audio lane's slide edit (the clip's offset trim), edge
-          // fade handles and gain dialog. The slide previews LOCALLY in the
-          // lane span (its own painter, no session traffic per move) and
-          // commits ONE undo on release — the repo-live drag session
-          // rebuilt every panel per move and made the slide feel heavy
-          // (R5-⑧); the session drag API stays for callers that need the
-          // cross-panel mirror.
-          onSetAudioClipOffset: _session.setAudioClipOffset,
-          onSetAudioClipFades: (layerId, clipIndex, fadeIn, fadeOut) =>
-              _session.setAudioClipFades(
-                layerId,
-                clipIndex,
-                fadeInFrames: fadeIn,
-                fadeOutFrames: fadeOut,
-              ),
-          onSetAudioClipGain: _session.setAudioClipGain,
+          // Everything the audio lane may ask of the session, bound once
+          // here instead of threaded as six parameters through the panel
+          // and both grids.
+          //
+          // The slide edit previews LOCALLY in the lane span (its own
+          // painter, no session traffic per move) and commits ONE undo on
+          // release — the repo-live drag session rebuilt every panel per
+          // move and made the slide feel heavy (R5-⑧); the session drag
+          // API stays for callers that need the cross-panel mirror.
+          audioLane: TimelineAudioLaneCallbacks(
+            onRemoveClip: _session.removeAudioClipAt,
+            // Media-browser drops: link the dragged sound to the block.
+            onDropMediaAsset: (layerId, blockStartFrame, path) =>
+                _session.linkMediaAssetToSeBlock(
+                  layerId: layerId,
+                  blockStartFrame: blockStartFrame,
+                  path: path,
+                ),
+            onSetClipOffset: _session.setAudioClipOffset,
+            onSetClipFades: (layerId, clipIndex, fadeIn, fadeOut) =>
+                _session.setAudioClipFades(
+                  layerId,
+                  clipIndex,
+                  fadeInFrames: fadeIn,
+                  fadeOutFrames: fadeOut,
+                ),
+            onSetClipGain: _session.setAudioClipGain,
+          ),
           onSetAudioClipFadeCurve: _session.setAudioClipFadeCurve,
           onSetAudioClipEnvelope: _session.setAudioClipEnvelope,
           resolveStrings: () => _session.uiStrings,
@@ -1056,19 +1064,14 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
           rangeHooks: TimelineFrameRangeHooks(
             selection: _session.frameRangeSelection,
             onSelectUpdate:
-                (
-                  layerId,
-                  anchorIndex,
-                  headIndex, {
-                  headLayerId,
-                  headLaneId,
-                }) => _session.updateFrameRangeSelectionDrag(
-                  layerId: layerId,
-                  anchorIndex: anchorIndex,
-                  headIndex: headIndex,
-                  headLayerId: headLayerId,
-                  headLaneId: headLaneId,
-                ),
+                (layerId, anchorIndex, headIndex, {headLayerId, headLaneId}) =>
+                    _session.updateFrameRangeSelectionDrag(
+                      layerId: layerId,
+                      anchorIndex: anchorIndex,
+                      headIndex: headIndex,
+                      headLayerId: headLayerId,
+                      headLaneId: headLaneId,
+                    ),
             onClear: _session.clearFrameRangeSelection,
             move: TimelineRangeMoveCallbacks(
               onBegin: _session.beginFrameRangeMoveDrag,
@@ -1487,5 +1490,6 @@ class _SeekGatedTimelineToolbarState extends State<_SeekGatedTimelineToolbar> {
   }
 
   @override
-  Widget build(BuildContext context) => _cachedChild ??= widget.builder(context);
+  Widget build(BuildContext context) =>
+      _cachedChild ??= widget.builder(context);
 }

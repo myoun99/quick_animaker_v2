@@ -84,12 +84,7 @@ class XSheetTimelineGrid extends StatefulWidget {
     this.audioPeaksFor,
     this.projectFrameRate = ProjectFrameRate.fps24,
     this.showSeconds = false,
-    this.onRemoveAudioClip,
-    this.onDropMediaAsset,
-    this.onSetAudioClipOffset,
-    this.audioOffsetDrag,
-    this.onSetAudioClipFades,
-    this.onSetAudioClipGain,
+    this.audioLane,
     this.onSetAudioClipFadeCurve,
     this.onSetAudioClipEnvelope,
     this.resolveStrings,
@@ -193,31 +188,9 @@ class XSheetTimelineGrid extends StatefulWidget {
   /// The frame rail's number mode (UI-R10 #27): seconds display repeats
   /// 1..fps per second instead of absolute frame numbers.
   final bool showSeconds;
-  final void Function(LayerId layerId, int clipIndex)? onRemoveAudioClip;
 
-  /// Links a media-browser asset to an SE block (drag-drop).
-  final void Function(LayerId layerId, int blockStartFrame, String path)?
-  onDropMediaAsset;
-
-  /// Commits an audio-lane slide (the clip's offset trim).
-  final void Function(LayerId layerId, int clipIndex, int offsetFrames)?
-  onSetAudioClipOffset;
-
-  /// Live drag session for the slide (repo-direct preview + one undo).
-  final AudioOffsetDragCallbacks? audioOffsetDrag;
-
-  /// Commits an audio-lane fade-handle drag.
-  final void Function(
-    LayerId layerId,
-    int clipIndex,
-    int fadeInFrames,
-    int fadeOutFrames,
-  )?
-  onSetAudioClipFades;
-
-  /// Commits the audio-lane gain dialog.
-  final void Function(LayerId layerId, int clipIndex, double gain)?
-  onSetAudioClipGain;
+  /// What the audio lane may ask the session to do; null = display-only.
+  final TimelineAudioLaneCallbacks? audioLane;
 
   /// Commits the audio-lane fade-curve toggle (AUDIO-PRO R1).
   final void Function(LayerId layerId, int clipIndex, AudioFadeCurve curve)?
@@ -665,25 +638,27 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
               metrics: _metrics,
               frameRate: widget.projectFrameRate,
               audioPeaksFor: widget.audioPeaksFor,
-              onSetClipOffset: widget.onSetAudioClipOffset == null
+              onSetClipOffset: widget.audioLane?.onSetClipOffset == null
                   ? null
-                  : (clipIndex, offsetFrames) => widget.onSetAudioClipOffset!(
-                      entry.layer.id,
-                      clipIndex,
-                      offsetFrames,
-                    ),
-              offsetDrag: widget.audioOffsetDrag,
-              onSetClipFades: widget.onSetAudioClipFades == null
+                  : (clipIndex, offsetFrames) =>
+                        widget.audioLane!.onSetClipOffset!(
+                          entry.layer.id,
+                          clipIndex,
+                          offsetFrames,
+                        ),
+              offsetDrag: widget.audioLane?.offsetDrag,
+              onSetClipFades: widget.audioLane?.onSetClipFades == null
                   ? null
-                  : (clipIndex, fadeIn, fadeOut) => widget.onSetAudioClipFades!(
-                      entry.layer.id,
-                      clipIndex,
-                      fadeIn,
-                      fadeOut,
-                    ),
-              onSetClipGain: widget.onSetAudioClipGain == null
+                  : (clipIndex, fadeIn, fadeOut) =>
+                        widget.audioLane!.onSetClipFades!(
+                          entry.layer.id,
+                          clipIndex,
+                          fadeIn,
+                          fadeOut,
+                        ),
+              onSetClipGain: widget.audioLane?.onSetClipGain == null
                   ? null
-                  : (clipIndex, gain) => widget.onSetAudioClipGain!(
+                  : (clipIndex, gain) => widget.audioLane!.onSetClipGain!(
                       entry.layer.id,
                       clipIndex,
                       gain,
@@ -735,8 +710,7 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
       audioPeaksFor: widget.audioPeaksFor,
       projectFrameRate: widget.projectFrameRate,
       showSeconds: widget.showSeconds,
-      onRemoveAudioClip: widget.onRemoveAudioClip,
-      onDropMediaAsset: widget.onDropMediaAsset,
+      audioLane: widget.audioLane,
       seClipMarkerTooltip: widget.seClipMarkerTooltip,
       seSpillsIn: widget.seSpillInLayerIds.contains(layer.id),
       layer: layer,
@@ -976,28 +950,27 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
                                                     ),
                                                   ),
                                                   Positioned.fill(
-                                                    child:
-                                                        TimelineRulerCursorOverlay(
-                                                          keyValue:
-                                                              'xsheet-rail-cursor-overlay',
-                                                          axis: Axis.vertical,
-                                                          playhead:
-                                                              widget.frameCursor,
-                                                          repaintSignal: widget
-                                                              .frameCachedSignal,
-                                                          windowBucket:
-                                                              _frameWindowBucket,
-                                                          viewportMainExtent:
-                                                              bodyViewportHeight,
-                                                          renderedFrames:
-                                                              _renderedFrameCount,
-                                                          contentFrames:
-                                                              widget.frameCount,
-                                                          cellWidth: _metrics
-                                                              .frameCellWidth,
-                                                          isFrameCached: widget
-                                                              .isFrameCached,
-                                                        ),
+                                                    child: TimelineRulerCursorOverlay(
+                                                      keyValue:
+                                                          'xsheet-rail-cursor-overlay',
+                                                      axis: Axis.vertical,
+                                                      playhead:
+                                                          widget.frameCursor,
+                                                      repaintSignal: widget
+                                                          .frameCachedSignal,
+                                                      windowBucket:
+                                                          _frameWindowBucket,
+                                                      viewportMainExtent:
+                                                          bodyViewportHeight,
+                                                      renderedFrames:
+                                                          _renderedFrameCount,
+                                                      contentFrames:
+                                                          widget.frameCount,
+                                                      cellWidth: _metrics
+                                                          .frameCellWidth,
+                                                      isFrameCached:
+                                                          widget.isFrameCached,
+                                                    ),
                                                   ),
                                                   // UI-R18 #14: the rail's
                                                   // line follows the live
@@ -1232,8 +1205,8 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
                                                           .onToggleLayerSolo,
                                                       onEditLayerAudio: widget
                                                           .onEditLayerAudio,
-                                                      resolveStrings: widget
-                                                          .resolveStrings,
+                                                      resolveStrings:
+                                                          widget.resolveStrings,
                                                       hasLanes: _lanesFor(
                                                         entries[index].layer,
                                                       ).isNotEmpty,
@@ -1908,7 +1881,9 @@ class _LayerHeader extends StatelessWidget {
           PopupMenuItem<String>(
             key: ValueKey<String>('xsheet-layer-solo-${layer.id}'),
             value: 'solo',
-            child: Text(isLayerSoloed ? strings.audioUnsolo : strings.audioSolo),
+            child: Text(
+              isLayerSoloed ? strings.audioUnsolo : strings.audioSolo,
+            ),
           ),
         if (onEditLayerAudio != null)
           PopupMenuItem<String>(
