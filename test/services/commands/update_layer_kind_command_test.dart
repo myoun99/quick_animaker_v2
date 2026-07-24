@@ -20,6 +20,7 @@ import 'package:quick_animaker_v2/src/models/track.dart';
 import 'package:quick_animaker_v2/src/models/track_id.dart';
 import 'package:quick_animaker_v2/src/services/commands/update_layer_kind_command.dart';
 import 'package:quick_animaker_v2/src/services/history_manager.dart';
+import 'package:quick_animaker_v2/src/services/project_lookup.dart';
 import 'package:quick_animaker_v2/src/services/project_repository.dart';
 
 void main() {
@@ -65,7 +66,7 @@ void main() {
           kind: LayerKind.storyboard,
         ).execute();
 
-        final updatedCut = _cutById(repository.requireProject(), cut.id);
+        final updatedCut = requireCut(repository.requireProject(), cut.id);
         final updatedLayer = updatedCut.layers.single;
         final updatedFrame = updatedLayer.frames.single;
         expect(updatedLayer.kind, LayerKind.storyboard);
@@ -101,7 +102,7 @@ void main() {
           kind: LayerKind.animation,
         ).execute();
 
-        final updatedLayer = _layerById(repository.requireProject(), layer.id);
+        final updatedLayer = requireLayerAnywhere(repository.requireProject(), layer.id);
         expect(updatedLayer.kind, LayerKind.animation);
         expect(updatedLayer.frames.single.storyboardMetadata, metadata);
       },
@@ -122,19 +123,19 @@ void main() {
         ),
       );
       expect(
-        _layerById(repository.requireProject(), layer.id).kind,
+        requireLayerAnywhere(repository.requireProject(), layer.id).kind,
         LayerKind.storyboard,
       );
 
       historyManager.undo();
       expect(
-        _layerById(repository.requireProject(), layer.id).kind,
+        requireLayerAnywhere(repository.requireProject(), layer.id).kind,
         LayerKind.animation,
       );
 
       historyManager.redo();
       expect(
-        _layerById(repository.requireProject(), layer.id).kind,
+        requireLayerAnywhere(repository.requireProject(), layer.id).kind,
         LayerKind.storyboard,
       );
     });
@@ -230,13 +231,13 @@ void main() {
         kind: LayerKind.storyboard,
       ).execute();
 
-      final updatedTargetCut = _cutById(
+      final updatedTargetCut = requireCut(
         repository.requireProject(),
         targetCut.id,
       );
       expect(updatedTargetCut.layers[1], siblingLayer);
       expect(updatedTargetCut.layers.first.frames.single, targetFrame);
-      expect(_cutById(repository.requireProject(), otherCut.id), otherCut);
+      expect(requireCut(repository.requireProject(), otherCut.id), otherCut);
     });
   });
 }
@@ -299,22 +300,4 @@ Stroke _stroke(String id) => Stroke(
   brushSettings: BrushSettings(),
 );
 
-Cut _cutById(Project project, CutId cutId) {
-  for (final track in project.tracks) {
-    for (final cut in track.cuts) {
-      if (cut.id == cutId) return cut;
-    }
-  }
-  throw StateError('Cut not found: $cutId');
-}
 
-Layer _layerById(Project project, LayerId layerId) {
-  for (final track in project.tracks) {
-    for (final cut in track.cuts) {
-      for (final layer in cut.layers) {
-        if (layer.id == layerId) return layer;
-      }
-    }
-  }
-  throw StateError('Layer not found: $layerId');
-}
